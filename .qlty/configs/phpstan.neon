@@ -1,0 +1,17 @@
+parameters:
+    level: 8
+
+    configDirectories:
+        - %currentWorkingDirectory%/config
+
+    scanDirectories:
+        - %currentWorkingDirectory%/src
+        - %currentWorkingDirectory%/benchmarks
+        - %currentWorkingDirectory%/database
+        - %currentWorkingDirectory%/tests
+
+    paths:
+        - src
+        - benchmarks
+        - database
+        - tests

@@ -1,0 +1,147 @@
+# ==============================================================================
+# TESTS
+# ==============================================================================
+name: Tests
+
+# ==============================================================================
+# TRIGGERS
+# ==============================================================================
+on:
+    push:
+        branches: [ master ]
+    pull_request:
+        types: [ opened, synchronize, reopened, ready_for_review ]
+    workflow_dispatch:
+
+# ==============================================================================
+# CONCURRENCY
+# ==============================================================================
+concurrency:
+    group: tests-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+# ==============================================================================
+# PERMISSIONS
+# ==============================================================================
+permissions:
+    contents: read
+
+# ==============================================================================
+# DEFAULTS
+# ==============================================================================
+defaults:
+    run:
+        shell: bash
+
+jobs:
+
+    # ==========================================================================
+    # JOB: TESTS
+    # ==========================================================================
+    tests:
+        name: Test / PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel.label }}
+        runs-on: ubuntu-latest
+
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    -   php: 8.3
+                        laravel:
+                            constraint: ^12.40
+                            label: 12
+                    -   php: 8.3
+                        laravel:
+                            constraint: ^13.3
+                            label: 13
+
+        steps:
+            -   name: Checkout
+                uses: actions/checkout@v5
+                with:
+                    persist-credentials: false
+
+            -   name: Setup PHP
+                uses: sinemacula/.github/.github/actions/setup-php@v1.1.0
+                with:
+                    php-version: ${{ matrix.php }}
+                    extensions: dom, mbstring, openssl
+
+            -   name: Pin Laravel version
+                env:
+                    LARAVEL_CONSTRAINT: ${{ matrix.laravel.constraint }}
+                run: composer update --with="laravel/framework:${LARAVEL_CONSTRAINT}" --prefer-dist --no-interaction --no-progress
+
+            -   name: PHPUnit
+                run: composer test:coverage
+
+            -   name: Publish code coverage
+                if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.laravel.label == '13' }}
+                uses: qltysh/qlty-action/coverage@v2
+                with:
+                    token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+                    files: clover.xml
+
+    # ==========================================================================
+    # JOB: DATABASE TESTS
+    # ==========================================================================
+    database-tests:
+        name: Test / ${{ matrix.database.label }}
+        runs-on: ubuntu-latest
+
+        strategy:
+            fail-fast: false
+            matrix:
+                database:
+                    -   driver: mysql
+                        label: MySQL
+                        host: 127.0.0.1
+                        port: 3306
+                        username: root
+                        password: root
+                    -   driver: pgsql
+                        label: PostgreSQL
+                        host: 127.0.0.1
+                        port: 5432
+                        username: postgres
+                        password: postgres
+
+        env:
+            DB_CONNECTION: ${{ matrix.database.driver }}
+            DB_HOST: ${{ matrix.database.host }}
+            DB_PORT: ${{ matrix.database.port }}
+            DB_DATABASE: laravel_authentication_test
+            DB_USERNAME: ${{ matrix.database.username }}
+            DB_PASSWORD: ${{ matrix.database.password }}
+
+        steps:
+            -   name: Checkout
+                uses: actions/checkout@v5
+                with:
+                    persist-credentials: false
+
+            -   name: Setup MySQL
+                if: matrix.database.driver == 'mysql'
+                uses: sinemacula/.github/.github/actions/setup-mysql@v1.1.0
+                with:
+                    db-password: ${{ matrix.database.password }}
+                    db-name: laravel_authentication_test
+
+            -   name: Setup PostgreSQL
+                if: matrix.database.driver == 'pgsql'
+                uses: sinemacula/.github/.github/actions/setup-postgres@v1.1.0
+                with:
+                    db-password: ${{ matrix.database.password }}
+                    db-name: laravel_authentication_test
+
+            -   name: Setup PHP
+                uses: sinemacula/.github/.github/actions/setup-php@v1.1.0
+                with:
+                    php-version: 8.3
+                    extensions: dom, mbstring, openssl, pdo_${{ matrix.database.driver == 'pgsql' && 'pgsql' || 'mysql' }}
+
+            -   name: Install dependencies
+                run: composer install --prefer-dist --no-interaction --no-progress
+
+            -   name: PHPUnit (serial)
+                run: vendor/bin/phpunit
