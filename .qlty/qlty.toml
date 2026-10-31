@@ -79,7 +79,7 @@ success_codes = [0, 1, 2, 3]
 # Held at the version the shared standard requires, with the Symfony packages
 # held on the 7.4 line: from 3.90 the fixer also accepts Symfony 8, which needs
 # PHP 8.4.1 and carries syntax an older runner cannot parse, and the sandbox
-# install ignores platform requirements. Those pins are only honoured through
+# install ignores platform requirements. Those pins are only honored through
 # extra_packages, which is silently ignored whenever package_file is set, so
 # this plugin declares its packages here rather than reading composer.json.
 [[plugin]]
@@ -98,7 +98,7 @@ extra_packages = [
 ]
 
 # phpstan runs from a dedicated sandbox file that lists the analysis stack and
-# every dependency the analysed code references, so a package the code starts
+# every dependency the analyzed code references, so a package the code starts
 # to use is added there as well as to composer.json. With no package_filters,
 # qlty installs the whole file into the tool sandbox and phpstan resolves the
 # framework from there, with no project install or prepare step. The sandbox

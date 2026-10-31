@@ -14,7 +14,7 @@ parameters:
         - benchmarks
         - tests
 
-    # Analyse against the supported PHP range (composer.json and the CI matrix)
+    # Analyze against the supported PHP range (composer.json and the CI matrix)
     # rather than the PHP running PHPStan. Version-gated rules are evaluated at
     # the minimum, so features only valid on newer PHP, such as #[\Override] on
     # properties (PHP 8.5+), are not demanded of code that must load on PHP 8.3;
