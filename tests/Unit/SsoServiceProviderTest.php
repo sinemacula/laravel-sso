@@ -15,12 +15,14 @@ use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
+use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\Fixtures\Fetching\StubHostResolver;
 
@@ -45,6 +47,8 @@ final class SsoServiceProviderTest extends TestCase
         SecretEncrypter::class,
         Fetcher::class,
         AttemptLimiter::class,
+        Freshness::class,
+        ProtocolManager::class,
         ConfigurationChecker::class,
     ];
 
@@ -82,7 +86,12 @@ final class SsoServiceProviderTest extends TestCase
 
         (new SsoServiceProvider($app))->register();
 
-        foreach ([Clock::class, HostResolver::class, SingleUseStore::class, SecretEncrypter::class, Fetcher::class, AttemptLimiter::class] as $abstract) {
+        $shared = [
+            Clock::class, HostResolver::class, SingleUseStore::class, SecretEncrypter::class, Fetcher::class, AttemptLimiter::class,
+            Freshness::class, ProtocolManager::class,
+        ];
+
+        foreach ($shared as $abstract) {
             self::assertTrue($app->isShared($abstract), $abstract . ' is not shared.');
         }
 
@@ -169,7 +178,7 @@ final class SsoServiceProviderTest extends TestCase
     public function testEveryConfigurationCheckIsRegistered(): void
     {
         self::assertSame(
-            ['features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits'],
+            ['features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits', 'freshness', 'keys', 'mapping'],
             array_keys(SsoServiceProvider::CONFIGURATION_CHECKS),
         );
     }

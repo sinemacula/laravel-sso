@@ -17,18 +17,24 @@ use SineMacula\Laravel\Sso\Config\Checks\ExtensionsCheck;
 use SineMacula\Laravel\Sso\Config\Checks\FeaturesCheck;
 use SineMacula\Laravel\Sso\Config\Checks\StorageCheck;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
+use SineMacula\Laravel\Sso\Connections\MappingCheck;
 use SineMacula\Laravel\Sso\Console\CheckConfigurationCommand;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Fetching\FetcherCheck;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
+use SineMacula\Laravel\Sso\Freshness\FreshnessCheck;
+use SineMacula\Laravel\Sso\Freshness\RefusingFreshness;
+use SineMacula\Laravel\Sso\Keys\KeysCheck;
 use SineMacula\Laravel\Sso\Logging\LoggingCheck;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
+use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
 use SineMacula\Laravel\Sso\RateLimiting\RateLimitsCheck;
 use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
@@ -57,6 +63,9 @@ final class SsoServiceProvider extends ServiceProvider
         'fetcher'      => FetcherCheck::class,
         'logging'      => LoggingCheck::class,
         'rate_limits'  => RateLimitsCheck::class,
+        'freshness'    => FreshnessCheck::class,
+        'keys'         => KeysCheck::class,
+        'mapping'      => MappingCheck::class,
     ];
 
     /** @var list<class-string> Every package class that takes a PSR-3 logger. Each is given `Logging\SanitizingLogger`, so nothing the package logs skips sanitisation and redaction (SSO-5.7, SSO-9.8); the application's own `LoggerInterface` binding is left alone. A part of the package that logs adds its class here. */
@@ -84,6 +93,8 @@ final class SsoServiceProvider extends ServiceProvider
     private const array MIGRATIONS = [
         '2026_10_31_000000_create_sso_single_use_keys_table.php',
         '2026_10_31_000001_create_sso_rate_limits_table.php',
+        '2026_11_01_000000_create_sso_connections_table.php',
+        '2026_11_01_000001_create_sso_keys_table.php',
     ];
 
     /**
@@ -94,9 +105,12 @@ final class SsoServiceProvider extends ServiceProvider
      * as any later binding does. A default that holds nothing between calls is
      * a singleton; one that reads configuration or a connection is scoped, so
      * nothing of one request or job outlives it under Octane or a queue worker
-     * (SSO-11.2). Each is resolved only when first used. Every package class
-     * that logs is given `SanitizingLogger` by a contextual binding, never by
-     * binding `LoggerInterface` for the whole application.
+     * (SSO-11.2). The freshness contract's default refuses every operation
+     * (SSO-2.12). The protocol registry is a singleton that builds its drivers
+     * with the application serving (see `ProtocolManager::driver()`). Each is
+     * resolved only when first used. Every package class that logs is given
+     * `SanitizingLogger` by a contextual binding, never by binding
+     * `LoggerInterface` for the whole application.
      *
      * @return void
      */
@@ -111,6 +125,8 @@ final class SsoServiceProvider extends ServiceProvider
         $this->app->scopedIf(SecretEncrypter::class, LaravelSecretEncrypter::class);
         $this->app->scopedIf(Fetcher::class, GuzzleFetcher::class);
         $this->app->scopedIf(AttemptLimiter::class, DatabaseAttemptLimiter::class);
+        $this->app->singletonIf(Freshness::class, RefusingFreshness::class);
+        $this->app->singletonIf(ProtocolManager::class);
         $this->app->when(self::LOGGING_CLASSES)->needs(LoggerInterface::class)->give(SanitizingLogger::class);
         $this->app->bindIf(
             ConfigurationChecker::class,

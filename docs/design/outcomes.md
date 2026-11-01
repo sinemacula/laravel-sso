@@ -39,6 +39,29 @@ the convention is the shape.
   `RateLimiting\AttemptResult`: allowed, or `rate_limited` with `retryAfter` of at least one second.
 - `Contracts\SecretEncrypter` answers strings; a ciphertext that cannot be decrypted is a server error, thrown.
 
+### Management helpers (SSO-2.11, SSO-2.12)
+
+The helpers that change connections, keys and certificates follow one shape, so an administration screen handles them
+the same way:
+
+- Every helper is scoped to a tenant: it takes the tenant's opaque id and the connection's id, and a connection of
+  another tenant is answered exactly as an unknown one, `connection_not_found`.
+- A change answers a result object (`final readonly`, named constructors, `is…()` predicates) carrying, on success, the
+  summary of what it changed (a connection's summary, or a key's `Keys\KeySummary`), and on refusal a `reason` from the
+  administration group of `FailureReason`: `freshness_required` (the freshness contract answered `stale`),
+  `connection_not_found`, `key_not_found`, `settings_invalid` (with `violations`, a list of
+  `Connections\SettingViolation`, each naming a setting and a `Connections\Enums\ViolationCode`, never a value),
+  `protocol_unavailable` and `key_state_conflict`.
+- A change that changed nothing (enabling an enabled connection, an update that gives the stored values) succeeds and
+  says so, writes nothing and reports nothing.
+- The order is fixed: find the connection (and the key) on the write connection; validate what was given; ask the
+  freshness contract with each operation the change is (`Freshness\FreshnessGate`); then write, in one transaction on
+  the storage connection, and report through `Administration\AdministrationEvents` inside it. A refusal at any step
+  writes nothing and dispatches nothing.
+- A read answers `null` for a connection it did not find (`get()`), and a list, possibly empty, otherwise.
+- An application's mistake (an empty tenant id, an acting identity with no type) is an `InvalidArgumentException`; a
+  database error, a `SecretEncrypter` that cannot encrypt or a key OpenSSL cannot generate propagates.
+
 ## Failure / Edge Cases
 
 - A failure reason is a stable code (`FailureReason`), never prose; the application words it (SSO-12.6). A failure
@@ -53,6 +76,8 @@ the convention is the shape.
   `src/Fetching/Enums/`.
 - `src/RateLimiting/AttemptSubject.php`, `src/RateLimiting/AttemptResult.php`, `src/RateLimiting/Enums/`.
 - `src/Contracts/`.
+- `src/Connections/SettingViolation.php`, `src/Connections/Enums/ViolationCode.php`, `src/Freshness/FreshnessGate.php`,
+  `src/Administration/AdministrationEvents.php`; the management helpers in `src/Connections/` and `src/Keys/`.
 
 ## Authoritative Tests
 

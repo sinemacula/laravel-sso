@@ -33,10 +33,12 @@ abstract class PerformanceContractTestCase extends TestCase
     private const array MIGRATIONS = [
         '2026_10_31_000000_create_sso_single_use_keys_table.php',
         '2026_10_31_000001_create_sso_rate_limits_table.php',
+        '2026_11_01_000000_create_sso_connections_table.php',
+        '2026_11_01_000001_create_sso_keys_table.php',
     ];
 
     /** @var list<string> The tables the shipped migrations create, by their default names. */
-    private const array TABLES = ['sso_single_use_keys', 'sso_rate_limits'];
+    private const array TABLES = ['sso_single_use_keys', 'sso_rate_limits', 'sso_connections', 'sso_keys'];
 
     /** @var string What a statement may start with: data manipulation, or a transaction's savepoint. */
     private const string RUNTIME_STATEMENT = '/^\s*(?:select|insert|update|delete|savepoint|release|rollback)\b/i';

@@ -1,0 +1,241 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace Tests\Feature\Models;
+
+use Illuminate\Database\Eloquent\MassAssignmentException;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
+use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Contracts\SsoConnection;
+use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\SsoModel;
+use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\FixedClock;
+use Tests\TestCase;
+
+/**
+ * Feature tests for the connection model (SSO-2.1): its table and connection,
+ * its ULID key and clock timestamps, its defaults, its casts, the contract it
+ * answers through, its hidden secrets, and its tenant and protocol fixed at
+ * creation.
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ *
+ * @internal
+ */
+#[CoversClass(Connection::class)]
+#[CoversClass(SsoModel::class)]
+final class ConnectionTest extends TestCase
+{
+    use UsesConnections;
+
+    /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
+    private FixedClock $clock;
+
+    /**
+     * Bind a fixed clock and create the tables.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->clock = new FixedClock('2026-11-01T09:30:00Z');
+
+        $this->app?->instance(Clock::class, $this->clock);
+
+        $this->createConnectionTables();
+    }
+
+    /**
+     * Drop the tables, wherever a test moved the storage.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function tearDown(): void
+    {
+        config()->set('sso.storage.connection', null);
+        config()->set('sso.connections.table', 'sso_connections');
+
+        $this->dropConnectionTables();
+
+        parent::tearDown();
+    }
+
+    /**
+     * The model takes its configured table on the storage connection.
+     *
+     * @return void
+     */
+    public function testTakesItsTableAndConnection(): void
+    {
+        self::assertSame('sso_connections', (new Connection)->getTable());
+        self::assertNull((new Connection)->getConnectionName());
+
+        config()->set('sso.connections.table', 'idp_connections');
+        config()->set('sso.storage.connection', 'package_store');
+
+        self::assertSame('idp_connections', (new Connection)->getTable());
+        self::assertSame('package_store', (new Connection)->getConnectionName());
+    }
+
+    /**
+     * A new connection gets a lower-case ULID and is stamped from the package's
+     * clock, in UTC; an update stamps only `updated_at`.
+     *
+     * @return void
+     */
+    public function testIsKeyedByAUlidAndStampedByTheClock(): void
+    {
+        $connection = $this->makeConnection();
+
+        self::assertMatchesRegularExpression('/^[0-9a-hjkmnp-tv-z]{26}$/', $connection->id);
+        self::assertSame('2026-11-01T09:30:00Z', $connection->created_at->format('Y-m-d\TH:i:s\Z'));
+        self::assertSame('2026-11-01 09:30:00', $connection->getRawOriginal('created_at'));
+
+        $this->clock->advance(90);
+
+        $connection->forceFill(['display_name' => 'Renamed'])->save();
+
+        $fresh = Connection::query()->findOrFail($connection->id);
+
+        self::assertSame('2026-11-01 09:30:00', $fresh->getRawOriginal('created_at'));
+        self::assertSame('2026-11-01 09:31:30', $fresh->getRawOriginal('updated_at'));
+        self::assertNotSame($connection->id, $this->makeConnection()->id);
+    }
+
+    /**
+     * A new connection is disabled, has completed no sign-in, and has no
+     * settings or mapping.
+     *
+     * @return void
+     */
+    public function testANewConnectionHasTheSafeDefaults(): void
+    {
+        $connection = Connection::query()->findOrFail($this->makeConnection()->id);
+
+        self::assertFalse($connection->enabled);
+        self::assertFalse($connection->has_completed_sign_in);
+        self::assertSame([], $connection->settings);
+        self::assertSame([], $connection->attribute_mapping);
+        self::assertNull($connection->secrets);
+    }
+
+    /**
+     * The connection answers its contract from its columns, with no secret.
+     *
+     * @return void
+     */
+    public function testAnswersItsContractFromItsColumns(): void
+    {
+        $connection = $this->makeConnection([
+            'tenant_id'             => 'tenant-9',
+            'protocol'              => 'saml2',
+            'display_name'          => 'Acme IdP',
+            'settings'              => ['idp_entity_id' => 'https://idp.acme.example', 'sign_authn_requests' => true],
+            'secrets'               => 'ciphertext',
+            'attribute_mapping'     => ['email' => 'mail'],
+            'enabled'               => true,
+            'has_completed_sign_in' => true,
+        ]);
+
+        $read = Connection::query()->findOrFail($connection->id);
+
+        self::assertInstanceOf(SsoConnection::class, $read);
+        self::assertSame($connection->id, $read->getConnectionId());
+        self::assertSame('tenant-9', $read->getTenantId());
+        self::assertSame('saml2', $read->getProtocol());
+        self::assertSame('Acme IdP', $read->getDisplayName());
+        self::assertSame(['idp_entity_id' => 'https://idp.acme.example', 'sign_authn_requests' => true], $read->getSettings());
+        self::assertSame(['email' => 'mail'], $read->getAttributeMapping());
+        self::assertTrue($read->isEnabled());
+        self::assertTrue($read->hasCompletedSignIn());
+    }
+
+    /**
+     * The encrypted secrets are hidden from serialisation.
+     *
+     * @return void
+     */
+    public function testHidesTheSecrets(): void
+    {
+        $connection = $this->makeConnection(['secrets' => 'ciphertext']);
+
+        self::assertArrayNotHasKey('secrets', $connection->toArray());
+        self::assertStringNotContainsString('ciphertext', (string) json_encode($connection));
+    }
+
+    /**
+     * Rows of `[column, value]`: the columns fixed at creation, and a value
+     * each could be changed to.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideFixedColumns(): iterable
+    {
+        yield from [
+            'the tenant'   => ['tenant_id', 'tenant-2'],
+            'the protocol' => ['protocol', 'saml2'],
+        ];
+    }
+
+    /**
+     * Changing the tenant or the protocol once the connection exists throws,
+     * and nothing is written.
+     *
+     * @param  string  $column
+     * @param  string  $value
+     * @return void
+     */
+    #[DataProvider('provideFixedColumns')]
+    public function testTheTenantAndProtocolAreFixed(string $column, string $value): void
+    {
+        $connection = $this->makeConnection();
+        $copy       = Connection::query()->findOrFail($connection->id);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('A connection\'s tenant and protocol are fixed when it is created.');
+
+        try {
+            $copy->forceFill([$column => $value, 'display_name' => 'Changed'])->save();
+        } finally {
+            $read = Connection::query()->findOrFail($connection->id);
+
+            self::assertSame(['tenant-1', 'oidc', 'Example'], [$read->tenant_id, $read->protocol, $read->display_name]);
+        }
+    }
+
+    /**
+     * Every column but the tenant and the protocol changes.
+     *
+     * @return void
+     */
+    public function testEveryOtherColumnChanges(): void
+    {
+        $connection = $this->makeConnection();
+
+        $connection->forceFill(['display_name' => 'Changed', 'enabled' => true, 'settings' => ['a' => 1]])->save();
+
+        $read = Connection::query()->findOrFail($connection->id);
+
+        self::assertSame(['Changed', true, ['a' => 1]], [$read->display_name, $read->enabled, $read->settings]);
+    }
+
+    /**
+     * No attribute is mass assignable.
+     *
+     * @return void
+     */
+    public function testNothingIsMassAssignable(): void
+    {
+        $this->expectException(MassAssignmentException::class);
+
+        Connection::query()->create(['tenant_id' => 'tenant-1']);
+    }
+}

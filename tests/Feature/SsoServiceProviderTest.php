@@ -262,6 +262,8 @@ final class SsoServiceProviderTest extends TestCase
         self::assertSame([
             '2026_10_31_000000_create_sso_single_use_keys_table.php',
             '2026_10_31_000001_create_sso_rate_limits_table.php',
+            '2026_11_01_000000_create_sso_connections_table.php',
+            '2026_11_01_000001_create_sso_keys_table.php',
         ], array_map(basename(...), array_keys($paths)));
 
         foreach ($paths as $from => $to) {

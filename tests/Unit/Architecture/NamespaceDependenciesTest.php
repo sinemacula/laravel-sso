@@ -89,6 +89,12 @@ final class NamespaceDependenciesTest extends TestCase
             'forbids' => ['Config', 'Console', 'Models'],
             'allows'  => [],
         ],
+        'protocol drivers read a connection through its contract' => [
+            'from'    => ['Protocols'],
+            'except'  => [],
+            'forbids' => ['Models', 'Administration', 'Console'],
+            'allows'  => [],
+        ],
         'only the composition root names the console' => [
             'from'    => ['*'],
             'except'  => ['SsoServiceProvider', 'Console'],

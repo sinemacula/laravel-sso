@@ -5,41 +5,51 @@ turns it on, and every security check of a feature that is on is always on. A va
 fails closed, naming the key, when it is used, and the configuration of what is enabled is checked when the application
 boots (see [Checking the configuration](#checking-the-configuration)). Settings are read each time they are used.
 
-| Key                                                  | Default                                         | Env                                   | See                                       |
-|------------------------------------------------------|-------------------------------------------------|---------------------------------------|-------------------------------------------|
-| `storage.connection`                                 | `null`                                          | `SSO_STORAGE_CONNECTION`              | [Storage](#storage)                       |
-| `features.saml2`                                     | `false`                                         | `SSO_SAML2`                           | [Features](#features)                     |
-| `features.oidc`                                      | `false`                                         | `SSO_OIDC`                            | [Features](#features)                     |
-| `features.discovery`                                 | `false`                                         | `SSO_DISCOVERY`                       | [Features](#features)                     |
-| `features.enforcement`                               | `false`                                         | `SSO_ENFORCEMENT`                     | [Features](#features)                     |
-| `features.encrypted_assertions`                      | `false`                                         | `SSO_ENCRYPTED_ASSERTIONS`            | [Features](#features)                     |
-| `features.metadata_refresh`                          | `false`                                         | `SSO_METADATA_REFRESH`                | [Features](#features)                     |
-| `features.idp_initiated`                             | `false`                                         | `SSO_IDP_INITIATED`                   | [Features](#features)                     |
-| `features.domain_linking`                            | `false`                                         | `SSO_DOMAIN_LINKING`                  | [Features](#features)                     |
-| `endpoints.base_url`                                 | `null`                                          | `SSO_BASE_URL`                        | [Endpoints](#endpoints)                   |
-| `endpoints.paths.assertion_consumer_service`         | `/auth/sso/connections/{connection}/assertions` |                                       | [Endpoints](#endpoints)                   |
-| `endpoints.paths.callback`                           | `/auth/sso/connections/{connection}/callback`   |                                       | [Endpoints](#endpoints)                   |
-| `endpoints.paths.metadata`                           | `/auth/sso/connections/{connection}/metadata`   |                                       | [Endpoints](#endpoints)                   |
-| `applications`                                       | `[]`                                            |                                       | [Applications](#applications)             |
-| `clock.skew_seconds`                                 | `60`                                            | `SSO_CLOCK_SKEW_SECONDS`              | [Clock](clock.md)                         |
-| `single_use.table`                                   | `sso_single_use_keys`                           | `SSO_SINGLE_USE_TABLE`                | [Single-use keys](single-use-store.md)    |
-| `fetcher.timeout_seconds`                            | `10`                                            | `SSO_FETCHER_TIMEOUT_SECONDS`         | [Outbound requests](outbound-requests.md) |
-| `fetcher.connect_timeout_seconds`                    | `5`                                             | `SSO_FETCHER_CONNECT_TIMEOUT_SECONDS` | [Outbound requests](outbound-requests.md) |
-| `fetcher.max_response_bytes`                         | `1048576`                                       | `SSO_FETCHER_MAX_RESPONSE_BYTES`      | [Outbound requests](outbound-requests.md) |
-| `fetcher.max_redirects`                              | `3`                                             | `SSO_FETCHER_MAX_REDIRECTS`           | [Outbound requests](outbound-requests.md) |
-| `fetcher.refused_ranges`                             | `[]`                                            |                                       | [Outbound requests](outbound-requests.md) |
-| `logging.channel`                                    | `null`                                          | `SSO_LOG_CHANNEL`                     | [Logging](logging.md)                     |
-| `logging.max_diagnostic_length`                      | `512`                                           | `SSO_LOG_MAX_DIAGNOSTIC_LENGTH`       | [Logging](logging.md)                     |
-| `logging.redacted_keys`                              | `[]`                                            |                                       | [Logging](logging.md)                     |
-| `rate_limits.table`                                  | `sso_rate_limits`                               | `SSO_RATE_LIMITS_TABLE`               | [Rate limits](rate-limits.md)             |
-| `rate_limits.connection`                             | `null`                                          | `SSO_RATE_LIMITS_CONNECTION`          | [Storage](#storage)                       |
-| `rate_limits.authorization_request.per_ip`           | 30 per 60 s                                     |                                       | [Rate limits](rate-limits.md)             |
-| `rate_limits.authorization_request.per_email_domain` | 300 per 60 s                                    |                                       | [Rate limits](rate-limits.md)             |
-| `rate_limits.completion.per_ip`                      | 30 per 60 s                                     |                                       | [Rate limits](rate-limits.md)             |
-| `rate_limits.completion.per_connection`              | 600 per 60 s                                    |                                       | [Rate limits](rate-limits.md)             |
-| `rate_limits.redemption.per_ip`                      | 30 per 60 s                                     |                                       | [Rate limits](rate-limits.md)             |
-| `rate_limits.metadata.per_connection`                | 10 per 3600 s                                   |                                       | [Rate limits](rate-limits.md)             |
-| `rate_limits.domain_check.per_connection`            | 30 per 3600 s                                   |                                       | [Rate limits](rate-limits.md)             |
+| Key                                                  | Default                                         | Env                                   | See                                             |
+|------------------------------------------------------|-------------------------------------------------|---------------------------------------|-------------------------------------------------|
+| `storage.connection`                                 | `null`                                          | `SSO_STORAGE_CONNECTION`              | [Storage](#storage)                             |
+| `features.saml2`                                     | `false`                                         | `SSO_SAML2`                           | [Features](#features)                           |
+| `features.oidc`                                      | `false`                                         | `SSO_OIDC`                            | [Features](#features)                           |
+| `features.discovery`                                 | `false`                                         | `SSO_DISCOVERY`                       | [Features](#features)                           |
+| `features.enforcement`                               | `false`                                         | `SSO_ENFORCEMENT`                     | [Features](#features)                           |
+| `features.encrypted_assertions`                      | `false`                                         | `SSO_ENCRYPTED_ASSERTIONS`            | [Features](#features)                           |
+| `features.metadata_refresh`                          | `false`                                         | `SSO_METADATA_REFRESH`                | [Features](#features)                           |
+| `features.idp_initiated`                             | `false`                                         | `SSO_IDP_INITIATED`                   | [Features](#features)                           |
+| `features.domain_linking`                            | `false`                                         | `SSO_DOMAIN_LINKING`                  | [Features](#features)                           |
+| `endpoints.base_url`                                 | `null`                                          | `SSO_BASE_URL`                        | [Endpoints](#endpoints)                         |
+| `endpoints.paths.assertion_consumer_service`         | `/auth/sso/connections/{connection}/assertions` |                                       | [Endpoints](#endpoints)                         |
+| `endpoints.paths.callback`                           | `/auth/sso/connections/{connection}/callback`   |                                       | [Endpoints](#endpoints)                         |
+| `endpoints.paths.metadata`                           | `/auth/sso/connections/{connection}/metadata`   |                                       | [Endpoints](#endpoints)                         |
+| `applications`                                       | `[]`                                            |                                       | [Applications](#applications)                   |
+| `clock.skew_seconds`                                 | `60`                                            | `SSO_CLOCK_SKEW_SECONDS`              | [Clock](clock.md)                               |
+| `connections.table`                                  | `sso_connections`                               | `SSO_CONNECTIONS_TABLE`               | [Connections](connections.md)                   |
+| `keys.table`                                         | `sso_keys`                                      | `SSO_KEYS_TABLE`                      | [Keys and certificates](keys.md)                |
+| `keys.rsa_bits`                                      | `3072`                                          | `SSO_KEYS_RSA_BITS`                   | [Keys and certificates](keys.md)                |
+| `keys.certificate_days`                              | `730`                                           | `SSO_KEYS_CERTIFICATE_DAYS`           | [Keys and certificates](keys.md)                |
+| `keys.overlap_seconds`                               | `604800`                                        | `SSO_KEYS_OVERLAP_SECONDS`            | [Keys and certificates](keys.md)                |
+| `keys.expiry_warning_days`                           | `30`                                            | `SSO_KEYS_EXPIRY_WARNING_DAYS`        | [Keys and certificates](keys.md)                |
+| `mapping.max_value_length`                           | `1024`                                          | `SSO_MAPPING_MAX_VALUE_LENGTH`        | [Managing connections](managing-connections.md) |
+| `mapping.max_values`                                 | `100`                                           | `SSO_MAPPING_MAX_VALUES`              | [Managing connections](managing-connections.md) |
+| `mapping.max_custom_attributes`                      | `20`                                            | `SSO_MAPPING_MAX_CUSTOM_ATTRIBUTES`   | [Managing connections](managing-connections.md) |
+| `freshness.max_age_seconds.<operation>`              | `300` each                                      |                                       | [Fresh authentication](freshness.md)            |
+| `single_use.table`                                   | `sso_single_use_keys`                           | `SSO_SINGLE_USE_TABLE`                | [Single-use keys](single-use-store.md)          |
+| `fetcher.timeout_seconds`                            | `10`                                            | `SSO_FETCHER_TIMEOUT_SECONDS`         | [Outbound requests](outbound-requests.md)       |
+| `fetcher.connect_timeout_seconds`                    | `5`                                             | `SSO_FETCHER_CONNECT_TIMEOUT_SECONDS` | [Outbound requests](outbound-requests.md)       |
+| `fetcher.max_response_bytes`                         | `1048576`                                       | `SSO_FETCHER_MAX_RESPONSE_BYTES`      | [Outbound requests](outbound-requests.md)       |
+| `fetcher.max_redirects`                              | `3`                                             | `SSO_FETCHER_MAX_REDIRECTS`           | [Outbound requests](outbound-requests.md)       |
+| `fetcher.refused_ranges`                             | `[]`                                            |                                       | [Outbound requests](outbound-requests.md)       |
+| `logging.channel`                                    | `null`                                          | `SSO_LOG_CHANNEL`                     | [Logging](logging.md)                           |
+| `logging.max_diagnostic_length`                      | `512`                                           | `SSO_LOG_MAX_DIAGNOSTIC_LENGTH`       | [Logging](logging.md)                           |
+| `logging.redacted_keys`                              | `[]`                                            |                                       | [Logging](logging.md)                           |
+| `rate_limits.table`                                  | `sso_rate_limits`                               | `SSO_RATE_LIMITS_TABLE`               | [Rate limits](rate-limits.md)                   |
+| `rate_limits.connection`                             | `null`                                          | `SSO_RATE_LIMITS_CONNECTION`          | [Storage](#storage)                             |
+| `rate_limits.authorization_request.per_ip`           | 30 per 60 s                                     |                                       | [Rate limits](rate-limits.md)                   |
+| `rate_limits.authorization_request.per_email_domain` | 300 per 60 s                                    |                                       | [Rate limits](rate-limits.md)                   |
+| `rate_limits.completion.per_ip`                      | 30 per 60 s                                     |                                       | [Rate limits](rate-limits.md)                   |
+| `rate_limits.completion.per_connection`              | 600 per 60 s                                    |                                       | [Rate limits](rate-limits.md)                   |
+| `rate_limits.redemption.per_ip`                      | 30 per 60 s                                     |                                       | [Rate limits](rate-limits.md)                   |
+| `rate_limits.metadata.per_connection`                | 10 per 3600 s                                   |                                       | [Rate limits](rate-limits.md)                   |
+| `rate_limits.domain_check.per_connection`            | 30 per 3600 s                                   |                                       | [Rate limits](rate-limits.md)                   |
 
 ## Storage
 
@@ -140,7 +150,9 @@ php artisan sso:check
 
 It prints `[subject] OK`, `[subject] not enabled` for what is off, or one line per problem, and exits `1` when there
 is a problem. The subjects are `features` (always checked), `extensions`, `storage`, `endpoints`, `applications`,
-`clock`, `secrets`, `fetcher`, `logging` and `rate_limits` (each checked while a protocol is on). The check reads
-configuration only: it opens no database connection and prints no secret or configured value. What the last five
-check is in their guides: [Clock](clock.md), [Secrets](secrets.md), [Outbound requests](outbound-requests.md),
-[Logging](logging.md) and [Rate limits](rate-limits.md).
+`clock`, `secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys` and `mapping` (each checked while a
+protocol is on). The check reads configuration only: it opens no database connection and prints no secret or
+configured value. What the last eight check is in their guides: [Clock](clock.md), [Secrets](secrets.md),
+[Outbound requests](outbound-requests.md), [Logging](logging.md), [Rate limits](rate-limits.md),
+[Fresh authentication](freshness.md), [Keys and certificates](keys.md) and
+[Managing connections](managing-connections.md).

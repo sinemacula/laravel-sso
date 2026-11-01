@@ -97,4 +97,21 @@ final class UtcDateTimeTest extends TestCase
 
         (new UtcDateTime)->get(new SingleUseKey, 'expires_at', 1793000000, []);
     }
+
+    /**
+     * An instant set on a model reads back as the `CarbonImmutable` in UTC that
+     * the stored value names, whatever kind of instant or zone it was set with,
+     * never as the object it was given.
+     *
+     * @return void
+     */
+    public function testAnInstantSetOnAModelReadsBackInUtc(): void
+    {
+        $model = new SingleUseKey;
+
+        $model->setAttribute('expires_at', new \DateTimeImmutable('2026-10-31T21:00:00+09:00'));
+
+        self::assertInstanceOf(CarbonImmutable::class, $model->expires_at);
+        self::assertSame('2026-10-31T12:00:00+00:00', $model->expires_at->format(DATE_ATOM));
+    }
 }

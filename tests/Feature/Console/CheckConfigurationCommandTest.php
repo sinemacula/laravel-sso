@@ -119,6 +119,9 @@ final class CheckConfigurationCommandTest extends TestCase
         config()->set('sso.fetcher.refused_ranges', ['10.0.0.0/33']);
         config()->set('sso.logging.channel', 'missing');
         config()->set('sso.rate_limits.redemption.per_ip', null);
+        config()->set('sso.freshness.max_age_seconds.connection_trust', 0);
+        config()->set('sso.keys.rsa_bits', 2048);
+        config()->set('sso.mapping.max_values', 0);
 
         $this->app?->forgetInstance('encrypter');
         $this->app?->forgetScopedInstances();
@@ -137,6 +140,9 @@ final class CheckConfigurationCommandTest extends TestCase
             '[fetcher] sso.fetcher.refused_ranges.0 must be a CIDR range: an IPv4 address with /0 to /32, or an IPv6 address with /0 to /128.',
             '[logging] `sso.logging.channel` names the channel [missing], which is not configured in `logging.channels`.',
             '[rate_limits] `sso.rate_limits.redemption.per_ip` must be an array of `max` (1 to 1000000) and `decay_seconds` (1 to 86400).',
+            '[freshness] sso.freshness.max_age_seconds.connection_trust must be an integer from 1 to 3600.',
+            '[keys] sso.keys.rsa_bits must be one of 3072, 4096.',
+            '[mapping] sso.mapping.max_values must be an integer from 1 to 10000.',
         ], $output);
     }
 

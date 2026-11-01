@@ -92,6 +92,29 @@ are a contract.
 - `FailureReason` and `Flow` are stable once released: a value is never renamed or reused, and a removed one leaves its
   value unused. A part of the package that reports a new reason adds its case to `FailureReason`, in the group of its
   flow; SIEM consumers count by these values.
+- Administration events (SSO-10.3) report each change a management helper makes to a connection, a key or a certificate,
+  and the nearing expiry of a key or certificate. `Administration\AdministrationEvents` builds every one, its context
+  through `EventContexts::make()` from the connection's id, its tenant and protocol and the acting identity the
+  application passed (`Administration\ActingIdentity`, as `actingIdentityMorphClass` and `actingIdentityId`), and hands
+  it to `AfterCommitDispatcher::dispatch()` inside the helper's transaction, so it is delivered when that transaction
+  commits and never when it, or a transaction the application wrapped it in, rolls back (SSO-10.5). Its context carries
+  no flow identifier, identity, application or purpose. A refused change and a change that changed nothing report
+  nothing, and fire no `FlowFailed`, since a helper's refusal is its result. No administration event holds a secret, a
+  ciphertext, a private key or a setting's value: `ConnectionUpdated` names what changed, never its value. The
+  nearing-expiry event reports a certificate's end of validity and never enforces it, with no acting identity.
+  `administration-events.md` records the rest:
+
+  | Event                | Fields beyond the context                          | Dispatched by                                                  |
+  |----------------------|----------------------------------------------------|----------------------------------------------------------------|
+  | `ConnectionCreated`  | none                                               | `ConnectionService::create()`                                  |
+  | `ConnectionUpdated`  | `changedSettings`, names only                      | `ConnectionService::update()`, when something changed          |
+  | `ConnectionEnabled`  | none                                               | `ConnectionService::enable()`, when it was disabled            |
+  | `ConnectionDisabled` | none                                               | The disabling helper (BL-37)                                   |
+  | `ConnectionDeleted`  | none                                               | The deleting helper (BL-37)                                    |
+  | `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter` | `KeyService::addNext()`, `trustCertificate()`                  |
+  | `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`     | `KeyService::addNext()` for a use's first key, `makeCurrent()` |
+  | `KeyRetired`         | `keyId`, `use`, `fingerprint`                      | `KeyService::retire()`, `distrustCertificate()`                |
+  | `KeyNearingExpiry`   | `keyId`, `use`, `fingerprint`, `notAfter`          | `Keys\ExpiryReport::report()`                                  |
 
 ## Success Path
 
@@ -130,6 +153,11 @@ are a contract.
   `startRecordingEvents()` and asserts `assertExactlyOneFailure($flow, $reason)` for every refused start, completion,
   callback and redemption, `assertNoFailure()` for an accepted one, `assertEventSequence()` for the order of what was
   reported, and `assertNoEvents()` where nothing may be.
+- `src/Administration/AdministrationEvents.php`, `src/Administration/ActingIdentity.php`: the administration events'
+  context and dispatch.
+- `src/Events/ConnectionCreated.php`, `ConnectionUpdated.php`, `ConnectionEnabled.php`, `ConnectionDisabled.php`,
+  `ConnectionDeleted.php`, `KeyAdded.php`, `KeyMadeCurrent.php`, `KeyRetired.php`, `KeyNearingExpiry.php`.
+- `src/Keys/ExpiryReport.php`: the nearing-expiry report.
 
 ## Authoritative Tests
 
@@ -152,6 +180,20 @@ are a contract.
 - `tests/Integration/Events/AfterCommitDispatchTest.php`
   `testAnEventIsDeliveredWhenItsWriteCommits`, `testAnEventIsDroppedWhenItsWriteRollsBack`,
   `testAQueuedListenerReceivesTheFailureIntact`.
+- `tests/Unit/Events/AdministrationEventClassesTest.php`
+  `testEachIsAPackageEventReturningItsContext`, `testEachSurvivesASerializeRoundTrip`,
+  `testEachHoldsExactlyItsDeclaredProperties`, `testConnectionUpdatedHoldsAListOfNamesOnly`.
+- `tests/Feature/Administration/AdministrationEventsTest.php`.
+- `tests/Feature/Administration/AdministrationEventSequenceTest.php`
+  `testAnUpdateNamesExactlyWhatChangedInOrder`, `testAddingKeysReportsAddedThenMadeCurrent`,
+  `testARefusalReportsNothing`.
+- `tests/Feature/Keys/ExpiryReportTest.php`
+  `testReportsEachRowOnceWithNoActingIdentity`.
+- `tests/Integration/Administration/AdministrationEventsAfterCommitTest.php`
+  `testAnOperationRolledBackWritesAndReportsNothing`, `testAnOperationCommittedReportsOnlyAfterTheCommit`,
+  `testAQueuedListenerReceivesTheUpdateIntact`.
+- `tests/Integration/Administration/NoSecretInAdministrationEventsTest.php`
+  `testNoEventHoldsASecretOrASettingValue`.
 
 ## Change Triggers
 
