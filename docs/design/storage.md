@@ -36,6 +36,10 @@ commit with the package follows (SSO-11.7, SSO-11.10).
   atomic. The contracts that need it say so, and their integration tests prove it.
 - The attempt counters are the one table with an option of its own, so that counts can stay out of a transaction a
   refused flow rolls back; nothing writes them in a transaction with another package table.
+- A completion, and a start that calls a protocol driver, run outside any transaction open on the storage connection:
+  each refuses at entry with a `LogicException` (`StorageConnection::assertNoTransaction()`), so a caller's rollback
+  never undoes a consumed request and a caller's transaction never keeps a connection's lock across a call to an
+  identity provider (SSO-5.1, SSO-11.5).
 - Security state (authorisation requests, single-use keys, handoff codes, links, domains, enforcement) is read from the
   write connection by the query that reads it (SSO-11.3); the model does not decide it.
 - Locks are taken in one order, so two changes never wait on each other: a tenant's enforcement row, then connection

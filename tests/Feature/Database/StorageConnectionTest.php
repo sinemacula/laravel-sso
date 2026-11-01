@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Feature\Database;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
@@ -13,8 +14,9 @@ use Tests\TestCase;
 /**
  * Feature tests for where the package's tables live and what they are called:
  * the storage connection, the counters' connection that falls back to it, the
- * connection and name of each table, a malformed setting failing closed, and
- * whether a model lives on the storage connection, compared by name.
+ * connection and name of each table, a malformed setting failing closed,
+ * whether a model lives on the storage connection, compared by name, and an
+ * operation refused while a transaction is open on it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -124,12 +126,15 @@ final class StorageConnectionTest extends TestCase
     public function testEachTableTakesItsConfiguredName(): void
     {
         self::assertSame([
-            'single_use.table'  => 'sso_single_use_keys',
-            'rate_limits.table' => 'sso_rate_limits',
-            'connections.table' => 'sso_connections',
-            'keys.table'        => 'sso_keys',
-            'domains.table'     => 'sso_domains',
-            'enforcement.table' => 'sso_enforcement',
+            'single_use.table'             => 'sso_single_use_keys',
+            'rate_limits.table'            => 'sso_rate_limits',
+            'connections.table'            => 'sso_connections',
+            'keys.table'                   => 'sso_keys',
+            'domains.table'                => 'sso_domains',
+            'enforcement.table'            => 'sso_enforcement',
+            'links.table'                  => 'sso_links',
+            'authorization_requests.table' => 'sso_authorization_requests',
+            'handoff_codes.table'          => 'sso_handoff_codes',
         ], StorageConnection::TABLES);
 
         foreach (StorageConnection::TABLES as $key => $default) {
@@ -197,13 +202,14 @@ final class StorageConnectionTest extends TestCase
     {
         foreach ([StorageConnection::table(...), StorageConnection::connectionFor(...)] as $read) {
             try {
-                $read('links.table');
+                $read('tokens.table');
 
                 self::fail('Expected the key to be refused.');
             } catch (\LogicException $exception) {
-                $known = '`sso.single_use.table`, `sso.rate_limits.table`, `sso.connections.table`, `sso.keys.table`, `sso.domains.table`, `sso.enforcement.table`';
+                $known = '`sso.single_use.table`, `sso.rate_limits.table`, `sso.connections.table`, `sso.keys.table`, `sso.domains.table`, `sso.enforcement.table`, '
+                    . '`sso.links.table`, `sso.authorization_requests.table`, `sso.handoff_codes.table`';
 
-                self::assertSame("`sso.links.table` names no package table; the tables are named by {$known}.", $exception->getMessage());
+                self::assertSame("`sso.tokens.table` names no package table; the tables are named by {$known}.", $exception->getMessage());
             }
         }
     }
@@ -228,6 +234,45 @@ final class StorageConnectionTest extends TestCase
 
         self::assertFalse(StorageConnection::holds($default));
         self::assertTrue(StorageConnection::holds($separate));
+    }
+
+    /**
+     * An operation that runs outside any transaction is refused, with the
+     * message given, while one is open on the storage connection, however deep,
+     * and is let through once none is.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testRefusesAnOperationInsideATransaction(): void
+    {
+        $database = DB::connection(StorageConnection::name());
+        $refusals = [];
+
+        StorageConnection::assertNoTransaction('Never refused.');
+
+        $database->beginTransaction();
+
+        foreach ([1, 2] as $level) {
+
+            try {
+                StorageConnection::assertNoTransaction("Refused at level {$level}.");
+            } catch (\LogicException $exception) {
+                $refusals[] = $exception->getMessage();
+            }
+
+            $database->beginTransaction();
+        }
+
+        $database->rollBack();
+        $database->rollBack();
+        $database->rollBack();
+
+        StorageConnection::assertNoTransaction('Never refused.');
+
+        self::assertSame(['Refused at level 1.', 'Refused at level 2.'], $refusals);
+        self::assertSame(0, $database->transactionLevel());
     }
 
     /**

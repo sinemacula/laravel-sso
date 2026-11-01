@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementFinder;
+use SineMacula\Laravel\Sso\Enforcement\EnforcementLock;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementResult;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementService;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementSummary;
@@ -54,6 +55,7 @@ use Tests\TestCase;
  */
 #[CoversClass(EnforcementService::class)]
 #[CoversClass(EnforcementFinder::class)]
+#[CoversClass(EnforcementLock::class)]
 #[CoversClass(EnforcementResult::class)]
 #[CoversClass(EnforcementSummary::class)]
 #[CoversClass(EnforcementEvents::class)]
@@ -357,8 +359,9 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Turning off a tenant with no rule stored is unchanged, and stores
-     * nothing.
+     * Turning off a tenant with no rule stored is unchanged, and stores no
+     * rule: the only row is the unconfigured one the lock inserted, which reads
+     * as none.
      *
      * @return void
      */
@@ -367,7 +370,7 @@ final class EnforcementServiceTest extends TestCase
         $result = $this->service()->update(self::TENANT, false, []);
 
         self::assertEquals(new EnforcementSummary(self::TENANT, false, []), self::summaryOf($result, EnforcementStatus::UNCHANGED));
-        self::assertSame(0, TenantEnforcement::query()->count());
+        $this->assertNoRuleStored();
         self::assertSame([], $this->freshness->asked());
         $this->assertNoEvents();
     }
@@ -668,8 +671,8 @@ final class EnforcementServiceTest extends TestCase
 
     /**
      * A connection disabled after the first read is seen by the locked read in
-     * the transaction: the change is refused, and the row the change began to
-     * create is gone.
+     * the transaction: the change is refused, and the row the change locked
+     * stays unconfigured, reading as no rule.
      *
      * @return void
      */
@@ -682,7 +685,7 @@ final class EnforcementServiceTest extends TestCase
         $result = $this->turnOn([$this->completed->id, $this->untried->id]);
 
         self::assertSame(FailureReason::COMPLETED_SIGN_IN_REQUIRED, $result->reason);
-        self::assertSame(0, TenantEnforcement::query()->count());
+        $this->assertNoRuleStored();
         self::assertSame([], $this->revocation->calls());
         $this->assertNoEvents();
     }
@@ -731,6 +734,65 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
+     * A tenant whose only row is the unconfigured guard a redemption or a
+     * completion inserted answers as no rule: its first change is made on that
+     * row, reports no previous version, and is stored with a new version and
+     * the time of the change.
+     *
+     * @return void
+     */
+    public function testTheFirstChangeOfAnUnconfiguredRowReportsNoPreviousVersion(): void
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app   = $this->app;
+        $guard = DB::connection(StorageConnection::name())->transaction(static fn (): TenantEnforcement => $app->make(EnforcementLock::class)->acquire(self::TENANT));
+
+        $this->clock->advance(60);
+
+        self::assertEquals(new EnforcementSummary(self::TENANT, false, []), $this->service()->get(self::TENANT));
+
+        $summary = self::summaryOf($this->turnOn([$this->completed->id]), EnforcementStatus::UPDATED);
+        $stored  = $this->stored();
+
+        self::assertSame($guard->id, $stored->id);
+        self::assertTrue($summary->enabled);
+        self::assertSame([$this->completed->id], $summary->connectionIds);
+        self::assertSame($stored->version, $summary->version);
+        self::assertSame(26, strlen((string) $summary->version));
+        self::assertSame('2026-11-01T09:31:00+00:00', $summary->changedAt?->toIso8601String());
+        self::assertNull($this->changedEvent()->previousVersion);
+        self::assertSame($stored->version, $this->changedEvent()->version);
+        self::assertSame(1, TenantEnforcement::query()->count());
+    }
+
+    /**
+     * A change refused once it locked a tenant with no rule leaves its row
+     * unconfigured, and the next change, the first real one, still reports no
+     * previous version.
+     *
+     * @return void
+     */
+    public function testAChangeAfterARefusedFirstChangeReportsNoPreviousVersion(): void
+    {
+        $this->freshness->onCheck = function (): void {
+            Connection::query()->whereKey($this->completed->id)->update(['enabled' => false]);
+        };
+
+        self::assertSame(FailureReason::COMPLETED_SIGN_IN_REQUIRED, $this->turnOn([$this->completed->id])->reason);
+
+        $this->assertNoRuleStored();
+
+        $this->freshness->onCheck = null;
+
+        Connection::query()->whereKey($this->completed->id)->update(['enabled' => true]);
+
+        self::summaryOf($this->turnOn([$this->completed->id]), EnforcementStatus::UPDATED);
+
+        self::assertNull($this->changedEvent()->previousVersion);
+        self::assertSame(1, TenantEnforcement::query()->count());
+    }
+
+    /**
      * A tenant whose id differs only in case keeps a rule of its own.
      *
      * @return void
@@ -771,6 +833,26 @@ final class EnforcementServiceTest extends TestCase
         self::assertSame(0, TenantEnforcement::query()->count());
         self::assertSame([], $this->revocation->calls());
         $this->assertNoEvents();
+    }
+
+    /**
+     * Assert the tenant has no rule stored: its only row is the unconfigured
+     * one the lock inserted, off, with no connection, no version and no time,
+     * which every reader answers as none.
+     *
+     * @return void
+     */
+    private function assertNoRuleStored(): void
+    {
+        $row = TenantEnforcement::query()->sole();
+
+        self::assertSame(self::TENANT, $row->tenant_id);
+        self::assertFalse($row->enabled);
+        self::assertSame([], $row->connection_ids);
+        self::assertNull($row->version);
+        self::assertNull($row->changed_at);
+        self::assertNull((new EnforcementFinder)->find(self::TENANT));
+        self::assertEquals(new EnforcementSummary(self::TENANT, false, []), $this->service()->get(self::TENANT));
     }
 
     /**

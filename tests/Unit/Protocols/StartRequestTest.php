@@ -7,6 +7,7 @@ namespace Tests\Unit\Protocols;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
@@ -28,19 +29,22 @@ final class StartRequestTest extends TestCase
      * through the secrets.
      *
      * @return void
+     *
+     * @throws \Random\RandomException
      */
     public function testKeepsEveryPart(): void
     {
-        $request = new StartRequest(Purpose::LINK, 'web', 'ref-1', new Secret('state-value'), new Secret('nonce-value'), new Secret('verifier-value'));
+        $reference = RequestReference::generate();
+        $request   = new StartRequest(Purpose::LINK, 'web', $reference, new Secret('state-value'), new Secret('nonce-value'), new Secret('verifier-value'));
 
         self::assertSame(Purpose::LINK, $request->purpose);
         self::assertSame('web', $request->application);
-        self::assertSame('ref-1', $request->reference);
+        self::assertSame($reference, $request->reference);
         self::assertSame('state-value', $request->state->reveal());
         self::assertSame('nonce-value', $request->nonce?->reveal());
         self::assertSame('verifier-value', $request->codeVerifier?->reveal());
 
-        $saml = new StartRequest(Purpose::SIGN_IN, 'web', 'ref-2', new Secret('relay'));
+        $saml = new StartRequest(Purpose::SIGN_IN, 'web', RequestReference::generate(), new Secret('relay'));
 
         self::assertNull($saml->nonce);
         self::assertNull($saml->codeVerifier);
@@ -51,10 +55,12 @@ final class StartRequestTest extends TestCase
      * serialised.
      *
      * @return void
+     *
+     * @throws \Random\RandomException
      */
     public function testTheProtocolStateNeverLeaks(): void
     {
-        $request = new StartRequest(Purpose::SIGN_IN, 'web', 'ref-1', new Secret('state-value'), new Secret('nonce-value'), new Secret('verifier-value'));
+        $request = new StartRequest(Purpose::SIGN_IN, 'web', RequestReference::generate(), new Secret('state-value'), new Secret('nonce-value'), new Secret('verifier-value'));
 
         $dump = print_r($request, true);
 

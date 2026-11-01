@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\KeyAdded;
 use SineMacula\Laravel\Sso\Events\KeyRetired;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Keys\CertificateInspector;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyStatus;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
@@ -22,11 +23,14 @@ use SineMacula\Laravel\Sso\Keys\KeyResult;
 use SineMacula\Laravel\Sso\Keys\KeyRing;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Keys\KeySummary;
+use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
+use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
@@ -37,8 +41,9 @@ use Tests\TestCase;
  * (SSO-2.6, SSO-2.11, SSO-2.12): each certificate refused, and why; RSA 2048,
  * P-256 and P-384 certificates trusted as a set, up to the cap, with a
  * duplicate refused; an OIDC connection refused; an expired certificate
- * trusted, since its dates are reported and never enforced; and a certificate
- * distrusted, the last one included.
+ * trusted, since its dates are reported and never enforced; a certificate
+ * distrusted, the last one included; and what is in flight through the
+ * connection voided by each trust change, and by no refused one (SSO-2.13).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,7 +54,7 @@ use Tests\TestCase;
 #[CoversClass(CertificateInspector::class)]
 final class TrustedCertificatesTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections;
+    use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The tenant whose connection the helpers act on. */
     private const string TENANT = 'tenant-1';
@@ -59,6 +64,9 @@ final class TrustedCertificatesTest extends TestCase
 
     /** @var \SineMacula\Laravel\Sso\Models\Connection The tenant's SAML connection. */
     private Connection $connection;
+
+    /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
+    private FixedClock $clock;
 
     /**
      * Bind a fixed clock and a recording freshness contract, create the tables
@@ -72,11 +80,13 @@ final class TrustedCertificatesTest extends TestCase
         parent::setUp();
 
         $this->freshness = new RecordingFreshness;
+        $this->clock     = new FixedClock('2026-11-01T09:30:00Z');
 
-        $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
+        $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(Freshness::class, $this->freshness);
 
         $this->createConnectionTables();
+        $this->createFlowTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
 
@@ -91,6 +101,7 @@ final class TrustedCertificatesTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        $this->dropFlowTables();
         $this->dropConnectionTables();
 
         parent::tearDown();
@@ -403,6 +414,76 @@ final class TrustedCertificatesTest extends TestCase
 
         self::assertSame([['setting' => 'certificate', 'code' => 'duplicate']], $result->jsonSerialize()['violations']);
         self::assertSame(1, ConnectionKey::query()->count());
+    }
+
+    /**
+     * Trusting a certificate voids the connection's unfinished requests and
+     * unredeemed codes, stamped with the clock's now, and nothing of another
+     * connection; a finished request and a redeemed code are kept.
+     *
+     * @return void
+     */
+    public function testTrustingACertificateVoidsWhatIsInFlight(): void
+    {
+        $other    = $this->makeConnection(['protocol' => 'saml2']);
+        $pending  = $this->makeAuthorizationRequest($this->connection, ['consumed_at' => $this->clock->now()]);
+        $finished = $this->makeAuthorizationRequest($this->connection, ['consumed_at' => $this->clock->now(), 'completed_at' => $this->clock->now()]);
+        $code     = $this->makeHandoffCode($this->connection);
+        $redeemed = $this->makeHandoffCode($this->connection, ['redeemed_at' => $this->clock->now()]);
+        $theirs   = $this->makeAuthorizationRequest($other);
+
+        $this->clock->advance(60);
+
+        self::assertTrue($this->trust(Certificates::ecP256())->isSucceeded());
+
+        self::assertSame('2026-11-01T09:31:00+00:00', AuthorizationRequest::query()->findOrFail($pending->id)->voided_at?->toIso8601String());
+        self::assertSame('2026-11-01T09:31:00+00:00', HandoffCode::query()->findOrFail($code->id)->voided_at?->toIso8601String());
+        self::assertNull(AuthorizationRequest::query()->findOrFail($finished->id)->voided_at);
+        self::assertNull(HandoffCode::query()->findOrFail($redeemed->id)->voided_at);
+        self::assertNull(AuthorizationRequest::query()->findOrFail($theirs->id)->voided_at);
+    }
+
+    /**
+     * Distrusting a certificate voids what is in flight through the connection.
+     *
+     * @return void
+     */
+    public function testDistrustingACertificateVoidsWhatIsInFlight(): void
+    {
+        $certificate = self::summaryOf($this->trust(Certificates::ecP256()));
+        $request     = $this->makeAuthorizationRequest($this->connection);
+        $code        = $this->makeHandoffCode($this->connection);
+
+        $this->clock->advance(60);
+
+        self::assertTrue($this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id)->isSucceeded());
+
+        self::assertSame('2026-11-01T09:31:00+00:00', AuthorizationRequest::query()->findOrFail($request->id)->voided_at?->toIso8601String());
+        self::assertSame('2026-11-01T09:31:00+00:00', HandoffCode::query()->findOrFail($code->id)->voided_at?->toIso8601String());
+    }
+
+    /**
+     * A refused certificate change voids nothing: a duplicate, a stale caller,
+     * and a certificate to distrust that is not found.
+     *
+     * @return void
+     */
+    public function testARefusedCertificateChangeVoidsNothing(): void
+    {
+        $this->trust(Certificates::ecP256());
+
+        $request = $this->makeAuthorizationRequest($this->connection);
+        $code    = $this->makeHandoffCode($this->connection);
+
+        self::assertTrue($this->trust(Certificates::ecP256())->isInvalid());
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, '01jbunknownkey000000000000')->reason);
+
+        $this->freshness->answer(FreshnessOutcome::STALE);
+
+        self::assertTrue($this->trust(Certificates::rsa2048())->isRefused());
+
+        self::assertNull(AuthorizationRequest::query()->findOrFail($request->id)->voided_at);
+        self::assertNull(HandoffCode::query()->findOrFail($code->id)->voided_at);
     }
 
     /**

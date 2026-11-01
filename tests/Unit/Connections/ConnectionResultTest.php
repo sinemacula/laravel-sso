@@ -30,8 +30,18 @@ use SineMacula\Laravel\Sso\Secrets\MaskedSecret;
 #[CoversClass(ConnectionStatus::class)]
 final class ConnectionResultTest extends TestCase
 {
+    /** @var list<\SineMacula\Laravel\Sso\Events\Enums\FailureReason> Every reason a change to a connection is refused for. */
+    private const array REFUSALS = [
+        FailureReason::FRESHNESS_REQUIRED,
+        FailureReason::CONNECTION_NOT_FOUND,
+        FailureReason::PROTOCOL_UNAVAILABLE,
+        FailureReason::CONNECTION_HAS_LINKS,
+        FailureReason::LINKS_UNACCOUNTED,
+    ];
+
     /**
-     * Each success carries the summary, and only `updated` what changed.
+     * Each success carries the summary, and only `updated` and `migrated` what
+     * changed.
      *
      * @return void
      */
@@ -43,13 +53,17 @@ final class ConnectionResultTest extends TestCase
         $updated   = ConnectionResult::updated($summary, ['issuer', 'display_name']);
         $unchanged = ConnectionResult::unchanged($summary);
         $enabled   = ConnectionResult::enabled($summary);
+        $disabled  = ConnectionResult::disabled($summary);
+        $migrated  = ConnectionResult::migrated($summary, ['client_id']);
 
         self::assertSame(ConnectionStatus::CREATED, $created->status);
         self::assertSame(ConnectionStatus::UPDATED, $updated->status);
         self::assertSame(ConnectionStatus::UNCHANGED, $unchanged->status);
         self::assertSame(ConnectionStatus::ENABLED, $enabled->status);
+        self::assertSame(ConnectionStatus::DISABLED, $disabled->status);
+        self::assertSame(ConnectionStatus::MIGRATED, $migrated->status);
 
-        foreach ([$created, $updated, $unchanged, $enabled] as $result) {
+        foreach ([$created, $updated, $unchanged, $enabled, $disabled, $migrated] as $result) {
             self::assertSame($summary, $result->connection);
             self::assertNull($result->reason);
             self::assertSame([], $result->violations);
@@ -59,14 +73,56 @@ final class ConnectionResultTest extends TestCase
         }
 
         self::assertSame(['issuer', 'display_name'], $updated->changedSettings);
+        self::assertSame(['client_id'], $migrated->changedSettings);
         self::assertSame([], $created->changedSettings);
         self::assertSame([], $unchanged->changedSettings);
         self::assertSame([], $enabled->changedSettings);
+        self::assertSame([], $disabled->changedSettings);
 
         self::assertTrue($created->isChanged());
         self::assertTrue($updated->isChanged());
         self::assertTrue($enabled->isChanged());
+        self::assertTrue($disabled->isChanged());
+        self::assertTrue($migrated->isChanged());
         self::assertFalse($unchanged->isChanged());
+    }
+
+    /**
+     * A deletion succeeds and wrote something, and carries nothing: the
+     * connection is gone.
+     *
+     * @return void
+     */
+    public function testADeletionCarriesNothing(): void
+    {
+        $deleted = ConnectionResult::deleted();
+
+        self::assertSame(ConnectionStatus::DELETED, $deleted->status);
+        self::assertNull($deleted->connection);
+        self::assertSame([], $deleted->changedSettings);
+        self::assertNull($deleted->reason);
+        self::assertSame([], $deleted->violations);
+        self::assertTrue($deleted->isSucceeded());
+        self::assertTrue($deleted->isChanged());
+        self::assertFalse($deleted->isRefused());
+        self::assertFalse($deleted->isInvalid());
+        self::assertSame(
+            '{"status":"deleted","connection":null,"changed_settings":[],"reason":null,"violations":[]}',
+            json_encode($deleted),
+        );
+    }
+
+    /**
+     * A migration names what changed; a change of nothing is `unchanged`.
+     *
+     * @return void
+     */
+    public function testAMigrationNamesWhatChanged(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('A migrated connection names what changed; a change of nothing is unchanged.');
+
+        ConnectionResult::migrated(self::summary(), []);
     }
 
     /**
@@ -89,7 +145,7 @@ final class ConnectionResultTest extends TestCase
      */
     public static function provideRefusals(): iterable
     {
-        foreach ([FailureReason::FRESHNESS_REQUIRED, FailureReason::CONNECTION_NOT_FOUND, FailureReason::PROTOCOL_UNAVAILABLE] as $reason) {
+        foreach (self::REFUSALS as $reason) {
             yield $reason->value => [$reason];
         }
     }
@@ -124,11 +180,9 @@ final class ConnectionResultTest extends TestCase
      */
     public static function provideOtherReasons(): iterable
     {
-        $refusals = [FailureReason::FRESHNESS_REQUIRED, FailureReason::CONNECTION_NOT_FOUND, FailureReason::PROTOCOL_UNAVAILABLE];
-
         foreach (FailureReason::cases() as $reason) {
 
-            if (in_array($reason, $refusals, true)) {
+            if (in_array($reason, self::REFUSALS, true)) {
                 continue;
             }
 
@@ -187,14 +241,14 @@ final class ConnectionResultTest extends TestCase
     }
 
     /**
-     * The statuses are the six outcomes.
+     * The statuses are the nine outcomes.
      *
      * @return void
      */
     public function testNamesEveryOutcome(): void
     {
         self::assertSame(
-            ['created', 'updated', 'unchanged', 'enabled', 'refused', 'invalid'],
+            ['created', 'updated', 'unchanged', 'enabled', 'disabled', 'deleted', 'migrated', 'refused', 'invalid'],
             array_map(static fn (ConnectionStatus $status): string => $status->value, ConnectionStatus::cases()),
         );
     }
@@ -216,6 +270,27 @@ final class ConnectionResultTest extends TestCase
             'reason'           => null,
             'violations'       => [],
         ], ConnectionResult::updated($summary, ['client_secret'])->jsonSerialize());
+
+        self::assertSame([
+            'status'           => 'migrated',
+            'connection'       => $summary->jsonSerialize(),
+            'changed_settings' => ['issuer'],
+            'reason'           => null,
+            'violations'       => [],
+        ], ConnectionResult::migrated($summary, ['issuer'])->jsonSerialize());
+
+        self::assertSame([
+            'status'           => 'disabled',
+            'connection'       => $summary->jsonSerialize(),
+            'changed_settings' => [],
+            'reason'           => null,
+            'violations'       => [],
+        ], ConnectionResult::disabled($summary)->jsonSerialize());
+
+        self::assertSame(
+            '{"status":"refused","connection":null,"changed_settings":[],"reason":"connection_has_links","violations":[]}',
+            json_encode(ConnectionResult::refused(FailureReason::CONNECTION_HAS_LINKS)),
+        );
 
         self::assertSame(
             '{"status":"invalid","connection":null,"changed_settings":[],"reason":"settings_invalid","violations":[{"setting":"scopes","code":"openid_scope_required"}]}',

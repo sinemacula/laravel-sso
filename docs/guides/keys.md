@@ -119,9 +119,11 @@ since trust comes from the certificate you configured, not from its dates. Read 
 
 Removing the last certificate is allowed; the connection then cannot complete a sign-in until another is trusted.
 
-> [!NOTE]
-> A change to a connection's trusted certificates does not yet void the sign-ins already under way through it. That
-> arrives with the connection lifecycle changes, before the first release.
+Trusting or distrusting a certificate is a trust change: in the same transaction it voids the sign-ins already under
+way through the connection, its unfinished authorisation requests and unredeemed handoff codes, so none completes
+against the certificates it started under (see [what voiding does to people signing
+in](managing-connections.md#what-voiding-does-to-people-signing-in)). Rotating the service provider's own keys voids
+nothing.
 
 ## Listing a connection's keys
 

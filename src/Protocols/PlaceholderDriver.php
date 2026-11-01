@@ -13,7 +13,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  * A package protocol registered before its flows are built: it reads its
  * protocol's settings, and fails every flow closed. No connection over it is
  * ever complete, so none is usable; a start or a completion is refused with
- * `connection_unavailable`, and the service provider side cannot be described.
+ * `connection_unavailable`, no response is correlated with a request, and the
+ * service provider side cannot be described.
  *
  * The SAML driver (P4) and the OIDC driver (P5) replace it as they land; until
  * then a connection over either can be created and configured, and nothing can
@@ -76,16 +77,32 @@ abstract class PlaceholderDriver implements ProtocolDriver
     }
 
     /**
+     * Correlate no response: the protocol's validation is not built.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
+     * @return \SineMacula\Laravel\Sso\Protocols\Correlation
+     */
+    #[\Override]
+    public function correlate(SsoConnection $connection, CompletionRequest $request): Correlation
+    {
+        unset($connection, $request);
+
+        return Correlation::uncorrelated();
+    }
+
+    /**
      * Refuse every response: the protocol's validation is not built.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      */
     #[\Override]
-    public function complete(SsoConnection $connection, CompletionRequest $request): Completion
+    public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed): Completion
     {
-        unset($connection, $request);
+        unset($connection, $request, $consumed);
 
         return Completion::refused(FailureReason::CONNECTION_UNAVAILABLE);
     }

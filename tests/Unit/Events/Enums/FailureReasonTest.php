@@ -50,10 +50,13 @@ final class FailureReasonTest extends TestCase
             'connection_unavailable', 'application_not_allowed', 'request_unknown', 'request_expired', 'signature_invalid',
             'issuer_mismatch', 'audience_mismatch', 'recipient_mismatch', 'assertion_expired', 'replayed', 'nonce_mismatch',
             'provider_error', 'metadata_expired', 'unlinked', 'purpose_mismatch', 'verifier_mismatch', 'rate_limited',
+            'challenge_invalid', 'session_ineligible', 'discovery_no_match', 'connection_mismatch', 'application_mismatch',
+            'enforcement_unsatisfied', 'handoff_unknown', 'handoff_expired', 'link_changed',
             'fetch_refused', 'fetch_failed', 'freshness_required', 'connection_not_found', 'key_not_found',
             'settings_invalid', 'protocol_unavailable', 'key_state_conflict', 'domain_not_found', 'domain_unavailable',
             'domain_claim_expired', 'domain_record_not_found', 'domain_lookup_failed', 'feature_disabled',
-            'completed_sign_in_required',
+            'completed_sign_in_required', 'link_not_found', 'link_limit_reached', 'subject_already_linked', 'connection_has_links',
+            'links_unaccounted',
         ], array_column(FailureReason::cases(), 'value'));
     }
 

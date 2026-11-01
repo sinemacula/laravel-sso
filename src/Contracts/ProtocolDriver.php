@@ -6,6 +6,8 @@ namespace SineMacula\Laravel\Sso\Contracts;
 
 use SineMacula\Laravel\Sso\Protocols\Completion;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
+use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
+use SineMacula\Laravel\Sso\Protocols\Correlation;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 use SineMacula\Laravel\Sso\Protocols\Start;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
@@ -13,8 +15,9 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
 /**
  * Protocol driver contract (SSO-2.2): one protocol behind one contract, which
  * reads a connection's settings, says whether they are complete, starts an
- * authorisation request, completes it, and describes the service provider side
- * an administrator registers at the identity provider.
+ * authorisation request, reads which request a response answers, validates the
+ * response against that request, and describes the service provider side an
+ * administrator registers at the identity provider.
  *
  * Drivers are registered on the `Protocols\ProtocolManager` under the name a
  * connection's protocol holds. The package ships `saml2` and `oidc`; an
@@ -24,9 +27,17 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
  * session, issues a token or consumes an authorisation request itself: the
  * package's completion pipeline does that, around the driver.
  *
+ * A completion runs in a fixed order (SSO-5.6): `correlate()` reads the
+ * request's state from the response without validating anything; the pipeline
+ * looks the request up on the write connection and consumes it through the
+ * single-use store, so it is consumed once whether the response then passes or
+ * fails; `complete()` validates the response against the consumed request.
+ * Neither touches the package's storage.
+ *
  * Expected refusals are values: `start()` and `complete()` answer a refused
- * outcome with a `FailureReason`, and `describe()` an unavailable one. A
- * database error, a misconfiguration or a library failure propagates.
+ * outcome with a `FailureReason`, `correlate()` an uncorrelated one, and
+ * `describe()` an unavailable one. A database error, a misconfiguration or a
+ * library failure propagates.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,14 +74,28 @@ interface ProtocolDriver
     public function start(SsoConnection $connection, StartRequest $request): Start;
 
     /**
-     * Validate the identity provider's response to an authorisation request
-     * against everything SSO-6 or SSO-7 requires, or say why it is refused.
+     * Read which authorisation request the response at the connection's
+     * endpoint answers (the OIDC `state`; the SAML `RelayState` and
+     * `InResponseTo`), or that it is unsolicited or uncorrelated, without
+     * validating anything else in it.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
+     * @return \SineMacula\Laravel\Sso\Protocols\Correlation
+     */
+    public function correlate(SsoConnection $connection, CompletionRequest $request): Correlation;
+
+    /**
+     * Validate the identity provider's response against the authorisation
+     * request the pipeline consumed for it, and everything SSO-6 or SSO-7
+     * requires, or say why it is refused.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      */
-    public function complete(SsoConnection $connection, CompletionRequest $request): Completion;
+    public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed): Completion;
 
     /**
      * What an administrator registers at the identity provider (SSO-5.9): the

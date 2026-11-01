@@ -1,0 +1,121 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace SineMacula\Laravel\Sso\Handoffs;
+
+use Carbon\CarbonImmutable;
+use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Flows\S256Challenge;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Results\VerifiedResult;
+
+/**
+ * What a handoff code is issued for (SSO-9.2, SSO-9.9, SSO-9.10): the verified
+ * result, which names the purpose, the application, the connection and the
+ * request's public reference; the S256 challenge of the client's verifier; the
+ * code's expiry; the identity the result's link resolved to, if any; the
+ * identity a `link` or `reauthenticate` flow was started for, and the session a
+ * `reauthenticate` flow was started on; the enforcement version checked at
+ * completion; and the latest end of the application's session the provider's
+ * deadline sets, where the deadline contract says it limits the session.
+ *
+ * The completion pipeline builds one and hands it to `Contracts\HandoffIssuer`;
+ * the code is bound to every part of it. A grant whose identity or session does
+ * not fit its purpose is the pipeline's mistake (`InvalidArgumentException`): a
+ * `sign_in` grant names neither, a `link` grant names the identity only, and a
+ * `reauthenticate` grant names both.
+ *
+ * @api
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ */
+final readonly class HandoffGrant
+{
+    /** @var int The longest session id or enforcement version, in bytes. */
+    public const int MAX_ID_LENGTH = 255;
+
+    /**
+     * Constructor.
+     *
+     * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Flows\S256Challenge  $challenge
+     * @param  \Carbon\CarbonImmutable  $expiresAt
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $linkedIdentity
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  ?string  $sessionId
+     * @param  ?string  $enforcementVersion
+     * @param  ?\Carbon\CarbonImmutable  $sessionNotAfter
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function __construct(
+
+        /** The verified result the code carries. */
+        public VerifiedResult $result,
+
+        /** The S256 challenge of the verifier the code is redeemed with. */
+        public S256Challenge $challenge,
+
+        /** When the code expires. */
+        public CarbonImmutable $expiresAt,
+
+        /** The identity the result's link resolved to at completion, if any. */
+        public ?IdentityReference $linkedIdentity = null,
+
+        /** The identity a `link` or `reauthenticate` flow was started for. */
+        public ?IdentityReference $identity = null,
+
+        /** The session a `reauthenticate` flow was started on. */
+        public ?string $sessionId = null,
+
+        /** The enforcement version the completion checked (SSO-4.6, SSO-9.10). */
+        public ?string $enforcementVersion = null,
+
+        /** The latest end of the application's session the provider's deadline sets. */
+        public ?CarbonImmutable $sessionNotAfter = null,
+    ) {
+        self::assertBinding($result->purpose, $identity, $sessionId);
+
+        foreach (['session id' => $sessionId, 'enforcement version' => $enforcementVersion] as $name => $value) {
+            if (!self::isOptionalId($value)) {
+                throw new \InvalidArgumentException(sprintf('A handoff grant\'s %s is 1 to %d bytes.', $name, self::MAX_ID_LENGTH));
+            }
+        }
+    }
+
+    /**
+     * Whether the value is absent, or 1 to `MAX_ID_LENGTH` bytes.
+     *
+     * @param  ?string  $value
+     * @return bool
+     */
+    private static function isOptionalId(?string $value): bool
+    {
+        return $value === null || ($value !== '' && strlen($value) <= self::MAX_ID_LENGTH);
+    }
+
+    /**
+     * Refuse an identity or a session that does not fit the purpose.
+     *
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  ?string  $sessionId
+     * @return void
+     *
+     * @throws \InvalidArgumentException
+     */
+    private static function assertBinding(Purpose $purpose, ?IdentityReference $identity, ?string $sessionId): void
+    {
+        [$identityNamed, $sessionNamed, $what] = match ($purpose) {
+            Purpose::SIGN_IN        => [false, false, 'no identity and no session'],
+            Purpose::LINK           => [true, false, 'the identity and no session'],
+            Purpose::REAUTHENTICATE => [true, true, 'the identity and the session'],
+        };
+
+        if (($identity !== null) !== $identityNamed || ($sessionId !== null) !== $sessionNamed) {
+            throw new \InvalidArgumentException(sprintf('A [%s] handoff grant names %s.', $purpose->value, $what));
+        }
+    }
+}

@@ -107,8 +107,11 @@ with the SAML and OIDC drivers (P4, P5), not here.
 - A stale caller is `freshness_required`, with nothing generated, written or reported.
 - Removing the last trusted certificate is allowed: the SAML driver (P4) then finds the connection incomplete, so no
   sign-in runs through it until another is trusted.
-- A trust change does not yet void the authorisation requests and handoff codes in flight through the connection.
-  BL-37 adds that voiding at every `sso.connection.trust` call site, these included.
+- Trusting or distrusting a certificate is a trust change (SSO-2.13): in its transaction, under the connection's lock,
+  it voids the connection's unfinished authorisation requests and unredeemed handoff codes (`Connections\InFlightVoider`;
+  see [connection-lifecycle.md](connection-lifecycle.md)), so none completes or is redeemed against the certificates it
+  was started under. Rotating one of the service provider's own keys (`addNext()`, `makeCurrent()`, `retire()`) keeps
+  what subjects mean and voids nothing.
 - A malformed key setting fails closed with an `InvalidArgumentException` naming its key (and `[keys]` reports it at
   boot); an OpenSSL failure is a `RuntimeException` naming the step, never the key, with OpenSSL's error queue cleared;
   a `SecretEncrypter` that cannot encrypt, a ciphertext that cannot be decrypted, and a database error propagate.

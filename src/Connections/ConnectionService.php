@@ -4,17 +4,22 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Connections;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
+use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\ProtocolSettings;
 use SineMacula\Laravel\Sso\Database\CiphertextWrite;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Links\Enums\LinkState;
+use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
 use SineMacula\Laravel\Sso\Protocols\Preset;
@@ -53,9 +58,22 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
  * connection is disabled; enabling one needs no complete settings, since only a
  * complete connection is ever usable.
  *
+ * A change to a setting the protocol's `subjectNames()` lists (the issuer or
+ * entity id, the client id, the subject source, the NameID format) may change
+ * what the connection's existing subjects mean, so an update making one is
+ * refused with `connection_has_links` while the connection has a link, active
+ * or reserved until after now, read with a locking read once freshness has been
+ * asked; `Connections\SubjectMigration` makes such a change and relinks or
+ * removes the links with it (SSO-2.13). Every update that asks
+ * `sso.connection.trust` voids, in its transaction and under the connection's
+ * lock, the requests and handoff codes in flight through the connection
+ * (`Connections\InFlightVoider`); a change that asks only another operation, or
+ * none, voids nothing.
+ *
  * It holds the registry, the lookup, the freshness gate, the secrets, the
- * reporter and the mapping's caps, none of which keeps anything of one request
- * for the next (SSO-11.2). Resolve it from the container per request.
+ * reporter, the mapping's caps, the voider and the clock, none of which keeps
+ * anything of one request for the next (SSO-11.2). Resolve it from the
+ * container per request.
  *
  * @api
  *
@@ -88,6 +106,12 @@ final readonly class ConnectionService
     /** @var list<string> What a change may never name: a connection's tenant and protocol are fixed (SSO-2.1). */
     private const array FIXED = ['tenant_id', 'protocol'];
 
+    /** @var array<string, null> What an update gives for each change it leaves out. */
+    private const array NO_CHANGES = [self::SETTINGS => null, self::ATTRIBUTE_MAPPING => null, self::DISPLAY_NAME => null];
+
+    /** @var list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation> What a subject migration asks besides what its change asks. */
+    private const array MIGRATION_OPERATIONS = [FreshnessOperation::CONNECTION_TRUST, FreshnessOperation::LINK_REMOVE];
+
     /**
      * Constructor.
      *
@@ -97,6 +121,8 @@ final readonly class ConnectionService
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionSecrets  $secrets
      * @param  \SineMacula\Laravel\Sso\Administration\AdministrationEvents  $events
      * @param  \SineMacula\Laravel\Sso\Connections\MappingLimits  $limits
+     * @param  \SineMacula\Laravel\Sso\Connections\InFlightVoider  $voider
+     * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      */
     public function __construct(
 
@@ -117,6 +143,12 @@ final readonly class ConnectionService
 
         /** The caps on what an attribute mapping carries. */
         private MappingLimits $limits,
+
+        /** Voids what a trust change leaves in flight. */
+        private InFlightVoider $voider,
+
+        /** The clock a link reservation's expiry is judged against. */
+        private Clock $clock,
     ) {}
 
     /**
@@ -215,7 +247,9 @@ final readonly class ConnectionService
      * new one; a change to `tenant_id` or `protocol` is `immutable`, and any
      * other key `unknown`. Only what changed asks for freshness, and only a
      * change that changed something is written and reported, naming each
-     * setting, secret, `display_name` or `attribute_mapping` that changed.
+     * setting, secret, `display_name` or `attribute_mapping` that changed. A
+     * change to a subject setting of a connection with links is refused with
+     * `connection_has_links`, and a trust change voids what is in flight.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -239,7 +273,7 @@ final readonly class ConnectionService
                 return ConnectionResult::refused($connection === null ? FailureReason::CONNECTION_NOT_FOUND : FailureReason::PROTOCOL_UNAVAILABLE);
             }
 
-            return $this->applyChanges($connection, $changes, $actor);
+            return $this->changeLocked($connection, $changes, $actor);
         });
     }
 
@@ -302,45 +336,37 @@ final readonly class ConnectionService
                 return ConnectionResult::refused($connection === null ? FailureReason::CONNECTION_NOT_FOUND : FailureReason::PROTOCOL_UNAVAILABLE);
             }
 
-            return $this->enableFound($connection, $actor);
+            $refusal = $this->staleRefusal([FreshnessOperation::CONNECTION_ENABLE]);
+
+            if ($refusal !== null || $connection->enabled) {
+                return $refusal ?? ConnectionResult::unchanged($this->summary($connection));
+            }
+
+            $connection->forceFill(['enabled' => true])->save();
+
+            $this->events->connectionEnabled($connection, $actor);
+
+            return ConnectionResult::enabled($this->summary($connection));
         });
     }
 
     /**
-     * Enable the connection found, once freshness allows it, unless it is
-     * enabled already.
+     * Merge the changes into the locked connection, validate the result, and
+     * write and report what changed: what `update()` does once it has found the
+     * connection, locked, and refused an unavailable protocol.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
-     * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
+     * `Connections\SubjectMigration` alone passes the violations of its relinks
+     * (none when every relink is valid). They are reported after the change's
+     * own; freshness is asked with `sso.connection.trust` and `sso.link.remove`
+     * besides what the change asks; and a change to a subject setting is not
+     * refused for the connection's links, which the migration relinks or
+     * removes in the same transaction. The caller holds the connection's lock
+     * in its transaction on the storage connection.
      *
-     * @throws \InvalidArgumentException
-     * @throws \LogicException
-     * @throws \UnexpectedValueException
-     * @throws \Illuminate\Contracts\Container\BindingResolutionException
-     */
-    private function enableFound(Connection $connection, ?ActingIdentity $actor): ConnectionResult
-    {
-        $refusal = $this->staleRefusal([FreshnessOperation::CONNECTION_ENABLE]);
-
-        if ($refusal !== null || $connection->enabled) {
-            return $refusal ?? ConnectionResult::unchanged($this->summary($connection));
-        }
-
-        $connection->forceFill(['enabled' => true])->save();
-
-        $this->events->connectionEnabled($connection, $actor);
-
-        return ConnectionResult::enabled($this->summary($connection));
-    }
-
-    /**
-     * Merge the changes into the connection found, validate the result, and
-     * write and report what changed.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $changes
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?list<\SineMacula\Laravel\Sso\Connections\SettingViolation>  $relinkViolations
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \InvalidArgumentException
@@ -349,18 +375,21 @@ final readonly class ConnectionService
      * @throws \RuntimeException
      * @throws \JsonException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     *
+     * @internal
      */
-    private function applyChanges(Connection $connection, #[\SensitiveParameter] array $changes, ?ActingIdentity $actor): ConnectionResult
+    public function changeLocked(Connection $locked, #[\SensitiveParameter] array $changes, ?ActingIdentity $actor = null, ?array $relinkViolations = null): ConnectionResult
     {
-        $secretNames = $this->secretNamesOf($connection->protocol);
-        $given       = self::keyed($changes[self::SETTINGS] ?? []);
+        $asked       = $changes + self::NO_CHANGES;
+        $migrating   = $relinkViolations !== null;
+        $secretNames = $this->secretNamesOf($locked->protocol);
+        $given       = self::keyed($asked[self::SETTINGS]);
         $secrets     = array_intersect_key($given, array_flip($secretNames));
-        $values      = self::merged($connection->settings, array_diff_key($given, $secrets));
-        $mapping     = self::merged($connection->attribute_mapping, self::keyed($changes[self::ATTRIBUTE_MAPPING] ?? []));
-        $newName     = $changes[self::DISPLAY_NAME] ?? null;
-        $name        = is_string($newName) ? trim($newName) : $connection->display_name;
-        $typed       = $this->protocols->protocol($connection->protocol)->settings($values);
-        $map         = AttributeMapping::fromArray($connection->protocol, $mapping, $this->limits);
+        $values      = self::merged($locked->settings, array_diff_key($given, $secrets));
+        $mapping     = self::merged($locked->attribute_mapping, self::keyed($asked[self::ATTRIBUTE_MAPPING]));
+        $name        = is_string($asked[self::DISPLAY_NAME]) ? trim($asked[self::DISPLAY_NAME]) : $locked->display_name;
+        $typed       = $this->protocols->protocol($locked->protocol)->settings($values);
+        $map         = AttributeMapping::fromArray($locked->protocol, $mapping, $this->limits);
 
         $violations = [
             ...self::changeViolations($changes),
@@ -368,43 +397,49 @@ final readonly class ConnectionService
             ...$typed->violations(),
             ...ConnectionSecrets::violations($typed, $secretNames, $secrets),
             ...$map->violations(),
+            ...(array) $relinkViolations,
         ];
 
         $stored          = $typed->toArray();
-        $changedSettings = self::changedSettings($typed, $connection->settings, $stored);
-        $changedSecrets  = ConnectionSecrets::changedNames($secretNames, $secrets, $this->secrets->names($connection));
+        $changedSettings = self::changedSettings($typed, $locked->settings, $stored);
+        $changedSecrets  = ConnectionSecrets::changedNames($secretNames, $secrets, $this->secrets->names($locked));
+        $operations      = self::operations($typed, [...$changedSettings, ...$changedSecrets], $migrating ? self::MIGRATION_OPERATIONS : []);
 
         $changed = [
             ...$changedSettings,
             ...$changedSecrets,
             ...array_keys(array_filter([
-                self::DISPLAY_NAME      => $name !== $connection->display_name,
-                self::ATTRIBUTE_MAPPING => !SettingRules::isSame($map->toArray(), $connection->attribute_mapping),
+                self::DISPLAY_NAME      => $name !== $locked->display_name,
+                self::ATTRIBUTE_MAPPING => !SettingRules::isSame($map->toArray(), $locked->attribute_mapping),
             ])),
         ];
 
         $refusal = match (true) {
             $violations !== [] => ConnectionResult::invalid($violations),
-            $changed === []    => ConnectionResult::unchanged($this->summary($connection)),
-            default            => $this->staleRefusal(self::operations($typed, [...$changedSettings, ...$changedSecrets])),
+            $changed === []    => ConnectionResult::unchanged($this->summary($locked)),
+            default            => $this->staleRefusal($operations) ?? $this->linkedRefusal($typed, $changedSettings, $locked, $migrating),
         };
 
         if ($refusal !== null) {
             return $refusal;
         }
 
-        $connection->forceFill([
+        $locked->forceFill([
             'display_name'      => $name,
             'settings'          => $stored,
-            'secrets'           => $this->secrets->apply($connection->secrets, ConnectionSecrets::changes($secrets)),
+            'secrets'           => $this->secrets->apply($locked->secrets, ConnectionSecrets::changes($secrets)),
             'attribute_mapping' => $map->toArray(),
         ]);
 
-        CiphertextWrite::save($connection, self::SECRETS, self::SECRETS_NOT_WRITTEN);
+        CiphertextWrite::save($locked, self::SECRETS, self::SECRETS_NOT_WRITTEN);
 
-        $this->events->connectionUpdated($connection, $changed, $actor);
+        if (in_array(FreshnessOperation::CONNECTION_TRUST, $operations, true)) {
+            $this->voider->voidFor($locked);
+        }
 
-        return ConnectionResult::updated($this->summary($connection), $changed);
+        $this->events->connectionUpdated($locked, $changed, $actor);
+
+        return ConnectionResult::updated($this->summary($locked), $changed);
     }
 
     /**
@@ -463,6 +498,43 @@ final readonly class ConnectionService
     private function staleRefusal(array $operations): ?ConnectionResult
     {
         return $this->freshness->checkAll($operations)->isFresh() ? null : ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
+    }
+
+    /**
+     * The refusal of a change to a subject setting of a connection that has
+     * links, or `null` when the change alters no subject, is a subject
+     * migration's, which relinks or removes the links, or the connection has
+     * none: an active link, or a reserved one whose reservation expires after
+     * now, found by a locking read on the write connection.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\ProtocolSettings  $settings
+     * @param  list<string>  $changedSettings
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  bool  $migrating
+     * @return ?\SineMacula\Laravel\Sso\Connections\ConnectionResult
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function linkedRefusal(ProtocolSettings $settings, array $changedSettings, Connection $locked, bool $migrating): ?ConnectionResult
+    {
+        if ($migrating || array_intersect($changedSettings, $settings::subjectNames()) === []) {
+            return null;
+        }
+
+        $query = Link::query();
+        $now   = UtcDateTime::format($query->getModel(), $this->clock->now());
+
+        $link = $query->useWritePdo()
+            ->where('connection_id', $locked->id)
+            ->where(static function (Builder $held) use ($now): void {
+                $held->where('state', LinkState::ACTIVE->value)->orWhere(static function (Builder $reserved) use ($now): void {
+                    $reserved->where('state', LinkState::RESERVED->value)->where('reservation_expires_at', '>', $now);
+                });
+            })
+            ->lockForUpdate()
+            ->first();
+
+        return $link === null ? null : ConnectionResult::refused(FailureReason::CONNECTION_HAS_LINKS);
     }
 
     /**

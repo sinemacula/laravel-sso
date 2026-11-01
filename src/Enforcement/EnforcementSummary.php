@@ -14,7 +14,8 @@ use SineMacula\Laravel\Sso\Models\TenantEnforcement;
  * that changes with every change, and when it last changed.
  *
  * A tenant that never had a rule stored is off, with no connection, no version
- * and no time. The ids are those stored: one whose connection has since been
+ * and no time, whether it has no row or only the unconfigured guard row a lock
+ * inserted. The ids are those stored: one whose connection has since been
  * disabled or deleted is still listed here, while `Contracts\Enforcement`
  * answers only the enabled connections of the tenant. It holds ids, a flag and
  * times, never a secret.
@@ -55,7 +56,8 @@ final readonly class EnforcementSummary implements \JsonSerializable
 
     /**
      * The summary of the tenant's enforcement as the row holds it, or of a
-     * tenant with no rule stored when there is no row.
+     * tenant with no rule stored when there is no row or only an unconfigured
+     * one (no version), which reads exactly as none.
      *
      * @param  string  $tenantId
      * @param  ?\SineMacula\Laravel\Sso\Models\TenantEnforcement  $enforcement
@@ -63,7 +65,7 @@ final readonly class EnforcementSummary implements \JsonSerializable
      */
     public static function of(string $tenantId, ?TenantEnforcement $enforcement): self
     {
-        if ($enforcement === null) {
+        if ($enforcement?->version === null) {
             return new self($tenantId, false, []);
         }
 

@@ -26,12 +26,26 @@ use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
  * policy carries the row's version, so an adapter can recheck a session checked
  * against an older one.
  *
- * The reads take no lock, so asked inside a transaction that has already read,
- * it answers as of that transaction's snapshot (MySQL's `REPEATABLE READ`),
- * which may predate a change committed since. Ask it outside a transaction, or
- * before the transaction's first read, for the rule as it is now; a session
- * established while the rule changes is caught by rechecking it against the
- * policy's version.
+ * `policy()`'s reads take no lock, so asked inside a transaction that has
+ * already read, it answers as of that transaction's snapshot (MySQL's
+ * `REPEATABLE READ`), which may predate a change committed since; and even a
+ * current read alone does not stop the rule changing before the session it
+ * admits commits. Ask it outside a transaction for the rule as it is now, and
+ * recheck a session against the policy's version.
+ *
+ * An admission that must not race a change of the rule takes `lock()` first,
+ * inside its transaction on the storage connection, as the package's own
+ * redemption and completion do: the inheritance contract names the enforcing
+ * tenant, that tenant's row is locked through `EnforcementLock` (inserted
+ * unconfigured when it has none), and then, in one locking statement in id
+ * order, the connections the admission goes through and those the rule names.
+ * The rule cannot change, nor a satisfying connection be disabled, until that
+ * transaction ends, so `LockedEnforcement::policy()` answers what the rule is
+ * at its commit, and a change that waited revokes what it admitted. While the
+ * feature is off it locks, reads and asks nothing, and answers `null`. The
+ * inheritance contract must answer in a way that is safe inside the caller's
+ * transaction: from state that does not change under it, or that it reads with
+ * a current read.
  *
  * Nothing is cached: a change is answered on the next call. A database error
  * propagates (SSO-11.4); it never answers that nothing is required when it
@@ -39,8 +53,8 @@ use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
  * application's mistake (`InvalidArgumentException`); an inheritance contract
  * that names no tenant is a `LogicException`.
  *
- * It holds the container and the finder, neither of which keeps anything of one
- * call for the next (SSO-11.2), and is bound scoped.
+ * It holds the container, the finder and the lock, none of which keeps anything
+ * of one call for the next (SSO-11.2), and is bound scoped.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,6 +66,7 @@ final readonly class DatabaseEnforcement implements Enforcement
      *
      * @param  \Illuminate\Contracts\Container\Container  $container
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementFinder  $finder
+     * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementLock  $lock
      */
     public function __construct(
 
@@ -60,6 +75,9 @@ final readonly class DatabaseEnforcement implements Enforcement
 
         /** Reads the rule and its connections, on the write connection. */
         private EnforcementFinder $finder,
+
+        /** Locks the enforcing tenant's row. */
+        private EnforcementLock $lock,
     ) {}
 
     /**
@@ -88,6 +106,41 @@ final readonly class DatabaseEnforcement implements Enforcement
     }
 
     /**
+     * Lock the enforcement that applies to sessions active in the tenant, on
+     * the application, for an admission through the connections given, inside
+     * the caller's transaction on the storage connection: the enforcing
+     * tenant's row first, then those connections and the rule's, in id order.
+     * `null`, with nothing locked, read or asked, while the feature is off.
+     *
+     * @param  string  $tenantId
+     * @param  string  $application
+     * @param  list<string>  $connectionIds
+     * @return ?\SineMacula\Laravel\Sso\Enforcement\LockedEnforcement
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     */
+    public function lock(string $tenantId, string $application, array $connectionIds): ?LockedEnforcement
+    {
+        EnforcementFinder::assertTenant($tenantId);
+        self::assertApplication($application);
+
+        if (!Features::enabled(Feature::ENFORCEMENT)) {
+            return null;
+        }
+
+        $enforcing = $this->enforcingTenant($tenantId, $application);
+        $row       = $this->lock->acquire($enforcing);
+        $rule      = EnforcementLock::isConfigured($row) ? $row : null;
+        $named     = $rule?->enabled === true ? $rule->connection_ids : [];
+        $locked    = $this->finder->lockConnections(EnforcementSummary::sorted([...$connectionIds, ...$named]));
+
+        return new LockedEnforcement($tenantId, $application, $enforcing, $rule, $locked, fn (): string => $this->enforcingTenant($tenantId, $application));
+    }
+
+    /**
      * The policy the enforcing tenant's stored rule gives sessions active in
      * the tenant.
      *
@@ -99,15 +152,10 @@ final readonly class DatabaseEnforcement implements Enforcement
      */
     private function stored(string $tenantId, string $enforcingTenantId): EnforcementPolicy
     {
-        $enforcement = $this->finder->find($enforcingTenantId);
+        $rule        = $this->finder->find($enforcingTenantId);
+        $connections = $rule?->enabled === true ? $this->finder->connections($enforcingTenantId, EnforcementSummary::sorted($rule->connection_ids)) : [];
 
-        if ($enforcement === null || !$enforcement->enabled) {
-            return EnforcementPolicy::notRequired($tenantId, $enforcingTenantId, $enforcement?->version);
-        }
-
-        $connections = $this->finder->connections($enforcingTenantId, EnforcementSummary::sorted($enforcement->connection_ids));
-
-        return EnforcementPolicy::required($tenantId, $enforcingTenantId, EnforcementFinder::enabledIds($connections), $enforcement->version);
+        return EnforcementFinder::policyOf($tenantId, $enforcingTenantId, $rule, $connections);
     }
 
     /**

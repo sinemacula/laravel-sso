@@ -21,7 +21,6 @@ use SineMacula\Laravel\Sso\Enforcement\Enums\EnforcementStatus;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
-use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
@@ -51,13 +50,15 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * 5. The freshness contract is asked with `sso.enforcement.update` and its
  *    maximum age: `stale` is `freshness_required`.
  * 6. In one transaction on the storage connection, the tenant's row is locked
- *    (created first when there is none), then the connections given are locked
- *    in id order, the lock order every caller keeps; steps 2 to 4 are judged
- *    again on the locked rows; the row is written with a new version, a fresh
- *    lower-case ULID; when the rule is now on, `Contracts\SessionRevocation`,
- *    resolved from the container at that moment, is called with the tenant's
- *    policy as it now is (`RevocationScope::tenant()`); and the change is
- *    reported through `Administration\EnforcementEvents`, after commit.
+ *    (through `EnforcementLock`, which inserts it unconfigured first when there
+ *    is none), then the connections given are locked in id order, the lock
+ *    order every caller keeps; steps 2 to 4 are judged again on the locked
+ *    rows, an unconfigured row counting as no rule; the row is written with a
+ *    new version, a fresh lower-case ULID; when the rule is now on,
+ *    `Contracts\SessionRevocation`, resolved from the container at that moment,
+ *    is called with the tenant's policy as it now is
+ *    (`RevocationScope::tenant()`); and the change is reported through
+ *    `Administration\EnforcementEvents`, after commit.
  *
  * Turning it off revokes nothing. The revocation runs inside the transaction,
  * so an adapter that writes through the same Laravel connection commits or
@@ -65,12 +66,17 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * back, with no row, no new version and no event, and propagates. A row is
  * never found by a plain read under the lock: each read that decides the write
  * is a locking read, so a caller's own `REPEATABLE READ` snapshot cannot hide a
- * concurrent change. A tenant's first row is inserted by an upsert that leaves
- * an existing row as it is, so racing first changes queue on the row rather
- * than on MySQL's gap locks; a row this change created and then refused is
- * deleted before the transaction ends. A deadlock is retried, up to `ATTEMPTS`
- * times, when the helper's transaction is the outermost one; inside the
- * application's own, it propagates.
+ * concurrent change. A tenant's first row is inserted unconfigured by an upsert
+ * that leaves an existing row as it is, so racing first changes queue on the
+ * row rather than on MySQL's gap locks; an unconfigured row reads as no rule,
+ * so one a refused change leaves behind stores nothing, and it is kept, since a
+ * redemption or a completion may be waiting to lock it. The revocation, inside
+ * the change's transaction, uses current reads and writes, so it sees every
+ * session an admission that held the lock first committed. A deadlock is
+ * retried, up to `ATTEMPTS` times, when the helper's transaction is the
+ * outermost one; inside the application's own, it propagates, as does
+ * PostgreSQL's serialisation failure, for the caller to retry its whole
+ * transaction.
  *
  * A database error propagates (SSO-11.4); an empty or overlong tenant id is an
  * `InvalidArgumentException`. It holds the lookups, the freshness gate, the
@@ -101,6 +107,7 @@ final readonly class EnforcementService
      *
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionFinder  $connections
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementFinder  $finder
+     * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementLock  $lock
      * @param  \SineMacula\Laravel\Sso\Freshness\FreshnessGate  $freshness
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      * @param  \SineMacula\Laravel\Sso\Administration\EnforcementEvents  $events
@@ -111,8 +118,11 @@ final readonly class EnforcementService
         /** Finds the tenant's connections, on the write connection. */
         private ConnectionFinder $connections,
 
-        /** Finds the enforcement, and locks it and its connections. */
+        /** Finds the enforcement, and locks its connections. */
         private EnforcementFinder $finder,
+
+        /** Locks the tenant's row, inserting it unconfigured when it has none. */
+        private EnforcementLock $lock,
 
         /** Asks the freshness contract before a change is written. */
         private FreshnessGate $freshness,
@@ -268,9 +278,8 @@ final readonly class EnforcementService
     {
         return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $exists, $enabled, $ids, $actor, $freshnessAsked): EnforcementResult {
 
-            $placeholder = self::ulid();
-            $locked      = $this->locked($tenantId, $exists, $placeholder);
-            $stored      = $locked->version === $placeholder ? null : $locked;
+            $locked      = $this->locked($tenantId, $exists);
+            $stored      = EnforcementLock::isConfigured($locked) ? $locked : null;
             $connections = $this->finder->connections($tenantId, array_values($ids), true);
             $unknown     = self::unknown($ids, $connections);
 
@@ -280,81 +289,29 @@ final readonly class EnforcementService
 
             $refusal ??= $freshnessAsked ? null : $this->staleRefusal();
 
-            if ($refusal !== null && $stored === null) {
-                $locked->delete();
-            }
-
             return $refusal ?? $this->write($locked, $stored?->version, $enabled, $ids, $connections, $actor);
         }, self::ATTEMPTS);
     }
 
     /**
-     * The tenant's row, locked for update. One the first read saw is locked by
-     * a locking read; otherwise a row holding the placeholder version is
-     * inserted unless one exists (which the upsert leaves as it is, but locks),
-     * and then read locked.
+     * The tenant's row, configured or not, locked for update. One the first
+     * read saw configured is locked by a locking read; otherwise, or when that
+     * finds none, the lock inserts it unconfigured unless one exists, and reads
+     * it locked.
      *
      * @param  string  $tenantId
      * @param  bool  $exists
-     * @param  string  $placeholder
      * @return \SineMacula\Laravel\Sso\Models\TenantEnforcement
      *
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      * @throws \UnexpectedValueException
      */
-    private function locked(string $tenantId, bool $exists, string $placeholder): TenantEnforcement
+    private function locked(string $tenantId, bool $exists): TenantEnforcement
     {
-        $locked = $exists ? $this->finder->find($tenantId, true) : null;
+        $locked = $exists ? $this->finder->row($tenantId, true) : null;
 
-        if ($locked !== null) {
-            return $locked;
-        }
-
-        $this->insertUnlessExists($tenantId, $placeholder);
-
-        return $this->finder->find($tenantId, true) ?? self::unreadable();
-    }
-
-    /**
-     * Refuse to go on without the row the upsert has just made sure of.
-     *
-     * @return never
-     *
-     * @throws \UnexpectedValueException
-     */
-    private static function unreadable(): never
-    {
-        throw new \UnexpectedValueException('The tenant\'s enforcement could not be read back.');
-    }
-
-    /**
-     * Insert the tenant's row, off, with no connection and the version given,
-     * unless the tenant has one: then the row is left as it is, and locked. On
-     * MySQL the upsert locks an existing row exclusively at once, so racing
-     * first changes wait on the row, never on each other's gap locks.
-     *
-     * @param  string  $tenantId
-     * @param  string  $version
-     * @return void
-     *
-     * @throws \InvalidArgumentException
-     */
-    private function insertUnlessExists(string $tenantId, string $version): void
-    {
-        $enforcement = new TenantEnforcement;
-        $now         = UtcDateTime::format($enforcement, $this->clock->now());
-
-        $enforcement->newQuery()->upsert([
-            'id'             => self::ulid(),
-            'tenant_id'      => $tenantId,
-            'tenant_hash'    => TenantHash::of($tenantId),
-            'enabled'        => false,
-            'connection_ids' => '[]',
-            'version'        => $version,
-            'changed_at'     => $now,
-            'created_at'     => $now,
-            'updated_at'     => $now,
-        ], ['tenant_hash'], ['tenant_hash']);
+        return $locked ?? $this->lock->acquire($tenantId);
     }
 
     /**

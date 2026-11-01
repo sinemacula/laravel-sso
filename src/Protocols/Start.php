@@ -9,8 +9,13 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 /**
  * How a driver started an authorisation request (SSO-5.1): with the navigation
  * that sends the browser to the identity provider and what the request must
- * keep to complete it (the SAML request id for `InResponseTo`, the expected
- * issuer), or refused with a reason.
+ * keep to complete it, or refused with a reason.
+ *
+ * What the request keeps is typed, never a free-form map: the SAML
+ * `AuthnRequest` id `InResponseTo` must equal (SSO-5.3, SSO-6.6), the issuer
+ * the response must come from, and whether that issuer must return `iss`
+ * (SSO-7.1). The authorisation request pipeline stores each, and hands them
+ * back to the driver in the `ConsumedRequest`.
  *
  * @api
  *
@@ -23,7 +28,9 @@ final readonly class Start
      * Constructor.
      *
      * @param  ?\SineMacula\Laravel\Sso\Protocols\Navigation  $navigation
-     * @param  array<string, string>  $requestData
+     * @param  ?string  $samlRequestId
+     * @param  ?string  $expectedIssuer
+     * @param  bool  $issuerRequired
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      */
     private function __construct(
@@ -31,8 +38,14 @@ final readonly class Start
         /** Where the browser goes, for a started request. */
         public ?Navigation $navigation,
 
-        /** What the authorisation request keeps to complete, by name, for a started request. */
-        public array $requestData,
+        /** The SAML `AuthnRequest` id, for a started SAML request. */
+        public ?string $samlRequestId,
+
+        /** The issuer the response must come from, for a started request. */
+        public ?string $expectedIssuer,
+
+        /** Whether the response must carry `iss` (RFC 9207), for a started OIDC request. */
+        public bool $issuerRequired,
 
         /** Why the request could not start, for a refused one. */
         public ?FailureReason $reason,
@@ -40,15 +53,27 @@ final readonly class Start
 
     /**
      * The request started: the browser goes where the navigation leads, and the
-     * authorisation request keeps the data given.
+     * authorisation request keeps what is given.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Navigation  $navigation
-     * @param  array<string, string>  $requestData
+     * @param  ?string  $samlRequestId
+     * @param  ?string  $expectedIssuer
+     * @param  bool  $issuerRequired
      * @return self
+     *
+     * @throws \InvalidArgumentException
      */
-    public static function navigate(Navigation $navigation, array $requestData = []): self
+    public static function navigate(Navigation $navigation, ?string $samlRequestId = null, ?string $expectedIssuer = null, bool $issuerRequired = false): self
     {
-        return new self($navigation, $requestData, null);
+        if ($samlRequestId === '' || $expectedIssuer === '') {
+            throw new \InvalidArgumentException('A started request\'s SAML request id and expected issuer are each non-empty when given.');
+        }
+
+        if ($samlRequestId !== null && strlen($samlRequestId) > Correlation::MAX_REQUEST_ID_LENGTH) {
+            throw new \InvalidArgumentException(sprintf('A SAML request id is at most %d bytes.', Correlation::MAX_REQUEST_ID_LENGTH));
+        }
+
+        return new self($navigation, $samlRequestId, $expectedIssuer, $issuerRequired, null);
     }
 
     /**
@@ -59,7 +84,7 @@ final readonly class Start
      */
     public static function refused(FailureReason $reason): self
     {
-        return new self(null, [], $reason);
+        return new self(null, null, null, false, $reason);
     }
 
     /**

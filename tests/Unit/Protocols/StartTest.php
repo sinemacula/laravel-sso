@@ -12,7 +12,8 @@ use SineMacula\Laravel\Sso\Protocols\Start;
 
 /**
  * Unit tests for how a driver started a flow: navigating with what the request
- * keeps, or refused with a reason, each outcome with only its own payload.
+ * keeps, typed, or refused with a reason, each outcome with only its own
+ * payload.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -23,25 +24,55 @@ use SineMacula\Laravel\Sso\Protocols\Start;
 final class StartTest extends TestCase
 {
     /**
-     * A started request carries its navigation and request data, and no reason.
+     * A started request carries its navigation and what the request keeps, and
+     * no reason; what it does not give is empty.
      *
      * @return void
      */
     public function testAStartedRequestNavigates(): void
     {
         $navigation = Navigation::redirect('https://idp.example.com/sso');
-        $start      = Start::navigate($navigation, ['request_id' => '_abc']);
+        $start      = Start::navigate($navigation, '_abc', 'https://idp.example.com', true);
 
         self::assertTrue($start->isNavigating());
         self::assertFalse($start->isRefused());
         self::assertSame($navigation, $start->navigation);
-        self::assertSame(['request_id' => '_abc'], $start->requestData);
+        self::assertSame('_abc', $start->samlRequestId);
+        self::assertSame('https://idp.example.com', $start->expectedIssuer);
+        self::assertTrue($start->issuerRequired);
         self::assertNull($start->reason);
-        self::assertSame([], Start::navigate($navigation)->requestData);
+
+        $bare = Start::navigate($navigation);
+
+        self::assertNull($bare->samlRequestId);
+        self::assertNull($bare->expectedIssuer);
+        self::assertFalse($bare->issuerRequired);
     }
 
     /**
-     * A refused request carries its reason, and no navigation or data.
+     * A SAML request id is at most 255 bytes, and neither it nor the expected
+     * issuer may be empty.
+     *
+     * @return void
+     */
+    public function testRefusesAMalformedRequestBinding(): void
+    {
+        $navigation = Navigation::redirect('https://idp.example.com/sso');
+
+        self::assertSame(str_repeat('a', 255), Start::navigate($navigation, str_repeat('a', 255))->samlRequestId);
+
+        foreach ([[str_repeat('a', 256), null], ['', null], [null, '']] as [$id, $issuer]) {
+            try {
+                Start::navigate($navigation, $id, $issuer);
+                self::fail('A malformed request binding was accepted.');
+            } catch (\InvalidArgumentException $exception) {
+                self::assertNotSame('', $exception->getMessage());
+            }
+        }
+    }
+
+    /**
+     * A refused request carries its reason, and nothing else.
      *
      * @return void
      */
@@ -53,6 +84,8 @@ final class StartTest extends TestCase
         self::assertFalse($start->isNavigating());
         self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $start->reason);
         self::assertNull($start->navigation);
-        self::assertSame([], $start->requestData);
+        self::assertNull($start->samlRequestId);
+        self::assertNull($start->expectedIssuer);
+        self::assertFalse($start->issuerRequired);
     }
 }

@@ -14,8 +14,13 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * among them; its secrets, a JSON object of each secret's name and its
  * ciphertext from `Contracts\SecretEncrypter`, so a read can say which are set
  * without decrypting one, never read back by a helper (SSO-2.5); its attribute
- * mapping (SSO-2.10); whether it is enabled; and whether a `sign_in` through it
- * has ever been redeemed (SSO-4.3), which only the redemption sets.
+ * mapping (SSO-2.10); whether it is enabled; whether a `sign_in` through it has
+ * ever been redeemed (SSO-4.3), which only the redemption sets; its links
+ * version, which every link created through it raises under its lock
+ * (`Links\LinkStore::create()`), so a link's insert also writes this row; and
+ * its flows version, which every authorisation request stored and every handoff
+ * code issued through it raises under its lock, so either insert also writes
+ * this row (`Connections\InFlightVoider`).
  *
  * Its key is a lower-case ULID, the `{connection}` of its endpoints, and its
  * timestamps come from the package's clock (see `SsoModel`). Changing its
@@ -41,6 +46,8 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property array<string, mixed> $attribute_mapping
  * @property bool $enabled
  * @property bool $has_completed_sign_in
+ * @property int $links_version
+ * @property int $flows_version
  * @property \Carbon\CarbonImmutable $created_at
  * @property \Carbon\CarbonImmutable $updated_at
  */
@@ -194,6 +201,8 @@ final class Connection extends SsoModel implements SsoConnection
             'attribute_mapping'     => 'array',
             'enabled'               => 'boolean',
             'has_completed_sign_in' => 'boolean',
+            'links_version'         => 'integer',
+            'flows_version'         => 'integer',
             'created_at'            => UtcDateTime::class,
             'updated_at'            => UtcDateTime::class,
         ];

@@ -44,9 +44,11 @@ package registers its settings and its check without editing another's (SSO-12.2
   `external_sign_in` (off unless set), `delivery` (`fragment` or `query`), `discovery` (`enabled`, and the
   `fallback_url` required while it is on with the `discovery` feature), `unlinked_handoffs` (off unless set) and
   `handoff_ttl_seconds` (1 to 300, default 60). Any other key is refused. No request input selects among these values.
-  The exact URI is answered later by a `RedirectUriResolver` contract defaulting to this setting.
+  Each application is judged by `Applications\Application::fromSettings()`, which the flows use too, and the exact URI
+  is answered by the `Contracts\RedirectUriResolver` contract, defaulting to this setting (see `applications.md`).
 - The endpoints (`sso.endpoints`) are built from a configured base URL (a web URL with no query) and a path pattern per
-  endpoint holding `{connection}` once, never from the request's host or headers (SSO-5.5).
+  endpoint holding `{connection}` once, never from the request's host or headers (SSO-5.5), each read by
+  `Endpoints\EndpointSettings`, the one way the default `Contracts\EndpointResolver` and the check read them.
 - The PHP extensions the package needs (`curl`, `dom`, `hash`, `libxml`, `mbstring`, `openssl`, `zlib`, and
   `idn_to_ascii()` from `ext-intl` or `symfony/polyfill-intl-idn`) are required by Composer and checked by
   `[extensions]` while the package is in use, naming each missing one with what it is needed for.
@@ -87,7 +89,7 @@ package registers its settings and its check without editing another's (SSO-12.2
   `ApplicationsCheck.php`.
 - The checks of later parts, each beside the settings it reads: `src/Freshness/FreshnessCheck.php` (`[freshness]`),
   `src/Keys/KeysCheck.php` (`[keys]`), `src/Connections/MappingCheck.php` (`[mapping]`),
-  `src/Domains/DomainsCheck.php` (`[domains]`).
+  `src/Domains/DomainsCheck.php` (`[domains]`), `src/Flows/FlowsCheck.php` (`[flows]`).
 - `src/Console/CheckConfigurationCommand.php`; `src/SsoServiceProvider.php`: `CONFIGURATION_CHECKS`,
   `WORKER_COMMANDS`, `checkConfiguration()`, `checkConfigurationBeforeWork()`; `config/sso.php`.
 

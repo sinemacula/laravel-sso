@@ -9,11 +9,12 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Protocols\Enums\NavigationType;
 use SineMacula\Laravel\Sso\Protocols\Navigation;
+use Tests\Concerns\DumpsValues;
 
 /**
  * Unit tests for the navigation a started flow answers with: a redirect or a
- * posted form, to an absolute `https` URL, serialised as SSO-12.5's
- * `navigation`.
+ * posted form, to an absolute `https` URL, serialised whole as SSO-12.5's
+ * `navigation`, and never showing a query value or a field's value in a dump.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -24,6 +25,29 @@ use SineMacula\Laravel\Sso\Protocols\Navigation;
 #[CoversClass(NavigationType::class)]
 final class NavigationTest extends TestCase
 {
+    use DumpsValues;
+
+    /** @var string An OIDC authorisation request's URL, with its state, nonce and challenge. */
+    private const string OIDC_URL = 'https://idp.example.com/authorize?response_type=code&client_id=client-123'
+        . '&state=the-oidc-state-value&nonce=the-oidc-nonce-value&code_challenge=the-oidc-challenge-value&code_challenge_method=S256';
+
+    /** @var string What a dump shows of the OIDC request's URL. */
+    private const string OIDC_DUMPED = 'https://idp.example.com/authorize?response_type=[redacted]&client_id=[redacted]'
+        . '&state=[redacted]&nonce=[redacted]&code_challenge=[redacted]&code_challenge_method=[redacted]';
+
+    /** @var array<string, string> A SAML HTTP-POST form's fields. */
+    private const array SAML_FIELDS = ['SAMLRequest' => 'PHNhbWxwOkF1dGhuUmVxdWVzdCB0aGUtc2FtbC1yZXF1ZXN0', 'RelayState' => 'the-saml-relay-state'];
+
+    /** @var list<string> The protocol values no dump may show. */
+    private const array PROTOCOL_VALUES = [
+        'client-123',
+        'the-oidc-state-value',
+        'the-oidc-nonce-value',
+        'the-oidc-challenge-value',
+        'PHNhbWxwOkF1dGhuUmVxdWVzdCB0aGUtc2FtbC1yZXF1ZXN0',
+        'the-saml-relay-state',
+    ];
+
     /**
      * A redirect carries its URL and no fields, and serialises as
      * `{type: redirect, url}`.
@@ -37,7 +61,8 @@ final class NavigationTest extends TestCase
         self::assertSame(NavigationType::REDIRECT, $navigation->type);
         self::assertTrue($navigation->isRedirect());
         self::assertFalse($navigation->isPost());
-        self::assertSame([], $navigation->fields);
+        self::assertSame([], $navigation->fields());
+        self::assertSame('https://idp.example.com/sso?SAMLRequest=abc', $navigation->url());
         self::assertSame(['type' => 'redirect', 'url' => 'https://idp.example.com/sso?SAMLRequest=abc'], $navigation->jsonSerialize());
     }
 
@@ -54,6 +79,8 @@ final class NavigationTest extends TestCase
         self::assertSame(NavigationType::POST, $navigation->type);
         self::assertTrue($navigation->isPost());
         self::assertFalse($navigation->isRedirect());
+        self::assertSame('https://idp.example.com/sso', $navigation->url());
+        self::assertSame(['SAMLRequest' => 'abc', 'RelayState' => 'xyz'], $navigation->fields());
         self::assertSame([
             'type'   => 'post',
             'url'    => 'https://idp.example.com/sso',
@@ -138,5 +165,108 @@ final class NavigationTest extends TestCase
         $this->expectExceptionMessage('A posted form\'s fields are strings, each under a non-empty name.');
 
         Navigation::post('https://idp.example.com/sso', $fields);
+    }
+
+    /**
+     * Rows of `[url, dumped]`: a redirect's URL, and the URL its dump shows,
+     * every query value and any fragment redacted.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideDumpedUrls(): iterable
+    {
+        yield from [
+            'no query'                   => ['https://idp.example.com/authorize', 'https://idp.example.com/authorize'],
+            'an OIDC request'            => [self::OIDC_URL, self::OIDC_DUMPED],
+            'an empty query'             => ['https://idp.example.com/a?', 'https://idp.example.com/a?'],
+            'a name with no value'       => ['https://idp.example.com/a?flag&empty=', 'https://idp.example.com/a?flag&empty=[redacted]'],
+            'a value holding = and ?'    => ['https://idp.example.com/a?next=/b?c=d=e&state=s', 'https://idp.example.com/a?next=[redacted]&state=[redacted]'],
+            'a fragment'                 => ['https://idp.example.com/a?state=s#code=c', 'https://idp.example.com/a?state=[redacted]#[redacted]'],
+            'a fragment holding ? and #' => ['https://idp.example.com/a#x?state=s#y', 'https://idp.example.com/a#[redacted]'],
+        ];
+    }
+
+    /**
+     * A redirect's dump shows its type and its URL with every query value and
+     * any fragment redacted, while its URL and its serialised form carry the
+     * URL whole.
+     *
+     * @param  string  $url
+     * @param  string  $dumped
+     * @return void
+     */
+    #[DataProvider('provideDumpedUrls')]
+    public function testARedirectsDumpRedactsEveryQueryValueAndFragment(string $url, string $dumped): void
+    {
+        $navigation = Navigation::redirect($url);
+
+        self::assertSame(['type' => 'redirect', 'url' => $dumped], $navigation->__debugInfo());
+        self::assertSame($url, $navigation->url());
+        self::assertSame(['type' => 'redirect', 'url' => $url], $navigation->jsonSerialize());
+    }
+
+    /**
+     * A post's dump shows its type, its action and its fields' names, never a
+     * field's value, while its fields and its serialised form carry them whole.
+     *
+     * @return void
+     */
+    public function testAPostsDumpShowsItsFieldNamesOnly(): void
+    {
+        $navigation = Navigation::post('https://idp.example.com/sso?tenant=acme', self::SAML_FIELDS);
+
+        self::assertSame([
+            'type'   => 'post',
+            'url'    => 'https://idp.example.com/sso?tenant=[redacted]',
+            'fields' => ['SAMLRequest' => '[redacted]', 'RelayState' => '[redacted]'],
+        ], $navigation->__debugInfo());
+        self::assertSame(['type' => 'post', 'url' => 'https://idp.example.com/sso?tenant=acme', 'fields' => self::SAML_FIELDS], $navigation->jsonSerialize());
+    }
+
+    /**
+     * No dump of an OIDC redirect or a SAML post, by `var_dump()`, `print_r()`,
+     * `var_export()` or Symfony's VarDumper, shows a query value or a field's
+     * value.
+     *
+     * @return void
+     */
+    public function testNoDumpShowsAProtocolValue(): void
+    {
+        foreach ([Navigation::redirect(self::OIDC_URL), Navigation::post('https://idp.example.com/sso', self::SAML_FIELDS)] as $navigation) {
+
+            foreach (self::dumps($navigation) as $dumper => $dumped) {
+
+                self::assertStringContainsString('Navigation', $dumped, $dumper);
+
+                foreach (self::PROTOCOL_VALUES as $value) {
+                    self::assertStringNotContainsString($value, $dumped, "{$dumper} shows [{$value}].");
+                }
+            }
+        }
+    }
+
+    /**
+     * A navigation back to the application leads exactly to the URL it
+     * registered, a native scheme or loopback `http` included, and refuses
+     * anything that is not an exact redirect URI.
+     *
+     * @return void
+     */
+    public function testANavigationBackToTheApplication(): void
+    {
+        foreach (['com.example.app:/sign-in', 'http://127.0.0.1:8080/sign-in', 'https://app.example.com/sign-in?x=1'] as $url) {
+
+            $navigation = Navigation::toApplication($url);
+
+            self::assertTrue($navigation->isRedirect());
+            self::assertSame(['type' => 'redirect', 'url' => $url], $navigation->jsonSerialize());
+        }
+
+        $this->expectExceptionObject(new \InvalidArgumentException(
+            '`navigation` must be an exact redirect URI: an absolute https URL (or http on 127.0.0.1 or [::1]), or a private-use scheme with a dot'
+            . ' (`com.example.app:/callback`), with no user information, fragment or wildcard.',
+        ));
+
+        Navigation::toApplication('http://app.example.com/sign-in');
     }
 }

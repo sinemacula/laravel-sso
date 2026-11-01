@@ -62,8 +62,9 @@ final class EnforcementMigrationTest extends TestCase
     }
 
     /**
-     * The table has exactly these columns, none nullable, the id its primary
-     * key, and one unique index, on the tenant's hash.
+     * The table has exactly these columns, only the version and the time of the
+     * last change nullable (both null on an unconfigured row), the id its
+     * primary key, and one unique index, on the tenant's hash.
      *
      * @return void
      */
@@ -74,7 +75,7 @@ final class EnforcementMigrationTest extends TestCase
         ksort($columns);
 
         self::assertSame([
-            'changed_at'     => false,
+            'changed_at'     => true,
             'connection_ids' => false,
             'created_at'     => false,
             'enabled'        => false,
@@ -82,7 +83,7 @@ final class EnforcementMigrationTest extends TestCase
             'tenant_hash'    => false,
             'tenant_id'      => false,
             'updated_at'     => false,
-            'version'        => false,
+            'version'        => true,
         ], $columns);
 
         $indexes = [];

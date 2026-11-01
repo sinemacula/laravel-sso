@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols;
 
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
@@ -31,7 +32,7 @@ final readonly class StartRequest
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $application
-     * @param  string  $reference
+     * @param  \SineMacula\Laravel\Sso\Flows\RequestReference  $reference
      * @param  \SineMacula\Laravel\Sso\Secrets\Secret  $state
      * @param  ?\SineMacula\Laravel\Sso\Secrets\Secret  $nonce
      * @param  ?\SineMacula\Laravel\Sso\Secrets\Secret  $codeVerifier
@@ -45,7 +46,7 @@ final readonly class StartRequest
         public string $application,
 
         /** The authorisation request's public reference. */
-        public string $reference,
+        public RequestReference $reference,
 
         /** The random reference sent as OIDC `state` or SAML `RelayState`, never the public reference. */
         public Secret $state,

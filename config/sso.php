@@ -25,8 +25,10 @@ return [
     | migration the application performs and a worker restart.
     |
     | Each table's name is set in its own section (`connections.table`,
-    | `keys.table`, `domains.table`, `enforcement.table`, `single_use.table`,
-    | `rate_limits.table`), each defaulting to an `sso_` prefix.
+    | `keys.table`, `domains.table`, `enforcement.table`, `links.table`,
+    | `authorization_requests.table`, `handoff_codes.table`,
+    | `single_use.table`, `rate_limits.table`), each defaulting to an `sso_`
+    | prefix.
     |
     */
 
@@ -267,6 +269,76 @@ return [
 
     /*
     |---------------------------------------------------------------------------
+    | Links
+    |---------------------------------------------------------------------------
+    |
+    | The table links are kept in, on the storage connection: each
+    | connection's issuer and subject (stored byte for byte) associated with
+    | an identity, unique on the connection, issuer and subject. How many links
+    | an identity may hold in one connection is the `LinkLimit` contract's
+    | answer, one by default.
+    |
+    */
+
+    'links' => [
+        'table' => env('SSO_LINKS_TABLE', 'sso_links'),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Authorisation requests
+    |---------------------------------------------------------------------------
+    |
+    | The table each attempt at a flow is kept in, on the storage connection,
+    | until its response consumes it, and how long it waits for that response:
+    | `ttl_seconds`, 60 to 900 seconds (default 600). Its protocol state and
+    | nonce are kept only as digests, and the PKCE verifier the package uses
+    | with the identity provider only encrypted.
+    |
+    */
+
+    'authorization_requests' => [
+        'table'       => env('SSO_AUTHORIZATION_REQUESTS_TABLE', 'sso_authorization_requests'),
+        'ttl_seconds' => env('SSO_AUTHORIZATION_REQUESTS_TTL_SECONDS', 600),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Handoff codes
+    |---------------------------------------------------------------------------
+    |
+    | The table the package's own handoff store keeps its codes in, on the
+    | storage connection, each only as a digest, with the verified result it
+    | carries encrypted. A code's lifetime is each application's
+    | `handoff_ttl_seconds`.
+    |
+    */
+
+    'handoff_codes' => [
+        'table' => env('SSO_HANDOFF_CODES_TABLE', 'sso_handoff_codes'),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Discovery
+    |---------------------------------------------------------------------------
+    |
+    | The least time a discovery start takes, in milliseconds (50 to 2000,
+    | default 250): a timing mitigation, so a domain that routes to a
+    | connection and one that does not answer after the same time when both
+    | finish within it. Work that outlasts it (a slow provider or database)
+    | still shows. Every start sleeps out the rest of it, so plan worker
+    | capacity for it. It cannot be turned off; raise it if starting a flow
+    | through any of your connections takes longer.
+    |
+    */
+
+    'discovery' => [
+        'minimum_duration_milliseconds' => env('SSO_DISCOVERY_MINIMUM_DURATION_MILLISECONDS', 250),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
     | Fresh authentication
     |---------------------------------------------------------------------------
     |
@@ -285,6 +357,7 @@ return [
         'max_age_seconds' => [
             'connection_trust'         => 300,
             'connection_enable'        => 300,
+            'connection_disable'       => 300,
             'connection_delete'        => 300,
             'connection_idp_initiated' => 300,
             'keys_rotate'              => 300,

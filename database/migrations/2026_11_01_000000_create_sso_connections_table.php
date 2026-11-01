@@ -59,6 +59,19 @@ return new class extends Migration {
             // enforcement can be turned on only with such a connection.
             $blueprint->boolean('has_completed_sign_in')->default(false);
 
+            // Raised by every link created through the connection, under the
+            // connection's lock, so the insert also writes this row: a
+            // PostgreSQL REPEATABLE READ transaction that then locks the row
+            // fails to serialise rather than miss the link (SubjectMigration).
+            $blueprint->unsignedBigInteger('links_version')->default(0);
+
+            // Raised by every authorisation request stored and every handoff
+            // code issued through the connection, under its lock, so either
+            // insert also writes this row: a PostgreSQL REPEATABLE READ change
+            // that then locks the row fails to serialise rather than leave the
+            // new request or code unvoided (InFlightVoider).
+            $blueprint->unsignedBigInteger('flows_version')->default(0);
+
             // Whole seconds in UTC, from the package's clock.
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);

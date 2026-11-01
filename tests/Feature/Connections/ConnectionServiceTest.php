@@ -8,6 +8,7 @@ use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionFinder;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
@@ -24,11 +25,15 @@ use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Links\Enums\LinkState;
+use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Secrets\MaskedSecret;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\ExampleDriver;
@@ -36,11 +41,13 @@ use Tests\TestCase;
 
 /**
  * Feature tests for the management helpers (SSO-1.2, SSO-2.3 to SSO-2.5,
- * SSO-2.10 to SSO-2.12): every outcome of create, update, get, list and
- * enable; tenant scoping; presets; secrets kept, set and cleared; exactly the
- * freshness operations each change asks, with their configured maximum ages; a
- * stale caller refused with nothing written or reported; and the event each
- * change reports.
+ * SSO-2.10 to SSO-2.12): every outcome of create, update, get, list and enable;
+ * tenant scoping; presets; secrets kept, set and cleared; exactly the freshness
+ * operations each change asks, with their configured maximum ages; a stale
+ * caller refused with nothing written or reported; the event each change
+ * reports; and a change to what subjects mean refused while the connection has
+ * links (SSO-2.13), after freshness is asked, with what is in flight voided by
+ * every trust change it allows.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,7 +59,7 @@ use Tests\TestCase;
 #[CoversClass(ConnectionSummary::class)]
 final class ConnectionServiceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections;
+    use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The tenant the connections belong to. */
     private const string TENANT = 'tenant-1';
@@ -110,6 +117,7 @@ final class ConnectionServiceTest extends TestCase
         config()->set('sso.freshness.max_age_seconds.connection_trust', self::TRUST_MAX_AGE);
 
         $this->createConnectionTables();
+        $this->createFlowTables();
         $this->startRecordingEvents();
     }
 
@@ -121,6 +129,7 @@ final class ConnectionServiceTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        $this->dropFlowTables();
         $this->dropConnectionTables();
 
         parent::tearDown();
@@ -1093,6 +1102,156 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
+     * Rows of `[protocol, changes]`: a change to each setting that may alter
+     * what existing subjects mean.
+     *
+     * @return iterable<string, array{0: string, 1: array<string, mixed>}>
+     */
+    public static function provideSubjectChanges(): iterable
+    {
+        yield from [
+            'the oidc issuer'        => ['oidc', ['issuer' => 'https://login.example.com']],
+            'the oidc client id'     => ['oidc', ['client_id' => 'client-456']],
+            'the saml entity id'     => ['saml2', ['idp_entity_id' => 'https://idp.example.com/other']],
+            'the saml subject'       => ['saml2', ['subject_source' => 'attribute', 'subject_attribute' => 'urn:oid:0.9.2342.19200300.100.1.1']],
+            'the saml nameid format' => ['saml2', ['name_id_format' => 'unspecified']],
+        ];
+    }
+
+    /**
+     * A change to a subject setting of a connection with an active link is
+     * refused with `connection_has_links` once freshness is fresh, and nothing
+     * is written, voided or reported.
+     *
+     * @param  string  $protocol
+     * @param  array<string, mixed>  $settings
+     * @return void
+     */
+    #[DataProvider('provideSubjectChanges')]
+    public function testASubjectChangeIsRefusedWhileTheConnectionHasALink(string $protocol, array $settings): void
+    {
+        $id         = $protocol === 'oidc' ? $this->createOidc() : $this->createSaml();
+        $connection = $this->stored($id);
+
+        $this->makeLink($connection);
+
+        $request = $this->makeAuthorizationRequest($connection);
+        $before  = $this->rows();
+        $result  = $this->service()->update(self::TENANT, $id, ['settings' => $settings]);
+
+        self::assertSame(ConnectionStatus::REFUSED, $result->status);
+        self::assertSame(FailureReason::CONNECTION_HAS_LINKS, $result->reason);
+        self::assertSame([[FreshnessOperation::CONNECTION_TRUST, self::TRUST_MAX_AGE]], $this->freshness->asked());
+        self::assertSame($before, $this->rows());
+        self::assertNull(AuthorizationRequest::query()->findOrFail($request->id)->voided_at);
+        $this->assertNoEvents();
+    }
+
+    /**
+     * A reservation that expires after now counts as a link; one that expired
+     * at now, or before, does not.
+     *
+     * @return void
+     */
+    public function testOnlyAnUnexpiredReservationCountsAsALink(): void
+    {
+        $id         = $this->createOidc();
+        $connection = $this->stored($id);
+        $now        = $this->clock->now();
+        $reserved   = ['state' => LinkState::RESERVED, 'reservation_reference' => str_repeat('r', 32)];
+
+        $expired = $this->makeLink($connection, 'expired', $reserved + ['reservation_expires_at' => $now->subSecond()]);
+        $expiry  = $this->makeLink($connection, 'expiring', $reserved + ['reservation_expires_at' => $now]);
+        $open    = $this->makeLink($connection, 'open', $reserved + ['reservation_expires_at' => $now->addSecond()]);
+
+        self::assertSame(FailureReason::CONNECTION_HAS_LINKS, $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']])->reason);
+
+        $open->delete();
+
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']]);
+
+        self::assertSame(ConnectionStatus::UPDATED, $result->status);
+        self::assertSame(['issuer'], $result->changedSettings);
+        self::assertSame('https://login.example.com', $this->stored($id)->settings['issuer']);
+        self::assertSame(2, $expired->newQuery()->whereKey([$expired->id, $expiry->id])->count());
+    }
+
+    /**
+     * A link of another connection does not hold this connection's subjects.
+     *
+     * @return void
+     */
+    public function testAnotherConnectionsLinkDoesNotCount(): void
+    {
+        $id    = $this->createOidc();
+        $other = $this->stored($this->createOidc());
+
+        $this->makeLink($other);
+
+        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $id, ['settings' => ['client_id' => 'client-456']])->status);
+    }
+
+    /**
+     * Freshness is asked before the links are: a stale caller is refused with
+     * `freshness_required`, however many links the connection has.
+     *
+     * @return void
+     */
+    public function testAStaleSubjectChangeIsRefusedForFreshnessFirst(): void
+    {
+        $id = $this->createOidc();
+
+        $this->makeLink($this->stored($id));
+        $this->freshness->answer(FreshnessOutcome::STALE);
+
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']])->reason);
+        $this->assertNoEvents();
+    }
+
+    /**
+     * A trust change that alters no subject is allowed on a connection with
+     * links, and voids what is in flight through it.
+     *
+     * @return void
+     */
+    public function testATrustChangeThatAltersNoSubjectIsAllowedWithLinksAndVoids(): void
+    {
+        $id         = $this->createOidc();
+        $connection = $this->stored($id);
+
+        $this->makeLink($connection);
+
+        $request = $this->makeAuthorizationRequest($connection);
+        $code    = $this->makeHandoffCode($connection);
+        $result  = $this->service()->update(self::TENANT, $id, ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth2/token']]);
+
+        self::assertSame(ConnectionStatus::UPDATED, $result->status);
+        self::assertSame(['token_endpoint'], $result->changedSettings);
+        self::assertSame('2026-11-01T09:30:00+00:00', AuthorizationRequest::query()->findOrFail($request->id)->voided_at?->toIso8601String());
+        self::assertSame('2026-11-01T09:30:00+00:00', HandoffCode::query()->findOrFail($code->id)->voided_at?->toIso8601String());
+        $this->assertEventSequence([ConnectionUpdated::class]);
+    }
+
+    /**
+     * A change that alters no subject and asks no trust is allowed with links
+     * and voids nothing.
+     *
+     * @return void
+     */
+    public function testAChangeThatAsksNoTrustVoidsNothing(): void
+    {
+        $id         = $this->createOidc();
+        $connection = $this->stored($id);
+
+        $this->makeLink($connection);
+
+        $request = $this->makeAuthorizationRequest($connection);
+
+        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed', 'settings' => ['scopes' => ['openid']]])->status);
+        self::assertNull(AuthorizationRequest::query()->findOrFail($request->id)->voided_at);
+    }
+
+    /**
      * The management helpers, resolved per request.
      *
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionService
@@ -1144,6 +1303,24 @@ final class ConnectionServiceTest extends TestCase
     private function createOidc(array $settings = []): string
     {
         $result = $this->service()->create(self::TENANT, 'oidc', 'Acme', $settings + self::OIDC + ['client_secret' => self::SECRET]);
+
+        self::assertSame(ConnectionStatus::CREATED, $result->status);
+
+        $this->freshness->reset();
+        $this->startRecordingEvents();
+
+        return (string) $result->connection?->id;
+    }
+
+    /**
+     * Create a complete SAML connection named `Acme`, then forget what was
+     * asked and reported.
+     *
+     * @return string
+     */
+    private function createSaml(): string
+    {
+        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', self::SAML);
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
 

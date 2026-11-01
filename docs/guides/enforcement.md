@@ -106,11 +106,35 @@ turns it off.
 Under `laravel-iam` you do not call it yourself: it is folded into `laravel-authentication`'s tenant authentication
 policy (AUTH-2.12), asked at sign-in, at the choice of principal, on every switch and on refresh.
 
+### Admitting a session while the rule changes
+
+`policy()` takes no lock: it answers the rule as it is, but the rule can change before the session it admitted is
+written, and that session would then escape the change's revocation. The package's own admissions close that gap. A
+handoff redemption and a completion lock the tenant's rule first (the enforcing tenant's row, inserted empty when the
+tenant has none), then the connections in id order, then their own row, and judge the rule from what they locked. A
+change to the rule waits for them, and its revocation then sees the session your redemption wrote in its transaction;
+or they wait for the change, and see it. Write the session inside the redemption's transaction (see
+[Redeeming a handoff](redeeming-a-handoff.md#transactions)) for this to hold. On PostgreSQL under `REPEATABLE READ`, a
+redemption or completion that waited can get a serialisation failure instead: it is thrown, and the whole transaction
+is retried or the person starts again.
+
+If you bind your own `Contracts\Enforcement`, the package asks it as you bound it and locks nothing of its own
+enforcement. A current read in your contract does not close the gap above: your contract must itself serialise an
+admission against changes to its rule until the session commits (for example by locking the row your rule is stored
+in, in the same transaction, with the same lock your changes take first), and your revocation must find sessions with
+current reads or writes, never from a snapshot.
+
 ### Inherited rules
 
 By default each tenant's own rule applies to it alone. If your tenants form a tree and a child should follow an
 ancestor's rule, bind `Contracts\EnforcementInheritance`: it answers, for a tenant and an application, the tenant whose
 rule applies. The policy then names it as `enforcingTenantId`, and only that tenant's connections satisfy it.
+
+The package asks it inside a redemption's or a completion's transaction, before it takes the enforcing tenant's lock
+and again once it holds it; an answer that changed in between refuses the admission (`connection_unavailable`) rather
+than lock another tenant's rule out of order. Answer it in a way that is safe inside the caller's transaction: from
+state that does not change under it (a tenant's place in the tree rarely does), or read it with a current read rather
+than from the transaction's snapshot.
 
 ```php
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
@@ -207,7 +231,9 @@ yours, and leaving them out leaves their sessions in place. A session establishe
 connection; match it with `whereNull()` alongside `whereNotIn()`, since SQL never counts `NULL` as outside a list.
 
 Write through the same Laravel connection the package uses, so your writes commit or roll back with the change; a
-write through another connection, even to the same database, is not atomic with it. Signal failure by throwing: the
+write through another connection, even to the same database, is not atomic with it. Find the sessions with an update
+or delete (a current read), never by reading them first inside the change's transaction: a session committed by a
+redemption the change waited for is newer than that transaction's snapshot. Signal failure by throwing: the
 change is rolled back (no new version, no event) and the exception reaches your caller as a server error. Never return
 as if you revoked what you did not.
 

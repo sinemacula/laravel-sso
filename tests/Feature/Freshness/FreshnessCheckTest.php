@@ -32,7 +32,7 @@ final class FreshnessCheckTest extends TestCase
     private const string NOT_AN_ARRAY = '`sso.freshness.max_age_seconds` must be an array of maximum ages by operation.';
 
     /** @var string The operations an unknown key is reported against, in order. */
-    private const string OPERATIONS = 'connection_trust, connection_enable, connection_delete, connection_idp_initiated, keys_rotate, '
+    private const string OPERATIONS = 'connection_trust, connection_enable, connection_disable, connection_delete, connection_idp_initiated, keys_rotate, '
         . 'domain_claim, domain_verify, domain_remove, enforcement_update, link_create, link_remove';
 
     /**

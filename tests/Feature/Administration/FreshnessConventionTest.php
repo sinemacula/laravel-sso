@@ -8,9 +8,11 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
+use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
+use SineMacula\Laravel\Sso\Connections\SubjectMigration;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
@@ -26,13 +28,16 @@ use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
  * Feature tests of the convention every change to a connection, a key or a
- * certificate follows (SSO-2.12): it asks the freshness contract, with the
+ * certificate follows (SSO-2.12), disabling, deleting and migrating a
+ * connection's subjects included: it asks the freshness contract, with the
  * operation's stable name and its configured maximum age, before it writes.
  * Under the default contract, which refuses everything, each is refused with
  * `freshness_required`, writing and reporting nothing; under one that answers
@@ -50,10 +55,12 @@ use Tests\TestCase;
  */
 #[CoversClass(ConnectionService::class)]
 #[CoversClass(KeyService::class)]
+#[CoversClass(ConnectionLifecycle::class)]
+#[CoversClass(SubjectMigration::class)]
 #[CoversClass(FreshnessGate::class)]
 final class FreshnessConventionTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections;
+    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var string The tenant whose connections the helpers act on. */
     private const string TENANT = 'tenant-1';
@@ -62,8 +69,11 @@ final class FreshnessConventionTest extends TestCase
     private const array MAX_AGES = [
         'connection_trust'         => 111,
         'connection_enable'        => 222,
+        'connection_disable'       => 777,
         'connection_idp_initiated' => 333,
         'keys_rotate'              => 444,
+        'connection_delete'        => 555,
+        'link_remove'              => 666,
     ];
 
     /** @var array<string, string> The settings of a complete OIDC connection. */
@@ -129,6 +139,8 @@ final class FreshnessConventionTest extends TestCase
         }
 
         $this->createConnectionTables();
+        $this->createDomainsTable();
+        $this->createFlowTables();
         $this->prepare();
         $this->startRecordingEvents();
     }
@@ -141,6 +153,8 @@ final class FreshnessConventionTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        $this->dropFlowTables();
+        $this->dropDomainsTable();
         $this->dropConnectionTables();
 
         parent::tearDown();
@@ -160,6 +174,9 @@ final class FreshnessConventionTest extends TestCase
         yield 'update turning IdP-initiated sign-in on' => ['update idp initiated', [FreshnessOperation::CONNECTION_IDP_INITIATED]];
         yield 'update turning IdP-initiated sign-in off' => ['update idp initiated off', [FreshnessOperation::CONNECTION_IDP_INITIATED]];
         yield 'enable' => ['enable', [FreshnessOperation::CONNECTION_ENABLE]];
+        yield 'disable' => ['disable', [FreshnessOperation::CONNECTION_DISABLE]];
+        yield 'delete' => ['delete', [FreshnessOperation::CONNECTION_DELETE]];
+        yield 'subject migration' => ['migrate', [FreshnessOperation::CONNECTION_TRUST, FreshnessOperation::LINK_REMOVE]];
         yield 'add next' => ['add next', [FreshnessOperation::KEYS_ROTATE]];
         yield 'make current' => ['make current', [FreshnessOperation::KEYS_ROTATE]];
         yield 'retire' => ['retire', [FreshnessOperation::KEYS_ROTATE]];
@@ -328,7 +345,17 @@ final class FreshnessConventionTest extends TestCase
                 ['settings' => ['idp_initiated' => false, 'idp_initiated_start_url' => null]],
                 $this->actor,
             ),
-            'enable' => fn (): ConnectionResult => $this->connections()->enable(self::TENANT, $this->oidc, $this->actor),
+            'enable'  => fn (): ConnectionResult => $this->connections()->enable(self::TENANT, $this->oidc, $this->actor),
+            'disable' => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->oidc, $this->actor),
+            'delete'  => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->oidc, $this->actor),
+            'migrate' => fn (): ConnectionResult => $this->migration()->migrate(
+                self::TENANT,
+                $this->oidc,
+                ['settings' => ['issuer' => 'https://login.example.com']],
+                [],
+                [],
+                $this->actor,
+            ),
         ];
     }
 
@@ -436,6 +463,32 @@ final class FreshnessConventionTest extends TestCase
         $app = $this->app;
 
         return $app->make(ConnectionService::class);
+    }
+
+    /**
+     * The disabling and deleting helpers, as the container builds them.
+     *
+     * @return \SineMacula\Laravel\Sso\Connections\ConnectionLifecycle
+     */
+    private function lifecycle(): ConnectionLifecycle
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app = $this->app;
+
+        return $app->make(ConnectionLifecycle::class);
+    }
+
+    /**
+     * The subject migration helper, as the container builds it.
+     *
+     * @return \SineMacula\Laravel\Sso\Connections\SubjectMigration
+     */
+    private function migration(): SubjectMigration
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app = $this->app;
+
+        return $app->make(SubjectMigration::class);
     }
 
     /**
