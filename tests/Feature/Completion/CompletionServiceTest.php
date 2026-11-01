@@ -639,7 +639,11 @@ final class CompletionServiceTest extends TestCase
 
         self::assertTrue($this->completeAtCallback()->isCompleted());
 
-        $grant = $this->issuer->soleGrant();
+        $grant  = $this->issuer->soleGrant();
+        $pinned = $grant->result->toArray();
+
+        // MySQL keeps a JSON object's keys in its own order, not as written.
+        ksort($pinned['attributes']);
 
         self::assertSame([
             'issuer'                 => VerifyingDriver::ISSUER,
@@ -661,7 +665,7 @@ final class CompletionServiceTest extends TestCase
                 'provider_session_deadline' => '2026-11-01T18:00:00.000000Z',
             ],
             'linking_email' => null,
-        ], $grant->result->toArray());
+        ], $pinned);
 
         self::assertSame(self::CHALLENGE, $grant->challenge->value);
         self::assertSame('2026-11-01T09:31:00+00:00', $grant->expiresAt->toIso8601String());

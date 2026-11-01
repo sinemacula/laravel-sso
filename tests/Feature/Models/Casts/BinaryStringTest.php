@@ -60,7 +60,10 @@ final class BinaryStringTest extends TestCase
     public function testBindsBytesAsTheEngineNeeds(): void
     {
         $cast = new BinaryString;
-        $link = new Link;
+
+        config()->set('database.connections.binary_sqlite', ['driver' => 'sqlite', 'database' => ':memory:']);
+
+        $link = (new Link)->setConnection('binary_sqlite');
 
         self::assertNull($cast->set($link, 'subject', null, []));
         self::assertSame("a\x00b", $cast->set($link, 'subject', "a\x00b", []));
