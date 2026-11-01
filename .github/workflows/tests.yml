@@ -136,7 +136,7 @@ jobs:
         # was pulling and booting an engine it never connects to. Each image
         # ignores the other's variables, so one block configures either. Both
         # probes go over the loopback address rather than a socket, since an
-        # engine that initializes behind a temporary local server answers a
+        # engine that initialises behind a temporary local server answers a
         # socket probe before the server the tests will actually reach is up.
         # The data directory is held in memory: the database is thrown away
         # with the job, so syncing every write to disk only slows the tests.

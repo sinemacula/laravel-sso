@@ -10,7 +10,7 @@ clover.xml
 composer.lock
 
 # Root-level shadows of the shared qlty configs (the canonical copies live in
-# .qlty/configs/); tooling may materialize these at the repo root - ignore them
+# .qlty/configs/); tooling may materialise these at the repo root - ignore them
 # so they are never committed and never shadow the real configs.
 /phpcs.xml
 /phpstan.neon

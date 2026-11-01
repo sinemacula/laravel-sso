@@ -95,8 +95,8 @@ composer bench:ci   # PHPBench with CI artifact dump
 - PHPStan level 8 compliance
 - Full type hints on all public method parameters and return types
 - PHPDoc on all methods and classes
-- New code is expected to ship with tests covering the behavioral surface; the package's mutation-testing gate
-  (`composer test:mutation`) is the enforced floor. Behavior that spans a flow (starting an authorization request,
+- New code is expected to ship with tests covering the behavioural surface; the package's mutation-testing gate
+  (`composer test:mutation`) is the enforced floor. Behaviour that spans a flow (starting an authorisation request,
   completing it, redeeming its handoff, events) should be covered by integration tests that exercise the package the way
   a consuming application does.
 
