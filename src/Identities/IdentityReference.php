@@ -47,6 +47,21 @@ final readonly class IdentityReference implements \JsonSerializable
     }
 
     /**
+     * The reference two nullable columns hold, or `null` when either is `null`:
+     * an identity is named by both parts or not at all.
+     *
+     * @param  ?string  $type
+     * @param  ?string  $id
+     * @return ?self
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function fromColumns(?string $type, ?string $id): ?self
+    {
+        return $type === null || $id === null ? null : new self($type, $id);
+    }
+
+    /**
      * Whether the reference names the same identity as the other.
      *
      * @param  self  $other

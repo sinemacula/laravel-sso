@@ -62,8 +62,9 @@ enum FailureReason: string
     // the maximum age allowed (SSO-6.5, SSO-7.4)
     case ASSERTION_EXPIRED = 'assertion_expired';
 
-    // The assertion id was seen before, or the single-use store could not
-    // record it (SSO-6.6, SSO-11.5)
+    // The assertion id was seen before, the handoff code was already redeemed,
+    // or the single-use store could not record either (SSO-6.6, SSO-9.2,
+    // SSO-11.5)
     case REPLAYED = 'replayed';
 
     // The ID token's nonce is not the one the request stored (SSO-7.4)
@@ -93,6 +94,44 @@ enum FailureReason: string
     // now; the result carries `retryAfter` (SSO-11.8)
     case RATE_LIMITED = 'rate_limited';
 
+    // The S256 challenge a start was given is not 43 base64url characters (RFC
+    // 7636 §4.2, SSO-5.1)
+    case CHALLENGE_INVALID = 'challenge_invalid';
+
+    // A `reauthenticate` flow names an identity and a session the
+    // reauthentication contract does not find signed in through the connection
+    // (SSO-5.10)
+    case SESSION_INELIGIBLE = 'session_ineligible';
+
+    // Discovery found no enabled connection the email's domain is verified
+    // for; the client is answered with the application's fallback, exactly as
+    // a match is answered (SSO-3.4, SSO-3.5)
+    case DISCOVERY_NO_MATCH = 'discovery_no_match';
+
+    // A response arrived at another connection's endpoint than the one its
+    // authorisation request names, or a handoff code was redeemed for another
+    // connection than the one it is bound to (SSO-5.5, SSO-9.2)
+    case CONNECTION_MISMATCH = 'connection_mismatch';
+
+    // A handoff code was redeemed for another application than the one it is
+    // bound to (SSO-9.2)
+    case APPLICATION_MISMATCH = 'application_mismatch';
+
+    // The connection does not satisfy its tenant's enforcement for the
+    // application, at completion or at redemption (SSO-4.1, SSO-4.6)
+    case ENFORCEMENT_UNSATISFIED = 'enforcement_unsatisfied';
+
+    // No handoff code is stored for what was presented, or it was voided
+    // (SSO-9.2, SSO-2.13)
+    case HANDOFF_UNKNOWN = 'handoff_unknown';
+
+    // The handoff code has expired (SSO-9.2)
+    case HANDOFF_EXPIRED = 'handoff_expired';
+
+    // The link a handoff code resolved at completion was removed, or now names
+    // another identity (SSO-8.5, SSO-9.9)
+    case LINK_CHANGED = 'link_changed';
+
     // An outbound request was refused before it was sent: not `https`, an
     // address in a refused range, a redirect where none may be followed, or a
     // redirect to a refused address (SSO-2.9)
@@ -103,9 +142,10 @@ enum FailureReason: string
     // slow, or it redirected too often (SSO-2.9)
     case FETCH_FAILED = 'fetch_failed';
 
-    // Administration, on a management helper's result only: the freshness
-    // contract answered `stale`, so the caller must authenticate again within
-    // the operation's maximum age (SSO-2.11, SSO-2.12)
+    // The freshness contract answered `stale`, so the caller must authenticate
+    // again within the operation's maximum age: a management helper's refusal
+    // (SSO-2.11, SSO-2.12), and a `link` flow's start, which reports it once as
+    // any refused start does (SSO-5.11)
     case FRESHNESS_REQUIRED = 'freshness_required';
 
     // No connection with that id belongs to the tenant named
@@ -152,4 +192,20 @@ enum FailureReason: string
     // Enforcement cannot be turned on: none of the connections that would
     // satisfy it is enabled and has completed a sign-in (SSO-4.3)
     case COMPLETED_SIGN_IN_REQUIRED = 'completed_sign_in_required';
+
+    // No link with that id belongs to the identity named (SSO-8.4)
+    case LINK_NOT_FOUND = 'link_not_found';
+
+    // The identity holds as many links in the connection as the link limit
+    // contract allows (SSO-8.4)
+    case LINK_LIMIT_REACHED = 'link_limit_reached';
+
+    // The issuer and subject are already linked in the connection, to this
+    // identity or another (SSO-8.4, SSO-5.11)
+    case SUBJECT_ALREADY_LINKED = 'subject_already_linked';
+
+    // A change that may alter the meaning of the connection's subjects was
+    // refused because the connection has links; the migration helper relinks or
+    // removes them first (SSO-2.13)
+    case CONNECTION_HAS_LINKS = 'connection_has_links';
 }

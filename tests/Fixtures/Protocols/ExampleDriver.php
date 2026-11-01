@@ -10,6 +10,8 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Completion;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
+use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
+use SineMacula\Laravel\Sso\Protocols\Correlation;
 use SineMacula\Laravel\Sso\Protocols\Navigation;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 use SineMacula\Laravel\Sso\Protocols\Start;
@@ -17,8 +19,9 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
 
 /**
  * A protocol an application might register: complete once its issuer is set, it
- * starts by redirecting to the issuer, refuses every completion, and describes
- * itself as a small JSON document.
+ * starts by redirecting to the issuer, expecting it as the response's issuer,
+ * correlates a response by its `state` query parameter, refuses every
+ * completion, and describes itself as a small JSON document.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,7 +66,28 @@ final readonly class ExampleDriver implements ProtocolDriver
     {
         $issuer = $connection->getSettings()['issuer'] ?? null;
 
-        return is_string($issuer) ? Start::navigate(Navigation::redirect($issuer), ['reference' => $request->reference]) : Start::refused(FailureReason::CONNECTION_UNAVAILABLE);
+        unset($request);
+
+        return is_string($issuer) ? Start::navigate(Navigation::redirect($issuer), expectedIssuer: $issuer) : Start::refused(FailureReason::CONNECTION_UNAVAILABLE);
+    }
+
+    /**
+     * Correlate a response by its `state` query parameter.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
+     * @return \SineMacula\Laravel\Sso\Protocols\Correlation
+     */
+    #[\Override]
+    public function correlate(SsoConnection $connection, CompletionRequest $request): Correlation
+    {
+        unset($connection);
+
+        parse_str($request->query(), $query);
+
+        $state = $query['state'] ?? null;
+
+        return is_string($state) && $state !== '' ? Correlation::solicited($state) : Correlation::uncorrelated();
     }
 
     /**
@@ -71,12 +95,13 @@ final readonly class ExampleDriver implements ProtocolDriver
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      */
     #[\Override]
-    public function complete(SsoConnection $connection, CompletionRequest $request): Completion
+    public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed): Completion
     {
-        unset($connection, $request);
+        unset($connection, $request, $consumed);
 
         return Completion::refused(FailureReason::PROVIDER_ERROR);
     }

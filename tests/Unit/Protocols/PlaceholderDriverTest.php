@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Unit\Protocols;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -11,7 +12,9 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Contracts\ProtocolDriver;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
+use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcDriver;
 use SineMacula\Laravel\Sso\Protocols\PlaceholderDriver;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
@@ -50,25 +53,33 @@ final class PlaceholderDriverTest extends TestCase
     }
 
     /**
-     * No connection is complete, however complete its settings, and every flow
-     * is refused with `connection_unavailable`.
+     * No connection is complete, however complete its settings, every flow is
+     * refused with `connection_unavailable`, and no response is correlated with
+     * a request.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\ProtocolDriver  $driver
      * @param  string  $name
      * @return void
+     *
+     * @throws \Random\RandomException
      */
     #[DataProvider('provideDrivers')]
     public function testFailsEveryFlowClosed(ProtocolDriver $driver, string $name): void
     {
-        $connection = new ExampleConnection($name, ['issuer' => 'https://idp.example.com', 'idp_entity_id' => 'https://idp.example.com']);
-        $start      = $driver->start($connection, new StartRequest(Purpose::SIGN_IN, 'web', 'ref-1', new Secret('state')));
-        $completion = $driver->complete($connection, CompletionRequest::fromRequest(Request::create('https://api.example.com/callback?code=a&state=b')));
-        $describe   = $driver->describe($connection);
+        $connection  = new ExampleConnection($name, ['issuer' => 'https://idp.example.com', 'idp_entity_id' => 'https://idp.example.com']);
+        $reference   = RequestReference::generate();
+        $start       = $driver->start($connection, new StartRequest(Purpose::SIGN_IN, 'web', $reference, new Secret('state')));
+        $response    = CompletionRequest::fromRequest(Request::create('https://api.example.com/callback?code=a&state=b'));
+        $correlation = $driver->correlate($connection, $response);
+        $completion  = $driver->complete($connection, $response, new ConsumedRequest(Purpose::SIGN_IN, 'web', $reference, CarbonImmutable::now()));
+        $describe    = $driver->describe($connection);
 
         self::assertFalse($driver->isComplete($connection));
         self::assertTrue($start->isRefused());
         self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $start->reason);
+        self::assertTrue($correlation->isUncorrelated());
         self::assertTrue($completion->isRefused());
+        self::assertFalse($completion->isVerified());
         self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $completion->reason);
         self::assertFalse($describe->isAvailable());
         self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $describe->reason);

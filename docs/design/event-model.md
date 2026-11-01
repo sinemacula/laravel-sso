@@ -107,10 +107,10 @@ are a contract.
   | Event                | Fields beyond the context                          | Dispatched by                                                  |
   |----------------------|----------------------------------------------------|----------------------------------------------------------------|
   | `ConnectionCreated`  | none                                               | `ConnectionService::create()`                                  |
-  | `ConnectionUpdated`  | `changedSettings`, names only                      | `ConnectionService::update()`, when something changed          |
+  | `ConnectionUpdated`  | `changedSettings`, names only                      | `ConnectionService::update()`, `SubjectMigration::migrate()`   |
   | `ConnectionEnabled`  | none                                               | `ConnectionService::enable()`, when it was disabled            |
-  | `ConnectionDisabled` | none                                               | The disabling helper (BL-37)                                   |
-  | `ConnectionDeleted`  | none                                               | The deleting helper (BL-37)                                    |
+  | `ConnectionDisabled` | none                                               | `ConnectionLifecycle::disable()`, when it was enabled          |
+  | `ConnectionDeleted`  | none                                               | `ConnectionLifecycle::delete()`                                |
   | `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter` | `KeyService::addNext()`, `trustCertificate()`                  |
   | `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`     | `KeyService::addNext()` for a use's first key, `makeCurrent()` |
   | `KeyRetired`         | `keyId`, `use`, `fingerprint`                      | `KeyService::retire()`, `distrustCertificate()`                |

@@ -64,6 +64,8 @@ order, and the predicates every later reader judges a domain by. The scheduled r
   gap locks can still cause between claims of neighbouring domains is retried up to three times when the helper's
   transaction is the outermost; inside the application's, it propagates. Later items that lock domains (the recheck,
   linking, a connection's deletion) keep this order.
+- Discovery reads `DomainFinder::claimsOf($domain)` without a lock, since it writes nothing on the strength of it, and
+  routes by the claim `DomainClaims::routing($now)` picks ([discovery.md](discovery.md)).
 - Every outcome is a `Domains\DomainResult` (status `Domains\Enums\DomainStatus`): `claimed`, `verified`, `unchanged`
   or `removed` with a `Domains\DomainSummary`; `refused` with `freshness_required`, `connection_not_found`,
   `domain_not_found`, `domain_unavailable`, `domain_claim_expired`, `domain_record_not_found`, `domain_lookup_failed`

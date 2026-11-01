@@ -139,4 +139,29 @@ final class NavigationTest extends TestCase
 
         Navigation::post('https://idp.example.com/sso', $fields);
     }
+
+    /**
+     * A navigation back to the application leads exactly to the URL it
+     * registered, a native scheme or loopback `http` included, and refuses
+     * anything that is not an exact redirect URI.
+     *
+     * @return void
+     */
+    public function testANavigationBackToTheApplication(): void
+    {
+        foreach (['com.example.app:/sign-in', 'http://127.0.0.1:8080/sign-in', 'https://app.example.com/sign-in?x=1'] as $url) {
+
+            $navigation = Navigation::toApplication($url);
+
+            self::assertTrue($navigation->isRedirect());
+            self::assertSame(['type' => 'redirect', 'url' => $url], $navigation->jsonSerialize());
+        }
+
+        $this->expectExceptionObject(new \InvalidArgumentException(
+            '`navigation` must be an exact redirect URI: an absolute https URL (or http on 127.0.0.1 or [::1]), or a private-use scheme with a dot'
+            . ' (`com.example.app:/callback`), with no user information, fragment or wildcard.',
+        ));
+
+        Navigation::toApplication('http://app.example.com/sign-in');
+    }
 }

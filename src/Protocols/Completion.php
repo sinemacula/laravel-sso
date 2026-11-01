@@ -5,14 +5,18 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols;
 
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 
 /**
  * How a driver judged the identity provider's response to an authorisation
- * request (SSO-5.6, SSO-6, SSO-7).
+ * request (SSO-5.6, SSO-6, SSO-7): verified, with what every check verified, or
+ * refused with a reason.
  *
- * Until the completion pipeline (BL-34) adds the verified outcome, carrying the
- * verified result, every completion is refused with a reason: no driver can yet
- * produce a result, and none passes for one.
+ * A driver answers `verified` only once every check of its protocol has passed
+ * against the consumed request; the completion pipeline then builds the
+ * `VerifiedResult` from the claims. Every refusal is a value: a malformed,
+ * unsigned, expired or replayed response, an unsuccessful SAML status or an
+ * OIDC `error` response.
  *
  * @api
  *
@@ -24,13 +28,28 @@ final readonly class Completion
     /**
      * Constructor.
      *
-     * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @param  ?\SineMacula\Laravel\Sso\Results\VerifiedClaims  $claims
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      */
     private function __construct(
 
-        /** Why the response was refused. */
-        public FailureReason $reason,
+        /** What the driver verified, for a verified response. */
+        public ?VerifiedClaims $claims,
+
+        /** Why the response was refused, for a refused one. */
+        public ?FailureReason $reason,
     ) {}
+
+    /**
+     * The response passed every check, with what they verified.
+     *
+     * @param  \SineMacula\Laravel\Sso\Results\VerifiedClaims  $claims
+     * @return self
+     */
+    public static function verified(VerifiedClaims $claims): self
+    {
+        return new self($claims, null);
+    }
 
     /**
      * The response was refused, for the reason given.
@@ -40,7 +59,17 @@ final readonly class Completion
      */
     public static function refused(FailureReason $reason): self
     {
-        return new self($reason);
+        return new self(null, $reason);
+    }
+
+    /**
+     * Whether the response passed every check.
+     *
+     * @return bool
+     */
+    public function isVerified(): bool
+    {
+        return $this->claims !== null;
     }
 
     /**
@@ -50,6 +79,6 @@ final readonly class Completion
      */
     public function isRefused(): bool
     {
-        return true;
+        return $this->reason !== null;
     }
 }

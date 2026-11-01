@@ -13,28 +13,44 @@ use Illuminate\Support\ServiceProvider;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Psr\Log\LoggerInterface;
+use SineMacula\Laravel\Sso\Applications\ConfiguredApplicationPolicy;
+use SineMacula\Laravel\Sso\Applications\ConfiguredRedirectUriResolver;
 use SineMacula\Laravel\Sso\Clock\SystemClock;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
+use SineMacula\Laravel\Sso\Contracts\ApplicationPolicy;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
+use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
+use SineMacula\Laravel\Sso\Contracts\Linker;
+use SineMacula\Laravel\Sso\Contracts\LinkLimit;
+use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
+use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
+use SineMacula\Laravel\Sso\Contracts\RedirectUriResolver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
+use SineMacula\Laravel\Sso\Endpoints\ConfiguredEndpointResolver;
 use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
 use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
 use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
+use SineMacula\Laravel\Sso\Flows\NoReauthenticationSessions;
+use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
+use SineMacula\Laravel\Sso\Links\NoLinks;
+use SineMacula\Laravel\Sso\Links\OneLinkPerConnection;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
+use SineMacula\Laravel\Sso\Results\ProviderDeadlineLimitsSession;
 use SineMacula\Laravel\Sso\Revocation\NoSessionRevocation;
 use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
@@ -114,6 +130,8 @@ final class SsoServiceProviderTest extends TestCase
         yield 'the attempt limiter' => [AttemptLimiter::class, DatabaseAttemptLimiter::class];
         yield 'the DNS resolver' => [DnsResolver::class, SystemDnsResolver::class];
         yield 'the enforcement' => [Enforcement::class, DatabaseEnforcement::class];
+        yield 'the endpoint resolver' => [EndpointResolver::class, ConfiguredEndpointResolver::class];
+        yield 'the handoff issuer' => [HandoffIssuer::class, DatabaseHandoffStore::class];
     }
 
     /**
@@ -190,6 +208,45 @@ final class SsoServiceProviderTest extends TestCase
      */
     #[DataProvider('statelessEnforcementDefaults')]
     public function testEachStatelessEnforcementDefaultOutlivesARequest(string $abstract, string $default): void
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app   = $this->app;
+        $first = $app->make($abstract);
+
+        self::assertInstanceOf($default, $first);
+
+        $app->forgetScopedInstances();
+
+        self::assertSame($first, $app->make($abstract));
+    }
+
+    /**
+     * Each stateless flow contract with its default.
+     *
+     * @return iterable<string, array{class-string, class-string}>
+     */
+    public static function statelessFlowDefaults(): iterable
+    {
+        yield 'the application policy' => [ApplicationPolicy::class, ConfiguredApplicationPolicy::class];
+        yield 'the redirect URI resolver' => [RedirectUriResolver::class, ConfiguredRedirectUriResolver::class];
+        yield 'the linker' => [Linker::class, NoLinks::class];
+        yield 'the link limit' => [LinkLimit::class, OneLinkPerConnection::class];
+        yield 'the reauthentication sessions' => [ReauthenticationSessions::class, NoReauthenticationSessions::class];
+        yield 'the provider session deadline' => [ProviderSessionDeadline::class, ProviderDeadlineLimitsSession::class];
+    }
+
+    /**
+     * The flow defaults that hold nothing (the application policy, the redirect
+     * URI resolver, the linker, the link limit, the reauthentication sessions
+     * and the provider session deadline) are each one instance for every
+     * request (SSO-11.2).
+     *
+     * @param  class-string  $abstract
+     * @param  class-string  $default
+     * @return void
+     */
+    #[DataProvider('statelessFlowDefaults')]
+    public function testEachStatelessFlowDefaultOutlivesARequest(string $abstract, string $default): void
     {
         /** @var \Illuminate\Foundation\Application $app */
         $app   = $this->app;
@@ -313,6 +370,9 @@ final class SsoServiceProviderTest extends TestCase
             '2026_11_01_000001_create_sso_keys_table.php',
             '2026_11_02_000000_create_sso_domains_table.php',
             '2026_11_02_000001_create_sso_enforcement_table.php',
+            '2026_11_03_000000_create_sso_links_table.php',
+            '2026_11_03_000001_create_sso_authorization_requests_table.php',
+            '2026_11_03_000002_create_sso_handoff_codes_table.php',
         ], array_map(basename(...), array_keys($paths)));
 
         foreach ($paths as $from => $to) {

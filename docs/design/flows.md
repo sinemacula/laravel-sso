@@ -1,0 +1,208 @@
+# Flow Core
+
+## Purpose
+
+This note records the parts of the links and flow core (P3) that every flow shares, so links, authorisation requests,
+discovery, completion, handoff codes, completion responses and connection lifecycle changes are built on one model:
+the three tables and their models, the distinct value types that cross a flow, the verified result, the contracts and
+their fail-closed defaults, the completion's fixed steps and the transaction each runs in, the lock order, the failure
+reasons by flow and the events each operation reports. Each part's own behaviour is in its own note (`links.md`,
+`authorization-requests.md`, `discovery.md`, `completion.md`, `handoffs.md`, `completion-responses.md`,
+`connection-lifecycle.md`); applications and endpoints are in `applications.md`.
+
+## Invariants
+
+### Tables and models
+
+- `sso.links.table` (`sso_links`, `Models\Link`): `connection_id`; `issuer` (up to 1024) and `name_id_format` (up to
+  255, SAML only), kept as received; `subject`, byte for byte in a binary column (`Models\Casts\BinaryString`: a
+  stream on PostgreSQL, a string elsewhere); `subject_key`, the lower-case hex SHA-256 of the issuer, the format and the
+  subject, each length-prefixed, unique with `connection_id`, the only column a lookup compares, so no collation can
+  fold or trim a subject; `identity_type` and `identity_id`; `state` (`Links\Enums\LinkState`: `active`, `reserved`),
+  `reservation_expires_at` and `reservation_reference` for linking by a verified domain (P6); `domain_provenance`
+  (SSO-8.8); `last_used_at`, `created_at`, `updated_at`. The connection, issuer, format, subject and key are fixed once
+  the link exists (`LogicException`). Indexed by (`identity_type`, `identity_id`, `connection_id`) for listing and the
+  link limit.
+- `sso.authorization_requests.table` (`sso_authorization_requests`, `Models\AuthorizationRequest`): `reference`, the
+  public reference, unique; `state_digest`, the SHA-256 of the random protocol state, unique, never the state;
+  `purpose`, `application`, `connection_id`; `expected_issuer`, `issuer_required`; `nonce_digest`; `code_verifier`, the
+  PKCE verifier used with the identity provider, encrypted through `Contracts\SecretEncrypter`; `saml_request_id`,
+  unique with the connection; `handoff_challenge`, the client's S256 challenge; `identity_type`, `identity_id` (`link`,
+  `reauthenticate`) and `session_id` (`reauthenticate`); `expires_at`, and `consumed_at` (a completion consumed it),
+  `voided_at` (a change to its connection voided it) and `completed_at` (its completion finished, either way).
+- `sso.handoff_codes.table` (`sso_handoff_codes`, `Models\HandoffCode`): `code_digest`, unique, never the code; what the
+  code is bound to: `purpose`, `application`, `connection_id`, `request_reference`, `handoff_challenge`, `identity_type`
+  and `identity_id` (the flow's identity), `session_id`, `linked_identity_type` and `linked_identity_id` (what the
+  result's link resolved to at completion); `result`, the serialised verified result, encrypted; `enforcement_version`
+  and `session_not_after` (SSO-9.10); `expires_at`, `redeemed_at`, `voided_at`.
+- Every model is keyed by a lower-case ULID and stamped from the package's clock (`SsoModel::identifiedAndStamped()`),
+  hidden columns (digests, ciphertexts) never serialise, and no model carries behaviour: a reader builds an identity
+  from two columns with `Identities\IdentityReference::fromColumns()`. There is no foreign key: a connection's deletion
+  deletes its rows in its own transaction, whatever the engine. A lookup by `reference` or `saml_request_id` compares
+  again in PHP, exactly, since MySQL's default collation folds case.
+- Every read that decides a flow is made on the write connection (SSO-11.3); every write goes through the model.
+
+### Value types
+
+- `Flows\RequestReference`: 32 base64url characters from 24 random bytes, under the 40 the log sanitiser redacts; not a
+  secret, the only flow identifier in events and logs, under `request_reference` (SSO-9.8).
+- `Flows\Verifier`: 43 to 128 unreserved characters (RFC 7636 §4.1); a generated one is 43 characters from 32 random
+  bytes, returned once in the start response's body. Held in a `\SensitiveParameterValue` behind `reveal()`, with a
+  redacted dump and JSON form, no `__toString()`, and no (un)serialisation; compared in constant time.
+- `Flows\S256Challenge`: `BASE64URL(SHA-256(verifier))` without padding, 43 characters; satisfied only by its verifier,
+  compared in constant time.
+- `Handoffs\HandoffCode`: 43 base64url characters from 32 random bytes; held like a verifier; stored only as
+  `digest()`, matched with `matches($digest)` in constant time.
+- The protocol state (OIDC `state`, SAML `RelayState`) and the nonce are `Secrets\Secret` values; only their digests are
+  stored. None of these types is accepted as another, nor as a token (SSO-9.2, AUTH-5.7).
+
+### Verified result
+
+- `Results\VerifiedResult` (SSO-8.1): `issuer`, `subject`, `nameIdFormat`, `connectionId`, `tenantId`, `protocol`,
+  `application`, `purpose`, `requestReference`, the mapped `attributes` (strings or lists of strings), whether the
+  email's domain is verified for the connection, the `Results\AuthenticationContext` (authentication time, methods,
+  context class, provider session id and deadline) and the optional `Results\LinkingEmail` (email, source, accepted
+  organisation). The issuer and subject are 1 to 1024 bytes, exactly as received (SSO-6.9).
+- It is serialisable, as SSO-8.1 requires: `toArray()`, `serialize()` and `json_encode()` write the same stored form,
+  holding everything above and nothing else; `restore()` and `unserialize()` check every part again and fail with an
+  `UnexpectedValueException` on anything the package did not write. It is read back only from the package's own
+  encrypted storage, never from client input, and never handed to an event whole.
+- `Results\VerifiedClaims` is what a driver verified (issuer, subject, format, raw attributes by provider name,
+  authentication context, linking email); it lives only for its completion (no serialisation, a dump shows attribute
+  names only).
+
+### Contracts and defaults
+
+| Contract                   | Default                                      | Fails closed by                              |
+|----------------------------|----------------------------------------------|----------------------------------------------|
+| `ApplicationPolicy`        | `Applications\ConfiguredApplicationPolicy`   | `external_sign_in` off unless set            |
+| `RedirectUriResolver`      | `Applications\ConfiguredRedirectUriResolver` | the configured URI, checked exactly          |
+| `EndpointResolver`         | `Endpoints\ConfiguredEndpointResolver`       | configuration only, never the request        |
+| `Linker`                   | `Links\NoLinks`                              | linking nothing                              |
+| `LinkLimit`                | `Links\OneLinkPerConnection`                 | one link per identity per connection         |
+| `ReauthenticationSessions` | `Flows\NoReauthenticationSessions`           | `not_signed_in` for every question           |
+| `ProviderSessionDeadline`  | `Results\ProviderDeadlineLimitsSession`      | the deadline limits the session              |
+| `HandoffIssuer`            | `Handoffs\DatabaseHandoffStore`              | the package's own store                      |
+| `CompletionStage`          | one class per step                           | a stage refuses as a value, errors propagate |
+
+Each is bound with `singletonIf` when it holds nothing and `scopedIf` when it reads configuration or a connection, so an
+earlier binding is kept and nothing outlives a request (SSO-11.2).
+
+### The completion
+
+- `Contracts\ProtocolDriver` is split for it: `correlate()` reads which request a response answers
+  (`Protocols\Correlation`: `solicited` with the state and/or the SAML request id, `unsolicited`, `uncorrelated`)
+  without validating anything; `complete()` validates against the `Protocols\ConsumedRequest` (purpose, application,
+  reference, start time, expected issuer and `iss` requirement, SAML request id, nonce digest matched by `isNonce()`,
+  the PKCE verifier, decrypted only when the driver asks for it with `codeVerifier()` to build the token request) and
+  answers `Protocols\Completion::verified(VerifiedClaims)` or `refused(FailureReason)`.
+  `Protocols\Start` keeps what a request stores, typed: `samlRequestId`, `expectedIssuer`, `issuerRequired`.
+- The steps run in `Completion\Enums\CompletionStep`'s order: `correlation`, `consumption`, `validation`,
+  `link_resolution`, `enforcement`, `domain_reservation`, `provisioning`, `unlinked_decision`, `handoff_issuance`. Each
+  is a `Contracts\CompletionStage` taking and returning a `Completion\CompletionState` through a
+  `Completion\StageOutcome` (`proceed` or `refuse` with a reason, the state kept either way). The two P6 steps,
+  `domain_reservation` and `provisioning`, are `Completion\Stages\UnbuiltStage`s that pass every state on.
+- Transactions: a completion, and a start (named or by discovery), run outside any transaction on the storage
+  connection; called inside one, each is a `LogicException` at entry, before anything is written, so a caller's
+  rollback never undoes a consumption (SSO-5.1) and a caller's transaction never keeps the connection's lock across a
+  call to the driver (SSO-11.5). A redemption, by decision D5, may run inside the redeemer's.
+  `correlation` and `validation` run outside any transaction the pipeline opens (validation may fetch);
+  `consumption` runs in a transaction of its own on the storage connection, which locks the connection's row before the
+  request's, as every transaction here does, so the request is consumed whether the response then passes or fails;
+  every step from `link_resolution` on runs in one transaction on the storage connection
+  that first locks the connection's row and then the request's row, and refuses if the connection is no longer usable
+  or the request was voided since consumption. Events are dispatched after that transaction commits (or after the
+  consumption's, for a refusal before it), never on a rollback.
+- `Completion\CompletionResult` is how a completion ended: `completed` (redirect URI, delivery, reference, issued
+  handoff), `failed` (reason, redirect URI, delivery, reference), `rejected` (reason, no trusted target: a 400),
+  `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL, P4). It may hold the code, so it
+  shows none in a dump and refuses serialisation.
+- `Handoffs\HandoffGrant` is what a code is issued for: the result (which names purpose, application, connection and
+  reference), the challenge, the expiry, the linked identity, the flow's identity (`link`, `reauthenticate`) and session
+  (`reauthenticate`), the enforcement version and the session's latest end; a grant whose identity or session does not
+  fit its purpose is refused. `Handoffs\IssuedHandoff` is the code and its expiry.
+
+### Lock order
+
+A connection's row, then its rows in the other tables: domains (P2), requests, codes, links. A tenant's enforcement row
+precedes connection rows (P2). Every re-read under a lock that decides a write is a locking read (`lockForUpdate()`),
+since a caller's MySQL REPEATABLE READ transaction answers a plain read from an older snapshot, and an answer reached
+before the lock ("unchanged", "already done", the state a slow step was based on) is confirmed under it.
+
+### Start
+
+`Flows\StartResult` answers a start (`started` with reference, navigation and the generated verifier, `refused`, or
+`rate_limited`), with `body()` (`{reference, navigation, verifier?}`, the one place a verifier is revealed, or
+`{error, retry_after?}`) and `headers()` (`Cache-Control: no-store`, and `Retry-After`). A discovery miss and a start
+naming an unknown or disabled connection for an application that offers discovery answer `started`, with the
+fallback's navigation (`Protocols\Navigation::toApplication()`), a reference and a verifier in the same shape.
+`Flows\FlowSettings` reads `sso.authorization_requests.ttl_seconds` (60 to 900, default 600) and
+`sso.discovery.minimum_duration_milliseconds` (50 to 2000, default 250); `[flows]` checks both at boot.
+
+### Failure reasons by flow
+
+- Authorisation request (`Flow::AUTHORIZATION_REQUEST`): `application_not_allowed`, `connection_unavailable`,
+  `challenge_invalid`, `freshness_required` (`link`), `session_ineligible` (`reauthenticate`), `discovery_no_match`,
+  `rate_limited`.
+- Assertion and callback (`Flow::ASSERTION`, `Flow::CALLBACK`): `connection_unavailable`, `connection_mismatch`,
+  `request_unknown`, `request_expired`, every validation reason of P4 and P5, `enforcement_unsatisfied`, `unlinked`,
+  `application_not_allowed`, `rate_limited`.
+- Redemption (`Flow::REDEMPTION`): `handoff_unknown`, `handoff_expired`, `replayed`, `purpose_mismatch`,
+  `application_mismatch`, `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`,
+  `enforcement_unsatisfied`, `link_changed`, `application_not_allowed`, `rate_limited`.
+- Administration (a helper's result, no event): `link_not_found`, `link_limit_reached`, `subject_already_linked`,
+  `connection_has_links`, with P1's `freshness_required` and `connection_not_found`.
+
+### Events
+
+`Events\AuthorizationRequestStarted`, `Events\ResultVerified`, `Events\HandoffIssued`, `Events\HandoffRedeemed`,
+`Events\LinkCreated` (with `Links\Enums\LinkOrigin`: `link_purpose`, `provisioning`, `verified_domain`, `migration`) and
+`Events\LinkRemoved`, each carrying only an `EventContext`; every refused start, completion and redemption fires exactly
+one `Events\FlowFailed`. No event holds a code, verifier, state, nonce, subject, attribute or result.
+
+## Success Path
+
+1. A start admits the application, resolves the connection, generates the state, nonce and PKCE verifier, asks the
+   driver to start, stores the request, and answers `started` with `Cache-Control: no-store`
+   (`AuthorizationRequestStarted`).
+2. A completion correlates, consumes, validates, resolves the link, checks enforcement, decides an unlinked sign-in,
+   asks the policy again and issues the code under the connection's lock (`ResultVerified`, `HandoffIssued`), and
+   answers `completed`.
+3. A redemption with the code, application, connection and verifier consumes the code once, rechecks the connection,
+   enforcement and link, and answers the result (`HandoffRedeemed`).
+
+## Failure / Edge Cases
+
+- A request or a code is consumed exactly once, through the single-use store and a locked row, whatever the race; a
+  request's consumption is never inside a caller's transaction (a completion there is refused), and a code's, inside a
+  redeemer's, is undone only with the redemption it belongs to; a replay is refused.
+- A disable or trust change voids every unfinished request and every unredeemed code of the connection in its own
+  transaction; a completion that consumed a request before the change refuses it under the lock afterwards.
+- A database error is never a refusal: it propagates as a server error (SSO-11.4).
+
+## Implementation Anchors
+
+- `database/migrations/2026_11_03_000000_create_sso_links_table.php`,
+  `database/migrations/2026_11_03_000001_create_sso_authorization_requests_table.php`,
+  `database/migrations/2026_11_03_000002_create_sso_handoff_codes_table.php`; `src/Models/Link.php`,
+  `src/Models/AuthorizationRequest.php`, `src/Models/HandoffCode.php`, `src/Models/Casts/BinaryString.php`.
+- `src/Flows/`, `src/Handoffs/HandoffCode.php`, `src/Handoffs/HandoffGrant.php`, `src/Handoffs/IssuedHandoff.php`,
+  `src/Results/`, `src/Links/`, `src/Completion/`.
+- `src/Contracts/` (the contracts above), `src/Protocols/Correlation.php`, `src/Protocols/ConsumedRequest.php`,
+  `src/Protocols/Completion.php`, `src/Protocols/Start.php`.
+- `src/Events/Enums/FailureReason.php`, the six events, `src/SsoServiceProvider.php`.
+
+## Authoritative Tests
+
+- `tests/Integration/Flows/FlowTablesMigrationTest.php`, `tests/Feature/Models/FlowModelsTest.php`,
+  `tests/Feature/Models/Casts/BinaryStringTest.php`.
+- `tests/Unit/Flows/`, `tests/Unit/Handoffs/`, `tests/Unit/Results/`, `tests/Unit/Protocols/CorrelationTest.php`,
+  `tests/Unit/Protocols/ConsumedRequestTest.php`, `tests/Unit/Completion/CompletionResultTest.php`,
+  `tests/Feature/Completion/CompletionStateTest.php`, `tests/Unit/Events/FlowEventClassesTest.php`.
+- `tests/Feature/Flows/FlowsCheckTest.php`, `tests/Feature/SsoServiceProviderTest.php`.
+
+## Change Triggers
+
+- A new table, column or index; a change to a value type's form or to what the verified result holds.
+- A new contract, a change to a default, or a step added to, removed from or moved in the completion.
+- A change to the lock order or to which transaction a step runs in.

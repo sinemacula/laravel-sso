@@ -54,4 +54,24 @@ final class IdentityReferenceTest extends TestCase
             }
         }
     }
+
+    /**
+     * Two nullable columns name an identity only when both are set.
+     *
+     * @return void
+     */
+    public function testReadsAReferenceFromTwoColumns(): void
+    {
+        $reference = IdentityReference::fromColumns('user', '7');
+
+        self::assertNotNull($reference);
+        self::assertSame(['type' => 'user', 'id' => '7'], $reference->jsonSerialize());
+        self::assertNull(IdentityReference::fromColumns(null, '7'));
+        self::assertNull(IdentityReference::fromColumns('user', null));
+        self::assertNull(IdentityReference::fromColumns(null, null));
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        IdentityReference::fromColumns('', '7');
+    }
 }

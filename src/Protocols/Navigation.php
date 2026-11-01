@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Protocols;
 
+use SineMacula\Laravel\Sso\Config\UrlSetting;
 use SineMacula\Laravel\Sso\Protocols\Enums\NavigationType;
 
 /**
@@ -12,6 +13,11 @@ use SineMacula\Laravel\Sso\Protocols\Enums\NavigationType;
  * HTTP-POST `AuthnRequest`, SSO-5.3). The application's controller turns it
  * into a response; `jsonSerialize()` is the `navigation` of SSO-12.5's start
  * response, `{type: redirect, url}` or `{type: post, url, fields}`.
+ *
+ * A navigation to an identity provider leads to an absolute `https` URL. One
+ * back to the application itself, a discovery miss's fallback (SSO-3.5), leads
+ * to the URL the application registered, which may be `http` on a loopback
+ * address or a native application's private-use scheme, exactly as registered.
  *
  * @api
  *
@@ -50,6 +56,20 @@ final readonly class Navigation implements \JsonSerializable
     public static function redirect(string $url): self
     {
         return new self(NavigationType::REDIRECT, self::url($url), []);
+    }
+
+    /**
+     * Redirect the browser back to a URL the application registered, such as
+     * its discovery fallback: an exact redirect URI (`UrlSetting::redirect()`).
+     *
+     * @param  string  $url
+     * @return self
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function toApplication(string $url): self
+    {
+        return new self(NavigationType::REDIRECT, UrlSetting::redirect('navigation', $url), []);
     }
 
     /**

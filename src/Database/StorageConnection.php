@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Database;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Where the package's tables live, and what they are called: the connection the
@@ -24,6 +25,12 @@ use Illuminate\Support\Facades\Config;
  * atomic. The attempt counters live on `sso.rate_limits.connection` when it
  * names one, so they can stay out of a transaction a refused flow rolls back,
  * and on the storage connection otherwise.
+ *
+ * A start that calls a protocol driver and a completion run outside any
+ * transaction open on the storage connection (`assertNoTransaction()`): a
+ * caller's rollback would otherwise undo a request's consumption, and its
+ * transaction would keep the connection's lock across a call to the identity
+ * provider.
  *
  * Every table is named by a setting under `sso.`, listed with its default in
  * `TABLES`; a table added to the package is added there, and the models (see
@@ -45,12 +52,15 @@ final class StorageConnection
 {
     /** @var array<string, string> Every package table: the key, under `sso.`, of the setting that names it, and its default name. */
     public const array TABLES = [
-        'single_use.table'  => 'sso_single_use_keys',
-        'rate_limits.table' => 'sso_rate_limits',
-        'connections.table' => 'sso_connections',
-        'keys.table'        => 'sso_keys',
-        'domains.table'     => 'sso_domains',
-        'enforcement.table' => 'sso_enforcement',
+        'single_use.table'             => 'sso_single_use_keys',
+        'rate_limits.table'            => 'sso_rate_limits',
+        'connections.table'            => 'sso_connections',
+        'keys.table'                   => 'sso_keys',
+        'domains.table'                => 'sso_domains',
+        'enforcement.table'            => 'sso_enforcement',
+        'links.table'                  => 'sso_links',
+        'authorization_requests.table' => 'sso_authorization_requests',
+        'handoff_codes.table'          => 'sso_handoff_codes',
     ];
 
     /** @var string The key, under `sso.`, of the table that lives on the counters' connection. */
@@ -162,6 +172,22 @@ final class StorageConnection
     public static function resolvedName(): string
     {
         return self::name() ?? Config::string('database.default');
+    }
+
+    /**
+     * Refuse, with the message, an operation called while a transaction is open
+     * on the storage connection.
+     *
+     * @param  string  $message
+     * @return void
+     *
+     * @throws \LogicException
+     */
+    public static function assertNoTransaction(string $message): void
+    {
+        if (DB::connection(self::name())->transactionLevel() > 0) {
+            throw new \LogicException($message);
+        }
     }
 
     /**

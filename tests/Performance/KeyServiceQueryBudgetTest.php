@@ -30,10 +30,14 @@ use Tests\Fixtures\Keys\Certificates;
  * - `makeCurrent()`: 5 reads (the connection and the key, twice, and the
  *   current key of the use), 2 writes (the current key made retiring, the next
  *   made current);
- * - `retire()` and `distrustCertificate()`: 4 reads (the connection and the
- *   key, twice), 1 write (the delete);
+ * - `retire()`: 4 reads (the connection and the key, twice), 1 write (the
+ *   delete);
+ * - `distrustCertificate()`: 4 reads (the connection and the key, twice), 3
+ *   writes (the delete, then the requests and the handoff codes in flight
+ *   voided);
  * - `trustCertificate()`: 4 reads (the connection and the fingerprints trusted,
- *   twice), 1 write (the insert);
+ *   twice), 3 writes (the insert, then the requests and the handoff codes in
+ *   flight voided);
  * - `keys()`: 2 reads (the connection, then its rows), no write.
  *
  * A refusal stops where it is decided, with no write: a stale caller costs the
@@ -121,26 +125,28 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Trusting a certificate is four reads and one insert.
+     * Trusting a certificate is four reads, one insert and the two voiding
+     * updates.
      *
      * @return void
      */
-    public function testTrustingACertificateIsFourReadsAndAnInsert(): void
+    public function testTrustingACertificateIsFourReadsAndThreeWrites(): void
     {
-        $result = $this->assertQueryBudget(4, 1, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::ecP256()));
+        $result = $this->assertQueryBudget(4, 3, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::ecP256()));
 
         self::assertTrue($result->isSucceeded());
     }
 
     /**
-     * Distrusting a certificate is four reads and one delete.
+     * Distrusting a certificate is four reads, one delete and the two voiding
+     * updates.
      *
      * @return void
      */
-    public function testDistrustingACertificateIsFourReadsAndADelete(): void
+    public function testDistrustingACertificateIsFourReadsAndThreeWrites(): void
     {
         $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::ecP256()));
-        $result      = $this->assertQueryBudget(4, 1, fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id));
+        $result      = $this->assertQueryBudget(4, 3, fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id));
 
         self::assertTrue($result->isSucceeded());
     }

@@ -13,16 +13,68 @@ interfaces it implements, so one listener on the contract receives them all:
 ```php
 use Illuminate\Support\Facades\Event;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
-use SineMacula\Laravel\Sso\Events\FlowFailed;
 
 Event::listen(SsoEvent::class, function (SsoEvent $event): void {
-    AuditLog::record(
-        event: $event::class,
-        context: $event->context()->toArray(),
-        reason: $event instanceof FlowFailed ? $event->reason->value : null,
-    );
+    // $event->context()->toArray() is the record to keep
 });
 ```
+
+### Recording them with `laravel-audit-log`
+
+With `laravel-iam` installed there is nothing to wire: it maps the package's events. Without it, register a mapper for
+the events you record, in a service provider's `boot()`:
+
+```php
+use SineMacula\Laravel\AuditLog\Facades\AuditLog;
+use SineMacula\Laravel\Sso\Events\FlowFailed;
+
+AuditLog::map(FlowFailed::class, SsoAuditMapper::class);
+```
+
+The mapper implements `laravel-audit-log`'s `SineMacula\Laravel\AuditLog\Contracts\EventMapper`, whose `map(object
+$event, PendingRecord $record): ?PendingRecord` fills the record and returns it, or returns `null` to skip the event.
+Give each event an explicit code rather than deriving one from the class name, and correlate the records of one flow by
+the connection and the request's public reference, skipping the correlation when an event has no reference:
+
+```php
+use SineMacula\Laravel\AuditLog\Contracts\EventMapper;
+use SineMacula\Laravel\AuditLog\Records\PendingRecord;
+use SineMacula\Laravel\AuditLog\Records\Reference;
+use SineMacula\Laravel\Sso\Events\FlowFailed;
+
+final class SsoAuditMapper implements EventMapper
+{
+    public function map(object $event, PendingRecord $record): ?PendingRecord
+    {
+        if (!$event instanceof FlowFailed) {
+            return null;
+        }
+
+        $context = $event->context()->toArray();
+
+        $record->event('sso.flow_failed')
+            ->failed($event->reason->value)
+            ->withProperties(['flow' => $event->flow->value, 'application' => $context['application']]);
+
+        if ($context['identity_morph_class'] !== null && $context['identity_id'] !== null) {
+            $record->by(Reference::of($context['identity_morph_class'], $context['identity_id']));
+        }
+
+        if ($context['tenant_id'] !== null) {
+            $record->forTenant($context['tenant_id']);
+        }
+
+        if ($context['request_reference'] !== null) {
+            $record->correlatedWith("sso:{$context['connection_id']}:{$context['request_reference']}");
+        }
+
+        return $record;
+    }
+}
+```
+
+A mapped event is recorded as soon as it is dispatched, and the package dispatches every event once the write it
+reports has committed (see below), so nothing is recorded for a change that rolled back.
 
 ## The context record
 
@@ -72,29 +124,65 @@ with the operation's flow (`$event->flow`, a `Flow`) and a machine-readable reas
 | `callback`              | An OIDC authorisation response at the callback                              |
 | `redemption`            | A handoff code presented for redemption                                     |
 
-| Reason                    | Meaning                                                                                  |
-|---------------------------|------------------------------------------------------------------------------------------|
-| `connection_unavailable`  | The connection is unknown, disabled or incomplete; the same answer for each              |
-| `application_not_allowed` | The application does not allow sign-in through an external provider                      |
-| `request_unknown`         | No stored authorisation request matches, or it was already used                          |
-| `request_expired`         | The authorisation request expired                                                        |
-| `signature_invalid`       | A required signature is missing, does not verify, or uses a key or algorithm not allowed |
-| `issuer_mismatch`         | The issuer is not the connection's                                                       |
-| `audience_mismatch`       | The audience does not name this service provider or client                               |
-| `recipient_mismatch`      | The recipient or destination is not the connection's assertion consumer service          |
-| `assertion_expired`       | The assertion or ID token is not yet valid, expired, or is too old                       |
-| `replayed`                | The assertion was seen before, or could not be recorded as seen                          |
-| `nonce_mismatch`          | The ID token's nonce is not the one the request stored                                   |
-| `provider_error`          | The identity provider answered with an error                                             |
-| `metadata_expired`        | The connection's metadata is past its `validUntil` and no refresh has succeeded          |
-| `unlinked`                | A sign-in resolved to no identity and the application does not allow unlinked handoffs   |
-| `purpose_mismatch`        | A handoff code was presented to the redemption of another purpose                        |
-| `verifier_mismatch`       | The verifier presented with a handoff code does not match its challenge                  |
-| `rate_limited`            | The IP address, email domain or connection used up its attempts for now                  |
-| `fetch_refused`           | An outbound request to the identity provider was refused before it was sent              |
-| `fetch_failed`            | An outbound request to the identity provider was sent and failed                         |
+| Reason                    | Meaning                                                                                   |
+|---------------------------|-------------------------------------------------------------------------------------------|
+| `connection_unavailable`  | The connection is unknown, disabled or incomplete; the same answer for each               |
+| `application_not_allowed` | The application does not allow sign-in through an external provider                       |
+| `request_unknown`         | No stored authorisation request matches, or it was already used                           |
+| `request_expired`         | The authorisation request expired                                                         |
+| `signature_invalid`       | A required signature is missing, does not verify, or uses a key or algorithm not allowed  |
+| `issuer_mismatch`         | The issuer is not the connection's                                                        |
+| `audience_mismatch`       | The audience does not name this service provider or client                                |
+| `recipient_mismatch`      | The recipient or destination is not the connection's assertion consumer service           |
+| `assertion_expired`       | The assertion or ID token is not yet valid, expired, or is too old                        |
+| `replayed`                | The assertion was seen before, or could not be recorded as seen                           |
+| `nonce_mismatch`          | The ID token's nonce is not the one the request stored                                    |
+| `provider_error`          | The identity provider answered with an error                                              |
+| `metadata_expired`        | The connection's metadata is past its `validUntil` and no refresh has succeeded           |
+| `unlinked`                | A sign-in resolved to no identity and the application does not allow unlinked handoffs    |
+| `purpose_mismatch`        | A handoff code was presented to the redemption of another purpose                         |
+| `verifier_mismatch`       | The verifier presented with a handoff code does not match its challenge                   |
+| `rate_limited`            | The IP address, email domain or connection used up its attempts for now                   |
+| `challenge_invalid`       | The S256 challenge a start was given is not 43 base64url characters                       |
+| `session_ineligible`      | A `reauthenticate` flow's identity is not signed in through the connection on its session |
+| `discovery_no_match`      | Discovery found no connection for the email's domain; the client got the fallback         |
+| `connection_mismatch`     | A response or a handoff code was presented for another connection than its own            |
+| `application_mismatch`    | A handoff code was presented for another application than its own                         |
+| `enforcement_unsatisfied` | The connection does not satisfy its tenant's enforcement for the application              |
+| `handoff_unknown`         | No handoff code is stored for what was presented, or it was voided                        |
+| `handoff_expired`         | The handoff code expired                                                                  |
+| `link_changed`            | The link a handoff code resolved was removed, or now names another identity               |
+| `freshness_required`      | A `link` flow was started without fresh enough authentication                             |
+| `fetch_refused`           | An outbound request to the identity provider was refused before it was sent               |
+| `fetch_failed`            | An outbound request to the identity provider was sent and failed                          |
 
 The reasons and flows are stable: a value is never renamed or reused, so you can count failure modes by them.
+
+## Flow and link events
+
+Each flow reports what it did with one event per step that changed something, once the step's transaction commits.
+Each is in `SineMacula\Laravel\Sso\Events` and carries the context above, the request's public reference among it;
+none holds a handoff code, a verifier, protocol state, a subject, a mapped attribute or the verified result.
+
+| Event                         | Fields beyond the context | Dispatched when                                                                    |
+|-------------------------------|---------------------------|------------------------------------------------------------------------------------|
+| `AuthorizationRequestStarted` | none                      | A start stored its authorisation request and sent the client on                    |
+| `ResultVerified`              | none                      | A completion's response passed every check, before what the completion did with it |
+| `HandoffIssued`               | none                      | A completion issued a handoff code                                                 |
+| `HandoffRedeemed`             | none                      | The package's own redemption redeemed a handoff code                               |
+| `LinkCreated`                 | `origin`: how it was made | A link was made by a `link` flow, provisioning, a verified domain or a migration   |
+| `LinkRemoved`                 | none                      | A link was removed, and the identity's sessions through the connection revoked     |
+
+`AuthorizationRequestStarted`'s context names the connection, its tenant and protocol, the application, the purpose and
+the request's public reference, with the identity a `link` or `reauthenticate` was started for and the session of a
+`reauthenticate`. A refused start's `FlowFailed` names the purpose, the identity and session your application gave, and
+as much more as the start had established: the application once admitted, the connection once found, the reference
+once made.
+
+A completion that issues a code reports `ResultVerified` then `HandoffIssued`; one refused after its response verified
+reports `ResultVerified` then `FlowFailed`; one refused before reports `FlowFailed` alone. `ResultVerified` at
+completion and the sign-in's own event at redemption both carry the connection and the request's public reference, so
+an audit trail correlates them rather than counting a sign-in twice.
 
 ## When events are dispatched
 
@@ -123,10 +211,10 @@ commits, so an audit trail can record who changed which identity provider's trus
 | Event                | Fields beyond the context                          | Dispatched when                                                                 |
 |----------------------|----------------------------------------------------|---------------------------------------------------------------------------------|
 | `ConnectionCreated`  | none                                               | `ConnectionService::create()` created a connection, disabled                    |
-| `ConnectionUpdated`  | `changedSettings`: the names of what changed       | `update()` changed a setting, a secret, the display name or the mapping         |
+| `ConnectionUpdated`  | `changedSettings`: the names of what changed       | `update()` or `SubjectMigration::migrate()` changed what the connection holds   |
 | `ConnectionEnabled`  | none                                               | `enable()` enabled a disabled connection                                        |
-| `ConnectionDisabled` | none                                               | A connection was disabled; no helper does so yet                                |
-| `ConnectionDeleted`  | none                                               | A connection was deleted; no helper does so yet                                 |
+| `ConnectionDisabled` | none                                               | `ConnectionLifecycle::disable()` disabled an enabled connection                 |
+| `ConnectionDeleted`  | none                                               | `ConnectionLifecycle::delete()` deleted a connection and everything it held     |
 | `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter` | `KeyService::addNext()` added a key pair, or `trustCertificate()` a certificate |
 | `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`     | `makeCurrent()` made a key current, or `addNext()` added a use's first key      |
 | `KeyRetired`         | `keyId`, `use`, `fingerprint`                      | `retire()` removed a key, or `distrustCertificate()` a certificate              |

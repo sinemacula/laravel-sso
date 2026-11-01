@@ -66,8 +66,8 @@ transaction; and the gate an adapter calls before refusing a session it could ex
 - Lock order: a tenant's enforcement row, then connection rows in id order (one locking statement by id, ordered by
   id, with the tenant compared byte for byte in PHP). Every read under the lock that decides the write is a locking
   read, since a plain read answers from the snapshot of a transaction the caller opened (MySQL's `REPEATABLE READ`).
-  BL-37's connection disable and delete take the same order: the tenant's enforcement row first when they touch it,
-  then the connection, and call `SessionRevocation` with `RevocationScope::connection()` inside their transaction.
+  A connection's disable and delete (`Connections\ConnectionLifecycle`) take the same order: they lock no enforcement
+  row, then the connection, and call `SessionRevocation` with `RevocationScope::connection()` inside their transaction.
 - A tenant's first row is created by an upsert keyed by `tenant_hash` that inserts the row off, with no connection and a
   placeholder version, or leaves an existing row as it is; the row is then read locked. A locking read of a row that
   does not exist would take a gap lock on MySQL, and racing first changes would deadlock on each other's gap locks; the

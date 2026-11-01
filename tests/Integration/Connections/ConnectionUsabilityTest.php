@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\ProtocolDriver;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
@@ -70,6 +71,8 @@ final class ConnectionUsabilityTest extends TestCase
      * driver starts a flow with what it stored.
      *
      * @return void
+     *
+     * @throws \Random\RandomException
      */
     public function testAStoredConnectionIsUsableOnlyWhileEnabledAndComplete(): void
     {
@@ -84,7 +87,7 @@ final class ConnectionUsabilityTest extends TestCase
 
         self::assertTrue($manager->isUsable($read));
 
-        $start = $manager->protocol($read->getProtocol())->start($read, new StartRequest(Purpose::SIGN_IN, 'web', 'ref-1', new Secret('state')));
+        $start = $manager->protocol($read->getProtocol())->start($read, new StartRequest(Purpose::SIGN_IN, 'web', RequestReference::generate(), new Secret('state')));
 
         self::assertSame('https://idp.example.com', $start->navigation?->url);
 
@@ -102,6 +105,8 @@ final class ConnectionUsabilityTest extends TestCase
      * protocol's flows land, and its driver refuses to start.
      *
      * @return void
+     *
+     * @throws \Random\RandomException
      */
     public function testAPackageProtocolIsNeverUsableYet(): void
     {
@@ -109,7 +114,7 @@ final class ConnectionUsabilityTest extends TestCase
         $stored  = $this->makeConnection(['protocol' => 'oidc', 'enabled' => true, 'settings' => ['issuer' => 'https://idp.example.com']]);
         $read    = $this->read($stored);
 
-        $start = $manager->protocol('oidc')->start($read, new StartRequest(Purpose::SIGN_IN, 'web', 'ref-1', new Secret('state')));
+        $start = $manager->protocol('oidc')->start($read, new StartRequest(Purpose::SIGN_IN, 'web', RequestReference::generate(), new Secret('state')));
 
         self::assertFalse($manager->isUsable($read));
         self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $start->reason);

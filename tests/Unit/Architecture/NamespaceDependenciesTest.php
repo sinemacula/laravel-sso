@@ -33,7 +33,7 @@ use PHPUnit\Framework\TestCase;
  * alone, so nothing it ships (its classes, configuration, migrations and
  * translations) names a sibling package's namespace (`SineMacula\Laravel\*`
  * other than `Sso`) or reads a sibling's configuration (`authentication.`,
- * `authorization.`, `mfa.`, `iam.`, `audit_log.`), and `composer.json` requires
+ * `authorization.`, `mfa.`, `iam.`, `audit-log.`), and `composer.json` requires
  * no sibling. That rule reads the raw text, strings and comments included, so a
  * name a class builds at run time is caught too.
  *

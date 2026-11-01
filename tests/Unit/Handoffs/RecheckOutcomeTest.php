@@ -1,0 +1,77 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace Tests\Unit\Handoffs;
+
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\TestCase;
+use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
+
+/**
+ * Unit tests for what a handoff's recheck comes to: its four outcomes, their
+ * stable values, and the failure reason each refusal reports.
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ *
+ * @internal
+ */
+#[CoversClass(RecheckOutcome::class)]
+final class RecheckOutcomeTest extends TestCase
+{
+    /**
+     * The outcomes are these four, in this order, with these values.
+     *
+     * @return void
+     */
+    public function testTheOutcomesAndTheirValues(): void
+    {
+        self::assertSame(
+            ['passed', 'connection_unavailable', 'enforcement_unsatisfied', 'link_changed'],
+            array_map(static fn (RecheckOutcome $outcome): string => $outcome->value, RecheckOutcome::cases()),
+        );
+    }
+
+    /**
+     * Each outcome and the reason it reports.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function reasons(): iterable
+    {
+        yield 'passed' => [RecheckOutcome::PASSED, null];
+        yield 'connection unavailable' => [RecheckOutcome::CONNECTION_UNAVAILABLE, FailureReason::CONNECTION_UNAVAILABLE];
+        yield 'enforcement unsatisfied' => [RecheckOutcome::ENFORCEMENT_UNSATISFIED, FailureReason::ENFORCEMENT_UNSATISFIED];
+        yield 'link changed' => [RecheckOutcome::LINK_CHANGED, FailureReason::LINK_CHANGED];
+    }
+
+    /**
+     * Each outcome reports its reason, and a passed recheck none.
+     *
+     * @param  \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome  $outcome
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('reasons')]
+    public function testEachOutcomeReportsItsReason(RecheckOutcome $outcome, ?FailureReason $reason): void
+    {
+        self::assertSame($reason, $outcome->reason());
+    }
+
+    /**
+     * Each outcome is read back from its value.
+     *
+     * @return void
+     */
+    public function testEachOutcomeIsReadBackFromItsValue(): void
+    {
+        self::assertSame(RecheckOutcome::PASSED, RecheckOutcome::from('passed'));
+        self::assertSame(RecheckOutcome::CONNECTION_UNAVAILABLE, RecheckOutcome::from('connection_unavailable'));
+        self::assertSame(RecheckOutcome::ENFORCEMENT_UNSATISFIED, RecheckOutcome::from('enforcement_unsatisfied'));
+        self::assertSame(RecheckOutcome::LINK_CHANGED, RecheckOutcome::from('link_changed'));
+        self::assertNull(RecheckOutcome::tryFrom('PASSED'));
+    }
+}

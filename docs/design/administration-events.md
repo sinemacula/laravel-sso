@@ -44,17 +44,17 @@ enforcement events" below; the metadata and link events arrive with their parts 
   the application's authorisation, never the package's: the event reports who did.
 - Who dispatches each event, and when:
 
-  | Event                | Dispatched by                                               | When                                                                        |
-  |----------------------|-------------------------------------------------------------|-----------------------------------------------------------------------------|
-  | `ConnectionCreated`  | `ConnectionService::create()`                               | Once the connection is inserted                                             |
-  | `ConnectionUpdated`  | `ConnectionService::update()`                               | Once the change is saved, when something changed                            |
-  | `ConnectionEnabled`  | `ConnectionService::enable()`                               | Once a disabled connection is enabled                                       |
-  | `ConnectionDisabled` | the disabling helper (BL-37)                                | No helper dispatches it yet                                                 |
-  | `ConnectionDeleted`  | the deleting helper (BL-37)                                 | No helper dispatches it yet; it is reported with the connection read before |
-  | `KeyAdded`           | `KeyService::addNext()`, `KeyService::trustCertificate()`   | Once the key or certificate is inserted                                     |
-  | `KeyMadeCurrent`     | `KeyService::addNext()`, `KeyService::makeCurrent()`        | After `KeyAdded` for a use's first key; once a `next` key is promoted       |
-  | `KeyRetired`         | `KeyService::retire()`, `KeyService::distrustCertificate()` | Once the row is deleted, reported as it was read before                     |
-  | `KeyNearingExpiry`   | `Keys\ExpiryReport::report()`                               | For each row reported, with no acting identity                              |
+  | Event                | Dispatched by                                                | When                                                                    |
+  |----------------------|--------------------------------------------------------------|-------------------------------------------------------------------------|
+  | `ConnectionCreated`  | `ConnectionService::create()`                                | Once the connection is inserted                                         |
+  | `ConnectionUpdated`  | `ConnectionService::update()`, `SubjectMigration::migrate()` | Once the change is saved, when something changed                        |
+  | `ConnectionEnabled`  | `ConnectionService::enable()`                                | Once a disabled connection is enabled                                   |
+  | `ConnectionDisabled` | `ConnectionLifecycle::disable()`                             | Once an enabled connection is disabled and its flows voided             |
+  | `ConnectionDeleted`  | `ConnectionLifecycle::delete()`                              | Once the connection and its rows are deleted, reported as locked before |
+  | `KeyAdded`           | `KeyService::addNext()`, `KeyService::trustCertificate()`    | Once the key or certificate is inserted                                 |
+  | `KeyMadeCurrent`     | `KeyService::addNext()`, `KeyService::makeCurrent()`         | After `KeyAdded` for a use's first key; once a `next` key is promoted   |
+  | `KeyRetired`         | `KeyService::retire()`, `KeyService::distrustCertificate()`  | Once the row is deleted, reported as it was read before                 |
+  | `KeyNearingExpiry`   | `Keys\ExpiryReport::report()`                                | For each row reported, with no acting identity                          |
 
 - `ConnectionUpdated` names what changed in one order: the settings as the protocol's setting enum lists them
   (`Saml2Setting`, `OidcSetting`; a registered driver's in the order its settings hold them), then the secrets, then
@@ -108,16 +108,16 @@ enforcement events" below; the metadata and link events arrive with their parts 
 
 - Eight more events, in `src/Events`, each `final readonly`, implementing `Contracts\SsoEvent` with its context first:
 
-  | Event                 | Fields beyond the context                                | Reported by                                                    |
-  |-----------------------|----------------------------------------------------------|----------------------------------------------------------------|
-  | `DomainClaimed`       | `domainId`, `domain`, `recordName`, `pendingExpiresAt`   | `DomainEvents::claimed()`, from `DomainService::claim()`       |
-  | `DomainVerified`      | `domainId`, `domain`, `verifiedAt`                       | `DomainEvents::verified()`, from `DomainService::verify()`     |
-  | `DomainRemoved`       | `domainId`, `domain`, `state`                            | `DomainEvents::removed()`, from `DomainService::remove()`      |
-  | `DomainRecheckFailed` | `domainId`, `domain`, `failure`, `lapsesAt`              | `DomainEvents::recheckFailed()`, from the scheduled recheck    |
-  | `DomainRestored`      | `domainId`, `domain`, `verifiedAt`, `checkedAt`          | `DomainEvents::restored()`, from the scheduled recheck         |
-  | `DomainLapsed`        | `domainId`, `domain`                                     | `DomainEvents::lapsed()`, from the scheduled recheck           |
-  | `EnforcementChanged`  | `enabled`, `connectionIds`, `version`, `previousVersion` | `EnforcementEvents::changed()`, from the enforcement helper    |
-  | `ExemptionUsed`       | `enforcementVersion`                                     | `EnforcementEvents::exemptionUsed()`, from the exemption gate  |
+  | Event                 | Fields beyond the context                                | Reported by                                                   |
+  |-----------------------|----------------------------------------------------------|---------------------------------------------------------------|
+  | `DomainClaimed`       | `domainId`, `domain`, `recordName`, `pendingExpiresAt`   | `DomainEvents::claimed()`, from `DomainService::claim()`      |
+  | `DomainVerified`      | `domainId`, `domain`, `verifiedAt`                       | `DomainEvents::verified()`, from `DomainService::verify()`    |
+  | `DomainRemoved`       | `domainId`, `domain`, `state`                            | `DomainEvents::removed()`, from `DomainService::remove()`     |
+  | `DomainRecheckFailed` | `domainId`, `domain`, `failure`, `lapsesAt`              | `DomainEvents::recheckFailed()`, from the scheduled recheck   |
+  | `DomainRestored`      | `domainId`, `domain`, `verifiedAt`, `checkedAt`          | `DomainEvents::restored()`, from the scheduled recheck        |
+  | `DomainLapsed`        | `domainId`, `domain`                                     | `DomainEvents::lapsed()`, from the scheduled recheck          |
+  | `EnforcementChanged`  | `enabled`, `connectionIds`, `version`, `previousVersion` | `EnforcementEvents::changed()`, from the enforcement helper   |
+  | `ExemptionUsed`       | `enforcementVersion`                                     | `EnforcementEvents::exemptionUsed()`, from the exemption gate |
 
 - A domain event's context names the connection that claimed the domain, its tenant and protocol, and the acting
   identity for a change a helper made; a recheck's has none. An enforcement change's context names the tenant and the
@@ -152,8 +152,8 @@ enforcement events" below; the metadata and link events arrive with their parts 
   and reports nothing.
 - The first key of a use is reported twice, `KeyAdded` then `KeyMadeCurrent`, in that order, in the same commit.
 - `KeyRetired` names a row that no longer exists: it is reported with the row as read before the delete.
-- `ConnectionDisabled` and `ConnectionDeleted` exist and are reported by `AdministrationEvents`, but no helper calls
-  them until the disabling and deleting helpers arrive (BL-37).
+- Disabling a disabled connection asks for freshness and reports nothing. Deleting a connection reports one
+  `ConnectionDeleted` and no event for each of the links, domains, keys, requests or handoff codes deleted with it.
 - An `ActingIdentity` with an empty type or id is the application's mistake: an `InvalidArgumentException` before any
   helper runs.
 - `ExpiryReport::report()` given 0, a negative number or more than 365 days throws an `InvalidArgumentException`,
@@ -168,7 +168,9 @@ enforcement events" below; the metadata and link events arrive with their parts 
 - `src/Events/ConnectionCreated.php`, `ConnectionUpdated.php`, `ConnectionEnabled.php`, `ConnectionDisabled.php`,
   `ConnectionDeleted.php`, `KeyAdded.php`, `KeyMadeCurrent.php`, `KeyRetired.php`, `KeyNearingExpiry.php`.
 - `src/Events/EventContexts.php`, `src/Events/AfterCommitDispatcher.php`: the projection and the dispatch.
-- `src/Connections/ConnectionService.php`: `create()`, `update()` (`applyChanges()`, `changedSettings()`), `enable()`.
+- `src/Connections/ConnectionService.php`: `create()`, `update()` (`changeLocked()`, `changedSettings()`), `enable()`.
+- `src/Connections/ConnectionLifecycle.php`: `disable()`, `delete()`; `src/Connections/SubjectMigration.php`:
+  `migrate()`.
 - `src/Keys/KeyService.php`: `insertOwnKey()`, `insertTrusted()`, `promote()`, `remove()`.
 - `src/Keys/ExpiryReport.php`: `report()`; `src/Keys/KeySettings.php`: `expiryWarningDays()`.
 - `src/Freshness/FreshnessGate.php`, `src/Testing/FakeFreshness.php`.

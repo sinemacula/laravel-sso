@@ -64,8 +64,60 @@ the same way:
   `domain_record_not_found`, `domain_lookup_failed`), and `rate_limited` with `retryAfter` for a verification; see
   `domains.md`. The enforcement helpers add `feature_disabled` and `completed_sign_in_required`; see
   `enforcement.md`.
+- Disabling and deleting a connection (`Connections\ConnectionLifecycle`) and migrating its subjects
+  (`Connections\SubjectMigration`) answer the same `Connections\ConnectionResult`, in the same order: `disabled` (or
+  `unchanged` for a connection already disabled), `deleted` (with no summary, since the connection is gone) and
+  `migrated`; a change that may alter what the connection's subjects mean while it has links is refused with
+  `connection_has_links`; see `connection-lifecycle.md`.
 - An application's mistake (an empty tenant id, an acting identity with no type) is an `InvalidArgumentException`; a
   database error, a `SecretEncrypter` that cannot encrypt or a key OpenSSL cannot generate propagates.
+
+### Flow, link, handoff and completion operations (SSO-5, SSO-8, SSO-9)
+
+The operations a flow goes through answer the same way: a result object for each, with `status` wherever there are
+more than two outcomes, a `reason` from `FailureReason` on every refusal, and `retryAfter` (at least one second)
+wherever a limit can refuse. Each refusal of a start, a completion or a redemption reports exactly one `FlowFailed`
+with the flow and the same reason; a link helper's refusal reports nothing.
+
+- **Starting a flow.** `Flows\AuthorizationRequestService::start()` and `Discovery\DiscoveryService::start()` answer a
+  `Flows\StartResult`, status `Flows\Enums\StartStatus`: `started` (the reference, the navigation, and the verifier
+  the package generated, revealed once in `body()`), `refused` (`reason`) or `rate_limited` (`retryAfter`). Every
+  answer's `headers()` carry `Cache-Control: no-store`, and a rate limited one `Retry-After`. The order is fixed:
+  the binding (a misbound purpose is an `InvalidArgumentException`), the rate limit (`rate_limited`), the application
+  (`application_not_allowed`), the challenge (`challenge_invalid`), the connection (`connection_unavailable`), then
+  the freshness of a `link` (`freshness_required`) and the session of a `reauthenticate` (`session_ineligible`), and
+  last the driver, whose refusal keeps its own reason. Discovery checks that the application offers it
+  (`feature_disabled`) before the challenge, and answers a miss (`discovery_no_match`, reported) as `started`, in
+  the same shape as a match. A start called inside a transaction open on the storage connection is a
+  `LogicException`. See `authorization-requests.md`, `discovery.md` and `flows.md`.
+- **Consuming a request** (`Flows\RequestConsumption`, `@internal`, the completion's only way to consume one) answers a
+  `Flows\ConsumptionResult`, status `Flows\Enums\ConsumptionStatus`: `consumed`, `refused` (`application_not_allowed`,
+  `request_unknown`, `connection_unavailable`, `connection_mismatch` or `request_expired`), `unknown` or `replayed`
+  (both `request_unknown`).
+- **Completing a flow.** `Completion\CompletionService` answers a `Completion\CompletionResult`, status
+  `Completion\Enums\CompletionStatus`: `completed` (the redirect URI, the delivery, the reference and the issued
+  handoff), `failed` (a refusal with a trusted redirect target: the reason, redirected to the application),
+  `rejected` (a refusal with none: `request_unknown`, `connection_unavailable` or `application_not_allowed`, a 400),
+  `rate_limited` (`retryAfter`, a 429) or `reinitiated` (P4). A failure carries the reason of the step that refused:
+  the consumption's above, a driver's (`signature_invalid`, `issuer_mismatch` and the other protocol reasons),
+  `enforcement_unsatisfied`, `unlinked` and `application_not_allowed`. `Responses\CompletionResponses` turns it into
+  the response value the application answers with. A completion called inside a transaction open on the storage
+  connection is a `LogicException`. See `completion.md` and `completion-responses.md`.
+- **Redeeming a handoff.** `Handoffs\HandoffRedemption::redeem()` answers a `Handoffs\RedemptionResult`, status
+  `Handoffs\Enums\RedemptionStatus`: `redeemed` (the verified result and what the code was bound to), `refused`
+  (`handoff_unknown`, `replayed`, `handoff_expired`, `purpose_mismatch`, `application_mismatch`,
+  `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`, `enforcement_unsatisfied` or `link_changed`)
+  or `rate_limited` (`retryAfter`). `Handoffs\HandoffRecheck::recheck()`, for an adapter's own redemption, answers
+  the outcome enum `Handoffs\Enums\RecheckOutcome` (`passed` or the first refusal), whose `reason()` names the
+  `FailureReason` a refused redemption reports. See `handoffs.md`.
+- **Links.** `Links\LinkService::list()` answers a list of `Links\LinkSummary`, possibly empty; `remove()` answers a
+  `Links\LinkResult`: `removed` (the summary) or `refused` (`link_not_found`, for another identity's link as for an
+  unknown one, or `freshness_required`). `Links\LinkStore::create()` answers a `Links\LinkCreation`, status
+  `Links\Enums\LinkCreationStatus`: `created` (the summary), `subject_already_linked` or `link_limit_reached`, each
+  refusal naming that reason. `Contracts\Linker::resolve()` answers the linked identity, or `null` when the result is
+  linked to none. See `links.md`.
+- **Issuing a handoff.** `Contracts\HandoffIssuer::issue()` answers a `Handoffs\IssuedHandoff`: the code, revealed
+  once, and its expiry. An issuer that cannot issue throws, and the completion propagates it.
 
 ## Failure / Edge Cases
 
@@ -82,7 +134,16 @@ the same way:
 - `src/RateLimiting/AttemptSubject.php`, `src/RateLimiting/AttemptResult.php`, `src/RateLimiting/Enums/`.
 - `src/Contracts/`.
 - `src/Connections/SettingViolation.php`, `src/Connections/Enums/ViolationCode.php`, `src/Freshness/FreshnessGate.php`,
-  `src/Administration/AdministrationEvents.php`; the management helpers in `src/Connections/` and `src/Keys/`.
+  `src/Administration/AdministrationEvents.php`; the management helpers in `src/Connections/` and `src/Keys/`,
+  `src/Connections/ConnectionLifecycle.php` and `src/Connections/SubjectMigration.php` among them.
+- `src/Flows/StartResult.php`, `src/Flows/ConsumptionResult.php`, `src/Flows/Enums/`,
+  `src/Flows/AuthorizationRequestService.php`, `src/Discovery/DiscoveryService.php`.
+- `src/Completion/CompletionResult.php`, `src/Completion/Enums/CompletionStatus.php`,
+  `src/Completion/CompletionService.php`, `src/Responses/`.
+- `src/Handoffs/RedemptionResult.php`, `src/Handoffs/Enums/`, `src/Handoffs/HandoffRedemption.php`,
+  `src/Handoffs/IssuedHandoff.php`.
+- `src/Links/LinkResult.php`, `src/Links/LinkCreation.php`, `src/Links/Enums/LinkCreationStatus.php`,
+  `src/Links/LinkService.php`, `src/Links/LinkStore.php`.
 
 ## Authoritative Tests
 
@@ -90,6 +151,16 @@ the same way:
 - `tests/Unit/Fetching/FetchRequestTest.php`, `tests/Unit/Fetching/FetchCredentialsTest.php`,
   `tests/Unit/Fetching/FetchResultTest.php`.
 - `tests/Unit/RateLimiting/AttemptSubjectTest.php`, `tests/Unit/RateLimiting/AttemptResultTest.php`.
+- `tests/Unit/Connections/ConnectionResultTest.php`, `tests/Feature/Connections/ConnectionLifecycleTest.php`,
+  `tests/Feature/Connections/SubjectMigrationTest.php`.
+- `tests/Unit/Flows/StartResultTest.php`, `tests/Unit/Flows/ConsumptionResultTest.php`,
+  `tests/Feature/Flows/AuthorizationRequestServiceTest.php`, `tests/Feature/Discovery/DiscoveryServiceTest.php`.
+- `tests/Unit/Completion/CompletionResultTest.php`, `tests/Unit/Responses/CompletionResponseTest.php`,
+  `tests/Feature/Completion/CompletionServiceTest.php`.
+- `tests/Unit/Handoffs/RedemptionResultTest.php`, `tests/Unit/Handoffs/RecheckOutcomeTest.php`,
+  `tests/Feature/Handoffs/HandoffRedemptionTest.php`.
+- `tests/Unit/Links/LinkResultTest.php`, `tests/Unit/Links/LinkCreationTest.php`,
+  `tests/Feature/Links/LinkServiceTest.php`, `tests/Feature/Links/LinkStoreTest.php`.
 
 ## Change Triggers
 

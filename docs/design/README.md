@@ -35,6 +35,16 @@ The current note set is:
   and the lapse.
 - `enforcement.md`: a tenant's rule that sessions in it come through its own connections, the enforcement,
   inheritance, exemption and session revocation contracts, and the version that changes with every change.
+- `applications.md`: the application registry, each application's one exact redirect URI and the contract that answers
+  it, the policy that says whether an application allows sign-in through an external provider, and the endpoint
+  resolver that builds a connection's URLs from configuration, never from the request.
+- `flows.md`: what every flow of the links and flow core shares: the links, authorisation requests and handoff codes
+  tables, the distinct value types, the verified result, the contracts and their defaults, the completion's fixed steps
+  and their transactions, the lock order, and the failure reasons and events by flow.
+- `links.md`, `authorization-requests.md`, `discovery.md`, `completion.md`, `handoffs.md`, `completion-responses.md` and
+  `connection-lifecycle.md`: the link store, starting a flow, discovery by email domain, the completion pipeline,
+  handoff codes and their redemption, the completion's response values, and disabling, deleting and changing the trust
+  of a connection, each on the model `flows.md` lays down.
 - `storage.md`: where the package's tables live, why they share one connection, how the models and the published
   migrations choose the same connection and table names, and the transaction rule an adapter follows.
 - `configuration.md`: the feature switches, the configuration checked at boot and by `sso:check` for what is enabled,

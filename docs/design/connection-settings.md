@@ -5,8 +5,10 @@
 This note records how a connection's SAML and OIDC settings are validated, defaulted and stored, how its attribute
 mapping is checked and applied, how its secrets are kept apart from its settings, and how the management helpers
 create, update, read, list and enable a tenant's connections (SSO-1.2, SSO-2.3, SSO-2.4, SSO-2.5, SSO-2.10, SSO-2.11,
-SSO-2.12). Disabling, deleting, the changes that void what a connection's trust issued, metadata and discovery import,
-and keys and certificates have notes of their own.
+SSO-2.12), and how an update that changes the connection's trust voids what is in flight through it and is refused,
+when it alters what subjects mean, while the connection has links (SSO-2.13). Disabling, deleting and the subject
+migration are in `connection-lifecycle.md`; metadata and discovery import, and keys and certificates, have notes of
+their own.
 
 ## Invariants
 
@@ -59,8 +61,20 @@ and keys and certificates have notes of their own.
   whole connection as it would be stored; ask `Freshness\FreshnessGate`; write through the model, in one transaction on
   the storage connection; report through `Administration\AdministrationEvents` inside it. A refusal writes and reports
   nothing. The result is a `Connections\ConnectionResult`: `created`, `updated` (with the names that changed),
-  `unchanged`, `enabled`, `refused` (`freshness_required`, `connection_not_found`, `protocol_unavailable`) or
-  `invalid` (`settings_invalid`, with every violation).
+  `unchanged`, `enabled`, `refused` (`freshness_required`, `connection_not_found`, `protocol_unavailable`,
+  `connection_has_links`) or `invalid` (`settings_invalid`, with every violation); `connection-lifecycle.md` adds
+  `disabled`, `deleted` and `migrated`.
+- An update that changes a setting the protocol's `subjectNames()` lists (the OIDC `issuer` and `client_id`; the SAML
+  `idp_entity_id`, `subject_source`, `subject_attribute` and `name_id_format`) is refused with `connection_has_links`
+  while the connection has a link, active or reserved with a reservation that expires after now, found by a locking
+  read on the write connection once freshness has answered `fresh`; nothing is written. `Connections\SubjectMigration`
+  makes such a change and relinks or removes the links in the same transaction (`connection-lifecycle.md`).
+- An update whose operations include `sso.connection.trust` (a trust setting or a secret changed) voids, in its
+  transaction and under the connection's lock, every unfinished authorisation request and unredeemed handoff code of
+  the connection (`Connections\InFlightVoider`); an update that asks only `sso.connection.idp_initiated`, or nothing,
+  voids nothing.
+- `ConnectionService` stays at twenty methods: the steps of an update after the lock are its one `@internal` method,
+  `changeLocked()`, which the subject migration reuses with its relinks' violations and its own freshness.
 - Creating asks `sso.connection.trust` and the operation of each setting and secret given; an update asks only the
   operations of what changed (the display name and the mapping need none, and a change that changes nothing asks
   nothing); enabling always asks `sso.connection.enable`, even for an enabled connection. Each operation is asked
@@ -76,7 +90,9 @@ and keys and certificates have notes of their own.
    reports `ConnectionCreated`.
 2. `update()` locks the connection, merges the changes (a value replaces, `null` removes, a secret not named is kept),
    validates the merged connection, names what changed (settings in the enum's order, then secrets, `display_name`,
-   `attribute_mapping`), asks freshness for what changed, saves and reports `ConnectionUpdated` with those names.
+   `attribute_mapping`), asks freshness for what changed, refuses a subject change while the connection has links,
+   saves, voids what is in flight when it asked `sso.connection.trust`, and reports `ConnectionUpdated` with those
+   names.
 3. `get()` and `list()` read on the write connection and answer `ConnectionSummary` values: settings, masked secrets,
    mapping, flags, whether the connection is usable now, and its times in UTC.
 4. `enable()` locks the connection, asks freshness, sets `enabled` and reports `ConnectionEnabled`.
@@ -92,6 +108,9 @@ and keys and certificates have notes of their own.
   age, a feature switch) propagate; nothing is written.
 - A connection whose protocol is no longer registered is listed and read with no secrets declared and never usable; it
   cannot be changed or enabled (`protocol_unavailable`).
+- A stale caller changing a subject setting is `freshness_required`, whatever the links; a link of another connection,
+  and a reservation that expired at now or before, do not count.
+- A refused or unchanged update voids nothing; a voided request or code keeps its first `voided_at`.
 
 ## Implementation Anchors
 
@@ -124,10 +143,14 @@ and keys and certificates have notes of their own.
   `testKeepsTheStoredSecretWhenAnUpdateDoesNotNameIt`, `testRefusesAnImmutableOrUnknownKey`,
   `testAsksTheFreshnessOfWhatChanged`, `testAnUpdateThatChangesNothingIsUnchanged`, `testRefusesAStaleCreation`,
   `testRefusesAStaleUpdate`, `testRefusesAStaleEnable`, `testAnUpdateFindsOnlyTheTenantsConnection`,
-  `testEnablingNeverWritesTheCompletedSignIn`.
+  `testEnablingNeverWritesTheCompletedSignIn`, `testASubjectChangeIsRefusedWhileTheConnectionHasALink`,
+  `testOnlyAnUnexpiredReservationCountsAsALink`, `testAStaleSubjectChangeIsRefusedForFreshnessFirst`,
+  `testATrustChangeThatAltersNoSubjectIsAllowedWithLinksAndVoids`.
+- `tests/Feature/Connections/TrustChangeVoidingTest.php`: `testATrustChangeVoidsOnlyWhatIsInFlight`,
+  `testEachTrustChangeVoids`, `testAnyOtherChangeVoidsNothing`.
 - `tests/Integration/Connections/ConnectionServiceTest.php`: `testStoresTheSecretOnlyAsCiphertext`,
   `testSecretsSurviveAnAppKeyRotation`, `testAnEncrypterThatCannotEncryptPropagates`, `testReadsTheWriteConnection`.
-- `tests/Performance/ConnectionServiceQueryBudgetTest.php`.
+- `tests/Performance/ConnectionServiceQueryBudgetTest.php`, `tests/Performance/ConnectionLifecycleQueryBudgetTest.php`.
 
 ## Change Triggers
 
@@ -135,3 +158,4 @@ and keys and certificates have notes of their own.
 - What a mapping may target or read, its defaults, or how a mapped value is capped.
 - How secrets are stored, masked or revealed.
 - A management helper's order of steps, its outcomes, the operations it asks freshness for, or the events it reports.
+- Which settings alter what subjects mean, what counts as a link, or which changes void what is in flight.

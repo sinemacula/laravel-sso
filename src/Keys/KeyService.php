@@ -10,12 +10,14 @@ use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Connections\ConnectionFinder;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
+use SineMacula\Laravel\Sso\Connections\InFlightVoider;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Database\CiphertextWrite;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
@@ -48,8 +50,12 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
  * of the ciphertext. A trusted certificate's dates are reported, never
  * enforced: an expired certificate is trusted (SSO-2.6).
  *
- * A trust change does not yet void the requests and codes in flight through the
- * connection; BL-37 adds that at every `sso.connection.trust` call site.
+ * Trusting or distrusting a certificate is a trust change (SSO-2.13): in its
+ * transaction, under the connection's lock, it voids the authorisation requests
+ * and handoff codes in flight through the connection
+ * (`Connections\InFlightVoider`), so none completes or is redeemed against the
+ * certificates it was started under. Rotating a key of the service provider's
+ * own keeps what subjects mean and voids nothing.
  *
  * @api
  *
@@ -66,6 +72,9 @@ final readonly class KeyService
     /** @var int The length of a key's id, a ULID. */
     private const int ID_LENGTH = 26;
 
+    /** @var \SineMacula\Laravel\Sso\Connections\InFlightVoider Voids what a trust change leaves in flight. */
+    private InFlightVoider $voider;
+
     /**
      * Constructor.
      *
@@ -77,6 +86,7 @@ final readonly class KeyService
      * @param  \SineMacula\Laravel\Sso\Keys\KeySettings  $settings
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      * @param  \SineMacula\Laravel\Sso\Administration\AdministrationEvents  $events
+     * @param  \SineMacula\Laravel\Sso\Connections\InFlightVoider  $voider
      */
     public function __construct(
 
@@ -103,7 +113,13 @@ final readonly class KeyService
 
         /** Reports each change, inside its transaction. */
         private AdministrationEvents $events,
-    ) {}
+
+        // Assigned rather than promoted, which keeps this constructor's shape
+        // apart from DomainService's, whose dependencies it otherwise mirrors
+        InFlightVoider $voider,
+    ) {
+        $this->voider = $voider;
+    }
 
     /**
      * Generate a key pair of the use and add it to the connection: as `next`,
@@ -192,8 +208,9 @@ final readonly class KeyService
 
     /**
      * Trust a signing certificate of the identity provider for the SAML
-     * connection, alongside those it already trusts. An expired certificate is
-     * trusted: its dates are reported, never enforced.
+     * connection, alongside those it already trusts, and void what is in flight
+     * through the connection. An expired certificate is trusted: its dates are
+     * reported, never enforced.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -216,9 +233,10 @@ final readonly class KeyService
     }
 
     /**
-     * Stop trusting one of the connection's identity provider certificates and
-     * remove it. Removing the last one is allowed; the connection is then
-     * incomplete until another is trusted.
+     * Stop trusting one of the connection's identity provider certificates,
+     * remove it and void what is in flight through the connection. Removing the
+     * last one is allowed; the connection is then incomplete until another is
+     * trusted.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -451,8 +469,9 @@ final readonly class KeyService
     }
 
     /**
-     * Insert the inspected certificate as one the locked connection trusts;
-     * refused when it was trusted, or the cap reached, meanwhile.
+     * Insert the inspected certificate as one the locked connection trusts and
+     * void what is in flight through the connection; refused when it was
+     * trusted, or the cap reached, meanwhile.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  CertificateFacts  $facts
@@ -460,6 +479,7 @@ final readonly class KeyService
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
+     * @throws \LogicException
      */
     private function insertTrusted(Connection $locked, array $facts, ?ActingIdentity $actor): KeyResult
     {
@@ -484,6 +504,8 @@ final readonly class KeyService
             'not_before'    => $facts['not_before'],
             'not_after'     => $facts['not_after'],
         ])->save();
+
+        $this->voider->voidFor($locked);
 
         $this->events->keyAdded($locked, $key, $actor);
 
@@ -516,18 +538,26 @@ final readonly class KeyService
 
     /**
      * Delete the locked connection's key and report it retired, answering the
-     * key as it was before.
+     * key as it was before. Removing a trusted certificate is a trust change,
+     * which voids what is in flight through the connection; retiring a key of
+     * the service provider's own voids nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Keys\KeySummary
+     *
+     * @throws \LogicException
      */
     private function remove(Connection $locked, ConnectionKey $key, ?ActingIdentity $actor): KeySummary
     {
         $summary = KeySummary::of($key);
 
         $key->delete();
+
+        if ($key->use->freshness() === FreshnessOperation::CONNECTION_TRUST) {
+            $this->voider->voidFor($locked);
+        }
 
         $this->events->keyRetired($locked, $key, $actor);
 

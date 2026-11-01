@@ -36,6 +36,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
@@ -65,7 +66,7 @@ use Tests\TestCase;
 #[CoversClass(CiphertextWrite::class)]
 final class KeyServiceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections;
+    use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The tenant whose connection the helpers act on. */
     private const string TENANT = 'tenant-1';
@@ -104,6 +105,7 @@ final class KeyServiceTest extends TestCase
         $this->app?->instance(Freshness::class, $this->freshness);
 
         $this->createConnectionTables();
+        $this->createFlowTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
 
@@ -118,6 +120,7 @@ final class KeyServiceTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        $this->dropFlowTables();
         $this->dropConnectionTables();
 
         parent::tearDown();

@@ -1,23 +1,30 @@
 # Managing Connections
 
 Your application's administration screens create and change a tenant's connections through
-`SineMacula\Laravel\Sso\Connections\ConnectionService`. Who may manage a tenant's connections is your application's
-authorisation: check it before you call the service. Every call is scoped to a tenant, by the same opaque string id
-your application uses (1 to 255 bytes), and a connection of another tenant is answered exactly as an unknown one. The
-id is compared byte for byte, whatever your database's collation, so `acme` and `Acme` are two tenants.
+`SineMacula\Laravel\Sso\Connections\ConnectionService`, disable and delete them through
+`SineMacula\Laravel\Sso\Connections\ConnectionLifecycle`, and move their links to a new identity provider or subject
+through `SineMacula\Laravel\Sso\Connections\SubjectMigration`. Who may manage a tenant's connections is your
+application's authorisation: check it before you call the services. Every call is scoped to a tenant, by the same
+opaque string id your application uses (1 to 255 bytes), and a connection of another tenant is answered exactly as an
+unknown one. The id is compared byte for byte, whatever your database's collation, so `acme` and `Acme` are two
+tenants.
 
-Resolve the service from the container for each request:
+Resolve the services from the container for each request:
 
 ```php
+use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
+use SineMacula\Laravel\Sso\Connections\SubjectMigration;
 
 $connections = app(ConnectionService::class);
+$lifecycle   = app(ConnectionLifecycle::class);
+$migration   = app(SubjectMigration::class);
 ```
 
 > [!IMPORTANT]
-> Creating, changing a trust setting and enabling a connection each ask the freshness contract whether the caller
-> authenticated recently enough, and the default contract refuses every operation. Bind your own first (see
-> [Freshness](freshness.md)); until you do, every such call is refused with `freshness_required`.
+> Creating, changing a trust setting, enabling, disabling, deleting and migrating a connection each ask the freshness
+> contract whether the caller authenticated recently enough, and the default contract refuses every operation. Bind
+> your own first (see [Freshness](freshness.md)); until you do, every such call is refused with `freshness_required`.
 
 ## Creating a connection
 
@@ -80,6 +87,21 @@ the endpoints, the client id and secret, the subject settings and the algorithms
 IdP-initiated sign-in and its start URL ask `sso.connection.idp_initiated`; the scopes, extra parameters, request
 options, display name and mapping ask nothing.
 
+### Trust changes and sign-ins in progress
+
+An update that asks `sso.connection.trust` also voids, in the same transaction, everything in flight through the
+connection: every sign-in started but not yet finished, and every handoff code issued but not yet redeemed. Trusting or
+distrusting an identity provider certificate does the same (see [Keys and certificates](keys.md)); rotating a key of
+your own does not. See [what voiding does to people signing in](#what-voiding-does-to-people-signing-in).
+
+### Settings that change what subjects mean
+
+The OIDC `issuer` and `client_id`, and the SAML `idp_entity_id`, `subject_source`, `subject_attribute` and
+`name_id_format`, decide what a subject the identity provider sends means. Changing one could make a person's link
+point at someone else, so `update()` refuses it with `connection_has_links` while the connection has a link (active, or
+reserved for a sign-in that has not expired). Freshness is asked first, so a stale caller is told `freshness_required`.
+Make such a change with the [subject migration](#migrating-subjects) instead.
+
 ## Reading and listing connections
 
 ```php
@@ -118,22 +140,96 @@ Enabling asks the freshness contract with `sso.connection.enable`, every time, t
 it. Enabling an enabled connection succeeds as `unchanged`. A connection may be enabled before its settings are
 complete; it is used only once they are.
 
+## Disabling a connection
+
+```php
+$result = $lifecycle->disable($tenant->id, $connectionId, $actor);
+```
+
+Disabling asks the freshness contract with `sso.connection.enable`, every time, then, in one transaction: turns the
+connection off, voids what is in flight through it, revokes every session established through it through the session
+revocation contract (see [Revoking sessions](enforcement.md#revoking-sessions)), and reports `ConnectionDisabled`. Its
+domains, links and keys are kept, so enabling it again restores it. Disabling a disabled connection succeeds as
+`unchanged`, and writes, revokes and reports nothing.
+
+## Deleting a connection
+
+```php
+$result = $lifecycle->delete($tenant->id, $connectionId, $actor);
+```
+
+Deleting asks the freshness contract with `sso.connection.delete`, then, in one transaction: withdraws what depends on
+each of its verified domains, voids what is in flight, deletes the connection with its domains, links, keys, sign-ins in
+progress and handoff codes, revokes every session established through it, and reports one `ConnectionDeleted` (no event
+is reported for each link). It cannot be undone; the result is `deleted` and carries no summary.
+
+A session revocation that throws rolls the disable or the deletion back, with nothing reported, and the exception
+propagates. A connection whose protocol is no longer registered can still be disabled and deleted.
+
+## Migrating subjects
+
+When an organisation moves to another identity provider, or the provider changes how it identifies people, change the
+settings and say, for each link you keep, what its subject is under the new meaning:
+
+```php
+$result = $migration->migrate($tenant->id, $connectionId, ['settings' => [
+    'issuer' => 'https://login.acme.example',
+]], [
+    $linkId      => ['00u1a2b3c4'],                                 // the new subject
+    $otherLinkId => ['E-1042', null, 'https://login.acme.example'], // the subject, no NameID format, the new issuer
+], $actor);
+```
+
+Each relink is a list: the subject, then optionally the SAML NameID format and the issuer. A format left out or `null`
+is none; an issuer left out or `null` is the link's own, so give the new issuer when the change moves to one. Every link
+of the connection you do not list is removed, and its person's sessions through the connection are revoked; a person
+whose link you relink keeps signing in. The change is validated as `update()` validates one, and each relink with it,
+each problem at `relinks.<id>`: `unknown` for an id that is not one of this connection's links, `not_allowed` for a link
+reserved for a sign-in in progress, `invalid_type` for a relink that is not such a list, `invalid_format` for an empty
+or overlong part. It asks freshness for `sso.connection.trust` and `sso.link.remove` (and whatever else the change
+asks), and voids what is in flight.
+
+Everything happens in one transaction: if a new subject is already linked (two relinks to the same subject, say), the
+result is `invalid` with `duplicate` at that relink, if a person would hold more links than the link limit allows, with
+`too_many`, and nothing is changed. Once it commits, it reports `ConnectionUpdated`, a `LinkRemoved` for every link of
+the connection, then a `LinkCreated` (origin `migration`) for each relink. A change that changes nothing succeeds as
+`unchanged` and touches no link.
+
+## What voiding does to people signing in
+
+A disable, a deletion, a trust change and a migration each void what is in flight through the connection:
+
+- someone who started signing in and has not come back from the identity provider, or whose response is being checked
+  as the change commits, is sent back to your application with the failure `connection_unavailable` and starts again;
+- a handoff code your application has not yet redeemed is refused as `handoff_unknown`, and the person signs in again
+  for a new one;
+- a code your application redeemed before the change is not affected: the person's session is handled by the session
+  revocation contract instead (for a disable, a deletion or a removed link).
+
+Schedule trust changes when few people are signing in, and tell your users that anyone mid-sign-in has to start over.
+
 ## Results
 
-`create()`, `update()` and `enable()` answer a `ConnectionResult`; a refusal is a value, never an exception:
+`create()`, `update()`, `enable()`, `disable()`, `delete()` and `migrate()` answer a `ConnectionResult`; a refusal is a
+value, never an exception:
 
-| `status`    | Predicates                     | Carries                                                                          |
-|-------------|--------------------------------|----------------------------------------------------------------------------------|
-| `created`   | `isSucceeded()`, `isChanged()` | `connection`                                                                     |
-| `updated`   | `isSucceeded()`, `isChanged()` | `connection`, `changedSettings`                                                  |
-| `unchanged` | `isSucceeded()`                | `connection`                                                                     |
-| `enabled`   | `isSucceeded()`, `isChanged()` | `connection`                                                                     |
-| `refused`   | `isRefused()`                  | `reason`: `freshness_required`, `connection_not_found` or `protocol_unavailable` |
-| `invalid`   | `isInvalid()`                  | `reason`: `settings_invalid`, and `violations`                                   |
+| `status`    | Predicates                     | Carries                                        |
+|-------------|--------------------------------|------------------------------------------------|
+| `created`   | `isSucceeded()`, `isChanged()` | `connection`                                   |
+| `updated`   | `isSucceeded()`, `isChanged()` | `connection`, `changedSettings`                |
+| `unchanged` | `isSucceeded()`                | `connection`                                   |
+| `enabled`   | `isSucceeded()`, `isChanged()` | `connection`                                   |
+| `disabled`  | `isSucceeded()`, `isChanged()` | `connection`                                   |
+| `deleted`   | `isSucceeded()`, `isChanged()` | nothing                                        |
+| `migrated`  | `isSucceeded()`, `isChanged()` | `connection`, `changedSettings`                |
+| `refused`   | `isRefused()`                  | `reason`: see below                            |
+| `invalid`   | `isInvalid()`                  | `reason`: `settings_invalid`, and `violations` |
 
-A refused or invalid call writes nothing and reports nothing. `protocol_unavailable` means no driver is registered
-under the protocol, or its switch in `sso.features` is off. An empty or overlong tenant id is your application's
-mistake, an `InvalidArgumentException`; a database error or a secret encrypter that cannot encrypt propagates.
+A refused `reason` is `freshness_required`, `connection_not_found`, `protocol_unavailable` (not for a disable or a
+deletion) or `connection_has_links` (an update only). A refused or invalid call writes nothing and reports nothing.
+`protocol_unavailable` means no driver is registered under the protocol, or its switch in `sso.features` is off. An
+empty or overlong tenant id is your application's mistake, an `InvalidArgumentException`; a database error or a secret
+encrypter that cannot encrypt propagates.
 
 Each violation names a setting by its dotted path (`issuer`, `signature_algorithms.2`, `extra_parameters.state`,
 `attribute_mapping.email`, `display_name`, `preset`) and a code, never the value given:

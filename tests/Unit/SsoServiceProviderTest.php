@@ -12,15 +12,23 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Clock\SystemClock;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
+use SineMacula\Laravel\Sso\Contracts\ApplicationPolicy;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
+use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
+use SineMacula\Laravel\Sso\Contracts\Linker;
+use SineMacula\Laravel\Sso\Contracts\LinkLimit;
+use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
+use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
+use SineMacula\Laravel\Sso\Contracts\RedirectUriResolver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
@@ -62,6 +70,14 @@ final class SsoServiceProviderTest extends TestCase
         EnforcementInheritance::class,
         EnforcementExemption::class,
         SessionRevocation::class,
+        ApplicationPolicy::class,
+        RedirectUriResolver::class,
+        EndpointResolver::class,
+        Linker::class,
+        LinkLimit::class,
+        ReauthenticationSessions::class,
+        ProviderSessionDeadline::class,
+        HandoffIssuer::class,
         ProtocolManager::class,
         ConfigurationChecker::class,
     ];
@@ -103,7 +119,8 @@ final class SsoServiceProviderTest extends TestCase
         $shared = [
             Clock::class, HostResolver::class, SingleUseStore::class, SecretEncrypter::class, Fetcher::class, AttemptLimiter::class,
             Freshness::class, ProtocolManager::class, DnsResolver::class, Enforcement::class, EnforcementInheritance::class,
-            EnforcementExemption::class, SessionRevocation::class,
+            EnforcementExemption::class, SessionRevocation::class, ApplicationPolicy::class, RedirectUriResolver::class, EndpointResolver::class,
+            Linker::class, LinkLimit::class, ReauthenticationSessions::class, ProviderSessionDeadline::class, HandoffIssuer::class,
         ];
 
         foreach ($shared as $abstract) {
@@ -226,7 +243,10 @@ final class SsoServiceProviderTest extends TestCase
     public function testEveryConfigurationCheckIsRegistered(): void
     {
         self::assertSame(
-            ['features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits', 'freshness', 'keys', 'mapping', 'domains'],
+            [
+                'features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits', 'freshness', 'keys',
+                'mapping', 'domains', 'flows',
+            ],
             array_keys(SsoServiceProvider::CONFIGURATION_CHECKS),
         );
     }
