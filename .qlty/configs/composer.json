@@ -1,6 +1,7 @@
 {
     "require": {
         "dealerdirect/phpcodesniffer-composer-installer": "^1.2",
+        "guzzlehttp/guzzle": "^7.9",
         "larastan/larastan": "^3.9",
         "laravel/framework": "^12.40|^13.3",
         "laravel/octane": "^2.16",
@@ -15,8 +16,10 @@
         "phpstan/phpstan-phpunit": "^2.0",
         "phpstan/phpstan-strict-rules": "^2.0",
         "phpunit/phpunit": "^12.5",
+        "psr/clock": "^1.0",
         "sinemacula/coding-standards-laravel": "^1.6.2",
-        "slevomat/coding-standard": "^8.28"
+        "slevomat/coding-standard": "^8.28",
+        "symfony/polyfill-intl-idn": "^1.31"
     },
     "conflict": {
         "symfony/clock": ">=8.0",

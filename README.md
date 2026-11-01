@@ -63,7 +63,7 @@ php artisan vendor:publish --tag=sso-config
 
 ## Requirements
 
-- PHP ^8.3
+- PHP ^8.3, with the `curl`, `dom`, `hash`, `libxml`, `mbstring`, `openssl` and `zlib` extensions
 - Laravel ^12.40 || ^13.3
 
 ## Testing
