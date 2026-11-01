@@ -130,8 +130,9 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A change that gives what is stored is two reads, and a refusal stops
-     * where it is decided, with no write.
+     * A change that gives what is stored is a change's four reads, the last two
+     * locked to confirm it, and a refusal stops where it is decided, with no
+     * write.
      *
      * @return void
      */
@@ -139,7 +140,7 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
     {
         $this->turnOn();
 
-        $unchanged = $this->assertQueryBudget(2, 0, fn (): EnforcementResult => $this->turnOn());
+        $unchanged = $this->assertQueryBudget(4, 0, fn (): EnforcementResult => $this->turnOn());
 
         $untried = $this->makeConnection(['enabled' => true]);
         $lacking = $this->assertQueryBudget(2, 0, fn (): EnforcementResult => $this->service()->update(self::TENANT, true, [$untried->id]));

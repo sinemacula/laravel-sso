@@ -39,6 +39,9 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   tenant byte for byte and are enabled, read in one statement. A rule whose every satisfying connection has since been
   disabled or deleted stays required and is satisfied by none; only an exemption admits a session then. An empty
   application is an `InvalidArgumentException`; a database error propagates (SSO-11.4), never read as not required.
+  Its reads take no lock, so asked inside a transaction that has already read, it answers from that transaction's
+  snapshot (MySQL's `REPEATABLE READ`), which may predate a change committed since; an adapter asks it outside a
+  transaction, or before the transaction's first read, and rechecks a session against the policy's version.
 - `Enforcement\EnforcementService` (`@api`, resolved per request) is the one helper that changes a rule. `get()` answers
   an `EnforcementSummary` from the write connection. `update($tenantId, $enabled, $connectionIds, $actor)` goes in a
   fixed order, and every refusal writes, revokes and reports nothing:
@@ -49,7 +52,9 @@ transaction; and the gate an adapter calls before refusing a session it could ex
      (`connection_ids` `required`), and each a connection of this tenant through `Connections\ConnectionFinder`
      (`connection_ids.<n>` `unknown`, the same for another tenant's connection as for an id with no connection, so no
      other tenant is revealed); any violation is `invalid` (`settings_invalid`) with every violation, in position order;
-  3. the stored rule: the same switch and the same set of ids, in any order, is `unchanged`, with nothing asked;
+  3. the stored rule: the same switch and the same set of ids, in any order, looks `unchanged`, and skips step 5; it is
+     answered `unchanged` only once step 6's locked read agrees, since the first read may come from the snapshot of a
+     transaction the caller opened, and a change found there asks freshness before it is made;
   4. turning it on: one of the connections given must be enabled with `has_completed_sign_in` set, so a misconfigured
      connection cannot lock the tenant out (SSO-4.3), else `completed_sign_in_required`; turning it off needs none;
   5. freshness: `Freshness\FreshnessGate::check(FreshnessOperation::ENFORCEMENT_UPDATE)`, `sso.enforcement.update` with

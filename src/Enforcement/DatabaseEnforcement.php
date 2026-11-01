@@ -26,6 +26,13 @@ use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
  * policy carries the row's version, so an adapter can recheck a session checked
  * against an older one.
  *
+ * The reads take no lock, so asked inside a transaction that has already read,
+ * it answers as of that transaction's snapshot (MySQL's `REPEATABLE READ`),
+ * which may predate a change committed since. Ask it outside a transaction, or
+ * before the transaction's first read, for the rule as it is now; a session
+ * established while the rule changes is caught by rechecking it against the
+ * policy's version.
+ *
  * Nothing is cached: a change is answered on the next call. A database error
  * propagates (SSO-11.4); it never answers that nothing is required when it
  * cannot tell. An empty or overlong tenant id and an empty application are the

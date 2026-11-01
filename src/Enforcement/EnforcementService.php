@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Enforcement\Enums\EnforcementStatus;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
@@ -165,10 +166,16 @@ final readonly class EnforcementService
 
         $stored  = $violations === [] ? $this->finder->find($tenantId) : null;
         $refusal = $violations === []
-            ? (self::ruleRefusal($tenantId, $stored, $enabled, $ids, $connections) ?? $this->staleRefusal())
+            ? self::ruleRefusal($tenantId, $stored, $enabled, $ids, $connections)
             : EnforcementResult::invalid($violations);
 
-        return $refusal ?? $this->change($tenantId, $stored !== null, $enabled, $ids, $actor);
+        // A rule that looks unchanged asks no freshness, but is answered only
+        // once the locked read agrees: the first read may come from a caller's
+        // transaction's snapshot, older than a change committed since.
+        $unchanged = $refusal?->status === EnforcementStatus::UNCHANGED;
+        $refusal   = $unchanged ? null : ($refusal ?? $this->staleRefusal());
+
+        return $refusal ?? $this->change($tenantId, $stored !== null, $enabled, $ids, $actor, !$unchanged);
     }
 
     /**
@@ -242,21 +249,24 @@ final readonly class EnforcementService
     /**
      * Make the change in one transaction on the storage connection, against the
      * tenant's row and the connections given, each locked and judged again;
-     * retried when a deadlock rolled back the outermost transaction.
+     * retried when a deadlock rolled back the outermost transaction. A caller
+     * whose freshness was not asked, because the rule looked unchanged, is
+     * asked once the locked read finds a change to make.
      *
      * @param  string  $tenantId
      * @param  bool  $exists
      * @param  bool  $enabled
      * @param  array<int, string>  $ids
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  bool  $freshnessAsked
      * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    private function change(string $tenantId, bool $exists, bool $enabled, array $ids, ?ActingIdentity $actor): EnforcementResult
+    private function change(string $tenantId, bool $exists, bool $enabled, array $ids, ?ActingIdentity $actor, bool $freshnessAsked): EnforcementResult
     {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $exists, $enabled, $ids, $actor): EnforcementResult {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $exists, $enabled, $ids, $actor, $freshnessAsked): EnforcementResult {
 
             $placeholder = self::ulid();
             $locked      = $this->locked($tenantId, $exists, $placeholder);
@@ -267,6 +277,8 @@ final readonly class EnforcementService
             $refusal = $unknown === []
                 ? self::ruleRefusal($tenantId, $stored, $enabled, $ids, $connections)
                 : EnforcementResult::invalid(array_values($unknown));
+
+            $refusal ??= $freshnessAsked ? null : $this->staleRefusal();
 
             if ($refusal !== null && $stored === null) {
                 $locked->delete();

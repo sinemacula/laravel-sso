@@ -100,7 +100,9 @@ order, and the predicates every later reader judges a domain by. The scheduled r
 - A lapsed domain is verified again by `verify()`, and counts from its new verification time.
 - A domain verified for another connection between the lookup and the write, a claim removed meanwhile, and a claim
   claimed again with another token meanwhile are each refused in the transaction (`domain_unavailable`,
-  `domain_not_found`, `domain_record_not_found`).
+  `domain_not_found`, `domain_record_not_found`). So is a claim that lapsed after it was read for the lookup (verified
+  and lapsed again meanwhile, or lapsed again since): a recheck found no record after the lookup began, and the older
+  answer never overrules it (`domain_record_not_found`).
 - A claim's check that the domain is verified elsewhere locks every claim of the domain, so a verification that races
   it is serialised with it.
 - A removal deletes a claim in any state; a verified domain removed frees it for another connection.

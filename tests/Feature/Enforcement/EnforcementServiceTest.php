@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Enforcement;
 
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -311,6 +312,48 @@ final class EnforcementServiceTest extends TestCase
         self::assertCount(1, $this->revocation->calls());
         self::assertSame($stored->version, $this->stored()->version);
         $this->assertNoEvents();
+    }
+
+    /**
+     * A rule that looked unchanged on the first read, but was turned off before
+     * the lock (as a caller's older transaction snapshot would show it), is
+     * changed under the lock once freshness is asked: the update is never lost
+     * as `unchanged`.
+     *
+     * @return void
+     */
+    public function testARuleThatLookedUnchangedButChangedMeanwhileIsChanged(): void
+    {
+        $stored = self::summaryOf($this->turnOn([$this->completed->id]), EnforcementStatus::UPDATED);
+
+        $this->freshness->reset();
+        $this->turnOffAfterTheFirstRead();
+
+        $result = $this->turnOn([$this->completed->id]);
+
+        self::assertTrue(self::summaryOf($result, EnforcementStatus::UPDATED)->enabled);
+        self::assertNotSame($stored->version, $this->stored()->version);
+        self::assertTrue($this->stored()->enabled);
+        self::assertSame([FreshnessOperation::ENFORCEMENT_UPDATE], $this->freshness->operations());
+    }
+
+    /**
+     * A rule that looked unchanged but changed before the lock is refused, with
+     * nothing written, when the caller then proves stale.
+     *
+     * @return void
+     */
+    public function testARuleThatChangedMeanwhileStillNeedsAFreshCaller(): void
+    {
+        self::summaryOf($this->turnOn([$this->completed->id]), EnforcementStatus::UPDATED);
+
+        $this->freshness->answer(FreshnessOutcome::STALE);
+        $this->turnOffAfterTheFirstRead();
+
+        $result = $this->turnOn([$this->completed->id]);
+
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
+        self::assertFalse($this->stored()->enabled);
     }
 
     /**
@@ -728,6 +771,32 @@ final class EnforcementServiceTest extends TestCase
         self::assertSame(0, TenantEnforcement::query()->count());
         self::assertSame([], $this->revocation->calls());
         $this->assertNoEvents();
+    }
+
+    /**
+     * Turn the tenant's rule off straight after the next read of it, as a
+     * change committed after a caller's transaction took its snapshot would
+     * leave it: the first read sees the rule as it was, the locked read as it
+     * is.
+     *
+     * @return void
+     */
+    private function turnOffAfterTheFirstRead(): void
+    {
+        $table = (new TenantEnforcement)->getTable();
+        $done  = false;
+
+        DB::listen(static function (QueryExecuted $query) use ($table, &$done): void {
+            $isRead = str_starts_with(strtolower($query->sql), 'select') && str_contains($query->sql, $table);
+
+            if ($done || !$isRead) {
+                return;
+            }
+
+            $done = true;
+
+            DB::connection($query->connectionName)->table($table)->update(['enabled' => false]);
+        });
     }
 
     /**

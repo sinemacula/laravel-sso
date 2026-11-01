@@ -187,7 +187,7 @@ final readonly class DomainService
         $token = $found->verification_token;
 
         return $this->verificationRefusal($found)
-            ?? $this->change($tenantId, $connectionId, fn (Connection $locked): DomainResult => $this->writeVerification($locked, $found->domain, $token, $actor));
+            ?? $this->change($tenantId, $connectionId, fn (Connection $locked): DomainResult => $this->writeVerification($locked, $found, $token, $actor));
     }
 
     /**
@@ -429,10 +429,12 @@ final readonly class DomainService
      * Verify the locked connection's claim of the domain, which the record
      * proved with the token given, once every claim of the domain is locked:
      * unless the claim went, was claimed again with another token, expired, was
-     * verified meanwhile, or another connection holds the domain verified.
+     * verified meanwhile, was verified and lapsed again meanwhile (a newer
+     * check found no record, which the older answer must not overrule), or
+     * another connection holds the domain verified.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
-     * @param  string  $name
+     * @param  \SineMacula\Laravel\Sso\Models\Domain  $seen
      * @param  string  $token
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Domains\DomainResult
@@ -441,9 +443,9 @@ final readonly class DomainService
      * @throws \LogicException
      * @throws \Throwable
      */
-    private function writeVerification(Connection $locked, string $name, #[\SensitiveParameter] string $token, ?ActingIdentity $actor): DomainResult
+    private function writeVerification(Connection $locked, Domain $seen, #[\SensitiveParameter] string $token, ?ActingIdentity $actor): DomainResult
     {
-        $claims = $this->domains->claimsOf($name, true);
+        $claims = $this->domains->claimsOf($seen->domain, true);
         $claim  = $claims->of($locked->id);
         $now    = $this->clock->now();
 
@@ -452,6 +454,7 @@ final readonly class DomainService
             !ConstantTime::equals($claim->verification_token, $token) => DomainResult::refused(FailureReason::DOMAIN_RECORD_NOT_FOUND),
             DomainStanding::isPendingExpired($claim, $now)            => DomainResult::refused(FailureReason::DOMAIN_CLAIM_EXPIRED),
             $claim->state === DomainState::VERIFIED                   => DomainResult::unchanged(DomainSummary::of($claim)),
+            self::lapsedSince($claim, $seen)                          => DomainResult::refused(FailureReason::DOMAIN_RECORD_NOT_FOUND),
             $claims->isVerifiedOtherThan($locked->id)                 => DomainResult::refused(FailureReason::DOMAIN_UNAVAILABLE),
             default                                                   => null,
         };
@@ -545,6 +548,20 @@ final readonly class DomainService
 
             return $locked === null ? DomainResult::refused(FailureReason::CONNECTION_NOT_FOUND) : $change($locked);
         }, self::ATTEMPTS);
+    }
+
+    /**
+     * Whether the claim lapsed after it was read for the lookup: it is lapsed
+     * now and was not, or lapsed again since.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
+     * @param  \SineMacula\Laravel\Sso\Models\Domain  $seen
+     * @return bool
+     */
+    private static function lapsedSince(Domain $claim, Domain $seen): bool
+    {
+        return $claim->state === DomainState::LAPSED
+            && ($seen->state !== DomainState::LAPSED || $claim->lapsed_at?->getTimestamp() !== $seen->lapsed_at?->getTimestamp());
     }
 
     /**

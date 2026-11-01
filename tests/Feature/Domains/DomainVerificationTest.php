@@ -350,6 +350,64 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
+     * A pending claim verified and then lapsed by a recheck while its record is
+     * looked up is `domain_record_not_found`: the newer check found no record,
+     * and the older answer never verifies it again.
+     *
+     * @return void
+     */
+    public function testRefusesAClaimThatLapsedDuringTheLookup(): void
+    {
+        $claimed = self::summaryOf($this->claimDomain());
+
+        $this->dns->answer(self::RECORD, function () use ($claimed): DnsLookup {
+            $this->lapse($claimed->id, $this->clock->now());
+
+            return DnsLookup::found([$claimed->verificationToken()]);
+        });
+
+        $this->startRecordingEvents();
+
+        $result = $this->verifyDomain();
+        $stored = Domain::query()->findOrFail($claimed->id);
+
+        self::assertSame(DomainStatus::REFUSED, $result->status);
+        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $result->reason);
+        self::assertSame(DomainState::LAPSED, $stored->state);
+        self::assertNull($stored->verified_domain);
+        $this->assertNoEvents();
+    }
+
+    /**
+     * A lapsed claim verified and lapsed again while its record is looked up is
+     * `domain_record_not_found`, judged by its new lapse time; the same lapse
+     * it had when read is verified again.
+     *
+     * @return void
+     */
+    public function testRefusesAClaimThatLapsedAgainDuringTheLookup(): void
+    {
+        $claim = $this->makeDomain($this->connection, 'example.com', [
+            'state'              => DomainState::LAPSED,
+            'pending_expires_at' => null,
+            'lapsed_at'          => $this->clock->now()->subDay(),
+        ]);
+
+        $this->dns->answer(self::RECORD, function () use ($claim): DnsLookup {
+            $this->lapse($claim->id, $this->clock->now());
+
+            return DnsLookup::found([$claim->verification_token]);
+        });
+
+        $refused = $this->verifyDomain();
+
+        $this->dns->found(self::RECORD, $claim->verification_token);
+
+        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $refused->reason);
+        self::assertSame(DomainStatus::VERIFIED, $this->verifyDomain()->status);
+    }
+
+    /**
      * A domain verified for another connection between the lookup and the write
      * is `domain_unavailable`, and the claim stays pending.
      *
@@ -565,5 +623,25 @@ final class DomainVerificationTest extends DomainServiceTestCase
         self::assertSame(DomainStatus::VERIFIED, $verified->status);
         self::assertSame(DomainStatus::UNCHANGED, $unchanged->status);
         self::assertSame(DomainStatus::REMOVED, $removed->status);
+    }
+
+    /**
+     * Lapse the claim at the moment given, as a recheck that found no record
+     * after its grace would.
+     *
+     * @param  string  $id
+     * @param  \Carbon\CarbonImmutable  $at
+     * @return void
+     */
+    private function lapse(string $id, CarbonImmutable $at): void
+    {
+        Domain::query()->findOrFail($id)->forceFill([
+            'state'                => DomainState::LAPSED,
+            'verified_domain'      => null,
+            'pending_expires_at'   => null,
+            'linking_suspended_at' => $at,
+            'lapses_at'            => $at,
+            'lapsed_at'            => $at,
+        ])->save();
     }
 }
