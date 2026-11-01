@@ -1,0 +1,123 @@
+# Secrets
+
+The package stores two kinds of secret: a connection's client secret (OIDC) and the private keys it signs and decrypts
+with (SAML, and OIDC's `private_key_jwt`). Both are encrypted at rest through
+`SineMacula\Laravel\Sso\Contracts\SecretEncrypter`, are never returned once set, and never reach a log, an exception or
+an event.
+
+## The default encrypter
+
+By default the package encrypts with Laravel's encrypter under your `APP_KEY`; it has no key setting of its own. While
+a protocol is on, the boot check and `php artisan sso:check` confirm, under `[secrets]`, that the encrypter can encrypt
+and decrypt with `app.key`. Without an `APP_KEY` they report:
+
+```text
+The default secret encrypter cannot encrypt and decrypt with `app.key`; set APP_KEY, or bind your own SecretEncrypter.
+```
+
+A stored ciphertext that no key can decrypt (a key that was removed too soon, a value changed in the database) is a
+server error, a `RuntimeException`, never a failed sign-in.
+
+## Rotating APP_KEY
+
+Laravel decrypts with `APP_KEY` and then with each key in `APP_PREVIOUS_KEYS`, so rotation needs no migration of the
+stored secrets:
+
+1. Generate a new key, and move the current one to `APP_PREVIOUS_KEYS` (comma-separated when there are several):
+
+   ```dotenv
+   APP_KEY=base64:new-key…
+   APP_PREVIOUS_KEYS=base64:old-key…
+   ```
+
+2. Deploy and restart every worker (`php artisan octane:reload`, `php artisan queue:restart`), so each one builds
+   Laravel's encrypter with the new keys. Stored secrets still decrypt under the old key; anything encrypted from now
+   on uses the new one.
+3. Optionally re-encrypt the stored secrets under the new key (setting a secret again encrypts it under the current
+   key).
+4. Remove the old key from `APP_PREVIOUS_KEYS` only once no secret is stored under it; one that still is then fails to
+   decrypt.
+
+## Binding a key management service
+
+To keep the secrets under a key management service rather than `APP_KEY`, bind your own implementation of
+`SecretEncrypter` in a service provider. One bound in a provider that registers before the package's is kept; one bound
+later replaces the default as any later binding does:
+
+```php
+use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
+
+public function register(): void
+{
+    $this->app->scoped(SecretEncrypter::class, KmsSecretEncrypter::class);
+}
+```
+
+```php
+use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
+
+final readonly class KmsSecretEncrypter implements SecretEncrypter
+{
+    public function __construct(private KmsClient $kms) {}
+
+    public function encrypt(#[\SensitiveParameter] string $secret): string
+    {
+        return $this->kms->encrypt('sso-secrets', $secret);
+    }
+
+    public function decrypt(string $ciphertext): string
+    {
+        return $this->kms->decrypt($ciphertext);
+    }
+}
+```
+
+Your encrypter must:
+
+- give back from `decrypt()` exactly the secret `encrypt()` was given, and keep decrypting what it encrypted after any
+  rotation of its own keys;
+- throw a `RuntimeException` when it cannot encrypt or decrypt, never return an empty or wrong value;
+- never log, report or put in an exception message the secret it is given or returns (mark the parameter
+  `#[\SensitiveParameter]`, as above);
+- hold nothing of one request or job for the next: bind it `scoped`, or as a singleton only if it keeps no state.
+
+The configuration check only resolves your encrypter; it never calls it, so a check makes no request to your key
+management service. Switching an existing installation to another encrypter means re-encrypting what is stored: the new
+encrypter cannot decrypt what the old one encrypted.
+
+## What a read returns
+
+No helper returns a secret once it is set. What it returns instead:
+
+| Stored                      | Returned               | JSON fields                                       |
+|-----------------------------|------------------------|---------------------------------------------------|
+| A client secret             | `Secrets\MaskedSecret` | `set`                                             |
+| A key pair or a certificate | `Secrets\MaskedKey`    | `set`, `certificate`, `public_key`, `fingerprint` |
+
+`MaskedKey` carries the certificate and the public key as PEM, and the fingerprint as the lower-case hex SHA-256 of the
+certificate's DER (the same value `openssl x509 -noout -fingerprint -sha256` prints, without the colons), or of the
+public key's DER when there is no certificate. Give the certificate or the public key to your identity provider, and
+compare fingerprints to check which one it has. A `MaskedKey` never holds a private key: a PEM with one in it is
+refused.
+
+To replace a lost client secret, set a new one; the old one cannot be read back.
+
+## Secrets in your own code
+
+When the package hands your code a decrypted secret, it is a `Secrets\Secret`. Call `reveal()` only where the secret
+must be sent or used. A dump of it, or `json_encode()`, shows `[redacted]`; it cannot be serialised (so it cannot be put
+on a queue or in a cache) and cannot be cast to a string. Compare it with `$secret->equals($given)`, which runs in
+constant time.
+
+For your own comparisons of secrets, codes, verifiers and digests, use `Secrets\ConstantTime`:
+
+```php
+use SineMacula\Laravel\Sso\Secrets\ConstantTime;
+
+ConstantTime::equals($known, $given);
+ConstantTime::matchesDigest($storedSha256Hex, $presented);
+ConstantTime::matchesDigest($storedSha512Hex, $presented, 'sha512');
+```
+
+`matchesDigest()` refuses, with an `InvalidArgumentException`, an algorithm that is not a cryptographic hash PHP
+supports.

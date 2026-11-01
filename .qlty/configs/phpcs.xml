@@ -9,8 +9,20 @@
         <exclude name="SlevomatCodingStandard.TypeHints.DisallowMixedTypeHint"/>
     </rule>
 
+    <!-- SsoModel joins the parents whose subclasses may declare Eloquent's
+         mutable public properties ($timestamps, $incrementing): every package
+         model extends it rather than Model directly. -->
+    <rule ref="SineMacula.Classes.RequireReadonlyPublicProperty">
+        <properties>
+            <property name="ignoredParentClasses" type="array" extend="true">
+                <element value="SsoModel"/>
+            </property>
+        </properties>
+    </rule>
+
     <file>src</file>
     <file>benchmarks</file>
+    <file>database</file>
     <file>tests</file>
 
 </ruleset>
