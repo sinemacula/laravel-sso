@@ -127,6 +127,9 @@ final class OidcSettingsTest extends TestCase
             $tooManyParameters['prompt' . $index] = 'x';
         }
 
+        $mostParameters = array_slice($tooManyParameters, 0, 10);
+        $eachRefused    = array_map(static fn (string $parameter): array => ['extra_parameters.' . $parameter, 'not_allowed'], array_keys($mostParameters));
+
         yield from [
             'an issuer that is not a string'  => [['issuer' => true], [['issuer', 'invalid_type']]],
             'an http issuer'                  => [['issuer' => 'http://idp.example.com'], [['issuer', 'not_https']]],
@@ -177,6 +180,11 @@ final class OidcSettingsTest extends TestCase
             'a parameter with a control'       => [['extra_parameters' => ['login_hint' => "a\r\nb"]], [['extra_parameters.login_hint', 'invalid_format']]],
             'an unnamed parameter'             => [['extra_parameters' => ['' => 'x']], [['extra_parameters', 'not_allowed']]],
             'an unknown setting'               => [['idp_entity_id' => 'https://idp.example.com'], [['idp_entity_id', 'unknown']]],
+            'a known setting, then unknown'    => [['issuer' => 'https://idp.example.com', 'unknown' => 1], [['unknown', 'unknown']]],
+            'scopes as a map'                  => [['scopes' => ['first' => 'openid']], [['scopes', 'invalid_type']]],
+            'two scopes refused'               => [['scopes' => ['openid', 'a b', '']], [['scopes.1', 'invalid_format'], ['scopes.2', 'required']]],
+            'the most extra parameters'        => [['extra_parameters' => $mostParameters], $eachRefused],
+            'a numbered parameter'             => [['extra_parameters' => ['login']], [['extra_parameters.0', 'not_allowed']]],
             'several, in the order named'      => [
                 ['unknown' => 1, 'scopes' => ['email'], 'client_secret' => 'shh', 'issuer' => 'http://idp.example.com'],
                 [['issuer', 'not_https'], ['client_secret', 'reserved'], ['scopes', 'openid_scope_required'], ['unknown', 'unknown']],

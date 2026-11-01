@@ -238,6 +238,23 @@ final class KeyResultTest extends TestCase
             '{"status":"invalid","key":null,"previous":null,"reason":"settings_invalid","violations":[{"setting":"certificate","code":"duplicate"}]}',
             json_encode(KeyResult::invalid([new SettingViolation('certificate', ViolationCode::DUPLICATE)])),
         );
+
+        self::assertSame(
+            [['setting' => 'certificate', 'code' => 'duplicate']],
+            KeyResult::invalid([new SettingViolation('certificate', ViolationCode::DUPLICATE)])->jsonSerialize()['violations'],
+        );
+
+        set_error_handler(static function (int $severity, string $message): never {
+            throw new \ErrorException($message, 0, $severity);
+        });
+
+        try {
+            $reason = KeyResult::madeCurrent($key, null)->jsonSerialize()['reason'];
+        } finally {
+            restore_error_handler();
+        }
+
+        self::assertNull($reason);
     }
 
     /**

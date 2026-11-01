@@ -101,4 +101,54 @@ final class PresetsTest extends TestCase
             self::assertStringStartsWith('https://', $google->settings[$endpoint]);
         }
     }
+
+    /**
+     * Each OIDC preset fills in how its client authenticates at the token
+     * endpoint, and the claims each attribute is read from.
+     *
+     * @return void
+     */
+    public function testEachOidcPresetFillsInItsClientAuthenticationAndMapping(): void
+    {
+        $presets = Presets::shipped();
+        $mapping = ['email' => 'email', 'given_name' => 'given_name', 'family_name' => 'family_name', 'display_name' => 'name'];
+
+        self::assertSame([
+            'google'          => 'client_secret_basic',
+            'microsoft_entra' => 'client_secret_basic',
+            'okta'            => 'client_secret_basic',
+            'auth0'           => 'client_secret_post',
+        ], array_map(static fn ($preset): mixed => $preset->settings['client_authentication'] ?? null, array_diff_key($presets, ['microsoft_entra_saml' => true])));
+
+        self::assertSame($mapping, $presets['google']->attributeMapping);
+        self::assertSame($mapping, $presets['microsoft_entra']->attributeMapping);
+        self::assertSame($mapping + ['groups' => 'groups'], $presets['okta']->attributeMapping);
+        self::assertSame($mapping, $presets['auth0']->attributeMapping);
+    }
+
+    /**
+     * Microsoft Entra ID's SAML preset fills in its binding, subject and
+     * signing requirement, and the claim types its attributes are named by.
+     *
+     * @return void
+     */
+    public function testMicrosoftEntraSamlFillsInItsSettingsAndClaimTypes(): void
+    {
+        $preset = Presets::shipped()['microsoft_entra_saml'];
+
+        self::assertSame([
+            'sso_binding'            => 'http_redirect',
+            'subject_source'         => 'name_id',
+            'name_id_format'         => 'persistent',
+            'want_assertions_signed' => true,
+        ], $preset->settings);
+
+        self::assertSame([
+            'email'        => 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
+            'given_name'   => 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
+            'family_name'  => 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname',
+            'display_name' => 'http://schemas.microsoft.com/identity/claims/displayname',
+            'groups'       => 'http://schemas.microsoft.com/ws/2008/06/identity/claims/groups',
+        ], $preset->attributeMapping);
+    }
 }

@@ -271,4 +271,29 @@ final class ConnectionFinderTest extends TestCase
 
         (new ConnectionFinder)->forTenant('');
     }
+
+    /**
+     * A connection id no connection can have, empty or longer than an id, is
+     * not found, without a query.
+     *
+     * @return void
+     */
+    public function testAnIdNoConnectionCanHaveIsNotFoundWithoutAQuery(): void
+    {
+        $finder     = new ConnectionFinder;
+        $connection = $this->makeConnection();
+
+        /** @var \ArrayObject<int, string> $statements */
+        $statements = new \ArrayObject;
+
+        DB::connection(StorageConnection::name())->listen(static function (QueryExecuted $query) use ($statements): void {
+            $statements[] = $query->sql;
+        });
+
+        self::assertNull($finder->find('tenant-1', ''));
+        self::assertNull($finder->find('tenant-1', $connection->id . 'x'));
+        self::assertCount(0, $statements);
+        self::assertSame($connection->id, $finder->find('tenant-1', $connection->id)?->id);
+        self::assertCount(1, $statements);
+    }
 }

@@ -256,8 +256,8 @@ final readonly class AttributeMapping
 
     /**
      * Why the target cannot be mapped to, or `null` when it can: one of the
-     * result's own fields is `reserved`, and a name that is neither standard
-     * nor a custom target's is `invalid_format`.
+     * result's own fields is `reserved`, and a name not of a target's form,
+     * which every standard target has, is `invalid_format`.
      *
      * @param  string  $target
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
@@ -266,7 +266,6 @@ final readonly class AttributeMapping
     {
         return match (true) {
             in_array($target, self::RESERVED_TARGETS, true) => ViolationCode::RESERVED,
-            in_array($target, self::STANDARD_TARGETS, true) => null,
             default                                         => preg_match(self::CUSTOM_TARGET, $target) === 1 ? null : ViolationCode::INVALID_FORMAT,
         };
     }

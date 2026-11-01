@@ -103,7 +103,7 @@ final readonly class KeyRing
             ->get()
             ->all();
 
-        usort($keys, static fn (ConnectionKey $one, ConnectionKey $other): int => ($one->state === KeyState::CURRENT ? 0 : 1) <=> ($other->state === KeyState::CURRENT ? 0 : 1));
+        usort($keys, static fn (ConnectionKey $one, ConnectionKey $other): int => ($one->state === KeyState::NEXT) <=> ($other->state === KeyState::NEXT));
 
         return array_map(KeySummary::of(...), $keys);
     }
@@ -233,10 +233,10 @@ final readonly class KeyRing
      * first, then the most recently made current, then the most recently added.
      *
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
-     * @return list<int|string|null>
+     * @return list<bool|int|string|null>
      */
     private static function decryptionRank(ConnectionKey $key): array
     {
-        return [$key->state === KeyState::CURRENT ? 1 : 0, $key->made_current_at?->getTimestamp(), $key->created_at->getTimestamp(), $key->id];
+        return [$key->state === KeyState::CURRENT, $key->made_current_at?->getTimestamp(), $key->created_at->getTimestamp(), $key->id];
     }
 }

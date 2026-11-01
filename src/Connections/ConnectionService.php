@@ -540,8 +540,6 @@ final readonly class ConnectionService
 
         foreach ($changes as $key => $value) {
 
-            $key = (string) $key;
-
             $code = match ($key) {
                 self::DISPLAY_NAME                      => is_string($value) ? null : ViolationCode::INVALID_TYPE,
                 self::SETTINGS, self::ATTRIBUTE_MAPPING => is_array($value) ? null : ViolationCode::INVALID_TYPE,

@@ -91,6 +91,7 @@ final class AttributeMappingTest extends TestCase
             'a source with a control'        => ['saml2', ['email' => "mail\n"], [['attribute_mapping.email', 'invalid_format']]],
             'a source of most length'        => ['saml2', ['email' => str_repeat('s', 1024)], []],
             'a protocol value under saml'    => ['saml2', ['department' => 'sub'], []],
+            'a bad target and source'        => ['saml2', ['Bad' => ''], [['attribute_mapping.Bad', 'invalid_format']]],
             'several, in the order given'    => [
                 'oidc',
                 ['subject' => 'sub', 'email' => '', 'department' => 'id_token', 'Bad' => 'x'],
@@ -314,6 +315,29 @@ final class AttributeMappingTest extends TestCase
         $mapping = AttributeMapping::fromArray('oidc', ['subject' => 'sub', 'Bad' => 'x', 'email' => ['email']], self::limits());
 
         self::assertSame([], $mapping->map(['sub' => 'abc', 'x' => 'y', 'email' => 'ada@example.com']));
+    }
+
+    /**
+     * A target refused, a source the values lack, or a value that maps to
+     * nothing is skipped, quietly, and the targets after it still map.
+     *
+     * @return void
+     */
+    public function testSkipsWhatItCannotMapAndMapsTheRest(): void
+    {
+        $mapping = AttributeMapping::fromArray('oidc', ['Bad' => 'x', 'notes' => 'missing', 'department' => 'dept', 0 => 'email', 'email' => 'email'], self::limits());
+
+        set_error_handler(static function (int $severity, string $message): never {
+            throw new \ErrorException($message, 0, $severity);
+        });
+
+        try {
+            $mapped = $mapping->map(['x' => 'y', 'dept' => 42, 'email' => 'ada@example.com']);
+        } finally {
+            restore_error_handler();
+        }
+
+        self::assertSame(['email' => 'ada@example.com'], $mapped);
     }
 
     /**

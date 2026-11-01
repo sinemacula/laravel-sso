@@ -264,12 +264,7 @@ final readonly class KeyService
 
         $rank = static fn (ConnectionKey $key): array => [
             array_search($key->use, KeyUse::cases(), true),
-            match ($key->state) {
-                KeyState::CURRENT  => 0,
-                KeyState::NEXT     => 1,
-                KeyState::RETIRING => 2,
-                null               => 3,
-            },
+            array_search($key->state, [KeyState::CURRENT, KeyState::NEXT, KeyState::RETIRING, null], true),
             $key->created_at->getTimestamp(),
             $key->id,
         ];

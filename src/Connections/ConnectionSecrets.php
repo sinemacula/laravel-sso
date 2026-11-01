@@ -251,7 +251,7 @@ final readonly class ConnectionSecrets
         }
 
         try {
-            $decoded = json_decode($stored, true, 512, JSON_THROW_ON_ERROR);
+            $decoded = json_decode($stored, true, flags: JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             throw new \UnexpectedValueException(self::MALFORMED);
         }

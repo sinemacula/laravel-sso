@@ -161,6 +161,30 @@ final class CertificateInspectorTest extends TestCase
     }
 
     /**
+     * Inspection leaves the error handler it found in place.
+     *
+     * @return void
+     */
+    public function testLeavesTheErrorHandlerItFound(): void
+    {
+        $handler = static fn (): bool => false;
+
+        set_error_handler($handler);
+
+        try {
+            $facts = (new CertificateInspector)->inspect(Certificates::ecP256())['facts'];
+        } finally {
+            $found = set_error_handler(null);
+
+            restore_error_handler();
+            restore_error_handler();
+        }
+
+        self::assertNotNull($facts);
+        self::assertSame($handler, $found);
+    }
+
+    /**
      * Empty OpenSSL's error queue, so what a test finds there afterwards is
      * what the code under test left.
      *

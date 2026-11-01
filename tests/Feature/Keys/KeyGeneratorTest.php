@@ -226,6 +226,77 @@ final class KeyGeneratorTest extends TestCase
     }
 
     /**
+     * Generation leaves the error handler it found in place.
+     *
+     * @return void
+     */
+    public function testLeavesTheErrorHandlerItFound(): void
+    {
+        $handler = static fn (): bool => false;
+
+        set_error_handler($handler);
+
+        try {
+            $this->generator()->generate(KeyType::EC, self::COMMON_NAME);
+        } finally {
+            $found = set_error_handler(null);
+
+            restore_error_handler();
+            restore_error_handler();
+        }
+
+        self::assertSame($handler, $found);
+    }
+
+    /**
+     * The OpenSSL configuration written for a generation is removed after it.
+     * Another process may be generating at the same time, so each configuration
+     * present just after is waited on for a moment: another process's goes, and
+     * only one that stays is counted as left.
+     *
+     * @return void
+     */
+    public function testRemovesItsOpensslConfiguration(): void
+    {
+        $pattern = rtrim(sys_get_temp_dir(), '/') . '/sso-openssl-*';
+        $before  = glob($pattern) ?: [];
+
+        $this->generator()->generate(KeyType::EC, self::COMMON_NAME);
+
+        $deadline = microtime(true) + 5;
+        $left     = array_values(array_diff(glob($pattern) ?: [], $before));
+
+        while ($left !== [] && microtime(true) < $deadline) {
+            usleep(10000);
+
+            $left = array_values(array_intersect($left, glob($pattern) ?: []));
+        }
+
+        self::assertSame([], $left);
+    }
+
+    /**
+     * A dump shows every field but the private key, each as it is held.
+     *
+     * @return void
+     */
+    public function testADumpShowsEveryFieldButThePrivateKey(): void
+    {
+        $key = $this->generator()->generate(KeyType::EC, self::COMMON_NAME);
+
+        self::assertSame([
+            'privateKey'  => '[redacted]',
+            'publicKey'   => $key->publicKey,
+            'certificate' => $key->certificate,
+            'type'        => 'ec',
+            'bits'        => 256,
+            'notBefore'   => $key->notBefore->format('Y-m-d\TH:i:s\Z'),
+            'notAfter'    => $key->notAfter->format('Y-m-d\TH:i:s\Z'),
+            'fingerprint' => $key->fingerprint,
+        ], $key->__debugInfo());
+    }
+
+    /**
      * Rows of `[common name]`: names a certificate cannot hold.
      *
      * @return iterable<string, array{0: string}>

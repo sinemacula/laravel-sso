@@ -183,6 +183,20 @@ final class FreshnessGateTest extends TestCase
     }
 
     /**
+     * `checkAll()` asks about the operations after one given twice in a row.
+     *
+     * @return void
+     */
+    public function testCheckAllAsksPastARepeatedOperation(): void
+    {
+        $freshness = $this->bind(FakeFreshness::fresh());
+
+        $this->gate()->checkAll([FreshnessOperation::KEYS_ROTATE, FreshnessOperation::KEYS_ROTATE, FreshnessOperation::CONNECTION_TRUST]);
+
+        $freshness->assertAskedExactly([FreshnessOperation::KEYS_ROTATE, FreshnessOperation::CONNECTION_TRUST]);
+    }
+
+    /**
      * `checkAll()` answers `stale` at the first operation that is, and asks
      * about none after it.
      *

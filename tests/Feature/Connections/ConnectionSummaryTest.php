@@ -152,6 +152,7 @@ final class ConnectionSummaryTest extends TestCase
             $connection->id,
         ), $json);
 
+        self::assertSame(['client_secret' => ['set' => true]], $this->summaryOf($connection)->jsonSerialize()['secrets']);
         self::assertIsString($secrets);
         self::assertStringNotContainsString(self::SECRET, $json);
 

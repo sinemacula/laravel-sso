@@ -214,6 +214,10 @@ final class Saml2SettingsTest extends TestCase
             'an unknown setting'            => [['client_id' => 'abc'], [['client_id', 'unknown']]],
             'an unnamed setting'            => [['' => 'abc'], [['settings', 'unknown']]],
             'a numbered setting'            => [['abc'], [['0', 'unknown']]],
+            'a known setting, then unknown' => [['sso_url' => 'https://idp.example.com/sso', 'client_id' => 'abc'], [['client_id', 'unknown']]],
+            'context classes as a map'      => [['requested_authn_context' => ['a' => 'urn:x:y']], [['requested_authn_context', 'invalid_type']]],
+            'two context classes refused'   => [['requested_authn_context' => [1, '']], [['requested_authn_context.0', 'invalid_type'], ['requested_authn_context.1', 'required']]],
+            'two encryption algorithms'     => [['encryption_algorithms' => ['x', 'y']], [['encryption_algorithms.0', 'not_allowed'], ['encryption_algorithms.1', 'not_allowed']]],
             'several, in the order named'   => [
                 ['unknown' => true, 'name_id_format' => 'transient', 'sso_url' => 'http://idp.example.com', 'idp_entity_id' => ''],
                 [['idp_entity_id', 'required'], ['sso_url', 'not_https'], ['name_id_format', 'not_allowed'], ['unknown', 'unknown']],

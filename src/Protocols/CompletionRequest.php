@@ -147,6 +147,6 @@ final readonly class CompletionRequest implements \JsonSerializable
     {
         $query = $request->server('QUERY_STRING');
 
-        return new self(strtoupper($request->getMethod()), is_string($query) ? $query : '', $request->request->all());
+        return new self($request->getMethod(), is_string($query) ? $query : '', $request->request->all());
     }
 }

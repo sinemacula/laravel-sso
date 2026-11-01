@@ -59,6 +59,8 @@ final class OidcSettingTest extends TestCase
     public function testTheSubjectAndSecretSettings(): void
     {
         self::assertSame(['issuer', 'client_id'], OidcSetting::subjectNames());
+        self::assertTrue(OidcSetting::ISSUER->altersSubject());
+        self::assertFalse(OidcSetting::SCOPES->altersSubject());
         self::assertSame(['client_secret'], OidcSetting::secretNames());
         self::assertTrue(OidcSetting::CLIENT_SECRET->isSecret());
         self::assertFalse(OidcSetting::CLIENT_ID->isSecret());

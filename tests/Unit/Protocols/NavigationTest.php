@@ -63,6 +63,16 @@ final class NavigationTest extends TestCase
     }
 
     /**
+     * A URL's scheme is read whatever its case.
+     *
+     * @return void
+     */
+    public function testAcceptsAnHttpsSchemeInAnyCase(): void
+    {
+        self::assertSame(['type' => 'redirect', 'url' => 'HTTPS://idp.example.com/sso'], Navigation::redirect('HTTPS://idp.example.com/sso')->jsonSerialize());
+    }
+
+    /**
      * Rows of `[url]`: URLs a navigation never leads to.
      *
      * @return iterable<string, array{0: string}>
@@ -75,6 +85,7 @@ final class NavigationTest extends TestCase
             'http'         => ['http://idp.example.com/sso'],
             'javascript'   => ['javascript:alert(1)'],
             'no host'      => ['https:///sso'],
+            'a path alone' => ['https:/sso'],
             'another kind' => ['ftp://idp.example.com/sso'],
         ];
     }

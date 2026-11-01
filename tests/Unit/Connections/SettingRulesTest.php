@@ -7,7 +7,9 @@ namespace Tests\Unit\Connections;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 use SineMacula\Laravel\Sso\Connections\SettingRules;
+use SineMacula\Laravel\Sso\Connections\SettingViolation;
 
 /**
  * Unit tests for how a stored value is compared with the one given: a map
@@ -55,5 +57,47 @@ final class SettingRulesTest extends TestCase
     {
         self::assertSame($same, SettingRules::isSame($one, $other));
         self::assertSame($same, SettingRules::isSame($other, $one));
+    }
+
+    /**
+     * A URL's scheme is read whatever its case.
+     *
+     * @return void
+     */
+    public function testReadsAUrlsSchemeWhateverItsCase(): void
+    {
+        self::assertNull(SettingRules::url('HTTPS://idp.example.com/sso'));
+        self::assertSame(ViolationCode::NOT_HTTPS, SettingRules::url('HTTP://idp.example.com/sso'));
+    }
+
+    /**
+     * A path names the key under its parent up to the longest setting a
+     * violation holds; an empty, unprintable or longer one names the parent.
+     *
+     * @return void
+     */
+    public function testNamesAPathUpToTheLongestSetting(): void
+    {
+        $longest = str_repeat('a', SettingViolation::MAX_SETTING_LENGTH);
+
+        self::assertSame($longest, SettingRules::path(null, $longest));
+        self::assertSame('settings', SettingRules::path(null, $longest . 'a'));
+        self::assertSame('scopes.' . substr($longest, 7), SettingRules::path('scopes', substr($longest, 7)));
+        self::assertSame('scopes', SettingRules::path('scopes', substr($longest, 6)));
+        self::assertSame('scopes.0', SettingRules::path('scopes', 0));
+        self::assertSame('scopes', SettingRules::path('scopes', ''));
+        self::assertSame('scopes', SettingRules::path('scopes', "a\0b"));
+    }
+
+    /**
+     * A value is printable when it is UTF-8 with no control character.
+     *
+     * @return void
+     */
+    public function testAValueIsPrintableWithoutAControlCharacter(): void
+    {
+        self::assertTrue(SettingRules::isPrintable('Acme Ltd'));
+        self::assertFalse(SettingRules::isPrintable("Acme\nLtd"));
+        self::assertFalse(SettingRules::isPrintable("\xC3\x28"));
     }
 }

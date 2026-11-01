@@ -4,7 +4,9 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Connections;
 
+use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionFinder;
@@ -1002,6 +1004,92 @@ final class ConnectionServiceTest extends TestCase
 
         self::assertTrue($this->stored($completed->id)->has_completed_sign_in);
         self::assertFalse($this->stored($fresh->id)->has_completed_sign_in);
+    }
+
+    /**
+     * Creation always asks trust freshness, even when no setting given needs
+     * it, and a setting given as `null` neither asks freshness nor stops the
+     * settings after it.
+     *
+     * @return void
+     */
+    public function testCreationAsksTrustFreshnessAndSkipsANullSetting(): void
+    {
+        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', ['idp_initiated' => null, 'force_authn' => true]);
+
+        self::assertSame(ConnectionStatus::CREATED, $result->status);
+        self::assertTrue($this->stored((string) $result->connection?->id)->settings['force_authn']);
+        self::assertSame([[FreshnessOperation::CONNECTION_TRUST, self::TRUST_MAX_AGE]], $this->freshness->asked());
+    }
+
+    /**
+     * A SAML update names the settings it removes and adds in the order the
+     * protocol names them, wherever they fall in what is stored.
+     *
+     * @return void
+     */
+    public function testNamesTheSamlSettingsRemovedAndAddedInOrder(): void
+    {
+        $id = (string) $this->service()->create(self::TENANT, 'saml2', 'Acme', self::SAML)->connection?->id;
+
+        $removed = $this->service()->update(self::TENANT, $id, ['settings' => ['idp_entity_id' => null, 'sso_url' => 'https://idp.example.com/login']]);
+        $added   = $this->service()->update(self::TENANT, $id, ['settings' => ['idp_entity_id' => self::SAML['idp_entity_id']]]);
+
+        self::assertSame(['idp_entity_id', 'sso_url'], $removed->changedSettings);
+        self::assertSame(['idp_entity_id'], $added->changedSettings);
+        self::assertSame(self::SAML['idp_entity_id'], $this->stored($id)->settings['idp_entity_id']);
+    }
+
+    /**
+     * An application's protocol is updated through its own settings, which name
+     * no order of their own.
+     *
+     * @return void
+     */
+    public function testUpdatesAConnectionOverAnApplicationsProtocol(): void
+    {
+        $this->protocols()->extend('example', fn (): ExampleDriver => new ExampleDriver);
+
+        $id     = (string) $this->service()->create(self::TENANT, 'example', 'Acme', ['issuer' => 'https://idp.example.com', 'region' => 'eu'])->connection?->id;
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['region' => 'us']]);
+
+        self::assertSame(ConnectionStatus::UPDATED, $result->status);
+        self::assertSame(['region'], $result->changedSettings);
+        self::assertSame('us', $this->stored($id)->settings['region']);
+    }
+
+    /**
+     * An update or an enable for a tenant id the table cannot hold is refused
+     * before any transaction is opened.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testRefusesABadTenantIdBeforeOpeningATransaction(): void
+    {
+        $opened = 0;
+
+        Event::listen(TransactionBeginning::class, static function () use (&$opened): void {
+            $opened++;
+        });
+
+        $calls = [
+            fn (): mixed => $this->service()->update('', 'x', []),
+            fn (): mixed => $this->service()->enable('', 'x'),
+        ];
+
+        foreach ($calls as $call) {
+
+            try {
+                $call();
+                self::fail('The tenant id was accepted.');
+            } catch (\InvalidArgumentException $exception) {
+                self::assertSame('A tenant id is 1 to 255 bytes.', $exception->getMessage());
+            }
+        }
+
+        self::assertSame(0, $opened);
     }
 
     /**

@@ -228,6 +228,23 @@ final class ConnectionResultTest extends TestCase
         );
 
         self::assertStringContainsString('"client_secret":{"set":true}', (string) json_encode(ConnectionResult::created($summary)));
+
+        self::assertSame(
+            [['setting' => 'scopes', 'code' => 'openid_scope_required']],
+            ConnectionResult::invalid([new SettingViolation('scopes', ViolationCode::OPENID_SCOPE_REQUIRED)])->jsonSerialize()['violations'],
+        );
+
+        set_error_handler(static function (int $severity, string $message): never {
+            throw new \ErrorException($message, 0, $severity);
+        });
+
+        try {
+            $reason = ConnectionResult::created($summary)->jsonSerialize()['reason'];
+        } finally {
+            restore_error_handler();
+        }
+
+        self::assertNull($reason);
     }
 
     /**

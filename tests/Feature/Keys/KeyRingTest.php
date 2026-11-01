@@ -175,6 +175,22 @@ final class KeyRingTest extends TestCase
     }
 
     /**
+     * The current encryption key decrypts first even when a retiring one was
+     * made current after it, and a retiring key with no record of when it was
+     * made current decrypts last.
+     *
+     * @return void
+     */
+    public function testDecryptionPutsTheCurrentKeyFirstWhateverTheDates(): void
+    {
+        $undated = $this->row($this->connection, KeyUse::SP_ENCRYPTION, KeyState::RETIRING, ['retiring_until' => self::at('10:00:00')]);
+        $current = $this->row($this->connection, KeyUse::SP_ENCRYPTION, KeyState::CURRENT, ['made_current_at' => self::at('08:00:00')]);
+        $later   = $this->row($this->connection, KeyUse::SP_ENCRYPTION, KeyState::RETIRING, ['made_current_at' => self::at('09:00:00'), 'retiring_until' => self::at('10:00:00')]);
+
+        self::assertSame([$current->id, $later->id, $undated->id], self::ids($this->ring()->decryption($this->connection->id)));
+    }
+
+    /**
      * Without a current encryption key, decryption accepts the retiring keys
      * still within their overlap, and nothing once they end.
      *

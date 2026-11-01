@@ -4,6 +4,9 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Keys;
 
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\Grammars\SQLiteGrammar;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -880,6 +883,141 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
+     * The listing orders by use before state, and by state before age: an older
+     * key of a later use, or an older next key, never comes first.
+     *
+     * @return void
+     */
+    public function testListsByUseAndStateBeforeAge(): void
+    {
+        $encryption = $this->add();
+
+        ConnectionKey::query()->whereKey($encryption->id)->update(['use' => KeyUse::SP_ENCRYPTION->value]);
+
+        $current = $this->add();
+        $next    = $this->add();
+
+        ConnectionKey::query()->whereKey($current->id)->update(['created_at' => '2026-11-01 09:30:02']);
+        ConnectionKey::query()->whereKey($next->id)->update(['created_at' => '2026-11-01 09:30:01']);
+        ConnectionKey::query()->whereKey($encryption->id)->update(['created_at' => '2026-11-01 09:30:00']);
+
+        $keys = $this->keys()->keys(self::TENANT, $this->connection->id);
+
+        self::assertSame([$current->id, $next->id, $encryption->id], array_map(static fn (KeySummary $key): string => $key->id, $keys ?? []));
+    }
+
+    /**
+     * A certificate the inspector refuses is invalid with the inspector's
+     * violation, before freshness is asked, with nothing written.
+     *
+     * @return void
+     */
+    public function testRefusesACertificateTheInspectorRefuses(): void
+    {
+        $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, 'not a certificate');
+
+        self::assertTrue($result->isInvalid());
+        self::assertSame([['setting' => 'certificate', 'code' => 'invalid_format']], $result->jsonSerialize()['violations']);
+        self::assertSame([], $this->freshness->asked());
+        self::assertSame([], $this->rows());
+    }
+
+    /**
+     * A certificate the connection already trusts is a duplicate, and the
+     * eleventh is one too many, each refused before freshness is asked; the
+     * tenth is still trusted.
+     *
+     * @return void
+     */
+    public function testRefusesADuplicateAndAnEleventhCertificate(): void
+    {
+        for ($index = 1; $index <= KeyService::MAX_TRUSTED_CERTIFICATES; $index++) {
+            self::assertTrue($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct($index))->isSucceeded());
+        }
+
+        $this->freshness->reset();
+
+        $duplicate = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(1));
+        $tooMany   = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(11));
+
+        self::assertTrue($duplicate->isInvalid());
+        self::assertSame([['setting' => 'certificate', 'code' => 'duplicate']], $duplicate->jsonSerialize()['violations']);
+        self::assertTrue($tooMany->isInvalid());
+        self::assertSame([['setting' => 'certificate', 'code' => 'too_many']], $tooMany->jsonSerialize()['violations']);
+        self::assertCount(KeyService::MAX_TRUSTED_CERTIFICATES, $this->rows());
+        self::assertSame([], $this->freshness->asked());
+    }
+
+    /**
+     * A key id no key can have, empty or longer than an id, is not found
+     * without a query of the keys.
+     *
+     * @return void
+     */
+    public function testAKeyIdNoKeyCanHaveIsNotFoundWithoutAQuery(): void
+    {
+        $this->add();
+
+        $statements = $this->recordKeyStatements();
+
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, '')->reason);
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, self::UNKNOWN . 'x')->reason);
+        self::assertSame([], $statements->getArrayCopy());
+
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, self::UNKNOWN)->reason);
+        self::assertCount(1, $statements);
+    }
+
+    /**
+     * A next key is made current even where no key of its use is current, with
+     * no key it replaced.
+     *
+     * @return void
+     */
+    public function testANextKeyIsMadeCurrentWhereNoneIsCurrent(): void
+    {
+        $retiring = $this->add();
+        $next     = $this->add();
+
+        ConnectionKey::query()->whereKey($retiring->id)->update(['state' => KeyState::RETIRING->value]);
+
+        $result = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id);
+
+        self::assertSame(KeyStatus::MADE_CURRENT, $result->status);
+        self::assertSame(KeyState::CURRENT, self::summaryOf($result)->state);
+        self::assertNull($result->previous);
+        self::assertSame('retiring', ConnectionKey::query()->findOrFail($retiring->id)->getRawOriginal('state'));
+    }
+
+    /**
+     * The keys are read locked for update inside each change's transaction, and
+     * never by the listing or the checks made before it. SQLite has no row
+     * lock, so there the lock is compiled to a marker comment to show it was
+     * asked for.
+     *
+     * @return void
+     */
+    public function testLocksTheKeysOnlyInsideTheTransaction(): void
+    {
+        $current    = $this->add();
+        $statements = $this->recordKeyStatements(true);
+        $id         = $this->connection->id;
+        $keys       = $this->keys();
+        $next       = $this->add();
+
+        $keys->keys(self::TENANT, $id);
+        $keys->makeCurrent(self::TENANT, $id, $next->id);
+        $keys->retire(self::TENANT, $id, $current->id);
+        $keys->distrustCertificate(self::TENANT, $id, self::summaryOf($keys->trustCertificate(self::TENANT, $id, Certificates::ecP256()))->id);
+
+        $reads = $statements->getArrayCopy();
+
+        self::assertContains(true, array_column($reads, 'locked'));
+        self::assertContains(false, array_column($reads, 'locked'));
+        self::assertSame(array_column($reads, 'transaction'), array_column($reads, 'locked'));
+    }
+
+    /**
      * Add a P-256 signing key to the connection, the tenant's own unless
      * another is given, and answer its summary.
      *
@@ -958,6 +1096,55 @@ final class KeyServiceTest extends TestCase
     private function rows(): array
     {
         return array_values(ConnectionKey::query()->orderBy('id')->get()->map(static fn (ConnectionKey $key): array => $key->getAttributes())->all());
+    }
+
+    /**
+     * Record each read of the keys table from now on: whether it was made
+     * inside a transaction, and whether it locked the rows for update; on
+     * SQLite, with the lock compiled to a marker comment when asked.
+     *
+     * @param  bool  $markLocks
+     * @return \ArrayObject<int, array{transaction: bool, locked: bool}>
+     */
+    private function recordKeyStatements(bool $markLocks = false): \ArrayObject
+    {
+        $database = DB::connection(StorageConnection::name());
+
+        if ($markLocks && $database->getDriverName() === 'sqlite') {
+            $database->setQueryGrammar(new class ($database) extends SQLiteGrammar {
+                /**
+                 * Compile a lock for update to a marker comment.
+                 *
+                 * @param  \Illuminate\Database\Query\Builder  $query
+                 * @param  bool|string  $value
+                 * @return string
+                 */
+                #[\Override]
+                protected function compileLock(Builder $query, $value): string
+                {
+                    return $value === true ? ' /* for update */' : '';
+                }
+            });
+        }
+
+        $table = (new ConnectionKey)->getTable();
+        $level = $database->transactionLevel();
+
+        /** @var \ArrayObject<int, array{transaction: bool, locked: bool}> $statements */
+        $statements = new \ArrayObject;
+
+        $database->listen(static function (QueryExecuted $query) use ($statements, $table, $level): void {
+
+            $sql = strtolower($query->sql);
+
+            if (!str_starts_with($sql, 'select') || !str_contains($sql, $table)) {
+                return;
+            }
+
+            $statements[] = ['transaction' => $query->connection->transactionLevel() > $level, 'locked' => str_ends_with(rtrim($sql, ' */'), 'for update')];
+        });
+
+        return $statements;
     }
 
     /**

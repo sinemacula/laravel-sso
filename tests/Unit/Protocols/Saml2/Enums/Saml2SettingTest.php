@@ -79,6 +79,8 @@ final class Saml2SettingTest extends TestCase
     public function testTheSubjectSettingsAlterSubjects(): void
     {
         self::assertSame(['idp_entity_id', 'subject_source', 'subject_attribute', 'name_id_format'], Saml2Setting::subjectNames());
+        self::assertTrue(Saml2Setting::NAME_ID_FORMAT->altersSubject());
+        self::assertFalse(Saml2Setting::SSO_URL->altersSubject());
 
         foreach (Saml2Setting::subjectNames() as $name) {
             self::assertSame(FreshnessOperation::CONNECTION_TRUST, Saml2Setting::from($name)->freshness());

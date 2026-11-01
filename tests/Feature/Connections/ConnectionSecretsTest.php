@@ -8,8 +8,10 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
+use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
 use SineMacula\Laravel\Sso\Secrets\MaskedSecret;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use Tests\TestCase;
@@ -153,6 +155,91 @@ final class ConnectionSecretsTest extends TestCase
         self::assertNull($secrets->apply($cleared, ['api_secret' => null]));
         self::assertNull($secrets->apply(null, []));
         self::assertNull($secrets->apply(null, ['client_secret' => null]));
+    }
+
+    /**
+     * A change clears and sets secrets in one pass, whichever comes first, and
+     * the column keeps each ciphertext's slashes as they are.
+     *
+     * @return void
+     */
+    public function testAppliesAClearBeforeASetAndKeepsSlashes(): void
+    {
+        $secrets = new ConnectionSecrets(new class implements SecretEncrypter {
+            /**
+             * Answer a ciphertext with a slash in it.
+             *
+             * @param  string  $secret
+             * @return string
+             */
+            #[\Override]
+            public function encrypt(#[\SensitiveParameter] string $secret): string
+            {
+                return 'v1/' . base64_encode($secret);
+            }
+
+            /**
+             * Never called.
+             *
+             * @param  string  $ciphertext
+             * @return string
+             */
+            #[\Override]
+            public function decrypt(string $ciphertext): string
+            {
+                return $ciphertext;
+            }
+        });
+
+        $stored = $secrets->apply('{"api_secret":"v1/b2xk"}', ['api_secret' => null, 'client_secret' => new Secret(self::SECRET)]);
+
+        self::assertSame('{"client_secret":"v1/' . base64_encode(self::SECRET) . '"}', $stored);
+    }
+
+    /**
+     * Each secret given is checked in the order the protocol declares them,
+     * past one given as `null`, which is never refused; and a client secret is
+     * unsupported for an OIDC client that authenticates with `private_key_jwt`,
+     * once it is a usable string.
+     *
+     * @return void
+     */
+    public function testChecksEachSecretGiven(): void
+    {
+        $basic = OidcSettings::fromArray(['client_authentication' => 'client_secret_basic']);
+        $jwt   = OidcSettings::fromArray(['client_authentication' => 'private_key_jwt']);
+        $names = ['api_secret', 'client_secret', 'other_secret'];
+
+        self::assertSame([], ConnectionSecrets::violations($basic, $names, ['api_secret' => null, 'client_secret' => self::SECRET]));
+        self::assertSame([], ConnectionSecrets::violations($jwt, $names, ['api_secret' => self::SECRET, 'other_secret' => self::OTHER]));
+
+        $overlong = str_repeat('a', ConnectionSecrets::MAX_LENGTH + 1);
+
+        self::assertSame([
+            ['setting' => 'client_secret', 'code' => 'required'],
+            ['setting' => 'other_secret', 'code' => 'too_long'],
+        ], self::serialized(ConnectionSecrets::violations($basic, $names, ['api_secret' => null, 'client_secret' => '', 'other_secret' => $overlong])));
+
+        $unsupported = ConnectionSecrets::violations($jwt, $names, ['client_secret' => self::SECRET]);
+        $empty       = ConnectionSecrets::violations($jwt, $names, ['client_secret' => '']);
+
+        self::assertSame([['setting' => 'client_secret', 'code' => 'unsupported']], self::serialized($unsupported));
+        self::assertSame([['setting' => 'client_secret', 'code' => 'required']], self::serialized($empty));
+    }
+
+    /**
+     * The secrets a change alters are those given as a string and those given
+     * as `null` that are stored, in the order the protocol declares them.
+     *
+     * @return void
+     */
+    public function testNamesTheSecretsAChangeAlters(): void
+    {
+        $names = ['unstored', 'given', 'stored', 'absent'];
+        $given = ['stored' => null, 'given' => self::SECRET, 'unstored' => null];
+
+        self::assertSame(['given', 'stored'], ConnectionSecrets::changedNames($names, $given, ['stored', 'absent']));
+        self::assertSame(['given'], ConnectionSecrets::changedNames($names, $given, []));
     }
 
     /**
@@ -313,5 +400,16 @@ final class ConnectionSecretsTest extends TestCase
                 throw new \RuntimeException('Decryption was attempted.');
             }
         };
+    }
+
+    /**
+     * The violations, as they are serialised.
+     *
+     * @param  list<\SineMacula\Laravel\Sso\Connections\SettingViolation>  $violations
+     * @return list<array<string, mixed>>
+     */
+    private static function serialized(array $violations): array
+    {
+        return array_map(static fn (SettingViolation $violation): array => $violation->jsonSerialize(), $violations);
     }
 }
