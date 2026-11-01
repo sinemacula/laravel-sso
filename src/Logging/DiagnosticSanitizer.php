@@ -11,9 +11,9 @@ namespace SineMacula\Laravel\Sso\Logging;
  *
  * In order: invalid UTF-8 is scrubbed; tabs and line breaks become spaces, and
  * every other C0 control, DEL, every C1 control and the Unicode bidirectional
- * controls are removed, so a diagnostic cannot forge a log line or reorder
- * what a reader sees; whitespace is collapsed to single spaces and trimmed;
- * secrets are replaced with `[redacted]`; and the text is cut to
+ * controls are removed, so a diagnostic cannot forge a log line or reorder what
+ * a reader sees; whitespace is collapsed to single spaces and trimmed; secrets
+ * are replaced with `[redacted]`; and the text is cut to
  * `sso.logging.max_diagnostic_length` characters, ending in `…` when cut.
  * Whitespace is collapsed before redaction rather than after, so a pattern sees
  * the same text on every pass and an unusual space cannot hide a secret from
@@ -23,13 +23,17 @@ namespace SineMacula\Laravel\Sso\Logging;
  *
  * What is redacted: a JWS, JWT or JWE; the credential after `Bearer` or
  * `Basic`; a PEM block; a SAML `Assertion`, `EncryptedAssertion`,
- * `SignatureValue` or `X509Certificate` element, whole; the value of a
- * `key=value` pair, a quoted `key="value"` pair or XML attribute, a JSON
- * `"key": value` member (escaped JSON too) and a simple XML element whose key
- * is a redacted key (see `LoggingSettings::redactedKeys()`); and any run of 40
- * or more base64 or base64url characters, which catches assertions, codes,
- * tokens and keys under no recognisable name. Redaction errs towards removing
- * too much: a long identifier or path is redacted with the secrets.
+ * `SignatureValue` or `X509Certificate` element, whole; the whole value, of
+ * whatever type and punctuation, of a pair (`key=value`, `key="value"`, `key =>
+ * value`, `key: value`, an XML attribute, a credential header to the end of the
+ * text), a JSON `"key": value` member (escaped JSON too) and an XML element
+ * whose key, decoded, is a redacted key (see `KeyedValues` and `RedactedKeys`);
+ * any run of 40 or more base64 or base64url characters, which catches
+ * assertions, codes, tokens and keys under no recognisable name; and any
+ * percent- or HTML-entity-encoded run of text that, decoded, carries any of
+ * these. Redaction errs towards removing too much: a long identifier or path is
+ * redacted with the secrets, a value cut short is redacted to the end of the
+ * text, and an encoded URL that carries a secret is redacted whole.
  *
  * Sanitising is idempotent: sanitising sanitised text changes nothing.
  *
@@ -68,20 +72,11 @@ final readonly class DiagnosticSanitizer
     /** @var string The credential of a `Bearer` or `Basic` authorisation. */
     private const string SCHEMES = '/\b(Bearer|Basic)(\s+)[A-Za-z0-9\-._~+\/]+=*/iu';
 
-    /** @var string A JSON member, or an escaped one inside a JSON string, whose value is a string, a number or a boolean. */
-    private const string JSON_MEMBERS = '/(\\\?")([^"\\\]{1,128})\1(\s*:\s*)("(?:[^"\\\]|\\\.)*"|\\\"(?:(?!\\\").)*\\\"|-?\d[\d.eE+\-]*|true|false)/u';
-
-    /** @var string An XML element with a name and text content only, with any namespace prefix and attributes. */
-    private const string ELEMENTS = '/(<(' . self::PREFIX . '([A-Za-z_][\w.\-]*))(?:\s[^<>]*)?>)([^<]+)(<\/\2\s*>)/u';
-
-    /** @var string A quoted `key="value"` or `key='value'` pair, an XML attribute among them. */
-    private const string QUOTED_PAIRS = '/(?<![\w.\-:])(' . self::PREFIX . '([A-Za-z_][\w.\-]*))(\s*=\s*)(["\'])(.*?)\4/su';
-
-    /** @var string An unquoted `key=value` pair, as in a query string or a form. */
-    private const string PAIRS = '/(?<![\w.\-])([A-Za-z_][\w.\-]*)(\s*=\s*)([^\s&#"\'<>\[\](),;]+)/u';
-
     /** @var string A run of 40 or more base64 or base64url characters, with any padding. */
     private const string LONG_RUNS = '/[A-Za-z0-9+\/_\-]{40,}={0,2}/u';
+
+    /** @var string A run of text holding a percent-encoded byte or an HTML character reference, from one space to the next. */
+    private const string ENCODED_RUNS = '/(?<!\S)(?=\S*?(?:%[0-9A-Fa-f]{2}|&(?:#[0-9]+|#[Xx][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);))\S++/u';
 
     /** @var string Whitespace, Unicode separators among it. */
     private const string WHITESPACE = '/[\s\p{Z}]+/u';
@@ -107,108 +102,104 @@ final readonly class DiagnosticSanitizer
      */
     public function sanitize(#[\SensitiveParameter] string $text): string
     {
-        $text = $this->clean(mb_scrub($text, 'UTF-8'), array_flip($this->settings->redactedKeys())) ?? self::REDACTED;
+        $text = self::clean(mb_scrub($text, 'UTF-8'), RedactedKeys::from($this->settings)) ?? self::REDACTED;
 
         return self::cap($text, $this->settings->maxDiagnosticLength());
     }
 
     /**
      * The text with tabs and line breaks as spaces, every other control removed
-     * and whitespace collapsed, then with every secret replaced: whole blocks
-     * and elements first, then credentials, then values by their key, then long
-     * runs. `null` when a pattern could not run over the text (a PCRE limit),
-     * which the caller answers by redacting the text whole rather than logging
-     * it unsanitised.
+     * and whitespace collapsed, then with every secret replaced (see
+     * `redact()`), and trimmed. `null` when a pattern could not run over the
+     * text (a PCRE limit), which the caller answers by redacting the text whole
+     * rather than logging it unsanitised.
      *
      * @param  string  $text
-     * @param  array<string, int>  $keys
+     * @param  \SineMacula\Laravel\Sso\Logging\RedactedKeys  $keys
      * @return ?string
      */
-    private function clean(string $text, array $keys): ?string
+    private static function clean(string $text, RedactedKeys $keys): ?string
     {
-        $text = preg_replace(
-            [self::BREAKS, self::CONTROLS, self::WHITESPACE, self::PEM, self::SECRET_ELEMENTS, self::JWTS, self::SCHEMES],
-            [' ', '', ' ', self::REDACTED, self::REDACTED, self::REDACTED, '$1$2' . self::REDACTED],
-            $text,
-        );
-
-        $text = $text === null ? null : preg_replace_callback_array([
-            self::JSON_MEMBERS => static fn (array $match): string => self::redactJsonMember($match, $keys),
-            self::ELEMENTS     => static fn (array $match): string => self::redactElement($match, $keys),
-            self::QUOTED_PAIRS => static fn (array $match): string => self::redactQuotedPair($match, $keys),
-            self::PAIRS        => static fn (array $match): string => self::redactPair($match, $keys),
-        ], $text);
-
-        $text = $text === null ? null : preg_replace(self::LONG_RUNS, self::REDACTED, $text);
+        $text = preg_replace([self::BREAKS, self::CONTROLS, self::WHITESPACE], [' ', '', ' '], $text);
+        $text = $text === null ? null : self::redact($text, $keys);
 
         return $text === null ? null : trim($text);
     }
 
     /**
-     * The JSON member, its value redacted when its key is a redacted key. An
-     * escaped member keeps its escaped quotes.
+     * The text with every secret replaced: whole blocks and elements first,
+     * then credentials, then values by their key (`KeyedValues`), then long
+     * runs, then any percent- or entity-encoded run that, decoded, carries a
+     * secret. `null` when a pattern could not run over the text.
      *
-     * @param  array<array-key, string>  $match
-     * @param  array<string, int>  $keys
+     * @param  string  $text
+     * @param  \SineMacula\Laravel\Sso\Logging\RedactedKeys  $keys
+     * @return ?string
+     */
+    private static function redact(string $text, RedactedKeys $keys): ?string
+    {
+        $text = preg_replace(
+            [self::PEM, self::SECRET_ELEMENTS, self::JWTS, self::SCHEMES],
+            [self::REDACTED, self::REDACTED, self::REDACTED, '$1$2' . self::REDACTED],
+            $text,
+        );
+
+        $text = $text === null ? null : KeyedValues::redact($text, $keys);
+        $text = $text === null ? null : preg_replace(self::LONG_RUNS, self::REDACTED, $text);
+
+        return $text === null ? null : preg_replace_callback(self::ENCODED_RUNS, static fn (array $match): string => self::redactEncodedRun($match[0], $keys), $text);
+    }
+
+    /**
+     * The encoded run, or `[redacted]` when, decoded, it carries a secret:
+     * redacting its decoded text, with `+` kept or read as a space, would
+     * change it. A run still encoded after `RedactedKeys::MAX_DECODES` passes
+     * is taken to carry one.
+     *
+     * @param  string  $run
+     * @param  \SineMacula\Laravel\Sso\Logging\RedactedKeys  $keys
      * @return string
      */
-    private static function redactJsonMember(array $match, array $keys): string
+    private static function redactEncodedRun(string $run, RedactedKeys $keys): string
     {
-        if (!self::redacts($match[2], $keys)) {
-            return $match[0];
+        $decoded = self::decode($run);
+
+        if ($decoded === null) {
+            return self::REDACTED;
         }
 
-        $quote = str_starts_with($match[4], '\\') ? '\"' : '"';
+        foreach ([$decoded, strtr($decoded, '+', ' ')] as $view) {
+            if (self::redact($view, $keys) !== $view) {
+                return self::REDACTED;
+            }
+        }
 
-        return $match[1] . $match[2] . $match[1] . $match[3] . $quote . self::REDACTED . $quote;
+        return $run;
     }
 
     /**
-     * The XML element, its content redacted when its name is a redacted key.
+     * The run with its percent-encoding and HTML character references (`&#61;`,
+     * `&quot;`) undone until nothing is left to undo, invalid UTF-8 scrubbed,
+     * or `null` when something still is after `RedactedKeys::MAX_DECODES`
+     * passes.
      *
-     * @param  array<array-key, string>  $match
-     * @param  array<string, int>  $keys
-     * @return string
+     * @param  string  $run
+     * @return ?string
      */
-    private static function redactElement(array $match, array $keys): string
+    private static function decode(string $run): ?string
     {
-        return self::redacts($match[3], $keys) ? $match[1] . self::REDACTED . $match[5] : $match[0];
-    }
+        for ($pass = 0; $pass <= RedactedKeys::MAX_DECODES; $pass++) {
 
-    /**
-     * The quoted pair, its value redacted when its key is a redacted key.
-     *
-     * @param  array<array-key, string>  $match
-     * @param  array<string, int>  $keys
-     * @return string
-     */
-    private static function redactQuotedPair(array $match, array $keys): string
-    {
-        return self::redacts($match[2], $keys) ? $match[1] . $match[3] . $match[4] . self::REDACTED . $match[4] : $match[0];
-    }
+            $decoded = html_entity_decode(rawurldecode($run), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
-    /**
-     * The unquoted pair, its value redacted when its key is a redacted key.
-     *
-     * @param  array<array-key, string>  $match
-     * @param  array<string, int>  $keys
-     * @return string
-     */
-    private static function redactPair(array $match, array $keys): string
-    {
-        return self::redacts($match[1], $keys) ? $match[1] . $match[2] . self::REDACTED : $match[0];
-    }
+            if ($decoded === $run) {
+                return mb_scrub($run, 'UTF-8');
+            }
 
-    /**
-     * Whether the key, normalised, is one of the redacted keys.
-     *
-     * @param  string  $key
-     * @param  array<string, int>  $keys
-     * @return bool
-     */
-    private static function redacts(string $key, array $keys): bool
-    {
-        return isset($keys[LoggingSettings::normalizeKey($key)]);
+            $run = $decoded;
+        }
+
+        return null;
     }
 
     /**

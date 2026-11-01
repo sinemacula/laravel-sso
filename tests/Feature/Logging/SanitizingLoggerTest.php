@@ -164,6 +164,30 @@ final class SanitizingLoggerTest extends TestCase
     }
 
     /**
+     * The message and the context redact the same keys, decoded, and the whole
+     * value under each, whatever it holds: punctuation, an encoded name or a
+     * JSON array.
+     *
+     * @return void
+     */
+    public function testRedactsWholeValuesUnderEncodedKeys(): void
+    {
+        $this->captureLogs();
+
+        $this->logger()->error('Refused: client_secret=alpha,beta ?client%5fsecret=short-secret {"access_token":["short-token-value"]}', [
+            'client%5Fsecret' => 'gamma',
+            'form'            => ['user[password]' => 'delta', 'grant' => 'refresh_token=epsilon;zeta'],
+        ]);
+
+        $record = $this->capturedLogRecords()[0];
+
+        self::assertSame('Refused: client_secret=[redacted] ?client%5fsecret=[redacted] {"access_token":"[redacted]"}', $record['message']);
+        self::assertSame(['client%5Fsecret' => '[redacted]', 'form' => ['user[password]' => '[redacted]', 'grant' => 'refresh_token=[redacted]']], $record['context']);
+
+        $this->assertNothingLoggedContains('alpha', 'beta', 'short-secret', 'short-token-value', 'gamma', 'delta', 'epsilon', 'zeta');
+    }
+
+    /**
      * With no channel configured, the package logs to Laravel's default
      * channel.
      *

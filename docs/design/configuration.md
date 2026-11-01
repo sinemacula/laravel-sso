@@ -28,9 +28,15 @@ package registers its settings and its check without editing another's (SSO-12.2
   before; skips one that does not apply; runs every closure of one that does; and reports a check that cannot be built
   or is not a check as a problem of its subject.
 - At boot, outside the console, the checker runs once the application has booted and any problem stops the boot with
-  an `Exceptions\InvalidConfigurationException` listing every problem as `[subject] message` (SSO-12.3). In the
-  console the boot check does not run, so a misconfigured application can still run its commands, migrations and
-  `sso:check`; Octane workers are not console processes, so they are checked as they boot.
+  an `Exceptions\InvalidConfigurationException` listing every problem as `[subject] message` (SSO-12.3). Octane
+  workers are not console processes, so they are checked as they boot.
+- In the console the checker runs as each command in `SsoServiceProvider::WORKER_COMMANDS` starts (`queue:work`,
+  `queue:listen`, `horizon`, `horizon:supervisor`, `horizon:work`, `schedule:run`, `schedule:work`, `schedule:test`,
+  `octane:start` and the Octane server commands), on Artisan's `CommandStarting` event, and a problem fails the command
+  with the same exception before it takes a job, runs a scheduled task or starts a server. The command is matched by
+  the name Artisan resolved, so an alias or abbreviation is checked as the command. Every other command runs whatever
+  the configuration, so a misconfigured application can still run `sso:check`, its migrations, `vendor:publish`, the
+  `config:*`, `cache:*` and `optimize*` commands, `package:discover`, `list`, `help`, `about` and `tinker`.
 - `sso:check` runs the same checks and prints `[subject] OK`, `[subject] not enabled` or one line per problem, exiting
   `1` on a problem. It opens no database connection and prints no secret.
 - An application (`sso.applications.<name>`) has exactly one redirect URI, compared later as an exact string:
@@ -63,6 +69,11 @@ package registers its settings and its check without editing another's (SSO-12.2
 - A malformed switch fails a flow closed (`enabled()`), and is reported by `[features]` at boot.
 - A check class that does not exist is reported under its subject, so a registry entry left behind fails the boot
   rather than being skipped.
+- A long-running or scheduled process started from the console is checked as it starts rather than skipped: a queue
+  worker, Horizon or the scheduler in a misconfigured application exits with the exception, and the process each
+  spawns (a `queue:work` under `queue:listen`, a supervisor or worker under `horizon`, a `schedule:run` under
+  `schedule:work`) is checked again as it starts. An application command the scheduler runs is checked through
+  `schedule:run`, which fails before running it.
 - The boot check reads configuration only and touches no database, so it adds no query to a request (the performance
   suite's query budget for registering and booting the package stays at zero).
 
@@ -75,7 +86,7 @@ package registers its settings and its check without editing another's (SSO-12.2
 - `src/Config/Checks/FeaturesCheck.php`, `ExtensionsCheck.php`, `StorageCheck.php`, `EndpointsCheck.php`,
   `ApplicationsCheck.php`.
 - `src/Console/CheckConfigurationCommand.php`; `src/SsoServiceProvider.php`: `CONFIGURATION_CHECKS`,
-  `checkConfiguration()`; `config/sso.php`.
+  `WORKER_COMMANDS`, `checkConfiguration()`, `checkConfigurationBeforeWork()`; `config/sso.php`.
 
 ## Authoritative Tests
 
@@ -85,10 +96,13 @@ package registers its settings and its check without editing another's (SSO-12.2
 - `tests/Feature/Config/FeaturesTest.php` and every test under `tests/Feature/Config/Checks/`.
 - `tests/Feature/Console/CheckConfigurationCommandTest.php`.
 - `tests/Feature/SsoServiceProviderTest.php` `testBootingOutsideTheConsoleFailsOnAProblem`,
-  `testBootingInTheConsoleLeavesTheCheckToTheCommand`; `tests/Integration/Config/BootCheckTest.php`.
+  `testBootingInTheConsoleLeavesTheCheckToTheCommand`, `testAWorkerCommandFailsToStartOnAProblem`,
+  `testAWorkerCommandStartsWithAWellConfiguredPackage`, `testARecoveryCommandStartsOnAProblem`;
+  `tests/Integration/Config/BootCheckTest.php`.
 
 ## Change Triggers
 
 - A new setting, section or feature switch; a new check, or a change to when one applies.
-- A change to where the boot check runs, or to what `sso:check` prints or exits with.
+- A change to where the boot check runs, to the commands checked as they start, or to what `sso:check` prints or
+  exits with.
 - A change to the application or endpoint settings, or to what a redirect URI may be.

@@ -429,8 +429,8 @@ final class GuzzleFetcherTest extends TestCase
         self::assertSame('', $options['proxy']);
         self::assertFalse($options['decode_content']);
         self::assertSame(['https'], $options['protocols']);
-        self::assertSame(20, $options['timeout']);
-        self::assertSame(7, $options['connect_timeout']);
+        self::assertSame(20.0, $options['timeout']);
+        self::assertSame(7.0, $options['connect_timeout']);
 
         $managed = [
             CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
@@ -873,7 +873,8 @@ final class GuzzleFetcherTest extends TestCase
 
     /**
      * Build a fetcher over a mock handler answering with the responses in turn,
-     * a stub resolver of the hosts given and a capturing logger.
+     * a stub resolver of the hosts given, a capturing logger and a monotonic
+     * clock that stands still, so each request is given the whole timeout.
      *
      * @param  list<\Psr\Http\Message\ResponseInterface|\Throwable>  $responses
      * @param  array<string, list<string>>  $hosts
@@ -895,7 +896,7 @@ final class GuzzleFetcherTest extends TestCase
 
         $settings = new FetcherSettings(config());
 
-        return new GuzzleFetcher($settings, new AddressPolicy($settings), new Logger('sso', [$this->log]), $this->resolver, $handler);
+        return new GuzzleFetcher($settings, new AddressPolicy($settings), new Logger('sso', [$this->log]), $this->resolver, $handler, null, static fn (): int => 0);
     }
 
     /**

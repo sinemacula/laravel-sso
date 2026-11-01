@@ -15,10 +15,10 @@ use SineMacula\Laravel\Sso\Logging\Redactor;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * Unit tests for context redaction (SSO-9.8, SSO-11.9): values under a
- * redacted key, in any case or separator and at any depth, redacted whole;
- * other strings sanitised; scalars and enums kept; exceptions reduced; objects
- * never dumped; and the depth capped.
+ * Unit tests for context redaction (SSO-9.8, SSO-11.9): values under a redacted
+ * key, in any case or separator and at any depth, redacted whole; other strings
+ * sanitised; scalars and enums kept; exceptions reduced; objects never dumped;
+ * and the depth capped.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -77,11 +77,27 @@ final class RedactorTest extends TestCase
             'pascal case'      => ['ClientSecret'],
             'dotted'           => ['client.secret'],
             'spaced'           => ['Client Secret'],
+            'percent-encoded'  => ['client%5Fsecret'],
+            'double-encoded'   => ['client%255Fsecret'],
+            'plus-encoded'     => ['Client+Secret'],
+            'a form array'     => ['client_secret[]'],
+            'a nested form'    => ['oauth[client_secret]'],
+            'an encoded form'  => ['oauth%5Bclient_secret%5D'],
+            'namespaced'       => ['oidc:client_secret'],
+            'a dotted path'    => ['sso.oidc.client_secret'],
+            'a slashed path'   => ['oauth/client_secret'],
+            'a header name'    => ['X-Client-Secret'],
+            'a spaced name'    => ['private key'],
+            'a spaced SAML'    => ['SAML Response'],
+            'a dotted parent'  => ['credentials.password'],
+            'a slashed parent' => ['user/password'],
         ];
     }
 
     /**
-     * A key is compared normalised, so any case or separator is redacted.
+     * A key is compared normalised, so any case or separator is redacted, and a
+     * key whose last words, or any run of its words, name a redacted key is
+     * too.
      *
      * @param  string  $key
      * @return void
@@ -93,14 +109,33 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * Only a key whose whole name normalises to a redacted key is redacted: one
-     * that merely contains one is kept, its value sanitised.
+     * The sanitiser matches a key exactly as the redactor does, so a key the
+     * redactor redacts in a context is redacted in a pair and a JSON member
+     * too, whatever its value holds.
+     *
+     * @param  string  $key
+     * @return void
+     */
+    #[DataProvider('provideKeyForms')]
+    public function testMatchesKeysAsTheSanitizerDoes(string $key): void
+    {
+        $sanitizer = new DiagnosticSanitizer(new LoggingSettings(new Repository([])));
+
+        self::assertSame([$key => '[redacted]'], self::redactor()->redact([$key => ['a', 'b']]));
+        self::assertSame($key . '=[redacted]', $sanitizer->sanitize($key . '=a,b;c'));
+        self::assertSame('{"' . $key . '":"[redacted]"}', $sanitizer->sanitize('{"' . $key . '":["a",{"b":1}]}'));
+    }
+
+    /**
+     * Only a key a run of whose words (between anything but a letter, a digit
+     * and `_`) normalises to a redacted key is redacted: one whose one word
+     * merely contains one is kept, its value sanitised.
      *
      * @return void
      */
     public function testKeepsKeysThatOnlyContainARedactedKey(): void
     {
-        $context = ['error_code' => 'E1', 'token_type' => 'Bearer', 'codes' => [1, 2], 'request_reference' => 'ref-1', 7 => 'seven'];
+        $context = ['error_code' => 'E1', 'error%5Fcode' => 'E2', 'token_type' => 'Bearer', 'codes' => [1, 2], 'user[name]' => 'bob', 'request_reference' => 'ref-1', 7 => 'seven'];
 
         self::assertSame($context, self::redactor()->redact($context));
     }
@@ -262,8 +297,8 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * Arrays are followed to a depth of eight, the context itself the first;
-     * an array deeper than that is `[truncated]`, while a redacted key at the
+     * Arrays are followed to a depth of eight, the context itself the first; an
+     * array deeper than that is `[truncated]`, while a redacted key at the
      * deepest level is still redacted.
      *
      * @return void

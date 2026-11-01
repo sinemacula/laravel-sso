@@ -11,8 +11,8 @@ use Symfony\Component\Console\Attribute\AsCommand;
 /**
  * `sso:check`: runs the configuration checks the web boot runs (SSO-12.3) and
  * exits non-zero on a problem, for deploy pipelines and readiness probes, and
- * for the console, where the boot check does not run so that a misconfigured
- * application can still be inspected and fixed.
+ * for the console, where the check runs only as a worker or scheduler command
+ * starts, so that a misconfigured application can still be inspected and fixed.
  *
  * Every registered check is reported under its subject: `[<subject>] OK`,
  * `[<subject>] not enabled` for one that does not apply, or one line per

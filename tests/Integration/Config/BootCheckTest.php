@@ -4,18 +4,25 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Config;
 
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Foundation\Console\Kernel as FoundationKernel;
+use Illuminate\Support\Facades\Artisan;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Concerns\ChecksTheFoundations;
 use Tests\TestCase;
 
 /**
- * Integration tests of the boot check on a whole application booted as it is to
- * serve a request: the configuration of what is enabled is checked once the
- * application has booted, a problem stops the boot with every problem listed,
- * and a well-configured or unused package boots (SSO-12.3).
+ * Integration tests of the boot check on a whole application: booted to serve a
+ * request, the configuration of what is enabled is checked once the application
+ * has booted, a problem stops the boot with every problem listed, and a
+ * well-configured or unused package boots; run from Artisan, a worker or
+ * scheduler command is checked the same way as it starts, while every other
+ * command runs (SSO-12.3).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,6 +41,15 @@ final class BootCheckTest extends TestCase
         'sso.endpoints.base_url' => 'https://api.example.com',
         'sso.applications'       => ['web' => ['redirect_uri' => 'https://app.example.com/complete', 'external_sign_in' => true]],
     ];
+
+    /** @var array<string, mixed> A package in use whose endpoints are not configured. */
+    private const array MISCONFIGURED = [
+        'sso.features.oidc' => true,
+        'sso.applications'  => ['web' => ['redirect_uri' => 'https://app.example.com/complete']],
+    ];
+
+    /** @var string The start of the problems `MISCONFIGURED` is refused with. */
+    private const string PROBLEM = "lists the same problems:\n- [endpoints] `sso.endpoints.base_url` must be an absolute https URL";
 
     /** @var array<string, mixed> The settings the next application boots with. */
     private static array $settings = [];
@@ -133,6 +149,79 @@ final class BootCheckTest extends TestCase
     }
 
     /**
+     * Run from Artisan in a misconfigured application, a queue worker and the
+     * scheduler each fail as they start, with every problem of what is enabled,
+     * before they take a job or run a task.
+     *
+     * @return void
+     */
+    public function testAWorkerCommandFailsToStartInAMisconfiguredApplication(): void
+    {
+        $this->bootInTheConsole(self::MISCONFIGURED);
+
+        $commands = [
+            'queue:work'   => ['connection' => 'sync', '--once' => true, '--sleep' => 0],
+            'schedule:run' => [],
+        ];
+
+        foreach ($commands as $command => $parameters) {
+            $failure = self::failureOf($command, $parameters);
+
+            self::assertInstanceOf(InvalidConfigurationException::class, $failure, "{$command} started in a misconfigured application.");
+            self::assertStringContainsString(self::PROBLEM, $failure->getMessage());
+        }
+    }
+
+    /**
+     * Run as `php artisan` runs it, a worker command named by an abbreviation
+     * is checked as the command it resolves to.
+     *
+     * @return void
+     */
+    public function testAnAbbreviatedWorkerCommandFailsToStart(): void
+    {
+        $this->bootInTheConsole(self::MISCONFIGURED);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage(self::PROBLEM);
+
+        $this->app?->make(Kernel::class)->handle(
+            new ArrayInput(['command' => 'queue:wor', 'connection' => 'sync', '--once' => true, '--sleep' => 0]),
+            new BufferedOutput,
+        );
+    }
+
+    /**
+     * Run from Artisan in a misconfigured application, the commands that
+     * inspect or repair it still run: `sso:check` lists the problems.
+     *
+     * @return void
+     */
+    public function testARecoveryCommandRunsInAMisconfiguredApplication(): void
+    {
+        $this->bootInTheConsole(self::MISCONFIGURED);
+
+        self::assertSame(1, Artisan::call('sso:check'));
+        self::assertStringContainsString('[endpoints] `sso.endpoints.base_url` must be an absolute https URL', Artisan::output());
+        self::assertSame(0, Artisan::call('list'));
+        self::assertSame(0, Artisan::call('config:show', ['config' => 'sso.features']));
+    }
+
+    /**
+     * Run from Artisan in a well-configured application, a queue worker and the
+     * scheduler start and do their work.
+     *
+     * @return void
+     */
+    public function testAWorkerCommandStartsInAWellConfiguredApplication(): void
+    {
+        $this->bootInTheConsole(self::IN_USE);
+
+        self::assertSame(0, Artisan::call('queue:work', ['connection' => 'sync', '--once' => true, '--sleep' => 0]));
+        self::assertSame(0, Artisan::call('schedule:run'));
+    }
+
+    /**
      * Bind the foundations' checks, unless the test runs every check, and apply
      * the settings the test boots with, before the package's provider registers
      * and boots.
@@ -176,5 +265,49 @@ final class BootCheckTest extends TestCase
             self::$settings   = [];
             self::$everyCheck = false;
         }
+    }
+
+    /**
+     * Boot a fresh application with the settings, in the console, with Artisan
+     * announcing each command as it starts, as it does outside the tests.
+     *
+     * @param  array<string, mixed>  $settings
+     * @return void
+     */
+    private function bootInTheConsole(array $settings): void
+    {
+        self::$settings = $settings;
+
+        try {
+            $this->refreshApplication();
+        } finally {
+            self::$settings = [];
+        }
+
+        $kernel = $this->app?->make(Kernel::class);
+
+        self::assertInstanceOf(FoundationKernel::class, $kernel);
+        self::assertTrue($this->app?->runningInConsole());
+
+        $kernel->rerouteSymfonyCommandEvents();
+        $kernel->setArtisan(null);
+    }
+
+    /**
+     * What the command failed with when Artisan ran it, or `null` when it ran.
+     *
+     * @param  string  $command
+     * @param  array<string, mixed>  $parameters
+     * @return ?\Throwable
+     */
+    private static function failureOf(string $command, array $parameters): ?\Throwable
+    {
+        try {
+            Artisan::call($command, $parameters);
+        } catch (\Throwable $failure) {
+            return $failure;
+        }
+
+        return null;
     }
 }

@@ -10,10 +10,13 @@ namespace SineMacula\Laravel\Sso\Contracts;
  * to the first, so the name is never resolved a second time.
  *
  * The default, `Fetching\SystemHostResolver`, is bound in the container as a
- * singleton and asks the system resolver, which has no timeout control. An
- * application that needs a bounded deadline, DNSSEC or DNS over HTTPS binds its
+ * singleton and asks the system resolver, which has no timeout control and
+ * which PHP cannot interrupt. The fetcher counts each lookup against the
+ * fetch's one deadline and checks it straight after, failing the fetch as a
+ * timeout when the lookup ran past it, but it cannot cut a lookup short. An
+ * application that needs a bounded lookup, DNSSEC or DNS over HTTPS binds its
  * own implementation in the container, and the default fetcher resolves it from
- * there.
+ * there; a bounded implementation answers `[]` when its own time runs out.
  *
  * An implementation answers every A and AAAA address of the name as an IP
  * literal, and `[]` when the name has none or cannot be resolved; it never

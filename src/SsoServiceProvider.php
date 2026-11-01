@@ -4,6 +4,8 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso;
 
+use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Psr\Log\LoggerInterface;
@@ -60,6 +62,22 @@ final class SsoServiceProvider extends ServiceProvider
     /** @var list<class-string> Every package class that takes a PSR-3 logger. Each is given `Logging\SanitizingLogger`, so nothing the package logs skips sanitisation and redaction (SSO-5.7, SSO-9.8); the application's own `LoggerInterface` binding is left alone. A part of the package that logs adds its class here. */
     public const array LOGGING_CLASSES = [
         GuzzleFetcher::class,
+    ];
+
+    /** @var list<string> The console commands that start long-running or scheduled work: the queue workers, Horizon, the scheduler and the Octane servers. Each is checked as it starts and refused on a problem, as a request is at boot (SSO-12.3); every other command runs, so a misconfigured application can still run `sso:check`, its migrations and the commands that repair it. */
+    public const array WORKER_COMMANDS = [
+        'queue:work',
+        'queue:listen',
+        'horizon',
+        'horizon:supervisor',
+        'horizon:work',
+        'schedule:run',
+        'schedule:work',
+        'schedule:test',
+        'octane:start',
+        'octane:frankenphp',
+        'octane:roadrunner',
+        'octane:swoole',
     ];
 
     /** @var list<string> File names of the shipped migrations, published under the `sso-migrations` tag and never run from the package (SSO-11.7). */
@@ -157,21 +175,47 @@ final class SsoServiceProvider extends ServiceProvider
     }
 
     /**
-     * Check the configuration of what is enabled once the application has
-     * booted, failing the boot with every problem found (SSO-12.3). The console
-     * is left to `sso:check`, which reports the same problems, so a
-     * misconfigured application can still run its commands, its migrations and
-     * the check itself.
+     * Check the configuration of what is enabled before the application does
+     * any work with it, failing with every problem found (SSO-12.3): once the
+     * application has booted to serve a request, and in the console as a worker
+     * or scheduler command starts.
      *
      * @return void
      */
     private function checkConfiguration(): void
     {
         if ($this->app->runningInConsole()) {
+            $this->checkConfigurationBeforeWork();
+
             return;
         }
 
         $this->app->booted(static function (Application $app): void {
+            $app->make(ConfigurationChecker::class)->assertValid();
+        });
+    }
+
+    /**
+     * Check the configuration as each of `WORKER_COMMANDS` starts, so the
+     * command fails with the `InvalidConfigurationException` before it takes a
+     * job or runs a scheduled task. Every other command is left to run, with
+     * `sso:check` to report the problems.
+     *
+     * The command is matched by the name Artisan resolved, so an alias or an
+     * abbreviation of a worker command is checked as the command itself.
+     *
+     * @return void
+     */
+    private function checkConfigurationBeforeWork(): void
+    {
+        $app = $this->app;
+
+        $app->make(Dispatcher::class)->listen(CommandStarting::class, static function (CommandStarting $event) use ($app): void {
+
+            if (!in_array($event->command, self::WORKER_COMMANDS, true)) {
+                return;
+            }
+
             $app->make(ConfigurationChecker::class)->assertValid();
         });
     }

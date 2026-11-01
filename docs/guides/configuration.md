@@ -123,9 +123,16 @@ names no application.
 ## Checking the configuration
 
 The configuration of what is enabled is checked when the application boots to serve a request, and a problem stops the
-boot with an `InvalidConfigurationException` that lists every problem as `[subject] message`. In the console the boot
-check does not run, so a misconfigured application can still run its commands; run `sso:check` instead, in a deploy
-pipeline or a readiness probe:
+boot with an `InvalidConfigurationException` that lists every problem as `[subject] message`.
+
+In the console it is checked as a worker or scheduler command starts: `queue:work`, `queue:listen`, `horizon` (and the
+supervisors and workers it starts), `schedule:run`, `schedule:work`, `schedule:test`, `octane:start` and the Octane
+server commands. A problem fails the command with the same exception, so it exits before it takes a job or runs a
+scheduled task, and your process manager reports it rather than the first job that needs SSO. Every other command
+runs, so a misconfigured application can still run `sso:check`, its migrations, `vendor:publish`, `config:clear` and
+the other cache commands to put it right.
+
+Run `sso:check` in a deploy pipeline or a readiness probe to find a problem before a worker or a request does:
 
 ```bash
 php artisan sso:check

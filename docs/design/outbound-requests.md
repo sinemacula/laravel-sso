@@ -73,13 +73,23 @@ Sheet).
   handler, because only cURL can pin the address with `CURLOPT_RESOLVE`. Without `ext-curl` and with no handler
   injected, the constructor throws a `LogicException` rather than fall back. `[fetcher]` reports a missing `ext-curl`
   or cURL handler at boot.
-- Caps: the request may take `timeout_seconds` (1 to 60, default 10) and connecting `connect_timeout_seconds` (1 to
-  30, default 5, at most the timeout), each per hop. The response may be at most `max_response_bytes` (1024 to 10485760,
-  default 1048576): a declared `Content-Length` over it aborts the transfer from `on_headers`; the body is written
-  into a `Fetching\CappedSink`, which refuses the write that would pass the cap, so cURL aborts the transfer there
-  with a write error on Guzzle 7 and 8 alike; and the body is read back no further than a byte past the cap and
-  measured again. The `progress` callback also aborts once the bytes received pass the cap, on a Guzzle that acts on
-  its answer. Over the cap fails (`too_large`); a body without a declared length is never held past the cap.
+- Caps: the whole fetch may take `timeout_seconds` (1 to 60, default 10), one deadline (`Fetching\FetchDeadline`)
+  measured on a monotonic clock (`hrtime()`) from the moment `fetch()` is called, and covering every resolution and
+  every hop, redirects included. The deadline measures elapsed time rather than checking an instant, so it is not read
+  from `Contracts\Clock`, which a wall-clock change or Laravel's test clock would move. Each transfer is given only what
+  is left of the deadline as its `timeout`, and `connect_timeout_seconds` (1 to 30, default 5, at most the timeout)
+  capped to the same as its `connect_timeout`. The deadline is checked before each lookup and straight after it, since
+  PHP cannot interrupt `dns_get_record()`, and the time left is read once more, as the transfer's caps, the moment
+  before the request is sent (`FetchDeadline::transferTimeouts()`, one read of the clock, `null` under a millisecond),
+  so time passing between the checks cannot hand cURL a cap of `0`, which it reads as none. A lookup or hop that leaves
+  less than a millisecond at any of these fails the fetch (`timeout`), never sends and is never `fetched`, and a
+  transfer that fails once the deadline has passed fails as `timeout` too. The response may be at most
+  `max_response_bytes` (1024 to 10485760, default 1048576): a declared `Content-Length` over it aborts the transfer
+  from `on_headers`; the body is written into a `Fetching\CappedSink`, which refuses the write that would pass the
+  cap, so cURL aborts the transfer there with a write error on Guzzle 7 and 8 alike; and the body is read back no
+  further than a byte past the cap and measured again. The `progress` callback also aborts once the bytes received
+  pass the cap, on a Guzzle that acts on its answer. Over the cap fails (`too_large`); a body without a declared
+  length is never held past the cap.
 - Redirects: a request for a credentialed purpose (`token`, `userinfo`) follows none; a redirect answer is refused
   (`redirect_refused`) and its `Location` is never resolved or asked, so the credential is never sent on. Any other
   request follows a `3xx` with a `Location` at most `max_redirects` times (0 to 10, default 3), the `Location`
@@ -101,14 +111,15 @@ Sheet).
 - Outcomes (see `outcomes.md`): any HTTP status received within the caps is `fetched`, with the status, each header's
   first value and the body (whether a `400` from a token endpoint is an error is the caller's to read). A refusal
   before sending is `FetchResult::refused()` (`fetch_refused`); a failure once resolution or sending began (no address,
-  a transport or TLS error, `ConnectException`, `RequestException` or any `TransferException`, too large, too many
-  redirects, or a request Guzzle or PSR-7 refuses to build, such as a header value it rejects) is
+  a transport or TLS error, `ConnectException`, `RequestException` or any `TransferException`, the deadline passed,
+  too large, too many redirects, or a request Guzzle or PSR-7 refuses to build, such as a header value it rejects) is
   `FetchResult::failed()` (`fetch_failed`). Neither carries anything but its reason code. A malformed setting throws
   `InvalidArgumentException`, a server error, before anything is sent. An access token that is not an RFC 6750
   b64token is refused when its `FetchCredentials` is built, so it can never put a control character into a header.
 - Each refusal and failure is logged once, as a warning: `sso.fetch.refused` or `sso.fetch.failed`, with `purpose`,
   `reason` (the code), `cause` (`scheme`, `userinfo`, `malformed`, `ip_form`, `refused_address`, `unresolved`,
-  `redirect_refused`, `too_many_redirects`, `too_large` or `transfer`), `host` (the normalised host, when there is one)
+  `redirect_refused`, `too_many_redirects`, `too_large`, `timeout` or `transfer`), `host` (the normalised host, when
+  there is one)
   and `exception_class`. Never the URL's path or query, the form, a credential, a header, the body or the exception's
   message, which can quote the URL. A success logs nothing.
 - Settings are read on each call through `Fetching\FetcherSettings`, with `Config\IntegerSetting` for the integers. A
@@ -146,12 +157,17 @@ Sheet).
   newline or null byte are refused, so a parser that splits the URL another way never sees it.
 - A host resolving to `93.184.216.34` and `10.0.0.5`, in either order, is refused; so is one resolving to a garbage
   string, which the policy refuses as not an IP literal.
-- A host with no addresses, or whose lookup warns or fails, fails as `unresolved`. The system resolver has no timeout
-  of its own; bind your own `HostResolver` for a bounded one.
+- A host with no addresses, or whose lookup warns or fails, fails as `unresolved`.
+- The system resolver has no timeout of its own, and PHP cannot interrupt `dns_get_record()`, so a slow resolver holds
+  the request or worker until it answers, however long that is past the deadline. The fetcher checks the deadline as
+  soon as it does and fails the fetch (`timeout`) rather than send, but cannot cut the lookup short. An application
+  that needs the lookup itself bounded binds a `Contracts\HostResolver` that enforces its own time limit and answers
+  `[]` when it runs out.
 - An internationalised host is resolved, pinned and sent as its ASCII form (`bücher.example` as
   `xn--bcher-kva.example`); `idp.example.com.` as `idp.example.com`.
-- The time caps apply per hop, so a request that follows every redirect it may can take up to `max_redirects + 1`
-  timeouts in all.
+- The timeout is one budget for the whole fetch, not one per hop: a redirect is given only what the hops and lookups
+  before it left, so a request that follows every redirect it may still ends within one timeout, give or take a slow
+  system lookup.
 - Guzzle 7 ignores `progress`'s return value, so there the sink alone stops a body without a declared length: its
   refused write aborts the transfer as soon as the cap is passed, on both Guzzle 7 and 8.
 - cURL may reuse a connection for a later request to the same host and port within the same scoped fetcher; that
@@ -164,7 +180,8 @@ Sheet).
 - `src/Contracts/Fetcher.php`.
 - `src/Fetching/FetchRequest.php`, `src/Fetching/FetchCredentials.php`, `src/Fetching/FetchResult.php`,
   `src/Fetching/Enums/FetchPurpose.php`, `src/Fetching/Enums/CredentialKind.php`, `src/Fetching/Enums/FetchStatus.php`.
-- `src/Fetching/GuzzleFetcher.php`, `src/Fetching/CappedSink.php`, `src/Fetching/AddressPolicy.php`,
+- `src/Fetching/GuzzleFetcher.php`, `src/Fetching/FetchDeadline.php`, `src/Fetching/CappedSink.php`,
+  `src/Fetching/AddressPolicy.php`,
   `src/Fetching/FetcherSettings.php`, `src/Contracts/HostResolver.php`, `src/Fetching/SystemHostResolver.php`,
   `src/Fetching/FetcherCheck.php`.
 - `src/Testing/FakeFetcher.php`.
@@ -176,14 +193,15 @@ Sheet).
 
 - `tests/Unit/Fetching/AddressPolicyTest.php`.
 - `tests/Feature/Fetching/GuzzleFetcherTest.php`, `tests/Feature/Fetching/GuzzleFetcherRedirectsTest.php`,
-  `tests/Feature/Fetching/GuzzleFetcherCredentialsTest.php`.
+  `tests/Feature/Fetching/GuzzleFetcherCredentialsTest.php`, `tests/Feature/Fetching/GuzzleFetcherDeadlineTest.php`.
 - `tests/Feature/Fetching/FetcherSettingsTest.php`, `tests/Feature/Fetching/FetcherCheckTest.php`.
 - `tests/Integration/Fetching/CurlHandlerTest.php`.
 - `tests/Integration/Fetching/TlsTransportTest.php`: real transfers through cURL to a local HTTPS server, showing the
   pin is honoured, the certificate and host name are verified, and a body past the cap is aborted mid-transfer.
 - `tests/Unit/Testing/FakeFetcherTest.php`.
 - `tests/Unit/Fetching/FetchRequestTest.php`, `tests/Unit/Fetching/FetchCredentialsTest.php`,
-  `tests/Unit/Fetching/FetchResultTest.php`, `tests/Unit/Fetching/CappedSinkTest.php`.
+  `tests/Unit/Fetching/FetchResultTest.php`, `tests/Unit/Fetching/CappedSinkTest.php`,
+  `tests/Unit/Fetching/FetchDeadlineTest.php`.
 
 ## Change Triggers
 

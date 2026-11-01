@@ -37,15 +37,40 @@ verifier, handoff code, protocol state, assertion or provider token is ever logg
     prefix, whole: self-closing, closed, or cut short (to the end of the text);
   - a JWS or JWT (`eyJ…` and two more dot-separated parts) or a JWE (four more);
   - the credential after `Bearer` or `Basic`, in any case;
-  - the value of a JSON member (`"key": value`, a string, number or boolean, in plain or escaped JSON), a simple XML
-    element (`<key>value</key>`), a quoted pair or XML attribute (`key="value"`, `key='value'`) and an unquoted pair
-    (`key=value`, as in a query string or form) whose key, without any namespace prefix, normalises to a redacted
-    key; the key is kept;
+  - the whole value under a redacted key (`Logging\KeyedValues`), whatever its type or punctuation, the key kept:
+    - a JSON member (`"key": value`, in plain JSON or escaped inside JSON strings any number of times, `\"key\"` and
+      `\\\"key\\\"` alike): a string to its closing quote at the key's escape level, an object or array to its closing
+      bracket (strings within it skipped), and a number, boolean, `null` or anything else to the `,`, `}` or `]` that
+      ends it, each becoming `"[redacted]"` quoted as the key is; the key's JSON escapes (`\u005f`) are decoded;
+    - an XML element (`<key>…</key>`), child elements included, to its matching closing tag, and a self-closing one
+      (`<key value="…"/>`) by its attributes, which become `[redacted]`;
+    - a pair, its key bare, single- or double-quoted (`'key'`) or in brackets (`[key]`), and its separator `=`, `=>`
+      or `:`, which covers a query string, a form, an XML attribute, a PHP `var_export()` or `print_r()` dump, YAML
+      and a JavaScript object (a double-quoted key before a `:` is a JSON member, above):
+      - a quoted value (`"value"`, `'value'`, or its quotes escaped any number of times, as `\"value\"` in a JSON
+        string) to its closing quote at the same level, a backslash escaping the next character;
+      - an unquoted value to the next space, or to the next `&` that starts another pair (`&name=`), read through any
+        quotes and brackets (`[…]`, `{…}`, `(…)`) it holds, spaces within them included, so `,`, `;`, `=`, quotes,
+        brackets and an `&` that starts no pair are part of the value and `key=["a", "b"]` loses all of its array;
+      - the value of a header that is itself a credential (`Authorization:`, `Proxy-Authorization:`, `Cookie:`,
+        `Set-Cookie:`), whatever its scheme, to the end of the text, every parameter included;
+    - a value cut short (no closing quote, bracket or tag) is redacted to the end of the text, and an empty value is
+      kept. A value cut by the length cap, ending the text in `…`, becomes `[redacted]` and its closing quote
+      followed by `…`, which the cap cuts back to what it was, so sanitising cut text again changes nothing;
   - any run of 40 or more base64 or base64url characters (`A-Z`, `a-z`, `0-9`, `+`, `/`, `-`, `_`, with any `=`
-    padding), which catches assertions, codes, verifiers, tokens and keys under no recognisable name.
-- Redaction errs towards removing too much. A key is redacted only when its whole name normalises to a redacted key
-  (`error_code` is not `code`), but a long identifier or URL path of 40 or more base64 characters is redacted along
-  with the secrets, and a public reference must therefore stay shorter than that (a ULID or UUID is).
+    padding), which catches assertions, codes, verifiers, tokens and keys under no recognisable name;
+  - any run of text between spaces that holds a percent-encoded byte or an HTML character reference (`&#61;`,
+    `&quot;`) and, decoded (as often as it was encoded, `+` kept or read as a space), would have anything above
+    redacted: the run is redacted whole. This catches an encoded URL or JSON body inside a value
+    (`redirect_uri=https%3A%2F%2F…%3Fcode%3D…`) or under no key, and HTML-escaped text (`access_token&#61;…`,
+    `&lt;password&gt;…`).
+- Redaction errs towards removing too much. A key is redacted only when a run of its words normalises to a redacted
+  key (`error_code` is not `code`), but a long identifier or URL path of 40 or more base64 characters is redacted
+  along with the secrets, and a public reference must therefore stay shorter than that (a ULID or UUID is). A value
+  under a redacted key runs to the next space unless its form ends it sooner, so text after it may go too
+  (`code=abc</a>` loses `</a>`); one holding a quote or bracket it never closes (`code=it's wrong`) runs to the end of
+  the text; a `:` after a redacted key in prose (`state: mismatch`) takes the next word for its value; and a
+  credential header takes everything after it, other headers included.
 - A context is redacted by `Logging\Redactor`, recursively:
   - a value under a redacted key is `[redacted]`, whatever it is, an array, an object or an exception included;
   - any other string is sanitised as above, so a secret under an innocent key is still caught by its shape;
@@ -57,8 +82,17 @@ verifier, handoff code, protocol state, assertion or provider token is ever logg
     `Stringable` is never turned into a string;
   - a resource is named by its type;
   - arrays are followed to a depth of 8, the context itself the first; a deeper array is `[truncated]`.
-- Keys are compared normalised: lower case, with everything but `a` to `z` and `0` to `9` removed, so
-  `Client-Secret`, `CLIENT_SECRET`, `clientSecret` and `client.secret` are one key. The built-in keys
+- Keys are matched one way by the redactor and the sanitiser alike (`Logging\RedactedKeys`). A key is first decoded:
+  its percent-encoding, and `+` for a space, undone as many times as it was encoded (up to
+  `RedactedKeys::MAX_DECODES`; a key still encoded after that is taken for a redacted one). It is then compared
+  normalised: lower case, with everything but `a` to `z` and `0` to `9` removed, so `Client-Secret`, `CLIENT_SECRET`,
+  `clientSecret`, `client.secret`, `client%5Fsecret` and `client+secret` are one key. It matches when any run of its
+  words (what lies between anything but a letter, a digit and `_`) does so, so `private key`, a form's
+  `client_secret[]` and `user[password]`, a namespaced `oidc:client_secret`, a dotted `credentials.password` or
+  `sso.oidc.client_secret`, a path's `user/password` and a header's `X-Client-Secret` all match, while `error_code`
+  and `token_type`, one word each, do not. A pair's key found in text may also be named by the words just before it,
+  run on into it (`private key=…`, `SAML Response: …`), but never by a redacted key in the prose before it that does
+  not run into it (`the state was lost, reason=…` keeps `reason`). The built-in keys
   (`Redactor::REDACTED_KEYS`) are: `password`, `secret`, `client_secret`, `clientsecret`, `token`, `access_token`,
   `refresh_token`, `id_token`, `code`, `handoff_code`, `verifier`, `code_verifier`, `state`, `relay_state`,
   `relaystate`, `nonce`, `assertion`, `saml_response`, `samlresponse`, `saml_request`, `samlrequest`, `private_key`,
@@ -108,15 +142,18 @@ verifier, handoff code, protocol state, assertion or provider token is ever logg
   more is removed, never less.
 - A secret shorter than 40 characters that is under no key, outside every recognised form, is not caught by the
   sanitiser. Package code never logs one; the redacted keys catch the ones it passes in a context.
-- A header written as `Name: value` is not a pair: only its credential after `Bearer` or `Basic` is redacted.
-  Package code never logs transport headers (SSO-5.7); a header map in a context is redacted by its keys.
+- A header written as `Name: value` is a pair: one under a redacted key loses its value, and a credential header
+  (`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`) loses the rest of the text, since its value may
+  carry spaces and parameters. Package code never logs transport headers (SSO-5.7); a header map in a context is
+  redacted by its keys.
 - Laravel's shared log context (`Log::shareContext()`, `Context`) is added by Laravel after redaction and is the
   application's own.
 
 ## Implementation Anchors
 
 - `src/Logging/SanitizingLogger.php`.
-- `src/Logging/DiagnosticSanitizer.php`.
+- `src/Logging/DiagnosticSanitizer.php`; `src/Logging/KeyedValues.php`.
+- `src/Logging/RedactedKeys.php`: `MAX_DECODES`.
 - `src/Logging/Redactor.php`: `REDACTED_KEYS`, `MAX_DEPTH`.
 - `src/Logging/LoggingSettings.php`: `normalizeKey()`.
 - `src/Logging/LoggingCheck.php`; `src/SsoServiceProvider.php`: `CONFIGURATION_CHECKS`, `LOGGING_CLASSES`.
@@ -126,6 +163,7 @@ verifier, handoff code, protocol state, assertion or provider token is ever logg
 
 - `tests/Unit/Logging/DiagnosticSanitizerTest.php`
 - `tests/Unit/Logging/RedactorTest.php`
+- `tests/Unit/Logging/RedactedKeysTest.php`
 - `tests/Feature/Logging/LoggingSettingsTest.php`
 - `tests/Feature/Logging/SanitizingLoggerTest.php`
 - `tests/Feature/Logging/LoggingCheckTest.php`

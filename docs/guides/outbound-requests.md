@@ -35,8 +35,10 @@ fetcher refuses to start rather than fall back to PHP streams, and `php artisan 
 | `fetcher.max_redirects`           | `3`       | `SSO_FETCHER_MAX_REDIRECTS`           | `0` to `10`                          |
 | `fetcher.refused_ranges`          | `[]`      |                                       | a list of IPv4 or IPv6 CIDR ranges   |
 
-- `timeout_seconds` is the time one request may take, from connecting to the last byte; `connect_timeout_seconds` is
-  the time connecting may take. Each applies to every redirect followed.
+- `timeout_seconds` is the time one fetch may take in all: resolving the host, connecting, the last byte, and every
+  redirect it follows, which share the one budget rather than each starting a fresh one. `connect_timeout_seconds` is
+  the time connecting may take, never more than what is left of the timeout. A fetch that runs out of time fails as
+  `fetch_failed`, logged with the cause `timeout`.
 - `max_response_bytes` is the largest response body accepted, counted as received (responses are never decompressed).
   A larger one fails, however it is sent.
 - `max_redirects` is how many redirects a metadata, discovery or JWKS request may follow, each checked again. A token
@@ -96,6 +98,23 @@ Your fetcher takes on what the default one guarantees, and the package relies on
 If you only need a different DNS resolver (a bounded timeout, DNSSEC, DNS over HTTPS), keep the default fetcher and bind
 `SineMacula\Laravel\Sso\Contracts\HostResolver` instead. Its `addresses(string $asciiHost): array` answers every A and
 AAAA address of the name, or `[]` when there are none; it should not throw for a name that does not resolve.
+
+## Slow DNS
+
+The default resolver asks the system resolver through PHP's `dns_get_record()`, which has no timeout of its own and
+which PHP cannot interrupt, so a slow resolver holds the request or queue worker until it answers. The fetcher counts
+the lookup against the timeout and checks it the moment the lookup returns: one that ran past it fails the fetch as a
+timeout and nothing is sent. What it cannot do is cut the lookup short. If your resolver can be slow, bind a
+`HostResolver` whose lookup is bounded (a DNS client with its own timeout, say) and answers `[]` when that runs out:
+
+```php
+use SineMacula\Laravel\Sso\Contracts\HostResolver;
+
+public function register(): void
+{
+    $this->app->singleton(HostResolver::class, BoundedHostResolver::class);
+}
+```
 
 ## A fake fetcher in tests
 

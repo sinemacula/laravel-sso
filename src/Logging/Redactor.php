@@ -8,11 +8,12 @@ namespace SineMacula\Laravel\Sso\Logging;
  * Redacts a log call's context before it reaches a channel (SSO-9.8, SSO-11.9).
  *
  * A value under a redacted key (`LoggingSettings::redactedKeys()`: the built-in
- * `REDACTED_KEYS` plus any configured, compared normalised) is `[redacted]`,
- * whatever it holds, an array or an object included. Every other string is
- * sanitised as a diagnostic (`DiagnosticSanitizer`), so a secret under an
- * innocent key is still caught by its shape. Integers, floats, booleans and
- * `null` are kept, and a backed enum is its value.
+ * `REDACTED_KEYS` plus any configured, matched decoded and normalised, as the
+ * sanitiser matches them; see `RedactedKeys`) is `[redacted]`, whatever it
+ * holds, an array or an object included. Every other string is sanitised as a
+ * diagnostic (`DiagnosticSanitizer`), so a secret under an innocent key is
+ * still caught by its shape. Integers, floats, booleans and `null` are kept,
+ * and a backed enum is its value.
  *
  * Objects are never dumped, cast or serialised, so nothing a value object keeps
  * private (a request's form, a result's body, a secret) can reach a log: a
@@ -89,25 +90,25 @@ final readonly class Redactor
      */
     public function redact(#[\SensitiveParameter] array $context): array
     {
-        return $this->redactArray($context, array_flip($this->settings->redactedKeys()), 1);
+        return $this->redactArray($context, RedactedKeys::from($this->settings), 1);
     }
 
     /**
      * The array, redacted, at the depth given.
      *
      * @param  array<array-key, mixed>  $values
-     * @param  array<string, int>  $keys
+     * @param  \SineMacula\Laravel\Sso\Logging\RedactedKeys  $keys
      * @param  int  $depth
      * @return array<array-key, mixed>
      *
      * @throws \InvalidArgumentException
      */
-    private function redactArray(array $values, array $keys, int $depth): array
+    private function redactArray(array $values, RedactedKeys $keys, int $depth): array
     {
         $redacted = [];
 
         foreach ($values as $key => $value) {
-            $redacted[$key] = isset($keys[LoggingSettings::normalizeKey((string) $key)])
+            $redacted[$key] = $keys->matches((string) $key)
                 ? DiagnosticSanitizer::REDACTED
                 : $this->redactValue($value, $keys, $depth);
         }
@@ -119,13 +120,13 @@ final readonly class Redactor
      * The value, redacted, as found in an array at the depth given.
      *
      * @param  mixed  $value
-     * @param  array<string, int>  $keys
+     * @param  \SineMacula\Laravel\Sso\Logging\RedactedKeys  $keys
      * @param  int  $depth
      * @return mixed
      *
      * @throws \InvalidArgumentException
      */
-    private function redactValue(mixed $value, array $keys, int $depth): mixed
+    private function redactValue(mixed $value, RedactedKeys $keys, int $depth): mixed
     {
         return match (true) {
             is_string($value)                  => $this->sanitizer->sanitize($value),

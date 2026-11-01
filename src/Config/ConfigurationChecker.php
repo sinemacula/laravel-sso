@@ -9,9 +9,10 @@ use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
 
 /**
- * Runs the registered configuration checks (SSO-12.3): at boot, where any
- * problem stops the application with an `InvalidConfigurationException`, and in
- * `sso:check`, which lists them.
+ * Runs the registered configuration checks (SSO-12.3): at boot, and as a worker
+ * or scheduler command starts, where any problem stops the application or the
+ * command with an `InvalidConfigurationException`, and in `sso:check`, which
+ * lists them.
  *
  * Each check is resolved from the container when the configuration is checked,
  * never before, so registering a check costs nothing until then, and a check

@@ -10,11 +10,14 @@ use SineMacula\Laravel\Sso\Contracts\HostResolver;
  * The default host resolver: the system resolver, through `dns_get_record()`
  * for the name's A and AAAA records.
  *
- * It has no timeout of its own, so a slow resolver holds the request for as
- * long as the system allows; bind your own `HostResolver` for a bounded
- * deadline, DNSSEC or DNS over HTTPS. A lookup that fails, or answers with a
- * warning, is no address, never an exception: the fetcher reports it as a
- * failed fetch.
+ * It has no timeout of its own, and PHP cannot interrupt `dns_get_record()`, so
+ * a slow resolver holds the request or worker for as long as the system allows.
+ * The fetcher counts the lookup against its deadline and checks it straight
+ * after, so a lookup that ran past it fails the fetch as a timeout rather than
+ * send, but it cannot cut the lookup short: bind your own `HostResolver` for a
+ * bounded lookup, DNSSEC or DNS over HTTPS. A lookup that fails, or answers
+ * with a warning, is no address, never an exception: the fetcher reports it as
+ * a failed fetch.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

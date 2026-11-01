@@ -5,6 +5,8 @@ declare(strict_types = 1);
 namespace Tests\Feature;
 
 use Illuminate\Config\Repository as ConfigRepository;
+use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\ServiceProvider;
@@ -27,6 +29,8 @@ use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
 use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Concerns\ChecksTheFoundations;
 use Tests\Fixtures\Fetching\StubHostResolver;
 use Tests\TestCase;
@@ -360,6 +364,134 @@ final class SsoServiceProviderTest extends TestCase
         (new SsoServiceProvider($app))->boot();
 
         self::assertTrue($app->runningInConsole());
+    }
+
+    /**
+     * Every command that starts long-running or scheduled work: the queue
+     * workers, Horizon's master, supervisors and workers, the scheduler and the
+     * Octane servers.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function workerCommands(): iterable
+    {
+        $commands = [
+            'queue:work', 'queue:listen', 'horizon', 'horizon:supervisor', 'horizon:work', 'schedule:run', 'schedule:work',
+            'schedule:test', 'octane:start', 'octane:frankenphp', 'octane:roadrunner', 'octane:swoole',
+        ];
+
+        foreach ($commands as $command) {
+            yield $command => [$command];
+        }
+    }
+
+    /**
+     * In the console, each command that starts long-running or scheduled work
+     * fails as it starts with every problem of what is enabled, before it takes
+     * a job or runs a task (SSO-12.3).
+     *
+     * @param  string  $command
+     * @return void
+     */
+    #[DataProvider('workerCommands')]
+    public function testAWorkerCommandFailsToStartOnAProblem(string $command): void
+    {
+        self::checkTheFoundations($this->consoleApplication());
+
+        config()->set('sso.features.oidc', true);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage("lists the same problems:\n- [endpoints] `sso.endpoints.base_url` must be an absolute https URL");
+
+        $this->startCommand($command);
+    }
+
+    /**
+     * In the console, each command that starts long-running or scheduled work
+     * starts with every feature off, and with a well-configured package.
+     *
+     * @param  string  $command
+     * @return void
+     */
+    #[DataProvider('workerCommands')]
+    public function testAWorkerCommandStartsWithAWellConfiguredPackage(string $command): void
+    {
+        self::checkTheFoundations($this->consoleApplication());
+
+        $this->startCommand($command);
+
+        config()->set('sso.features.oidc', true);
+        config()->set('sso.endpoints.base_url', 'https://api.example.com');
+        config()->set('sso.applications', ['web' => ['redirect_uri' => 'https://app.example.com/complete']]);
+
+        $this->startCommand($command);
+
+        self::assertContains($command, SsoServiceProvider::WORKER_COMMANDS);
+    }
+
+    /**
+     * Commands an application runs to inspect or repair itself.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function recoveryCommands(): iterable
+    {
+        $commands = [
+            'sso:check', 'migrate', 'migrate:status', 'migrate:rollback', 'migrate:fresh', 'vendor:publish', 'config:cache',
+            'config:clear', 'config:show', 'cache:clear', 'optimize', 'optimize:clear', 'package:discover', 'list', 'help',
+            'about', 'tinker',
+        ];
+
+        foreach ($commands as $command) {
+            yield $command => [$command];
+        }
+    }
+
+    /**
+     * In the console, a command that repairs or inspects the application starts
+     * whatever the configuration, so a misconfigured application can still run
+     * `sso:check`, its migrations, and clear and rebuild its caches.
+     *
+     * @param  string  $command
+     * @return void
+     */
+    #[DataProvider('recoveryCommands')]
+    public function testARecoveryCommandStartsOnAProblem(string $command): void
+    {
+        self::checkTheFoundations($this->consoleApplication());
+
+        config()->set('sso.features', ['oidc' => true, 'misspelt' => true]);
+
+        $this->startCommand($command);
+
+        self::assertNotContains($command, SsoServiceProvider::WORKER_COMMANDS);
+    }
+
+    /**
+     * The test application, which runs in the console.
+     *
+     * @return \Illuminate\Foundation\Application
+     */
+    private function consoleApplication(): Application
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app = $this->app;
+
+        self::assertTrue($app->runningInConsole());
+
+        return $app;
+    }
+
+    /**
+     * Announce that the command is starting, as Artisan does once it has
+     * resolved the command's name and before it runs it.
+     *
+     * @param  string  $command
+     * @return void
+     */
+    private function startCommand(string $command): void
+    {
+        $this->consoleApplication()->make(Dispatcher::class)->dispatch(new CommandStarting($command, new ArrayInput([]), new BufferedOutput));
     }
 
     /**
