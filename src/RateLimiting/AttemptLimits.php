@@ -94,11 +94,25 @@ final readonly class AttemptLimits
         $max   = is_array($value) && count($value) === 2 ? IntegerSetting::parse($value['max'] ?? null) : null;
         $decay = is_array($value) ? IntegerSetting::parse($value['decay_seconds'] ?? null) : null;
 
-        if ($max === null || $decay === null || $max < 1 || $max > AttemptLimit::MAX_ATTEMPTS || $decay < 1 || $decay > AttemptLimit::MAX_DECAY_SECONDS) {
+        if (!self::isWithin($max, AttemptLimit::MAX_ATTEMPTS) || !self::isWithin($decay, AttemptLimit::MAX_DECAY_SECONDS)) {
             throw new \InvalidArgumentException(self::message($key));
         }
 
         return new AttemptLimit($max, $decay);
+    }
+
+    /**
+     * Whether a parsed setting is present and between 1 and its maximum.
+     *
+     * @param  ?int  $value
+     * @param  int  $maximum
+     * @return bool
+     *
+     * @phpstan-assert-if-true int $value
+     */
+    private static function isWithin(?int $value, int $maximum): bool
+    {
+        return $value !== null && $value >= 1 && $value <= $maximum;
     }
 
     /**
