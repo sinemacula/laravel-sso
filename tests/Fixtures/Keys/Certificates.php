@@ -145,7 +145,8 @@ final class Certificates
         $certificate = '';
         $privateKey  = '';
 
-        file_put_contents($config, "[req]\ndistinguished_name = subject\n\n[subject]\n");
+        // PHP 8.3 checks default_bits against RSA's minimum even for an EC key.
+        file_put_contents($config, "[req]\ndefault_bits = 2048\ndistinguished_name = subject\n\n[subject]\n");
 
         try {
             $options += ['config' => $config, 'digest_alg' => 'sha256'];

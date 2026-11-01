@@ -52,8 +52,9 @@ final readonly class KeyGenerator
     /** @var string The section of `CONFIGURATION` that holds the certificate's extensions. */
     private const string EXTENSIONS = 'sso_certificate';
 
-    /** @var string The configuration every OpenSSL step reads: no default subject field, and a certificate that is not a certificate authority's. */
-    private const string CONFIGURATION = "[req]\ndistinguished_name = sso_subject\n\n[sso_subject]\n\n[sso_certificate]\nbasicConstraints = critical,CA:FALSE\n";
+    /** @var string The configuration every OpenSSL step reads: no default subject field, and a certificate that is not a CA's. */
+    private const string CONFIGURATION = "[req]\ndefault_bits = 3072\ndistinguished_name = sso_subject\n\n"
+        . "[sso_subject]\n\n[sso_certificate]\nbasicConstraints = critical,CA:FALSE\n";
 
     /**
      * Constructor.
@@ -150,6 +151,10 @@ final readonly class KeyGenerator
     /**
      * Write `CONFIGURATION` to a temporary file of its own, and answer its
      * path.
+     *
+     * Its `default_bits` never sizes a generated key, since an RSA key's size
+     * is always given: PHP 8.3 checks it against RSA's minimum even when
+     * generating an EC key, and refuses the key when it is unset.
      *
      * @return string
      *
