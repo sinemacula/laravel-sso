@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
@@ -36,6 +37,9 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  *   connection and the request again and marks the request completed; the
  *   linker, enforcement while it is off, the policy, the deadline contract and
  *   the issuer bound here cost nothing;
+ * - with enforcement on, the locked transaction first upserts and locks the
+ *   tenant's enforcement row, and locks the connection with the rule's
+ *   connections in one statement;
  * - a refused response and a refused consumption cost the same but the domain's
  *   read, and a connection disabled since the start the same as a
  *   refused response;
@@ -125,6 +129,33 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
         $result = $this->assertQueryBudget(6, 5, fn (): CompletionResult => $this->completeAtCallback(self::STATE));
 
         self::assertTrue($result->isCompleted());
+    }
+
+    /**
+     * With enforcement on, a completion is seven reads and six writes: the
+     * locked transaction first upserts and locks the tenant's enforcement row,
+     * then locks the connection and the rule's connections in the one statement
+     * that locked the connection alone; a tenant with a rule stored costs the
+     * same.
+     *
+     * @return void
+     */
+    public function testACompletionUnderEnforcementLocksTheRuleFirst(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $this->request(self::STATE);
+
+        $unruled = $this->assertQueryBudget(7, 6, fn (): CompletionResult => $this->completeAtCallback(self::STATE));
+
+        TenantEnforcement::query()->sole()->forceFill(['enabled' => true, 'connection_ids' => [$this->connection->id], 'version' => '01jbexampleversion00000001'])->save();
+
+        $this->request('a-second-state');
+
+        $ruled = $this->assertQueryBudget(7, 6, fn (): CompletionResult => $this->completeAtCallback('a-second-state'));
+
+        self::assertTrue($unruled->isCompleted());
+        self::assertTrue($ruled->isCompleted());
     }
 
     /**

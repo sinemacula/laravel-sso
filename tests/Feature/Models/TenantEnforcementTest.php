@@ -74,7 +74,7 @@ final class TenantEnforcementTest extends TestCase
         self::assertSame(TenantHash::of('tenant-1'), $read->tenant_hash);
         self::assertTrue($read->enabled);
         self::assertEqualsCanonicalizing(['c-1', 'c-2'], $read->connection_ids);
-        self::assertSame('2026-11-01T09:30:00+00:00', $read->changed_at->toAtomString());
+        self::assertSame('2026-11-01T09:30:00+00:00', $read->changed_at?->toAtomString());
         self::assertSame('2026-11-01T09:30:00+00:00', $read->created_at->toAtomString());
     }
 

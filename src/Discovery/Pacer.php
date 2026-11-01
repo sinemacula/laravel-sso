@@ -9,8 +9,15 @@ use SineMacula\Laravel\Sso\Flows\FlowSettings;
 /**
  * Makes a discovery start answer no earlier than the least time it takes,
  * `FlowSettings::discoveryMinimumDurationMilliseconds()` (50 to 2000, default
- * 250), after it started, so a match and a miss answer in the same time
- * whatever work each did (SSO-3.5).
+ * 250), after it started (SSO-3.5): a timing mitigation, so a match and a miss
+ * that both finish within the floor answer after the same time.
+ *
+ * It does not make them indistinguishable. An answer whose work outlasts the
+ * floor (a slow driver start or provider call, a slow database) is not delayed
+ * further, so its time can still differ from a miss's; the floor only hides the
+ * differences that fit inside it. Every discovery start sleeps out the rest of
+ * the floor, holding its worker that long, so the floor is part of capacity
+ * planning: the workers serving discovery must cover its rate times the floor.
  *
  * The time is measured on the monotonic clock (`hrtime()`), in nanoseconds, and
  * waited out with `usleep()`, again until the floor is reached, since a sleep

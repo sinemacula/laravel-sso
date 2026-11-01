@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Completion\CompletionState;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
+use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
@@ -53,8 +54,8 @@ final class CompletionStateTest extends TestCase
         self::assertSame($request, $state->request);
 
         $parts = [
-            'connection', 'correlation', 'authorizationRequest', 'consumed', 'application', 'claims', 'result', 'linkedIdentity', 'enforcementVersion',
-            'sessionNotAfter', 'handoff',
+            'connection', 'correlation', 'authorizationRequest', 'consumed', 'application', 'enforcementPolicy', 'claims', 'result', 'linkedIdentity',
+            'enforcementVersion', 'sessionNotAfter', 'handoff',
         ];
 
         foreach ($parts as $part) {
@@ -83,11 +84,13 @@ final class CompletionStateTest extends TestCase
         $identity    = new IdentityReference('user', '1');
         $notAfter    = CarbonImmutable::parse('2026-11-01T18:00:00Z');
         $handoff     = new IssuedHandoff(HandoffCode::generate(), CarbonImmutable::now());
+        $policy      = EnforcementPolicy::required('tenant-1', 'tenant-1', ['c'], 'version-1');
 
         $first = CompletionState::arrived('c', new CompletionRequest('GET', 'state=1', []));
         $state = $first->withConnection($connection)
             ->withCorrelation($correlation)
             ->withAuthorizationRequest($request, $consumed, $application)
+            ->withEnforcementPolicy($policy)
             ->withClaims($claims)
             ->withResult($result)
             ->withLinkedIdentity($identity)
@@ -103,6 +106,7 @@ final class CompletionStateTest extends TestCase
         self::assertSame($request, $state->authorizationRequest);
         self::assertSame($consumed, $state->consumed);
         self::assertSame($application, $state->application);
+        self::assertSame($policy, $state->enforcementPolicy);
         self::assertSame($claims, $state->claims);
         self::assertSame($result, $state->result);
         self::assertSame($identity, $state->linkedIdentity);

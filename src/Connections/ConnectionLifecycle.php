@@ -37,9 +37,9 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  *
  * 1. The connection is found by a plain read on the write connection; none is
  *    `connection_not_found`.
- * 2. The freshness contract is asked: `sso.connection.enable` to disable, even
- *    a connection already disabled, and `sso.connection.delete` to delete;
- *    `stale` is `freshness_required`.
+ * 2. The freshness contract is asked: `sso.connection.disable` to disable,
+ *    even a connection already disabled, and `sso.connection.delete` to
+ *    delete; `stale` is `freshness_required`.
  * 3. In one transaction on the storage connection (a savepoint inside the
  *    caller's), the connection's row is read again, locked, which every
  *    completion and redemption through it waits for; gone meanwhile, it is
@@ -144,7 +144,7 @@ final readonly class ConnectionLifecycle
      */
     public function disable(string $tenantId, string $connectionId, ?ActingIdentity $actor = null): ConnectionResult
     {
-        $refusal = $this->refusal($tenantId, $connectionId, FreshnessOperation::CONNECTION_ENABLE);
+        $refusal = $this->refusal($tenantId, $connectionId, FreshnessOperation::CONNECTION_DISABLE);
 
         return $refusal ?? $this->transaction(function () use ($tenantId, $connectionId, $actor): ConnectionResult {
 

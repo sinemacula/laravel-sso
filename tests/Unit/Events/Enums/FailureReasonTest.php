@@ -56,6 +56,7 @@ final class FailureReasonTest extends TestCase
             'settings_invalid', 'protocol_unavailable', 'key_state_conflict', 'domain_not_found', 'domain_unavailable',
             'domain_claim_expired', 'domain_record_not_found', 'domain_lookup_failed', 'feature_disabled',
             'completed_sign_in_required', 'link_not_found', 'link_limit_reached', 'subject_already_linked', 'connection_has_links',
+            'links_unaccounted',
         ], array_column(FailureReason::cases(), 'value'));
     }
 

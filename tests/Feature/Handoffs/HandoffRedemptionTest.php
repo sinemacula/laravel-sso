@@ -6,6 +6,7 @@ namespace Tests\Feature\Handoffs;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
@@ -31,12 +33,15 @@ use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
+use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
@@ -53,7 +58,12 @@ use Tests\TestCase;
  * completed-sign-in flag set by a linked `sign_in` alone; verifiers of 43 and
  * 128 characters and either side; codes, references and verifiers never
  * accepted as one another; a full limit; a corrupt stored result and a database
- * error that propagate.
+ * error that propagate; the locks taken in the package's order (the tenant's
+ * enforcement row, then the connections in ascending id order, then the code)
+ * with the feature on, the connection and the code alone with it off, with no
+ * enforcement statement and no inheritance asked; a code that no longer names
+ * the connection or application its locks were taken for; a connection gone
+ * before its lock; and an enforcing tenant that moved since the lock.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,7 +74,7 @@ use Tests\TestCase;
 #[CoversClass(HandoffRecheck::class)]
 final class HandoffRedemptionTest extends TestCase
 {
-    use UsesConnections, UsesEnforcement, UsesFlowTables;
+    use RecordsLockOrder, UsesConnections, UsesEnforcement, UsesFlowTables;
 
     /** @var string The shipped migration of the single-use keys. */
     private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
@@ -507,6 +517,161 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
+     * With the feature on, the redemption locks the tenant's enforcement row
+     * (an upsert, then a locking read), then the code's connection and the
+     * rule's connections in one statement in ascending id order, and only then
+     * the code; nothing is locked out of that order.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testTheLocksAreTakenInThePackagesOrder(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $code = $this->issue();
+
+        $this->makeEnforcement(['enabled' => true, 'connection_ids' => [$this->other->id, $this->connection->id]]);
+        $this->recordLockOrder();
+
+        self::assertTrue($this->redeem($code)->isRedeemed());
+
+        $ids = [$this->connection->id, $this->other->id];
+
+        sort($ids, SORT_STRING);
+
+        self::assertSame(['enforcement upsert', 'enforcement', 'connections ' . implode(', ', $ids), 'code'], $this->lockOrder());
+    }
+
+    /**
+     * A tenant with no rule stored is locked through an unconfigured row, and
+     * the code is redeemed with nothing required.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testATenantWithNoRuleIsLockedThroughAnUnconfiguredRow(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $code = $this->issue();
+
+        $this->recordLockOrder();
+
+        self::assertTrue($this->redeem($code)->isRedeemed());
+        self::assertSame(['enforcement upsert', 'enforcement', 'connections ' . $this->connection->id, 'code'], $this->lockOrder());
+        self::assertNull(TenantEnforcement::query()->sole()->version);
+    }
+
+    /**
+     * With the feature off, the redemption locks the connection and then the
+     * code: no statement names the enforcement table, no row is inserted, and
+     * the inheritance contract is never asked.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testWithTheFeatureOffNoEnforcementIsLockedOrAsked(): void
+    {
+        $inheritance = new ScriptedInheritance(['tenant-1']);
+        $code        = $this->issue();
+
+        $this->app?->instance(EnforcementInheritance::class, $inheritance);
+        $this->recordLockOrder();
+
+        self::assertTrue($this->redeem($code)->isRedeemed());
+        self::assertSame(['connections ' . $this->connection->id . ', tenant-1', 'code'], $this->lockOrder());
+        self::assertSame(0, $this->enforcementStatements());
+        self::assertSame(0, TenantEnforcement::query()->count());
+        self::assertSame([], $inheritance->asked());
+    }
+
+    /**
+     * Rows of `[column]`: what a code names that its locks were taken for.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideBindings(): iterable
+    {
+        yield 'the connection' => ['connection_id'];
+        yield 'the application' => ['application'];
+    }
+
+    /**
+     * A code that, once locked, no longer names the connection or the
+     * application its plain read did, and its locks were taken for, is
+     * `handoff_unknown`, and stays unconsumed: no other tenant's rule is locked
+     * out of order.
+     *
+     * @param  string  $column
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    #[DataProvider('provideBindings')]
+    public function testACodeThatNoLongerNamesWhatItWasLockedForIsUnknown(string $column): void
+    {
+        $code = $this->issue();
+
+        $this->afterTheTenantIsRead(function () use ($code, $column): void {
+            StoredCode::query()->whereKey($this->stored($code)->id)->update([$column => $column === 'application' ? 'mobile' : $this->other->id]);
+        });
+
+        self::assertSame(FailureReason::HANDOFF_UNKNOWN, $this->redeem($code)->reason);
+        self::assertNull($this->stored($code)->redeemed_at);
+        self::assertSame([], $this->singleUseKeys());
+        self::assertSame([], $this->linkerAsked);
+    }
+
+    /**
+     * A connection deleted between the plain read of its tenant and its lock is
+     * `connection_unavailable`, and the code stays unconsumed.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testAConnectionDeletedBeforeItsLockIsUnavailable(): void
+    {
+        $code = $this->issue();
+
+        $this->afterTheTenantIsRead(function (): void {
+            Connection::query()->whereKey($this->connection->id)->delete();
+        });
+
+        self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $this->redeem($code)->reason);
+        self::assertNull($this->stored($code)->redeemed_at);
+    }
+
+    /**
+     * An inheritance contract that names another enforcing tenant by the
+     * recheck than when the locks were taken is `connection_unavailable`, with
+     * the code consumed and nothing acknowledged.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testAnEnforcingTenantThatMovedSinceTheLockIsUnavailable(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $inheritance = new ScriptedInheritance(['tenant-1', 'parent-1']);
+        $code        = $this->issue();
+
+        $this->app?->instance(EnforcementInheritance::class, $inheritance);
+
+        self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $this->redeem($code)->reason);
+        self::assertSame([['tenant-1', 'web'], ['tenant-1', 'web']], $inheritance->asked());
+        self::assertNotNull($this->stored($code)->redeemed_at);
+        self::assertFalse($this->reloaded($this->connection)->has_completed_sign_in);
+        self::assertSame([], $this->linkerAsked);
+    }
+
+    /**
      * A connection disabled, left incomplete or deleted since completion is
      * `connection_unavailable`; a disabled or incomplete one consumes the code.
      *
@@ -739,7 +904,7 @@ final class HandoffRedemptionTest extends TestCase
      */
     public static function corruptResults(): iterable
     {
-        foreach (['not JSON', 'a JSON string', 'not a result', 'another purpose', 'another application', 'another connection', 'another reference'] as $variant) {
+        foreach (['not JSON', 'a JSON string', 'not a result', 'another purpose', 'another application', 'another connection', 'another reference', 'another tenant'] as $variant) {
             yield $variant => [$variant];
         }
     }
@@ -765,6 +930,7 @@ final class HandoffRedemptionTest extends TestCase
             'another purpose'     => $this->encoded($this->verifiedResult(Purpose::LINK)),
             'another application' => $this->encoded($this->verifiedResult(application: 'mobile')),
             'another connection'  => $this->encoded($this->verifiedResult(connectionId: $this->other->id)),
+            'another tenant'      => $this->encoded($this->verifiedResult(tenantId: 'tenant-2')),
             default               => $this->encoded($this->verifiedResult(reference: 'Dq8tVv3w0kLmNoPqRsTuVwXyZ0123456')),
         };
 
@@ -920,6 +1086,7 @@ final class HandoffRedemptionTest extends TestCase
      * @param  string  $application
      * @param  ?string  $connectionId
      * @param  string  $reference
+     * @param  string  $tenantId
      * @return \SineMacula\Laravel\Sso\Results\VerifiedResult
      */
     private function verifiedResult(
@@ -927,13 +1094,14 @@ final class HandoffRedemptionTest extends TestCase
         string $application = 'web',
         ?string $connectionId = null,
         string $reference = self::REFERENCE,
+        string $tenantId = 'tenant-1',
     ): VerifiedResult {
         return new VerifiedResult(
             issuer: VerifyingDriver::ISSUER,
             subject: VerifyingDriver::SUBJECT,
             nameIdFormat: null,
             connectionId: $connectionId ?? $this->connection->id,
-            tenantId: 'tenant-1',
+            tenantId: $tenantId,
             protocol: VerifyingDriver::NAME,
             application: $application,
             purpose: $purpose,
@@ -942,6 +1110,31 @@ final class HandoffRedemptionTest extends TestCase
             emailDomainVerified: false,
             authenticationContext: new AuthenticationContext(CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd']),
         );
+    }
+
+    /**
+     * Run the change once, straight after the redemption's plain read of its
+     * connection's tenant and before any lock, as a change committed between
+     * the two would.
+     *
+     * @param  \Closure(): void  $change
+     * @return void
+     */
+    private function afterTheTenantIsRead(\Closure $change): void
+    {
+        $done = false;
+
+        DB::connection(StorageConnection::name())->listen(static function (QueryExecuted $query) use ($change, &$done): void {
+            $isTenantRead = preg_match('/^select ["`]?tenant_id["`]? from/', strtolower($query->sql)) === 1;
+
+            if ($done || !$isTenantRead) {
+                return;
+            }
+
+            $done = true;
+
+            $change();
+        });
     }
 
     /**

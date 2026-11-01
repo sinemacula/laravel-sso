@@ -46,7 +46,9 @@ use Tests\TestCase;
 /**
  * Feature tests for the explicit subject migration (SSO-2.13, SSO-2.12,
  * SSO-4.5, SSO-8.4): a change to what subjects mean made with each link
- * relinked to its new subject or removed; the relinks validated with the
+ * relinked to its new subject or removed; a disposition that does not account
+ * for every current link exactly once refused with `links_unaccounted`, a link
+ * created since its preparation included; the relinks validated with the
  * change, each refused at `relinks.<id>`; a new subject that collides, or an
  * identity at its link limit, rolling everything back; the freshness asked
  * (`sso.connection.trust` and `sso.link.remove`, through `checkAll()`); the
@@ -168,7 +170,7 @@ final class SubjectMigrationTest extends TestCase
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['second']->id => ['second-new', null, self::NEW_ISSUER],
             $this->links['first']->id  => ['first-new', 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent'],
-        ], $actor);
+        ], $this->ids('third'), $actor);
 
         $summary = $result->connection;
 
@@ -214,14 +216,14 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * With no relink, every link of the connection is removed and every
-     * identity's sessions through it revoked.
+     * With no relink and every link listed for removal, every link of the
+     * connection is removed and every identity's sessions through it revoked.
      *
      * @return void
      */
-    public function testRemovesEveryLinkNotRelinked(): void
+    public function testRemovesEveryLinkListed(): void
     {
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['client_id' => 'client-456']], []);
+        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['client_id' => 'client-456']], [], $this->ids('first', 'second', 'third'));
 
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
         self::assertSame(['client_id'], $result->changedSettings);
@@ -241,7 +243,8 @@ final class SubjectMigrationTest extends TestCase
     {
         $request = $this->makeAuthorizationRequest($this->connection);
 
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['display_name' => 'Renamed'], [$this->links['first']->id => ['first-subject']]);
+        $relinks = [$this->links['first']->id => ['first-subject']];
+        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['display_name' => 'Renamed'], $relinks, $this->ids('second', 'third'));
 
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
         self::assertSame(['display_name'], $result->changedSettings);
@@ -275,7 +278,7 @@ final class SubjectMigrationTest extends TestCase
     {
         $this->app?->instance(Freshness::class, FakeFreshness::fresh()->staleFor($operation));
 
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['display_name' => 'Renamed'], []);
+        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['display_name' => 'Renamed'], [], $this->ids('first', 'second', 'third'));
 
         self::assertSame(ConnectionStatus::REFUSED, $result->status);
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
@@ -291,7 +294,7 @@ final class SubjectMigrationTest extends TestCase
     {
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], []);
+        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [], $this->ids('first', 'second', 'third'));
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
         self::assertSame([[FreshnessOperation::CONNECTION_TRUST, 300]], $this->freshness->asked());
@@ -335,7 +338,7 @@ final class SubjectMigrationTest extends TestCase
     public function testRefusesAMalformedRelink(mixed $relink, string $code): void
     {
         $id     = $this->links['first']->id;
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [$id => $relink]);
+        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [$id => $relink], $this->ids('second', 'third'));
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
         self::assertSame(FailureReason::SETTINGS_INVALID, $result->reason);
@@ -371,7 +374,8 @@ final class SubjectMigrationTest extends TestCase
     #[DataProvider('provideWellShapedRelinks')]
     public function testAcceptsAWellShapedRelink(array $relink): void
     {
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [$this->links['first']->id => $relink]);
+        $relinks = [$this->links['first']->id => $relink];
+        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $relinks, $this->ids('second', 'third'));
 
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
 
@@ -383,17 +387,14 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * An id that is not one of the connection's links is `unknown`, another
-     * connection's link included; a reserved link is `not_allowed`; each is
-     * reported after the change's own violations, in the order given, and
-     * nothing is asked, written or reported.
+     * A reserved link relinked is `not_allowed`, reported after the change's
+     * own violations, and nothing is asked, written or reported; a reserved
+     * link listed for removal is removed like any other.
      *
      * @return void
      */
-    public function testRefusesAnUnknownOrReservedLink(): void
+    public function testRefusesAReservedLinkRelinkedAndRemovesOneListed(): void
     {
-        $other    = $this->makeConnection();
-        $theirs   = $this->makeLink($other, 'their-subject');
         $reserved = $this->makeLink($this->connection, 'reserved-subject', [
             'identity_id'            => '4',
             'state'                  => LinkState::RESERVED,
@@ -402,22 +403,129 @@ final class SubjectMigrationTest extends TestCase
         ]);
 
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => 'http://login.example.com']], [
-            '01jbunknownlink00000000000' => ['subject'],
-            $theirs->id                  => ['subject'],
-            $reserved->id                => ['subject'],
-            $this->links['first']->id    => ['first-new'],
-        ]);
+            $reserved->id             => ['subject'],
+            $this->links['first']->id => ['first-new'],
+        ], $this->ids('second', 'third'));
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
-        self::assertSame([
-            ['issuer', 'not_https'],
-            ['relinks.01jbunknownlink00000000000', 'unknown'],
-            ['relinks.' . $theirs->id, 'unknown'],
-            ['relinks.' . $reserved->id, 'not_allowed'],
-        ], self::violationsOf($result));
+        self::assertSame([['issuer', 'not_https'], ['relinks.' . $reserved->id, 'not_allowed']], self::violationsOf($result));
         self::assertSame([], $this->freshness->asked());
         self::assertSame(4, Link::query()->where('connection_id', $this->connection->id)->count());
         $this->assertNoEvents();
+
+        $removed = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
+            $this->links['first']->id => ['first-new'],
+        ], [...$this->ids('second', 'third'), $reserved->id]);
+
+        self::assertSame(ConnectionStatus::MIGRATED, $removed->status);
+        self::assertSame([['1', self::ISSUER, null, 'first-new', 'active']], self::linksNow());
+        $this->assertRevokedIdentities(['2', '3', '4']);
+    }
+
+    /**
+     * Rows of `[relinked, removed]`, by link name, with `unknown` an id no link
+     * has, `theirs` another connection's link and `number` a removal that is
+     * not a string: each disposition that does not account for every current
+     * link exactly once, the last three giving as many ids as there are links.
+     *
+     * @return iterable<string, array{0: list<string>, 1: list<string>}>
+     */
+    public static function provideUnaccountedDispositions(): iterable
+    {
+        yield from [
+            'a link left out'                            => [['first'], ['second']],
+            'every link left out'                        => [[], []],
+            'a link in both'                             => [['first', 'second'], ['second', 'third']],
+            'a relink of an unknown id'                  => [['first', 'unknown'], ['second', 'third']],
+            'a removal of an unknown id'                 => [['first'], ['second', 'third', 'unknown']],
+            'a relink of another connection\'s link'     => [['first', 'theirs'], ['second', 'third']],
+            'a removal of another connection\'s link'    => [['first'], ['second', 'third', 'theirs']],
+            'a removal that is not a string'             => [['first'], ['second', 'third', 'number']],
+            'an unknown id in place of a link'           => [['first', 'unknown'], ['second']],
+            'another connection\'s link in place of one' => [['first'], ['second', 'theirs']],
+            'a link in both, another left out'           => [['first', 'second'], ['second']],
+        ];
+    }
+
+    /**
+     * A disposition that leaves a link out, names a link in both the relinks
+     * and the removals, or names an id that is not one of the connection's
+     * links, is refused with `links_unaccounted`: nothing is asked, written,
+     * removed, revoked or reported.
+     *
+     * @param  list<string>  $relinked
+     * @param  list<string>  $removed
+     * @return void
+     */
+    #[DataProvider('provideUnaccountedDispositions')]
+    public function testRefusesADispositionThatDoesNotAccountForEveryLink(array $relinked, array $removed): void
+    {
+        $theirs = $this->makeLink($this->makeConnection(), 'their-subject');
+        $id     = fn (string $name): int|string => match ($name) {
+            'unknown' => '01jbunknownlink00000000000',
+            'theirs'  => $theirs->id,
+            'number'  => 5,
+            default   => $this->links[$name]->id,
+        };
+
+        $relinks = [];
+
+        foreach ($relinked as $name) {
+            $relinks[(string) $id($name)] = [$name . '-new'];
+        }
+
+        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $relinks, array_map($id, $removed));
+
+        self::assertSame(ConnectionStatus::REFUSED, $result->status);
+        self::assertSame(FailureReason::LINKS_UNACCOUNTED, $result->reason);
+        self::assertSame([], $this->freshness->asked());
+        $this->assertNothingChanged();
+    }
+
+    /**
+     * A removal listed twice counts once: the disposition still accounts for
+     * every link exactly once.
+     *
+     * @return void
+     */
+    public function testARemovalListedTwiceCountsOnce(): void
+    {
+        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
+            $this->links['first']->id => ['first-new'],
+        ], $this->ids('second', 'third', 'second'));
+
+        self::assertSame(ConnectionStatus::MIGRATED, $result->status);
+        $this->assertRevokedIdentities(['2', '3']);
+    }
+
+    /**
+     * A link created after the caller prepared its disposition, from the links
+     * it read then, is unaccounted for under the lock: the migration is refused
+     * with `links_unaccounted`, the new link kept with the rest; prepared
+     * again, it is accounted for and migrates.
+     *
+     * @return void
+     */
+    public function testALinkCreatedSinceThePreparationIsUnaccounted(): void
+    {
+        $prepared = $this->ids('second', 'third');
+        $late     = $this->makeLink($this->connection, 'late-subject', ['identity_id' => '5']);
+
+        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
+            $this->links['first']->id => ['first-new'],
+        ], $prepared);
+
+        self::assertSame(FailureReason::LINKS_UNACCOUNTED, $result->reason);
+        self::assertSame(4, Link::query()->where('connection_id', $this->connection->id)->count());
+        self::assertSame([], $this->revocation->calls());
+        $this->assertNoEvents();
+
+        $retried = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
+            $this->links['first']->id => ['first-new'],
+        ], [...$prepared, $late->id]);
+
+        self::assertSame(ConnectionStatus::MIGRATED, $retried->status);
+        $this->assertRevokedIdentities(['2', '3', '5']);
     }
 
     /**
@@ -434,7 +542,7 @@ final class SubjectMigrationTest extends TestCase
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['first']->id  => ['the-same-subject'],
             $this->links['second']->id => ['the-same-subject'],
-        ]);
+        ], $this->ids('third'));
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
         self::assertSame([['relinks.' . $this->links['second']->id, 'duplicate']], self::violationsOf($result));
@@ -456,7 +564,7 @@ final class SubjectMigrationTest extends TestCase
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['first']->id => ['first-new'],
             $twin->id                 => ['twin-new'],
-        ]);
+        ], $this->ids('second', 'third'));
 
         self::assertSame([['relinks.' . $twin->id, 'too_many']], self::violationsOf($result));
         self::assertSame(self::ISSUER, $this->reread()->settings['issuer']);
@@ -472,7 +580,8 @@ final class SubjectMigrationTest extends TestCase
      */
     public function testAChangeOfNothingTouchesNoLink(): void
     {
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::ISSUER]], [$this->links['first']->id => ['first-new']]);
+        $relinks = [$this->links['first']->id => ['first-new']];
+        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::ISSUER]], $relinks, $this->ids('second', 'third'));
 
         self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
         self::assertSame($this->connection->id, $result->connection?->id);
@@ -490,8 +599,8 @@ final class SubjectMigrationTest extends TestCase
     {
         $retired = $this->makeConnection(['protocol' => 'retired']);
 
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->migration()->migrate('tenant-2', $this->connection->id, ['display_name' => 'Renamed'], [])->reason);
-        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $this->migration()->migrate(self::TENANT, $retired->id, ['display_name' => 'Renamed'], [])->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->migration()->migrate('tenant-2', $this->connection->id, ['display_name' => 'Renamed'], [], [])->reason);
+        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $this->migration()->migrate(self::TENANT, $retired->id, ['display_name' => 'Renamed'], [], [])->reason);
         $this->assertNothingChanged();
     }
 
@@ -506,13 +615,24 @@ final class SubjectMigrationTest extends TestCase
     public function testRefusesAMalformedTenantId(): void
     {
         try {
-            $this->migration()->migrate('', $this->connection->id, [], []);
+            $this->migration()->migrate('', $this->connection->id, [], [], []);
             self::fail('An empty tenant id was accepted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('A tenant id is 1 to 255 bytes.', $exception->getMessage());
         }
 
         self::assertSame(0, $this->connection->getConnection()->transactionLevel());
+    }
+
+    /**
+     * The ids of the links with the names, in the order given.
+     *
+     * @param  string  ...$names
+     * @return list<string>
+     */
+    private function ids(string ...$names): array
+    {
+        return array_values(array_map(fn (string $name): string => $this->links[$name]->id, $names));
     }
 
     /**

@@ -10,9 +10,10 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 
 /**
- * Unit tests for the freshness operations: exactly the eleven stable names
- * SSO-2.12 lists, in order, each with the key its maximum age is configured
- * under, and every key in the shipped `freshness` block, which holds no other.
+ * Unit tests for the freshness operations: exactly the twelve stable names of
+ * the operations SSO-2.12 lists (enabling and disabling a connection named
+ * apart), in order, each with the key its maximum age is configured under, and
+ * every key in the shipped `freshness` block, which holds no other.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,10 +23,11 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 #[CoversClass(FreshnessOperation::class)]
 final class FreshnessOperationTest extends TestCase
 {
-    /** @var list<string> The stable names SSO-2.12 lists, in order. */
+    /** @var list<string> The stable names of the operations SSO-2.12 lists, enabling and disabling a connection apart, in order. */
     private const array NAMES = [
         'sso.connection.trust',
         'sso.connection.enable',
+        'sso.connection.disable',
         'sso.connection.delete',
         'sso.connection.idp_initiated',
         'sso.keys.rotate',
@@ -38,7 +40,7 @@ final class FreshnessOperationTest extends TestCase
     ];
 
     /**
-     * The operations are the eleven stable names, exactly and in order.
+     * The operations are the twelve stable names, exactly and in order.
      *
      * @return void
      */
@@ -58,6 +60,7 @@ final class FreshnessOperationTest extends TestCase
         yield from [
             'connection trust'         => [FreshnessOperation::CONNECTION_TRUST, 'sso.connection.trust', 'connection_trust'],
             'connection enable'        => [FreshnessOperation::CONNECTION_ENABLE, 'sso.connection.enable', 'connection_enable'],
+            'connection disable'       => [FreshnessOperation::CONNECTION_DISABLE, 'sso.connection.disable', 'connection_disable'],
             'connection delete'        => [FreshnessOperation::CONNECTION_DELETE, 'sso.connection.delete', 'connection_delete'],
             'connection idp initiated' => [FreshnessOperation::CONNECTION_IDP_INITIATED, 'sso.connection.idp_initiated', 'connection_idp_initiated'],
             'keys rotate'              => [FreshnessOperation::KEYS_ROTATE, 'sso.keys.rotate', 'keys_rotate'],

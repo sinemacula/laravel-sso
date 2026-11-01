@@ -38,10 +38,19 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * 3. the stored code is read by its digest on the write connection (SSO-11.3)
  *    and matched again in constant time (SSO-11.9); none is `handoff_unknown`;
  * 4. in a transaction on the storage connection (a savepoint inside the
- *    caller's), the code's connection's row is locked, and a connection gone is
- *    `connection_unavailable`; then the code's row is read again, locked, and a
- *    code gone is `handoff_unknown`; each read is a locking read on the write
- *    connection, so a caller's older `REPEATABLE READ` snapshot never answers;
+ *    caller's), the code's connection's tenant is read by a plain read (it
+ *    never changes), and a connection gone is `connection_unavailable`; then
+ *    `HandoffRecheck::lock()` takes the locks of the package's order for that
+ *    tenant, the connection and the code's application: under the default
+ *    enforcement contract with the feature on, the enforcing tenant's rule
+ *    (named by the inheritance contract, its row inserted unconfigured when it
+ *    has none), then the connection and the rule's connections in id order;
+ *    otherwise the connection alone. A connection gone meanwhile is
+ *    `connection_unavailable`. Only then is the code's row read again, locked:
+ *    a code gone, or one that no longer names the connection and application
+ *    its plain read did (whose locks were taken), is `handoff_unknown`. Each
+ *    read under a lock is a locking read on the write connection, so a
+ *    caller's older `REPEATABLE READ` snapshot never answers;
  * 5. a code a change to its connection voided is `handoff_unknown`;
  * 6. a code redeemed before, or one the single-use store has seen (keyed by its
  *    digest until its expiry, and at least a second), is `replayed`;
@@ -59,8 +68,11 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  *     (SSO-5.2);
  * 13. the verified result is decrypted and restored, and
  *     `Handoffs\HandoffRecheck` checks the connection, enforcement and the link
- *     again: `connection_unavailable`, `enforcement_unsatisfied` or
- *     `link_changed`;
+ *     again, under the locks of step 4: `connection_unavailable` (the
+ *     inheritance contract no longer naming the tenant whose rule is locked
+ *     included), `enforcement_unsatisfied` or `link_changed`; a rule change
+ *     waits for the redemption's transaction, the caller's included, and its
+ *     revocation then sees the session the caller wrote in it;
  * 14. a `sign_in` code that resolved to an identity acknowledges the completed
  *     sign-in on its connection (SSO-4.3), in the same transaction; a `link` or
  *     `reauthenticate` code, an unlinked handoff and a code never redeemed
@@ -70,6 +82,10 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  *     to, the flow's identity and session, the enforcement version and the
  *     session's latest end.
  *
+ * On PostgreSQL under `REPEATABLE READ`, a redemption that waited on a rule
+ * change may fail to serialise instead: the error propagates, never retried in
+ * part, and a caller's transaction around it must be retried whole.
+ *
  * Every refusal reports exactly one `FlowFailed` (`Flow::REDEMPTION`) with its
  * reason, after the transaction that consumed the code commits, and never when
  * the caller's transaction around it rolls back (SSO-10.5): a redemption inside
@@ -78,9 +94,10 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  *
  * A stored result the package did not write (one no JSON decodes to a result,
  * or bound to another purpose, application, connection or reference than its
- * code) is an `UnexpectedValueException`; it, a ciphertext no key decrypts, a
- * database error and a contract's exception propagate as server errors
- * (SSO-11.4), roll the transaction back, and leave the code unconsumed.
+ * code, or to another tenant than its connection's) is an
+ * `UnexpectedValueException`; it, a ciphertext no key decrypts, a database
+ * error and a contract's exception propagate as server errors (SSO-11.4), roll
+ * the transaction back, and leave the code unconsumed.
  *
  * It holds the container, the limiter, the store, the encrypter, the recheck,
  * the reporter and the clock, none of which keeps anything of one redemption
@@ -199,8 +216,9 @@ final readonly class HandoffRedemption
     }
 
     /**
-     * In the transaction: lock the code's connection, then the code, and
-     * consume it unless it is gone, judged against the clock once both are
+     * In the transaction: take the recheck's locks for the code's connection,
+     * then lock the code, and consume it unless it is gone or no longer the
+     * code those locks were taken for, judged against the clock once all are
      * locked.
      *
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $found
@@ -211,19 +229,56 @@ final readonly class HandoffRedemption
      */
     private function locked(StoredCode $found, \Closure $mismatch): RedemptionResult
     {
-        $connection = Connection::query()->useWritePdo()->lockForUpdate()->whereKey($found->connection_id)->first();
+        $lock = $this->lockFor($found);
 
-        if ($connection === null) {
+        if ($lock?->connection === null) {
             return $this->refuse(FailureReason::CONNECTION_UNAVAILABLE, $found);
         }
 
-        $code = StoredCode::query()->useWritePdo()->lockForUpdate()->whereKey($found->id)->first();
+        $connection = $lock->connection;
+        $code       = StoredCode::query()->useWritePdo()->lockForUpdate()->whereKey($found->id)->first();
 
-        if ($code === null) {
+        if (!self::isStill($code, $found)) {
             return $this->refuse(FailureReason::HANDOFF_UNKNOWN, $found, $connection);
         }
 
-        return $this->consume($code, $connection, $this->clock->now(), $mismatch);
+        return $this->consume($code, $lock, $connection, $this->clock->now(), $mismatch);
+    }
+
+    /**
+     * The recheck's locks for the code's connection and application, taken for
+     * the tenant a plain read of the connection gives (a connection's tenant
+     * never changes), or `null`, with nothing locked, when the connection is
+     * gone.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $found
+     * @return ?\SineMacula\Laravel\Sso\Handoffs\RecheckLock
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     */
+    private function lockFor(StoredCode $found): ?RecheckLock
+    {
+        $tenantId = Connection::query()->useWritePdo()->whereKey($found->connection_id)->value('tenant_id');
+
+        return is_string($tenantId) ? $this->recheck->lock($tenantId, $found->connection_id, $found->application) : null;
+    }
+
+    /**
+     * Whether the code read locked is still the one found: not gone, and still
+     * naming the connection and the application the locks were taken for.
+     *
+     * @param  ?\SineMacula\Laravel\Sso\Models\HandoffCode  $code
+     * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $found
+     * @return bool
+     *
+     * @phpstan-assert-if-true \SineMacula\Laravel\Sso\Models\HandoffCode $code
+     */
+    private static function isStill(?StoredCode $code, StoredCode $found): bool
+    {
+        return $code !== null && [$code->connection_id, $code->application] === [$found->connection_id, $found->application];
     }
 
     /**
@@ -231,6 +286,7 @@ final readonly class HandoffRedemption
      * refuse what it does not match.
      *
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
+     * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \Carbon\CarbonImmutable  $now
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\HandoffCode, \Carbon\CarbonImmutable): ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $mismatch
@@ -238,7 +294,7 @@ final readonly class HandoffRedemption
      *
      * @throws \Throwable
      */
-    private function consume(StoredCode $code, Connection $connection, CarbonImmutable $now, \Closure $mismatch): RedemptionResult
+    private function consume(StoredCode $code, RecheckLock $lock, Connection $connection, CarbonImmutable $now, \Closure $mismatch): RedemptionResult
     {
         $refusal = match (true) {
             $code->voided_at !== null    => FailureReason::HANDOFF_UNKNOWN,
@@ -254,7 +310,7 @@ final readonly class HandoffRedemption
 
         $refusal = $mismatch($code, $now);
 
-        return $refusal === null ? $this->redeemed($code, $connection) : $this->refuse($refusal, $code, $connection);
+        return $refusal === null ? $this->redeemed($code, $lock, $connection) : $this->refuse($refusal, $code, $connection);
     }
 
     /**
@@ -329,10 +385,11 @@ final readonly class HandoffRedemption
 
     /**
      * Restore the code's result, check the connection, enforcement and the link
-     * again, acknowledge a completed sign-in, report the redemption and answer
-     * it.
+     * again under the locks, acknowledge a completed sign-in, report the
+     * redemption and answer it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
+     * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *
@@ -341,18 +398,18 @@ final readonly class HandoffRedemption
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
      */
-    private function redeemed(StoredCode $code, Connection $connection): RedemptionResult
+    private function redeemed(StoredCode $code, RecheckLock $lock, Connection $connection): RedemptionResult
     {
-        $result = $this->restored($code);
+        $result = $this->restored($code, $lock);
         $linked = IdentityReference::fromColumns($code->linked_identity_type, $code->linked_identity_id);
-        $reason = $this->recheck->recheck($result, $linked)->reason();
+        $reason = $this->recheck->recheck($result, $linked, $lock)->reason();
 
         if ($reason !== null) {
             return $this->refuse($reason, $code, $connection);
         }
 
         if ($code->purpose === Purpose::SIGN_IN && $linked !== null) {
-            $this->recheck->acknowledgeSignIn($result);
+            $this->recheck->acknowledgeSignIn($result, $lock);
         }
 
         $this->events->redeemed($code, $connection);
@@ -369,20 +426,22 @@ final readonly class HandoffRedemption
 
     /**
      * The verified result the code carries, decrypted and restored, and bound
-     * to the code's purpose, application, connection and reference.
+     * to the code's purpose, application, connection and reference, and to the
+     * connection's tenant the locks were taken for.
      *
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
+     * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @return \SineMacula\Laravel\Sso\Results\VerifiedResult
      *
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
      */
-    private function restored(StoredCode $code): VerifiedResult
+    private function restored(StoredCode $code, RecheckLock $lock): VerifiedResult
     {
         $stored = json_decode($this->encrypter->decrypt($code->result), true);
         $result = is_array($stored) ? VerifiedResult::restore($stored) : self::corrupt();
 
-        return self::isBoundTo($result, $code) ? $result : self::corrupt();
+        return self::isBoundTo($result, $code) && $lock->isFor($result) ? $result : self::corrupt();
     }
 
     /**

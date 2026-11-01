@@ -52,9 +52,12 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * is a `LogicException` naming the binding; at the limit it is
  * `link_limit_reached`; the link is inserted through the model in a savepoint,
  * and the unique index on connection and key refusing it is
- * `subject_already_linked`; and `LinkCreated` is reported after commit. A
- * missing connection is a `LogicException`; any other error propagates
- * (SSO-11.4).
+ * `subject_already_linked`; the connection's links version is raised by one, so
+ * a link's insert also writes the connection's row (a PostgreSQL `REPEATABLE
+ * READ` transaction that locks the row after the creation commits then fails to
+ * serialise rather than miss the link); and `LinkCreated` is reported after
+ * commit. A missing connection is a `LogicException`; any other error
+ * propagates (SSO-11.4).
  *
  * It holds the connection lookup, the clock, the reporter and the container,
  * none of which keeps anything of one request for the next (SSO-11.2).
@@ -164,6 +167,8 @@ final readonly class LinkStore implements Linker
                 return LinkCreation::subjectAlreadyLinked();
             }
 
+            self::raiseLinksVersion($locked);
+
             $report($locked);
 
             return LinkCreation::created(LinkSummary::of($link, $locked));
@@ -253,6 +258,20 @@ final readonly class LinkStore implements Linker
                 $query->whereNull('last_used_at')->orWhere('last_used_at', '<=', $threshold);
             })
             ->update(['last_used_at' => UtcDateTime::format($link, $now)]);
+    }
+
+    /**
+     * Raise the locked connection's links version by one, so the insert also
+     * writes the connection's row: a PostgreSQL `REPEATABLE READ` transaction
+     * that locks the row after this one commits fails to serialise, rather than
+     * go on from a snapshot without the link (`SubjectMigration`).
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @return void
+     */
+    private static function raiseLinksVersion(Connection $locked): void
+    {
+        Connection::query()->useWritePdo()->whereKey($locked->id)->increment('links_version');
     }
 
     /**

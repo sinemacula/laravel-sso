@@ -34,7 +34,7 @@ helper), `keys.md` (trusted certificates), `domains.md` (`DomainWithdrawal`) and
 
 | Change                                                                  | Voids | Freshness                                           |
 |-------------------------------------------------------------------------|-------|-----------------------------------------------------|
-| `ConnectionLifecycle::disable()`                                        | yes   | `sso.connection.enable`                             |
+| `ConnectionLifecycle::disable()`                                        | yes   | `sso.connection.disable`                            |
 | `ConnectionLifecycle::delete()`                                         | yes   | `sso.connection.delete`                             |
 | `ConnectionService::update()` that asks `sso.connection.trust`          | yes   | `sso.connection.trust`, and what else it asks       |
 | `ConnectionService::update()` that asks only another operation, or none | no    | what it asks                                        |
@@ -54,7 +54,7 @@ voids nothing. A refused or unchanged change voids nothing.
   freshness contract is asked (`freshness_required`); then one transaction on the storage connection (a savepoint
   inside the caller's) reads the connection again with `lockForUpdate()` and is `connection_not_found` when it has gone
   since.
-- `disable()` asks `sso.connection.enable`, even of a disabled connection (a decision for Ben). It reads
+- `disable()` asks `sso.connection.disable`, with its own maximum age, even of a disabled connection. It reads
   `enabled` from the locked row: a disabled connection is `unchanged`, writing, voiding, revoking and reporting
   nothing, so the answer of the first read is always confirmed under the lock. Otherwise it sets `enabled` off, voids
   what is in flight, revokes, and reports `ConnectionDisabled`. Its domains, links and keys are kept, so enabling it
@@ -86,25 +86,34 @@ voids nothing. A refused or unchanged change voids nothing.
   connection. Freshness is asked first, as for every update, so a stale caller is `freshness_required` whatever the
   links. A link of another connection does not count; a reservation that expired at now or before does not count.
 - `Connections\SubjectMigration` (`@api`, final, readonly, resolved per request) is the explicit way to make such a
-  change. `migrate($tenantId, $connectionId, $changes, $relinks, $actor)` takes the change as `update()` does and the
-  relinks: each link id of the connection mapped to a list of its subject under the new meaning, then optionally its
-  NameID format and its issuer, the format `null` or left out for none, and the issuer, when `null` or left out, the
-  link's own (so a migration that changes the issuer gives the new one). Every link of the connection not relinked is
-  removed.
+  change. `migrate($tenantId, $connectionId, $changes, $relinks, $removals, $actor)` takes the change as `update()`
+  does and an exhaustive disposition of the connection's links: the relinks, each link id mapped to a list of its
+  subject under the new meaning, then optionally its NameID format and its issuer (the format `null` or left out for
+  none, and the issuer, when `null` or left out, the link's own, so a migration that changes the issuer gives the new
+  one); and the removals, a list of link ids. Every link the connection has when the migration runs must be in exactly
+  one of the two. Nothing is removed by omission, so a link created after the caller read the links to prepare its call
+  is never silently removed or kept: the migration is refused and the caller prepares it again.
 - In one transaction on the storage connection (a savepoint inside the caller's), in this order:
   1. the connection is read locked (`connection_not_found`, `protocol_unavailable`), then its links, locked, in id
      order;
-  2. the change is validated as `update()` validates one (it is `ConnectionService::changeLocked()`, the narrow
+  2. the disposition is judged against the locked links: a link in neither the relinks nor the removals (one created
+     since the caller prepared the call included), an id in both, or an id that is not one of the connection's links
+     (another connection's link, an unknown id, a removal that is not a string) is refused with `links_unaccounted`,
+     with nothing asked, written or reported; a removal listed twice counts once. A link created while the migration
+     waited for the lock is among the locked links on MySQL and under PostgreSQL's `READ COMMITTED`; under PostgreSQL's
+     `REPEATABLE READ`, whose snapshot may predate it, the creation's write to the connection's `links_version` makes
+     the migration's lock fail to serialise (SQLSTATE `40001`, which propagates) rather than go on without the link;
+  3. the change is validated as `update()` validates one (it is `ConnectionService::changeLocked()`, the narrow
      internal method `update()` runs once it holds the lock), with the relinks after the change's own violations, each
-     at `relinks.<id>`: `unknown` for an id that is not one of the connection's links, `not_allowed` for a reserved
-     link, `invalid_type` for anything but a list of one to three parts (a string subject, then a string or `null`),
-     `invalid_format` for an empty or overlong subject, issuer or format; any violation is `invalid`
-     (`settings_invalid`), and a change that changes nothing is `unchanged`, touching no link;
-  3. freshness is asked through `FreshnessGate::checkAll()` with `sso.connection.trust`, each operation the change
+     at `relinks.<id>`: `not_allowed` for a reserved link (which may be removed, not relinked), `invalid_type` for
+     anything but a list of one to three parts (a string subject, then a string or `null`), `invalid_format` for an
+     empty or overlong subject, issuer or format; any violation is `invalid` (`settings_invalid`), and a change that
+     changes nothing is `unchanged`, touching no link;
+  4. freshness is asked through `FreshnessGate::checkAll()` with `sso.connection.trust`, each operation the change
      asks and `sso.link.remove`, in `FreshnessOperation`'s order (`freshness_required`);
-  4. in a savepoint: the change is written and reported, what is in flight voided, every link of the connection
-     deleted and reported removed, and the sessions of each identity not relinked revoked;
-  5. each relinked identity is linked to its new subject through `Links\LinkStore::create()` with the origin
+  5. in a savepoint: the change is written and reported, what is in flight voided, every link of the connection
+     deleted and reported removed, and the sessions of each identity whose link is removed revoked;
+  6. each relinked identity is linked to its new subject through `Links\LinkStore::create()` with the origin
      `migration`, in the order the relinks are given. A new subject already linked in the connection (another relink's
      included) is `duplicate` at `relinks.<id>`, an identity at its link limit `too_many`; either is `invalid` and rolls
      the whole migration back, the change, the removals, the revocations' writes and the voiding included.
@@ -142,7 +151,8 @@ read under the lock that decides a write is a locking read (`lockForUpdate()`), 
 3. An administrator rotates a client secret or an endpoint: the update writes it, voids what is in flight, and reports
    `ConnectionUpdated`.
 4. An administrator moves a connection to a new issuer: `update()` refuses with `connection_has_links`; the
-   administrator calls `migrate()` with each link's subject under the new issuer, and the links not given are removed.
+   administrator calls `migrate()` with each kept link's subject under the new issuer and every other link listed for
+   removal.
 
 ## Failure / Edge Cases
 

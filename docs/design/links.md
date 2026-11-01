@@ -53,7 +53,11 @@ linking by a verified domain, which reserves and activates links (SSO-8.8), is P
      `LinkOrigin::VERIFIED_DOMAIN`, in a savepoint of its own; the unique index on (`connection_id`, `subject_key`)
      refusing it (`UniqueConstraintViolationException`) is `subject_already_linked`, for this identity or another, and
      the savepoint keeps the caller's transaction usable (PostgreSQL aborts a transaction on a failed statement);
-  6. `LinkCreated` with the origin is reported after commit, with the connection, tenant, protocol, identity, acting
+  6. the connection's `links_version` is raised by one, so the insert also writes the connection's row: a PostgreSQL
+     `REPEATABLE READ` transaction whose snapshot predates the creation (a subject migration that waited on the lock,
+     say) fails to serialise when it locks the row, rather than go on without the new link, which neither its locking
+     read nor its delete would see;
+  7. `LinkCreated` with the origin is reported after commit, with the connection, tenant, protocol, identity, acting
      identity and, for a flow, its application, purpose and public reference.
 
   Uniqueness is not configurable; the limit is (SSO-8.4). Any other error propagates (SSO-11.4).

@@ -3,7 +3,8 @@
 Discovery lets a person type their email address instead of choosing their organisation's identity provider. The
 package takes the address's domain, finds the enabled connection that domain is verified for, and starts the flow
 through it. A domain that routes nowhere leads to your application's own sign-in page instead, in an answer your client
-cannot tell apart from a match by its shape, status or timing.
+cannot tell apart from a match by its shape or status, and that is padded to a minimum duration so its timing does not
+give it away either, as long as the match finishes within that duration.
 
 ```php
 use SineMacula\Laravel\Sso\Discovery\DiscoveryService;
@@ -108,16 +109,22 @@ its record went has ended, a disabled or incomplete connection, and an address w
 > `example.com` signs in through single sign-on by trying an address at it. Do not offer discovery where that fact is
 > itself sensitive.
 
-### The same time
+### The minimum duration
 
 Every answer, a refusal included, takes at least `sso.discovery.minimum_duration_milliseconds` (50 to 2000, 250 by
-default), measured from when the start began, so a match (which reads the connection, asks the driver to start and
-stores the request) and a miss (which reads one row) cannot be told apart by how long they take. It cannot be turned
-off, and a value outside its range fails the boot check (`[flows]`).
+default), measured from when the start began. This is a timing mitigation: a match (which reads the connection, asks
+the driver to start and stores the request) and a miss (which reads one row) that both finish within the floor answer
+after the same time. It cannot be turned off, and a value outside its range fails the boot check (`[flows]`).
 
-Set it above the slowest match you expect: a driver that reads metadata or signs a request takes longer than a miss,
-and an answer slower than the floor is not held back further. A mistake in your code (a misbound purpose) and a server
-error are thrown at once, not held.
+It is not a guarantee that the two are indistinguishable. An answer whose work outlasts the floor, because a driver
+reads metadata or calls the identity provider, or because the database is slow, is not held back further, so its time
+can still differ from a miss's. Set the floor above the slowest match you expect, and watch for matches that exceed it.
+A mistake in your code (a misbound purpose) and a server error are thrown at once, not held.
+
+> [!NOTE]
+> Every discovery start sleeps out the rest of the floor, holding its worker for that long. Plan capacity for it: the
+> workers that serve discovery must cover the discovery rate multiplied by the floor, on top of the real work, and a
+> higher floor needs more of them.
 
 ## Refusals
 

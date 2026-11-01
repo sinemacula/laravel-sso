@@ -149,7 +149,7 @@ final class ConnectionLifecycleTest extends TestCase
      * Disabling turns the connection off, voids its unfinished requests and
      * unredeemed codes and nothing else, keeps its domains, links and keys,
      * revokes its sessions inside the transaction, and reports it once, with
-     * the acting identity, once `sso.connection.enable` is fresh.
+     * the acting identity, once `sso.connection.disable` is fresh.
      *
      * @return void
      */
@@ -173,7 +173,7 @@ final class ConnectionLifecycleTest extends TestCase
 
         self::assertFalse($this->reread($this->connection)->enabled);
         self::assertTrue($this->reread($this->other)->enabled);
-        self::assertSame([[FreshnessOperation::CONNECTION_ENABLE, 300]], $this->freshness->asked());
+        self::assertSame([[FreshnessOperation::CONNECTION_DISABLE, 300]], $this->freshness->asked());
 
         self::assertSame([
             $rows['pending']    => self::VOIDED,
@@ -236,7 +236,7 @@ final class ConnectionLifecycleTest extends TestCase
         self::assertNotNull($summary);
         self::assertSame($this->connection->id, $summary->id);
         self::assertFalse($summary->enabled);
-        self::assertSame([[FreshnessOperation::CONNECTION_ENABLE, 300]], $this->freshness->asked());
+        self::assertSame([[FreshnessOperation::CONNECTION_DISABLE, 300]], $this->freshness->asked());
         self::assertNull(AuthorizationRequest::query()->findOrFail($request->id)->voided_at);
         self::assertSame([], $this->revocation->calls());
         $this->assertNoEvents();
@@ -307,7 +307,7 @@ final class ConnectionLifecycleTest extends TestCase
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $disabled->reason);
         self::assertTrue($deleted->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $deleted->reason);
-        self::assertSame([[FreshnessOperation::CONNECTION_ENABLE, 300], [FreshnessOperation::CONNECTION_DELETE, 300]], $this->freshness->asked());
+        self::assertSame([[FreshnessOperation::CONNECTION_DISABLE, 300], [FreshnessOperation::CONNECTION_DELETE, 300]], $this->freshness->asked());
 
         self::assertTrue($this->reread($this->connection)->enabled);
         self::assertNull(AuthorizationRequest::query()->findOrFail($rows['pending'])->voided_at);

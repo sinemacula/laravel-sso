@@ -95,10 +95,13 @@ Each call runs in a fixed order, and stops at the first step that refuses:
 6. The driver validates the response against the request, and the verified result is built: the issuer, subject,
    connection, tenant, protocol, application, purpose, the mapped attributes, whether the email's domain is verified
    for this connection, and the provider's authentication context.
-7. Under the connection's and the request's locks, in one transaction: the connection must still be usable and the
-   request not voided by a change to its connection; the result's link is resolved through your `Linker`; the
-   connection must satisfy its tenant's enforcement; an unlinked `sign_in` ends unless the application allows unlinked
-   handoffs; the application policy is asked again; and the handoff code is issued.
+7. In one transaction, under the tenant's enforcement lock (with the `enforcement` feature on and the default
+   enforcement contract), the connection's lock (taken with the rule's connections, in id order) and the request's:
+   the connection must still be usable and the request not voided by a change to its connection; the result's link is
+   resolved through your `Linker`; the connection must satisfy its tenant's enforcement as the locked rule has it; an
+   unlinked `sign_in` ends unless the application allows unlinked handoffs; the application policy is asked again;
+   and the handoff code is issued. A change to enforcement made at the same moment waits for this transaction, or is
+   seen by it.
 8. The request is marked completed, and the events are reported once the transaction commits.
 
 ## The results
@@ -156,7 +159,13 @@ Bind your own in a service provider's `register()`; each default fails closed.
 - `Contracts\Linker`: the identity a verified result is linked to. The default links nothing; bind the package's
   `Links\LinkStore`, or your own.
 - `Contracts\Enforcement`: whether the connection satisfies its tenant's enforcement on the application; the version
-  checked travels with the code, and redemption checks enforcement again.
+  checked travels with the code, and redemption checks enforcement again. Under the default, the completion locks the
+  rule and judges it from the locked rows. A contract of your own is asked as it is bound, and must itself keep a
+  change to its rule from slipping in between its answer and the session it admits (a current read alone is not
+  enough); a `Contracts\EnforcementInheritance` of your own is asked inside the completion's transaction, so answer it
+  from state that does not change under that transaction, or with a current read.
+- On PostgreSQL under `REPEATABLE READ`, a completion that waited on an enforcement change can fail with a
+  serialisation failure (SQLSTATE `40001`); it is thrown as a server error, and the person starts the flow again.
 - `Contracts\ApplicationPolicy`: asked again just before the code is issued.
 - `Contracts\ProviderSessionDeadline`: whether the provider's session deadline (SAML `SessionNotOnOrAfter`) limits your
   application's session. By default it does, and the code carries the deadline as the session's latest end; bind your

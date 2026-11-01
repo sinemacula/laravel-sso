@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
+use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
@@ -34,16 +35,19 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  *
  * - issuing a code is one insert;
  * - a linked `sign_in` redeemed reads the code by its digest, then, in its
- *   transaction, locks the connection and the code, writes the single-use
- *   record and the code's mark, locks the connection again for the recheck and
- *   for the acknowledgement, and marks the connection's first completed
- *   sign-in; once marked, the connection is not written again; a `link` is not
+ *   transaction, reads the connection's tenant, locks the connection and the
+ *   code, writes the single-use record and the code's mark, and marks the
+ *   connection's first completed sign-in on the row it holds locked; once
+ *   marked, the connection is not written again; a `link` is not
  *   acknowledged; the linker and enforcement while it is off cost nothing;
+ * - with enforcement on, the recheck's lock adds the upsert of the tenant's
+ *   enforcement row and its locking read, and the connections are locked in
+ *   the same one statement, the rule's with them;
  * - a refusal once the code is consumed stops before the recheck, and one by
- *   the recheck after its lock;
+ *   the recheck after it, with no lock more;
  * - a replay and a voided code stop at the two locking reads, a code whose
- *   connection is gone at the first, a code never issued at its read, and a
- *   value that is not a code reads nothing.
+ *   connection is gone at the read of its tenant, a code never issued at its
+ *   read, and a value that is not a code reads nothing.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -117,23 +121,57 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * The first linked `sign_in` redeemed through a connection is five reads
-     * and four writes; the next is five reads and three writes.
+     * The first linked `sign_in` redeemed through a connection is four reads
+     * and four writes; the next is four reads and three writes.
      *
      * @return void
      *
      * @throws \Random\RandomException
      */
-    public function testALinkedSignInRedeemedIsFiveReadsAndFourWritesThenThree(): void
+    public function testALinkedSignInRedeemedIsFourReadsAndFourWritesThenThree(): void
     {
         $first  = $this->issue();
         $second = $this->issue();
 
-        $redeemed = $this->assertQueryBudget(5, 4, fn (): RedemptionResult => $this->redeem($first));
-        $again    = $this->assertQueryBudget(5, 3, fn (): RedemptionResult => $this->redeem($second));
+        $redeemed = $this->assertQueryBudget(4, 4, fn (): RedemptionResult => $this->redeem($first));
+        $again    = $this->assertQueryBudget(4, 3, fn (): RedemptionResult => $this->redeem($second));
 
         self::assertTrue($redeemed->isRedeemed());
         self::assertTrue($again->isRedeemed());
+    }
+
+    /**
+     * With enforcement on, the first linked `sign_in` redeemed for a tenant
+     * with no rule is five reads and five writes (the guard's upsert, which
+     * inserts the unconfigured row, among them); with a rule stored, the next
+     * is five reads and four writes; and a redemption the locked rule refuses
+     * is five reads and four writes too.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testALinkedSignInRedeemedUnderEnforcementLocksTheRuleFirst(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $first  = $this->issue();
+        $second = $this->issue();
+        $third  = $this->issue();
+
+        $unruled = $this->assertQueryBudget(5, 5, fn (): RedemptionResult => $this->redeem($first));
+
+        TenantEnforcement::query()->sole()->forceFill(['enabled' => true, 'connection_ids' => [$this->connection->id], 'version' => '01jbexampleversion00000001'])->save();
+
+        $ruled = $this->assertQueryBudget(5, 4, fn (): RedemptionResult => $this->redeem($second));
+
+        TenantEnforcement::query()->sole()->forceFill(['connection_ids' => ['01jbotherconnection0000000']])->save();
+
+        $refused = $this->assertQueryBudget(5, 4, fn (): RedemptionResult => $this->redeem($third));
+
+        self::assertTrue($unruled->isRedeemed());
+        self::assertTrue($ruled->isRedeemed());
+        self::assertSame(FailureReason::ENFORCEMENT_UNSATISFIED, $refused->reason);
     }
 
     /**
@@ -153,8 +191,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refusal once the code is consumed is three reads and three writes; a
-     * refusal by the recheck four reads and three writes.
+     * A refusal once the code is consumed is four reads and three writes, and a
+     * refusal by the recheck the same: it locks nothing more.
      *
      * @return void
      *
@@ -166,8 +204,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
         $expired    = $this->issue(expiresAt: $this->clock->now());
         $disabled   = $this->issue();
 
-        $purpose = $this->assertQueryBudget(3, 3, fn (): RedemptionResult => $this->redeem($mismatched, Purpose::LINK));
-        $expiry  = $this->assertQueryBudget(3, 3, fn (): RedemptionResult => $this->redeem($expired));
+        $purpose = $this->assertQueryBudget(4, 3, fn (): RedemptionResult => $this->redeem($mismatched, Purpose::LINK));
+        $expiry  = $this->assertQueryBudget(4, 3, fn (): RedemptionResult => $this->redeem($expired));
 
         $this->connection->forceFill(['enabled' => false])->save();
 
@@ -179,8 +217,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A replay and a voided code are three reads and the counter's write; a
-     * code whose connection is gone two reads.
+     * A replay and a voided code are four reads and the counter's write; a code
+     * whose connection is gone two reads.
      *
      * @return void
      *
@@ -196,8 +234,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
         StoredCode::query()->where('code_digest', hash('sha256', $voided))->sole()->forceFill(['voided_at' => $this->clock->now()])->save();
         StoredCode::query()->where('code_digest', hash('sha256', $orphaned))->sole()->forceFill(['connection_id' => '01jbz0000000000000000000zz'])->save();
 
-        $replay = $this->assertQueryBudget(3, 1, fn (): RedemptionResult => $this->redeem($replayed));
-        $void   = $this->assertQueryBudget(3, 1, fn (): RedemptionResult => $this->redeem($voided));
+        $replay = $this->assertQueryBudget(4, 1, fn (): RedemptionResult => $this->redeem($replayed));
+        $void   = $this->assertQueryBudget(4, 1, fn (): RedemptionResult => $this->redeem($voided));
         $gone   = $this->assertQueryBudget(2, 1, fn (): RedemptionResult => $this->redeem($orphaned));
 
         self::assertSame(FailureReason::REPLAYED, $replay->reason);

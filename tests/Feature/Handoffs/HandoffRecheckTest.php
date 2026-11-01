@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
+use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
@@ -18,13 +19,17 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
+use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
+use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
@@ -35,9 +40,14 @@ use Tests\TestCase;
  * of the checks, a connection gone, disabled, incomplete, of another tenant or
  * over a protocol no longer registered; enforcement satisfied and not; a link
  * unchanged, removed, reassigned and added; a `LogicException` outside a
- * transaction on the storage connection; the connection's row read with a
- * locking read; and the acknowledgement of a completed sign-in, written once,
- * only for a `sign_in` result, and undone with the redeemer's transaction.
+ * transaction on the storage connection or under another result's lock; the
+ * locks taken in the package's order (the enforcement row, inserted
+ * unconfigured when the tenant has none, then the connections in ascending id
+ * order) under the default contract with the feature on, the connection alone
+ * otherwise, with no enforcement statement and no inheritance asked while the
+ * feature is off; an enforcing tenant that moved since the lock; and the
+ * acknowledgement of a completed sign-in, written once, only for a `sign_in`
+ * result, and undone with the redeemer's transaction.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,13 +55,17 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(HandoffRecheck::class)]
+#[CoversClass(RecheckLock::class)]
 #[CoversClass(RecheckOutcome::class)]
 final class HandoffRecheckTest extends TestCase
 {
-    use UsesConnections, UsesEnforcement;
+    use RecordsLockOrder, UsesConnections, UsesEnforcement;
 
     /** @var string What a call outside the redeemer's transaction is told. */
     private const string NO_TRANSACTION = 'A handoff is rechecked inside the redeemer\'s transaction on the package\'s storage connection (decision D5).';
+
+    /** @var string What a call under another result's lock is told. */
+    private const string OTHER_LOCK = 'A handoff is rechecked under the lock taken for its result\'s tenant, connection and application.';
 
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     private FixedClock $clock;
@@ -265,26 +279,226 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Outside a transaction on the storage connection, the recheck is a
-     * `LogicException`, and nothing is asked.
+     * Outside a transaction on the storage connection, taking the lock is a
+     * `LogicException`, and so is a recheck under a lock its transaction no
+     * longer holds; nothing is asked.
      *
      * @return void
      */
     public function testARecheckOutsideATransactionIsALogicException(): void
     {
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage(self::NO_TRANSACTION);
+        $recheck = $this->rechecker();
 
-        try {
-            $this->app?->make(HandoffRecheck::class)->recheck($this->verifiedResult(), null);
-        } finally {
-            self::assertSame(0, $this->linkerAsked);
+        $calls = [
+            fn (): RecheckLock => $recheck->lock('tenant-1', $this->connection->id, 'web'),
+            fn (): RecheckOutcome => $recheck->recheck($this->verifiedResult(), null, $this->withinTransaction(fn (): RecheckLock => $this->lockFor($this->verifiedResult()))),
+        ];
+
+        foreach ($calls as $call) {
+
+            try {
+                $call();
+
+                self::fail('A recheck ran outside a transaction.');
+            } catch (\LogicException $exception) {
+                self::assertSame(self::NO_TRANSACTION, $exception->getMessage());
+            }
         }
+
+        self::assertSame(0, $this->linkerAsked);
     }
 
     /**
-     * The connection's row is read with a locking read, where the database has
-     * one.
+     * Rows of `[tenant, application, connection]`: a lock taken for another
+     * tenant, application or connection than the result names.
+     *
+     * @return iterable<string, array{0: string, 1: string, 2: ?string}>
+     */
+    public static function provideOtherLocks(): iterable
+    {
+        yield 'another tenant' => ['tenant-2', 'web', null];
+        yield 'another application' => ['tenant-1', 'mobile', null];
+        yield 'another connection' => ['tenant-1', 'web', '01jbotherconnection0000000'];
+    }
+
+    /**
+     * A recheck or an acknowledgement under a lock taken for another tenant,
+     * application or connection than the result's is a `LogicException`, and
+     * nothing is asked or written.
+     *
+     * @param  string  $tenantId
+     * @param  string  $application
+     * @param  ?string  $connectionId
+     * @return void
+     */
+    #[DataProvider('provideOtherLocks')]
+    public function testARecheckUnderAnotherResultsLockIsALogicException(string $tenantId, string $application, ?string $connectionId): void
+    {
+        $recheck = $this->rechecker();
+
+        foreach (['recheck', 'acknowledge'] as $call) {
+
+            try {
+                $this->withinTransaction(function () use ($recheck, $tenantId, $application, $connectionId, $call): void {
+
+                    $lock = $recheck->lock($tenantId, $connectionId ?? $this->connection->id, $application);
+
+                    $call === 'recheck'
+                        ? $recheck->recheck($this->verifiedResult(), null, $lock)
+                        : $recheck->acknowledgeSignIn($this->verifiedResult(), $lock);
+                });
+
+                self::fail('A recheck ran under another result\'s lock.');
+            } catch (\LogicException $exception) {
+                self::assertSame(self::OTHER_LOCK, $exception->getMessage());
+            }
+        }
+
+        self::assertSame(0, $this->linkerAsked);
+        self::assertFalse($this->reloaded()->has_completed_sign_in);
+    }
+
+    /**
+     * With the feature on and the default contract, the lock takes the tenant's
+     * enforcement row first (inserting it unconfigured when it has none), then
+     * the connection and the rule's connections in one statement in ascending
+     * id order; the recheck judges the locked rows and locks nothing more.
+     *
+     * @return void
+     */
+    public function testTheLockTakesTheEnforcementThenTheConnectionsInIdOrder(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $before = $this->makeConnection(['id' => '00000000000000000000000000', 'protocol' => VerifyingDriver::NAME, 'enabled' => true]);
+        $after  = $this->makeConnection(['id' => 'zzzzzzzzzzzzzzzzzzzzzzzzzz', 'protocol' => VerifyingDriver::NAME, 'enabled' => true]);
+
+        $this->makeEnforcement(['enabled' => true, 'connection_ids' => [$after->id, $this->connection->id, $before->id]]);
+        $this->recordLockOrder();
+
+        self::assertSame(RecheckOutcome::PASSED, $this->recheck($this->verifiedResult(), new IdentityReference('App\Models\User', '42')));
+        self::assertSame(['enforcement upsert', 'enforcement', 'connections ' . implode(', ', [$before->id, $this->connection->id, $after->id])], $this->lockOrder());
+    }
+
+    /**
+     * A tenant with no rule stored has an unconfigured row inserted to lock,
+     * which requires nothing; the lock then takes only the connection.
+     *
+     * @return void
+     */
+    public function testATenantWithNoRuleIsLockedThroughAnUnconfiguredRow(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $this->recordLockOrder();
+
+        self::assertSame(RecheckOutcome::PASSED, $this->recheck($this->verifiedResult(), new IdentityReference('App\Models\User', '42')));
+        self::assertSame(['enforcement upsert', 'enforcement', 'connections ' . $this->connection->id], $this->lockOrder());
+
+        $row = TenantEnforcement::query()->sole();
+
+        self::assertSame('tenant-1', $row->tenant_id);
+        self::assertNull($row->version);
+        self::assertNull($row->changed_at);
+        self::assertFalse($row->enabled);
+        self::assertSame([], $row->connection_ids);
+    }
+
+    /**
+     * With the feature off, the lock takes the connection alone: no statement
+     * names the enforcement table, no row is inserted and the inheritance
+     * contract is never asked.
+     *
+     * @return void
+     */
+    public function testWithTheFeatureOffNoEnforcementIsLockedOrAsked(): void
+    {
+        $inheritance = new ScriptedInheritance(['tenant-1']);
+
+        $this->app?->instance(EnforcementInheritance::class, $inheritance);
+        $this->recordLockOrder();
+
+        self::assertSame(RecheckOutcome::PASSED, $this->recheck($this->verifiedResult(), new IdentityReference('App\Models\User', '42')));
+        self::assertSame(['connections ' . $this->connection->id . ', tenant-1'], $this->lockOrder());
+        self::assertSame(0, $this->enforcementStatements());
+        self::assertSame(0, TenantEnforcement::query()->count());
+        self::assertSame([], $inheritance->asked());
+    }
+
+    /**
+     * Under another enforcement contract, the lock takes the connection alone
+     * and the contract is asked at the recheck, as it is bound.
+     *
+     * @return void
+     */
+    public function testAnotherContractIsAskedAndNothingOfTheDefaultIsLocked(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $asked = $this->bindRecordingEnforcement(EnforcementPolicy::required('tenant-1', 'tenant-1', ['01jbotherconnection0000000'], 'version-2'));
+
+        $this->recordLockOrder();
+
+        self::assertSame(RecheckOutcome::ENFORCEMENT_UNSATISFIED, $this->recheck($this->verifiedResult(), null));
+        self::assertSame(['connections ' . $this->connection->id . ', tenant-1'], $this->lockOrder());
+        self::assertSame(0, $this->enforcementStatements());
+        self::assertSame([['tenant-1', 'web']], $asked->getArrayCopy());
+    }
+
+    /**
+     * An inheritance contract that names another enforcing tenant by the
+     * recheck than when the lock was taken is `connection_unavailable`: the
+     * other tenant's rule is never locked out of order, and the link is not
+     * asked.
+     *
+     * @return void
+     */
+    public function testAnEnforcingTenantThatMovedSinceTheLockIsConnectionUnavailable(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $inheritance = new ScriptedInheritance(['tenant-1', 'parent-1']);
+
+        $this->app?->instance(EnforcementInheritance::class, $inheritance);
+        $this->recordLockOrder();
+
+        self::assertSame(RecheckOutcome::CONNECTION_UNAVAILABLE, $this->recheck($this->verifiedResult(), null));
+        self::assertSame([['tenant-1', 'web'], ['tenant-1', 'web']], $inheritance->asked());
+        self::assertSame(['enforcement upsert', 'enforcement', 'connections ' . $this->connection->id], $this->lockOrder());
+        self::assertSame(0, $this->linkerAsked);
+    }
+
+    /**
+     * An inherited rule is the enforcing tenant's: its row is locked and its
+     * connections judged, a connection of another tenant it names never
+     * satisfying it.
+     *
+     * @return void
+     */
+    public function testAnInheritedRuleIsLockedAndJudged(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $this->app?->instance(EnforcementInheritance::class, new ScriptedInheritance(['parent-1']));
+
+        $parents = $this->makeConnection(['tenant_id' => 'parent-1', 'protocol' => VerifyingDriver::NAME, 'enabled' => true]);
+
+        $this->makeEnforcement(['tenant_id' => 'parent-1', 'enabled' => true, 'connection_ids' => [$parents->id]]);
+
+        self::assertSame(RecheckOutcome::ENFORCEMENT_UNSATISFIED, $this->recheck($this->verifiedResult(), null));
+
+        TenantEnforcement::query()->sole()->forceFill(['connection_ids' => [$this->connection->id]])->save();
+
+        self::assertSame(RecheckOutcome::ENFORCEMENT_UNSATISFIED, $this->recheck($this->verifiedResult(), null));
+
+        TenantEnforcement::query()->sole()->forceFill(['enabled' => false])->save();
+
+        self::assertSame(RecheckOutcome::PASSED, $this->recheck($this->verifiedResult(), new IdentityReference('App\Models\User', '42')));
+    }
+
+    /**
+     * The connection's row is read with a locking read, once, where the
+     * database has one.
      *
      * @return void
      */
@@ -320,7 +534,7 @@ final class HandoffRecheckTest extends TestCase
     {
         $this->clock->advance(30);
 
-        $this->withinTransaction(fn () => $this->app?->make(HandoffRecheck::class)->acknowledgeSignIn($this->verifiedResult()));
+        $this->withinTransaction(fn () => $this->acknowledge($this->verifiedResult()));
 
         $connection = $this->reloaded();
 
@@ -329,7 +543,7 @@ final class HandoffRecheckTest extends TestCase
 
         $this->clock->advance(30);
 
-        $this->withinTransaction(fn () => $this->app?->make(HandoffRecheck::class)->acknowledgeSignIn($this->verifiedResult()));
+        $this->withinTransaction(fn () => $this->acknowledge($this->verifiedResult()));
 
         self::assertTrue($this->reloaded()->has_completed_sign_in);
         self::assertSame('2026-11-01T09:30:30+00:00', $this->reloaded()->updated_at->toIso8601String());
@@ -347,7 +561,7 @@ final class HandoffRecheckTest extends TestCase
 
         $database->beginTransaction();
 
-        $this->app?->make(HandoffRecheck::class)->acknowledgeSignIn($this->verifiedResult());
+        $this->acknowledge($this->verifiedResult());
 
         $database->rollBack();
 
@@ -379,7 +593,7 @@ final class HandoffRecheckTest extends TestCase
         $database->beginTransaction();
 
         try {
-            $this->app?->make(HandoffRecheck::class)->acknowledgeSignIn($this->verifiedResult($purpose));
+            $this->acknowledge($this->verifiedResult($purpose));
 
             self::fail('A result of another purpose was acknowledged.');
         } catch (\LogicException $exception) {
@@ -399,8 +613,10 @@ final class HandoffRecheckTest extends TestCase
      */
     public function testAcknowledgingOutsideATransactionIsALogicException(): void
     {
+        $lock = $this->withinTransaction(fn (): RecheckLock => $this->lockFor($this->verifiedResult()));
+
         try {
-            $this->app?->make(HandoffRecheck::class)->acknowledgeSignIn($this->verifiedResult());
+            $this->rechecker()->acknowledgeSignIn($this->verifiedResult(), $lock);
 
             self::fail('A sign-in was acknowledged outside a transaction.');
         } catch (\LogicException $exception) {
@@ -421,22 +637,63 @@ final class HandoffRecheckTest extends TestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('The connection a sign-in is acknowledged through is gone: recheck the handoff first.');
 
-        $this->withinTransaction(fn () => $this->app?->make(HandoffRecheck::class)->acknowledgeSignIn($this->verifiedResult(tenantId: 'tenant-2')));
+        $this->withinTransaction(fn () => $this->acknowledge($this->verifiedResult(tenantId: 'tenant-2')));
     }
 
     /**
-     * Recheck the result inside a transaction on the storage connection.
+     * Take the lock for the result and recheck it under the lock, inside a
+     * transaction on the storage connection.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $linkedIdentity
      * @return \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
+     *
+     * @throws \LogicException
      */
     private function recheck(VerifiedResult $result, ?IdentityReference $linkedIdentity): RecheckOutcome
+    {
+        return $this->withinTransaction(fn (): RecheckOutcome => $this->rechecker()->recheck($result, $linkedIdentity, $this->lockFor($result)));
+    }
+
+    /**
+     * Take the lock for the result and acknowledge its sign-in under it, in the
+     * transaction open.
+     *
+     * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @return void
+     *
+     * @throws \LogicException
+     */
+    private function acknowledge(VerifiedResult $result): void
+    {
+        $this->rechecker()->acknowledgeSignIn($result, $this->lockFor($result));
+    }
+
+    /**
+     * The lock for the result's tenant, connection and application, taken in
+     * the transaction open.
+     *
+     * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @return \SineMacula\Laravel\Sso\Handoffs\RecheckLock
+     *
+     * @throws \LogicException
+     */
+    private function lockFor(VerifiedResult $result): RecheckLock
+    {
+        return $this->rechecker()->lock($result->tenantId, $result->connectionId, $result->application);
+    }
+
+    /**
+     * The recheck, as the container builds it now.
+     *
+     * @return \SineMacula\Laravel\Sso\Handoffs\HandoffRecheck
+     */
+    private function rechecker(): HandoffRecheck
     {
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $this->withinTransaction(static fn (): RecheckOutcome => $app->make(HandoffRecheck::class)->recheck($result, $linkedIdentity));
+        return $app->make(HandoffRecheck::class);
     }
 
     /**
@@ -446,6 +703,8 @@ final class HandoffRecheckTest extends TestCase
      *
      * @param  \Closure(): TResult  $callback
      * @return TResult
+     *
+     * @throws \LogicException
      */
     private function withinTransaction(\Closure $callback): mixed
     {

@@ -7,6 +7,7 @@ namespace SineMacula\Laravel\Sso\Flows;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Applications\ApplicationRegistry;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
@@ -37,10 +38,15 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * consumed: it is recorded in the store and its `consumed_at` set, both in the
  * transaction, so racing servers consume it exactly once.
  *
- * Once that commits it is judged, in this order: an application no longer
- * registered is `application_not_allowed`, with no redirect target; a SAML
- * request id other than the one the response gave, when it gave a state as
- * well, is `request_unknown`; a request a change to its connection voided is
+ * A request whose application is no longer registered is
+ * `application_not_allowed`, with no redirect target, ahead of every other
+ * reason. Its completion goes no further, so it is terminal at once: the same
+ * write sets its `completed_at` with its `consumed_at`, since no later step
+ * that would mark it completed runs without an application to answer to.
+ *
+ * Once that commits it is judged, in this order: a SAML request id other than
+ * the one the response gave, when it gave a state as well, is
+ * `request_unknown`; a request a change to its connection voided is
  * `connection_unavailable`; one started through another connection than the
  * response arrived for is `connection_mismatch`; one whose expiry is not after
  * now is `request_expired`. Each of these keeps the application, so the
@@ -53,7 +59,8 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  *
  * It reports nothing: the completion reports how it ended. A database error, a
  * store that cannot answer and a malformed application's settings propagate
- * (SSO-11.4).
+ * (SSO-11.4); each is thrown inside the transaction, so the request stays
+ * unconsumed.
  *
  * It holds the store, the encrypter, the registry and the clock, none of which
  * keeps anything of one request for the next (SSO-11.2).
@@ -105,9 +112,9 @@ final readonly class RequestConsumption
     {
         $now = $this->clock->now();
 
-        $taken = DB::connection(StorageConnection::name())->transaction(fn (): AuthorizationRequest|ConsumptionResult => $this->take($routeConnection, $correlation, $now));
+        $taken = DB::connection(StorageConnection::name())->transaction(fn (): array|ConsumptionResult => $this->take($routeConnection, $correlation, $now));
 
-        return $taken instanceof ConsumptionResult ? $taken : $this->judge($taken, $routeConnection, $correlation, $now);
+        return $taken instanceof ConsumptionResult ? $taken : $this->judge($taken[0], $taken[1], $routeConnection, $correlation, $now);
     }
 
     /**
@@ -117,11 +124,11 @@ final readonly class RequestConsumption
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @param  \Carbon\CarbonImmutable  $now
-     * @return \SineMacula\Laravel\Sso\Flows\ConsumptionResult|\SineMacula\Laravel\Sso\Models\AuthorizationRequest
+     * @return array{0: \SineMacula\Laravel\Sso\Models\AuthorizationRequest, 1: \SineMacula\Laravel\Sso\Applications\Application}|\SineMacula\Laravel\Sso\Flows\ConsumptionResult
      *
      * @throws \Throwable
      */
-    private function take(Connection $routeConnection, Correlation $correlation, CarbonImmutable $now): AuthorizationRequest|ConsumptionResult
+    private function take(Connection $routeConnection, Correlation $correlation, CarbonImmutable $now): array|ConsumptionResult
     {
         $request = self::lookup($routeConnection, $correlation);
 
@@ -133,9 +140,27 @@ final readonly class RequestConsumption
             return ConsumptionResult::replayed($request);
         }
 
-        $request->forceFill(['consumed_at' => $now])->save();
+        return $this->consumed($request, $now);
+    }
 
-        return $request;
+    /**
+     * Consume the request and answer it with its registered application; one
+     * whose application is no longer registered is completed in the same write
+     * and refused `application_not_allowed`, with no redirect target.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
+     * @param  \Carbon\CarbonImmutable  $now
+     * @return array{0: \SineMacula\Laravel\Sso\Models\AuthorizationRequest, 1: \SineMacula\Laravel\Sso\Applications\Application}|\SineMacula\Laravel\Sso\Flows\ConsumptionResult
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function consumed(AuthorizationRequest $request, CarbonImmutable $now): array|ConsumptionResult
+    {
+        $application = $this->applications->find($request->application);
+
+        $request->forceFill(['consumed_at' => $now, 'completed_at' => $application === null ? $now : null])->save();
+
+        return $application === null ? ConsumptionResult::refused(FailureReason::APPLICATION_NOT_ALLOWED, $request) : [$request, $application];
     }
 
     /**
@@ -156,9 +181,11 @@ final readonly class RequestConsumption
     }
 
     /**
-     * Once consumed: the result the request and the response come to.
+     * Once consumed: the result the request, its application and the response
+     * come to.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @param  \Carbon\CarbonImmutable  $now
@@ -166,14 +193,8 @@ final readonly class RequestConsumption
      *
      * @throws \InvalidArgumentException
      */
-    private function judge(AuthorizationRequest $request, Connection $routeConnection, Correlation $correlation, CarbonImmutable $now): ConsumptionResult
+    private function judge(AuthorizationRequest $request, Application $application, Connection $routeConnection, Correlation $correlation, CarbonImmutable $now): ConsumptionResult
     {
-        $application = $this->applications->find($request->application);
-
-        if ($application === null) {
-            return ConsumptionResult::refused(FailureReason::APPLICATION_NOT_ALLOWED, $request);
-        }
-
         $reason = self::refusal($request, $routeConnection, $correlation, $now);
 
         if ($reason !== null) {

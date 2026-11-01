@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Completion\Stages\ResolveLink;
 use SineMacula\Laravel\Sso\Completion\Stages\ValidateResponse;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\CompletionStage;
+use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\RedirectUriResolver;
@@ -36,13 +37,17 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -65,7 +70,7 @@ use Tests\TestCase;
 #[CoversClass(CompletionPipeline::class)]
 final class CompletionPipelineTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
+    use RecordsEventSequences, RecordsLockOrder, UsesConnections, UsesDomains, UsesEnforcement, UsesFlowTables;
 
     /** @var string The shipped migration of the single-use keys. */
     private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
@@ -130,6 +135,7 @@ final class CompletionPipelineTest extends TestCase
         $this->createConnectionTables();
         $this->createFlowTables();
         $this->createDomainsTable();
+        $this->createEnforcementTable();
         self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
         self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
 
@@ -152,6 +158,7 @@ final class CompletionPipelineTest extends TestCase
     {
         self::migration(self::RATE_LIMITS_MIGRATION)->down(); // @phpstan-ignore method.notFound
         self::migration(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
+        $this->dropEnforcementTable();
         $this->dropDomainsTable();
         $this->dropFlowTables();
         $this->dropConnectionTables();
@@ -377,6 +384,134 @@ final class CompletionPipelineTest extends TestCase
         self::assertSame(['failed', 'connection_unavailable', 'https://app.example.com/sso', str_repeat('G', 32)], self::summary($this->completeAtCallback('gone')));
         self::assertSame(0, AuthorizationRequest::query()->whereKey($gone->id)->count());
         self::assertSame([], $this->issuer->grants());
+    }
+
+    /**
+     * With the feature on, the locked steps' transaction locks the tenant's
+     * enforcement row first (an upsert, then a locking read), then the
+     * connection and the rule's connections in one statement in ascending id
+     * order, then the request; the enforcement step judges the policy the
+     * locked rows give, carried on the state, with no further read of the rule,
+     * and the handoff carries its version.
+     *
+     * @return void
+     */
+    public function testTheLockedStepsTakeTheEnforcementThenTheConnectionsThenTheRequest(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $other = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true]);
+        $rule  = $this->makeEnforcement(['enabled' => true, 'connection_ids' => [$other->id, $this->connection->id]]);
+        $ids   = [$this->connection->id, $other->id];
+
+        sort($ids, SORT_STRING);
+
+        $this->request();
+        $this->spyOnEveryStep();
+        $this->recordLockOrder();
+
+        self::assertTrue($this->completeAtCallback()->isCompleted());
+        self::assertSame(
+            ['connections ' . $this->connection->id, 'request', 'enforcement upsert', 'enforcement', 'connections ' . implode(', ', $ids), 'request'],
+            $this->lockOrder(),
+        );
+        self::assertSame(2, $this->enforcementStatements());
+        self::assertSame(
+            ['tenant_id' => 'tenant-1', 'enforcing_tenant_id' => 'tenant-1', 'required' => true, 'connection_ids' => $ids, 'version' => $rule->version],
+            $this->spied('enforcement')[0]->state->enforcementPolicy?->jsonSerialize(),
+        );
+        self::assertSame($rule->version, $this->issuer->grants()[0]->enforcementVersion);
+    }
+
+    /**
+     * Under a rule the connection does not satisfy, the locked policy refuses
+     * with `enforcement_unsatisfied`, redirected, with no code issued.
+     *
+     * @return void
+     */
+    public function testTheLockedPolicyRefusesAConnectionThatDoesNotSatisfyIt(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $other = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true]);
+
+        $this->makeEnforcement(['enabled' => true, 'connection_ids' => [$other->id]]);
+        $this->request();
+
+        self::assertSame(['failed', 'enforcement_unsatisfied', 'https://app.example.com/sso', self::REFERENCE], self::summary($this->completeAtCallback()));
+        self::assertSame([], $this->issuer->grants());
+    }
+
+    /**
+     * A tenant with no rule stored is locked through an unconfigured row that
+     * requires nothing; the handoff carries no enforcement version.
+     *
+     * @return void
+     */
+    public function testATenantWithNoRuleIsLockedThroughAnUnconfiguredRow(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $this->request();
+
+        self::assertTrue($this->completeAtCallback()->isCompleted());
+        self::assertNull(TenantEnforcement::query()->sole()->version);
+        self::assertNull($this->issuer->grants()[0]->enforcementVersion);
+    }
+
+    /**
+     * With the feature off, the locked steps lock the connection and then the
+     * request: no statement names the enforcement table, no row is inserted,
+     * and the inheritance contract is never asked; nor is it for a completion
+     * already refused with the feature on.
+     *
+     * @return void
+     */
+    public function testNoEnforcementIsLockedWithTheFeatureOffOrForARefusedCompletion(): void
+    {
+        $inheritance = new ScriptedInheritance(['tenant-1']);
+
+        $this->app?->instance(EnforcementInheritance::class, $inheritance);
+        $this->request();
+        $this->recordLockOrder();
+
+        self::assertTrue($this->completeAtCallback()->isCompleted());
+        self::assertSame(['connections ' . $this->connection->id, 'request', 'connections ' . $this->connection->id, 'request'], $this->lockOrder());
+
+        config()->set('sso.features.enforcement', true);
+
+        $this->request(['reference' => str_repeat('R', 32), 'state_digest' => hash('sha256', 'refused')]);
+        $this->driver->refusal = FailureReason::SIGNATURE_INVALID;
+
+        self::assertSame(FailureReason::SIGNATURE_INVALID, $this->completeAtCallback('refused')->reason);
+        self::assertSame(0, $this->enforcementStatements());
+        self::assertSame(0, TenantEnforcement::query()->count());
+        self::assertSame([], $inheritance->asked());
+    }
+
+    /**
+     * An inheritance contract that names another enforcing tenant under the
+     * lock than when it was taken refuses with `connection_unavailable`,
+     * running no locked step and issuing nothing; the request is still marked
+     * completed.
+     *
+     * @return void
+     */
+    public function testAnEnforcingTenantThatMovedSinceTheLockIsRefused(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $inheritance = new ScriptedInheritance(['tenant-1', 'parent-1']);
+        $request     = $this->request();
+
+        $this->app?->instance(EnforcementInheritance::class, $inheritance);
+        $this->spyOnEveryStep();
+
+        self::assertSame(['failed', 'connection_unavailable', 'https://app.example.com/sso', self::REFERENCE], self::summary($this->completeAtCallback()));
+        self::assertSame(['correlation', 'consumption', 'validation'], $this->stepsRan());
+        self::assertSame([['tenant-1', 'web'], ['tenant-1', 'web']], $inheritance->asked());
+        self::assertSame([], $this->issuer->grants());
+        self::assertNotNull($this->reread($request)->completed_at);
     }
 
     /**

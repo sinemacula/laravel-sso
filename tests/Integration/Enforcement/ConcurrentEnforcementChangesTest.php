@@ -205,7 +205,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
      * waiting on its lock, however late the change starts. The change runs its
      * plain check before it takes any lock, so a change seen waiting saw the
      * connection still enabled there: its refusal can only come from the locked
-     * read again.
+     * read again. It stores no rule: the row it locked stays unconfigured.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -227,7 +227,8 @@ final class ConcurrentEnforcementChangesTest extends TestCase
         self::assertTrue($outcomes[0]['sawWaiter'] ?? false, 'No change waited on the lock: ' . $reported);
         self::assertSame('refused', $outcomes[1]['status'] ?? null, $reported);
         self::assertSame('completed_sign_in_required', $outcomes[1]['reason'] ?? null, $reported);
-        self::assertSame(0, TenantEnforcement::query()->count());
+        self::assertNull((new EnforcementFinder)->find(self::TENANT), $reported);
+        self::assertNull(TenantEnforcement::query()->sole()->version, $reported);
         self::assertFalse(Connection::query()->findOrFail($connection->id)->enabled);
     }
 

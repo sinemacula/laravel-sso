@@ -36,6 +36,7 @@ final class ConnectionResultTest extends TestCase
         FailureReason::CONNECTION_NOT_FOUND,
         FailureReason::PROTOCOL_UNAVAILABLE,
         FailureReason::CONNECTION_HAS_LINKS,
+        FailureReason::LINKS_UNACCOUNTED,
     ];
 
     /**

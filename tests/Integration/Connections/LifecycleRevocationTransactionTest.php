@@ -248,10 +248,12 @@ final class LifecycleRevocationTransactionTest extends TestCase
      */
     private function changes(): array
     {
+        $change = ['settings' => ['client_id' => 'client-456']];
+
         return [
             'disable' => fn (): ConnectionResult => $this->disable(),
             'delete'  => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->connection->id),
-            'migrate' => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['client_id' => 'client-456']], []),
+            'migrate' => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $this->connection->id, $change, [], [$this->rows['link']]),
         ];
     }
 

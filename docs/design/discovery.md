@@ -4,10 +4,10 @@
 
 This note records how a flow starts from an email address instead of a named connection (SSO-3.4, SSO-3.5): how the
 email's domain is resolved to a connection, the fixed order of a discovery start and the refusal each step answers, the
-per-domain rate limit (SSO-11.8), why a match and a miss answer in the same shape, status and time, and what the answer
-still discloses. Starting through a named connection, the request stored and the fallback a named start shares with
-discovery are in `authorization-requests.md`; domain claims and the predicates they are judged by are in `domains.md`
-and `domain-rechecks.md`.
+per-domain rate limit (SSO-11.8), why a match and a miss answer in the same shape and status, how their timing is padded
+to a minimum duration (a mitigation, not a guarantee), and what the answer still discloses. Starting through a named
+connection, the request stored and the fallback a named start shares with discovery are in `authorization-requests.md`;
+domain claims and the predicates they are judged by are in `domains.md` and `domain-rechecks.md`.
 
 ## Invariants
 
@@ -72,8 +72,13 @@ and `domain-rechecks.md`.
   negative, so an answer already slower than the floor is not delayed further. `start()` reads the floor before any
   work, so a malformed floor is an `InvalidArgumentException` naming its key before anything is counted; `[flows]`
   refuses it at boot. An exception is not held.
-- The floor must exceed the slowest match, a driver's start included; within it, a match's extra work (the connection's
-  read, the driver's start, the stored request) is invisible in the answer's time.
+- The padding is a timing mitigation, not a guarantee of indistinguishability. Within the floor, a match's extra work
+  (the connection's read, the driver's start, the stored request) does not show in the answer's time; work that outlasts
+  it (a driver's start that calls the identity provider, a slow database) is not padded further and can still differ
+  from a miss's. The floor should exceed the slowest match expected, and an operator watches for matches that exceed it.
+- The pause is a real sleep that holds the worker serving the start for the rest of the floor, so it is part of
+  capacity planning: the workers serving discovery must cover the discovery rate multiplied by the floor, besides the
+  work itself.
 - The email and its domain appear in no event and no log. The public reference is the only flow identifier an event
   carries (SSO-9.8); no event carries the protocol state, the nonce, a verifier or a challenge.
 - What the answer still discloses: where the navigation leads shows whether a domain routes to an identity provider, as
@@ -94,7 +99,8 @@ and `domain-rechecks.md`.
 ## Failure / Edge Cases
 
 - A domain that routes nowhere answers `started`, leading to the fallback, after exactly one
-  `FlowFailed(discovery_no_match)`, storing nothing, in the same time as a match.
+  `FlowFailed(discovery_no_match)`, storing nothing, after the same floor as a match (a match whose work outlasts the
+  floor answers later).
 - A refusal (rate limited, application not allowed, discovery not offered, a malformed challenge, a match's own
   refusal) answers its reason after the floor too; each reports exactly one `FlowFailed`.
 - A misbound purpose is an `InvalidArgumentException`; nothing is counted, read, written or reported, and it is not

@@ -22,6 +22,7 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
   | `attribute_mapping`     | JSON: each target attribute of the result by the SAML attribute or OIDC claim it reads |
   | `enabled`               | Whether the connection is enabled (default `false`)                                    |
   | `has_completed_sign_in` | Whether a `sign_in` through it has been redeemed (default `false`; SSO-4.3)            |
+  | `links_version`         | Raised by one for each link created through it (default `0`; see `links.md`)           |
   | `created_at`            | When it was created, whole seconds in UTC, from the package's clock                    |
   | `updated_at`            | When it last changed, whole seconds in UTC, from the package's clock                   |
 
@@ -40,6 +41,10 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
 - `has_completed_sign_in` has exactly one writer: the redemption of a `sign_in` handoff code (BL-35), by the package's
   own redemption or an adapter's acknowledgement in its redemption transaction. `link`, `reauthenticate`, an issued but
   unredeemed code and an unlinked handoff never set it. Nothing in P1 writes it.
+- `links_version` has exactly one writer: `Links\LinkStore::create()`, which raises it by one, under the connection's
+  lock, for each link it inserts. It means nothing on its own; it makes a link's insert also write the connection's row,
+  so a PostgreSQL `REPEATABLE READ` transaction that locks the row after the creation commits fails to serialise rather
+  than go on without the link (see `flows.md`'s lock order).
 - Each model of a record (connections, keys and certificates) is keyed and stamped by
   `SsoModel::identifiedAndStamped()`: a lower-case ULID unless one is set, and `created_at` and `updated_at` from
   `Contracts\Clock` (SSO-11.13), stored in UTC through `Casts\UtcDateTime`. Laravel's own timestamps are off, so a

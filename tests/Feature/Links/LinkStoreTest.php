@@ -546,6 +546,30 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
+     * Each link created raises the connection's links version by exactly one,
+     * and a creation refused by the unique index or the limit leaves it, so a
+     * link's insert always writes the connection's row too.
+     *
+     * @return void
+     */
+    public function testEachCreatedLinkRaisesTheLinksVersionByOne(): void
+    {
+        $this->bindLimit(2);
+
+        $other = $this->makeConnection(['tenant_id' => $this->connection->tenant_id]);
+
+        self::assertSame(0, $this->linksVersion($this->connection));
+        self::assertTrue($this->linkSubject('Subject 1')->isCreated());
+        self::assertSame(1, $this->linksVersion($this->connection));
+        self::assertTrue($this->linkSubject('Subject 2')->isCreated());
+        self::assertSame(2, $this->linksVersion($this->connection));
+        self::assertSame(LinkCreationStatus::SUBJECT_ALREADY_LINKED, $this->linkSubject('Subject 1', new IdentityReference('user', '2'))->status);
+        self::assertSame(LinkCreationStatus::LINK_LIMIT_REACHED, $this->linkSubject('Subject 3')->status);
+        self::assertSame(2, $this->linksVersion($this->connection));
+        self::assertSame(0, $this->linksVersion($other));
+    }
+
+    /**
      * A bound limit below one is a misconfigured binding, named in the
      * exception, and nothing is written.
      *
@@ -734,6 +758,17 @@ final class LinkStoreTest extends TestCase
     private function linkSubject(string $subject = self::SUBJECT, ?IdentityReference $identity = null, LinkOrigin $origin = LinkOrigin::LINK_PURPOSE): LinkCreation
     {
         return $this->store()->create($this->connection, new LinkSubject(self::ISSUER, $subject, self::FORMAT), $identity ?? $this->identity, $origin);
+    }
+
+    /**
+     * The connection's links version, as stored.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return int
+     */
+    private function linksVersion(Connection $connection): int
+    {
+        return Connection::query()->findOrFail($connection->id)->links_version;
     }
 
     /**

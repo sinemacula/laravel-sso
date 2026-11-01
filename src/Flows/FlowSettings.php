@@ -16,8 +16,9 @@ use SineMacula\Laravel\Sso\Config\IntegerSetting;
  *   waits for its response, 60 to 900 seconds (default 600): a few minutes,
  *   capped (SSO-5.1).
  * - `discovery.minimum_duration_milliseconds`: the least time a discovery start
- *   takes, 50 to 2000 milliseconds (default 250), so a match and a miss answer
- *   in the same time whatever work each did (SSO-3.5). It cannot be turned off.
+ *   takes, 50 to 2000 milliseconds (default 250), a timing mitigation that
+ *   hides a match's extra work within it, not a guarantee that a match and a
+ *   miss are indistinguishable (SSO-3.5). It cannot be turned off.
  *
  * A handoff code's lifetime is each application's own setting
  * (`Applications\Application::$handoffTtlSeconds`).

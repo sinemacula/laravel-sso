@@ -13,8 +13,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  * with the connection's summary as it now is (and, when updated or migrated,
  * the names of what changed); deleted, with no summary, since the connection is
  * gone; refused, with the reason (`freshness_required`, `connection_not_found`,
- * `protocol_unavailable` or `connection_has_links`); or invalid, with every
- * violation found and the reason `settings_invalid`.
+ * `protocol_unavailable`, `connection_has_links` or `links_unaccounted`); or
+ * invalid, with every violation found and the reason `settings_invalid`.
  *
  * A refusal is a value, never thrown, and changed nothing: no row was written
  * and no event dispatched. A violation names a setting and a code, never the
@@ -34,6 +34,7 @@ final readonly class ConnectionResult implements \JsonSerializable
         FailureReason::CONNECTION_NOT_FOUND,
         FailureReason::PROTOCOL_UNAVAILABLE,
         FailureReason::CONNECTION_HAS_LINKS,
+        FailureReason::LINKS_UNACCOUNTED,
     ];
 
     /** @var list<\SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus> The outcomes that wrote something. */
@@ -170,7 +171,8 @@ final readonly class ConnectionResult implements \JsonSerializable
 
     /**
      * The change was refused for the reason given: `freshness_required`,
-     * `connection_not_found`, `protocol_unavailable` or `connection_has_links`.
+     * `connection_not_found`, `protocol_unavailable`, `connection_has_links` or
+     * `links_unaccounted`.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @return self

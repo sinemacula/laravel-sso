@@ -81,8 +81,10 @@ the race. The tables, the value types and the completion they feed are in `flows
   max(expires_at, now + 1s))` answering `seen`, is `replayed`, writing nothing. Otherwise `consumed_at` is set to now
   and the key recorded, both in the transaction, so concurrent consumptions, plain or each inside its own open
   transaction, leave exactly one `consumed`.
-- Once that commits the request is judged, in this order: an application `ApplicationRegistry::find()` no longer finds
-  is `refused(application_not_allowed)` with no application; a SAML request id given with a state that is not exactly
+- An application `ApplicationRegistry::find()` no longer finds is `refused(application_not_allowed)` with no
+  application, ahead of every other reason; the request is terminal, so the same write that sets `consumed_at` sets
+  `completed_at` too.
+- Once that commits the request is judged, in this order: a SAML request id given with a state that is not exactly
   the stored one is `refused(request_unknown)`; `voided_at` set is `refused(connection_unavailable)`; a `connection_id`
   other than the route connection's is `refused(connection_mismatch)`; `expires_at <= now` is
   `refused(request_expired)`; otherwise `consumed`, with the model, a `Protocols\ConsumedRequest` (the PKCE verifier

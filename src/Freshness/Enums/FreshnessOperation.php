@@ -27,8 +27,11 @@ enum FreshnessOperation: string
     // decides whether a signature or an algorithm is accepted (SSO-2.13)
     case CONNECTION_TRUST = 'sso.connection.trust';
 
-    // Enabling or disabling a connection (SSO-2.1, SSO-2.11)
+    // Enabling a connection (SSO-2.1, SSO-2.11)
     case CONNECTION_ENABLE = 'sso.connection.enable';
+
+    // Disabling a connection (SSO-2.1, SSO-2.11)
+    case CONNECTION_DISABLE = 'sso.connection.disable';
 
     // Deleting a connection (SSO-2.1, SSO-2.11)
     case CONNECTION_DELETE = 'sso.connection.delete';

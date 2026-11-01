@@ -49,11 +49,14 @@ return new class extends Migration {
             $blueprint->json('connection_ids');
 
             // A fresh lower-case ULID on every change, which an adapter records
-            // against a session to recheck it once it is stale.
-            $blueprint->char('version', 26);
+            // against a session to recheck it once it is stale, and when the
+            // rule last changed. Both are null on an unconfigured row: one a
+            // redemption, a completion or a first change created only to lock
+            // the tenant's rule, which reads exactly as no row.
+            $blueprint->char('version', 26)->nullable();
+            $blueprint->dateTime('changed_at', 0)->nullable();
 
             // Whole seconds in UTC, from the package's clock.
-            $blueprint->dateTime('changed_at', 0);
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);
 

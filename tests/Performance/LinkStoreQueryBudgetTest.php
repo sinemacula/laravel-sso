@@ -28,12 +28,14 @@ use Tests\Fixtures\Results\ExampleResults;
  * Query budgets for the link store and helper (SSO-8.2 to SSO-8.4, SSO-11.3). A
  * resolution is one locking read, and one conditional update when it finds a
  * link, whether or not a minute has passed since its last use; a creation locks
- * the connection and the identity's links and inserts; a removal reads the
- * link, then locks the connection and the link and deletes it:
+ * the connection and the identity's links, inserts and raises the connection's
+ * links version; a removal reads the link, then locks the connection and the
+ * link and deletes it:
  *
  * - `resolve()` that finds a link: 1 read and 1 write; that finds none: 1 read;
  * - `create()`: 2 reads (the connection, the identity's links, both locked) and
- *   1 write (the insert, refused or not); at the limit: the 2 reads alone;
+ *   2 writes (the insert and the links version); refused by the unique index:
+ *   the 2 reads and the insert; at the limit: the 2 reads alone;
  * - `remove()`: 3 reads (the link; then, locked, the connection and the link)
  *   and 1 write (the delete); a link not found: 1 read; a stale caller: 1 read;
  * - `list()`: 2 reads (the links, then their connections); with no link: 1.
@@ -99,14 +101,15 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A creation is two locking reads and the insert; one refused by the unique
-     * index is the same; one at the limit is the reads alone.
+     * A creation is two locking reads, the insert and the raise of the links
+     * version; one refused by the unique index is the reads and the insert; one
+     * at the limit is the reads alone.
      *
      * @return void
      */
-    public function testACreationIsTwoReadsAndTheInsert(): void
+    public function testACreationIsTwoReadsTheInsertAndTheVersion(): void
     {
-        $created   = $this->assertQueryBudget(2, 1, fn (): LinkCreation => $this->createLink('subject-1'));
+        $created   = $this->assertQueryBudget(2, 2, fn (): LinkCreation => $this->createLink('subject-1'));
         $duplicate = $this->assertQueryBudget(2, 1, fn (): LinkCreation => $this->createLink('subject-1', new IdentityReference('user', '2')));
         $limited   = $this->assertQueryBudget(2, 0, fn (): LinkCreation => $this->createLink('subject-2'));
 

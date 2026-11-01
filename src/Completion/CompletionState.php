@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Completion;
 
 use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Applications\Application;
+use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
@@ -22,8 +23,9 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * arrived for and what arrived; the connection, read from the write
  * connection; the correlation the driver read; the authorisation request,
  * consumed, with what the driver is given of it and the registered
- * application; the claims the driver verified and the result built from them;
- * the identity the result's link resolved to; the enforcement version checked;
+ * application; the enforcement policy as the locks the completion holds show
+ * it; the claims the driver verified and the result built from them; the
+ * identity the result's link resolved to; the enforcement version checked;
  * the latest end of the application's session the provider's deadline sets;
  * and the handoff issued.
  *
@@ -49,6 +51,7 @@ final readonly class CompletionState
      * @param  ?\SineMacula\Laravel\Sso\Models\AuthorizationRequest  $authorizationRequest
      * @param  ?\SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
      * @param  ?\SineMacula\Laravel\Sso\Applications\Application  $application
+     * @param  ?\SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $enforcementPolicy
      * @param  ?\SineMacula\Laravel\Sso\Results\VerifiedClaims  $claims
      * @param  ?\SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $linkedIdentity
@@ -80,6 +83,9 @@ final readonly class CompletionState
 
         /** The registered application the request is for. */
         public ?Application $application = null,
+
+        /** The enforcement policy judged from the rows the completion holds locked, when the default contract locked them. */
+        public ?EnforcementPolicy $enforcementPolicy = null,
 
         /** What the driver verified. */
         public ?VerifiedClaims $claims = null,
@@ -196,6 +202,18 @@ final readonly class CompletionState
     public function withAuthorizationRequest(AuthorizationRequest $request, ConsumedRequest $consumed, Application $application): self
     {
         return $this->with(['authorizationRequest' => $request, 'consumed' => $consumed, 'application' => $application]);
+    }
+
+    /**
+     * With the enforcement policy judged from the rows the completion holds
+     * locked, which the enforcement step judges the connection by.
+     *
+     * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
+     * @return self
+     */
+    public function withEnforcementPolicy(EnforcementPolicy $policy): self
+    {
+        return $this->with(['enforcementPolicy' => $policy]);
     }
 
     /**

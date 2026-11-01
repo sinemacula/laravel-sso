@@ -13,6 +13,12 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * satisfy it (their ids, a JSON list), and the version that changes with every
  * change, a fresh lower-case ULID each time.
  *
+ * A row with no version (and no `changed_at`) is unconfigured: the guard row a
+ * redemption, a completion or a first change inserts so it has a row to lock
+ * before the tenant's rule was ever stored (`Enforcement\EnforcementLock`). It
+ * reads exactly as no row: off, with no connection, no version and no time, and
+ * its first change reports no previous version.
+ *
  * The tenant is the application's opaque string id, fixed once the row exists.
  * One row per tenant is kept by `tenant_hash`, the lower-case hex SHA-256 of
  * the id, set from it as the row is created, under a unique index, so a
@@ -33,8 +39,8 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property string $tenant_hash
  * @property bool $enabled
  * @property list<string> $connection_ids
- * @property string $version
- * @property \Carbon\CarbonImmutable $changed_at
+ * @property ?string $version
+ * @property ?\Carbon\CarbonImmutable $changed_at
  * @property \Carbon\CarbonImmutable $created_at
  * @property \Carbon\CarbonImmutable $updated_at
  */

@@ -68,7 +68,10 @@ Each stage is in `Completion\Stages`.
   keeps the driver's reason; a verified response goes on with its `Results\VerifiedClaims` and the result built from
   them.
 - `ResolveLink` asks the bound `Contracts\Linker`; only the connection, issuer and subject select an identity (SSO-8.2).
-- `CheckEnforcement` asks the bound `Contracts\Enforcement` for the connection's tenant on the request's application.
+- `CheckEnforcement` judges the policy of the connection's tenant on the request's application. Under the default
+  `DatabaseEnforcement` with the feature on, it is the policy the pipeline judged from the rows it locked at the start
+  of the locked transaction, carried on the state (`CompletionState::$enforcementPolicy`), so nothing is read again;
+  with another contract bound, that contract is asked now, and must itself serialise against its rule's changes.
   `EnforcementPolicy::isSatisfiedBy()` is the whole rule: a policy that requires nothing is satisfied by every
   connection, one that requires sign-in only by its connections. A satisfied policy's version, when it has one, goes on
   for the handoff (SSO-4.6, SSO-9.10). No exemption is consulted at completion: an exemption admits a session, and the
@@ -109,20 +112,31 @@ made, from what a driver verified and never from client input (SSO-8.1):
 - Correlation, consumption and validation run outside any transaction the pipeline opens; the consumption opens its
   own, so the request is consumed whether the response then passes or fails, and it commits before the driver
   validates (a fetch is never made inside a transaction).
-- Once a request is consumed with a trusted target, one transaction on the storage connection locks the connection's row
-  and then the request's row, each with `lockForUpdate()` on the write connection, so neither answers from an older
-  `REPEATABLE READ` snapshot. A completion still going on is refused with `connection_unavailable` when the connection
-  is gone or no longer usable, or when the request is gone or its `voided_at` is set: validation was based on the
-  connection and the request as they were before, and a change since (a disable, a trust change that voids the
-  connection's requests, BL-37) wins. Otherwise every locked step runs in that transaction, on the rows as locked.
+- Once a request is consumed with a trusted target, one transaction on the storage connection takes `flows.md`'s lock
+  order. For a completion still going on, under `DatabaseEnforcement` with the `enforcement` feature on, it first calls
+  `DatabaseEnforcement::lock()` at the start of `CompletionPipeline::finish()`: the enforcing tenant's row (named by the
+  inheritance contract, inserted unconfigured when it has none) and then, in one statement in ascending id order, the
+  connection and the connections the rule names. Otherwise (feature off, another contract bound, or a completion
+  already refused) it locks the connection's row alone, with no enforcement statement and no inheritance call. Then the
+  request's row. Each is a locking read on the write connection, so none answers from an older `REPEATABLE READ`
+  snapshot. A completion still going on is refused with `connection_unavailable` when the connection is gone or no
+  longer usable, when the request is gone or its `voided_at` is set, or when the inheritance contract, asked again, no
+  longer names the tenant whose rule is locked: validation was based on the connection and the request as they were
+  before, and a change since (a disable, a trust change that voids the connection's requests, BL-37) wins. Otherwise
+  every locked step runs in that transaction, on the rows as locked, with the policy the locked rule gives.
 - The same transaction sets the request's `completed_at`, whether the completion completed or was refused (a refusal at
-  consumption or validation included), and reports the completion. A response no request matches marks nothing.
-- The lock order is `flows.md`'s: the connection's row, then its request's, then (in the stages) links and codes. A
-  change that voids a connection's requests locks the connection first, so it waits for a completion that holds it,
-  and finds its request finished; a completion that consumed a request before the change refuses it under the lock
-  afterwards.
-- The enforcement contract is read inside the locked transaction without locking the tenant's enforcement row, whose
-  lock would precede the connection's (`flows.md`); the redemption rechecks enforcement.
+  consumption or validation included), and reports the completion. A response no request matches marks nothing. A
+  request whose application is no longer registered is marked completed by its consumption instead, in the same write
+  as `consumed_at`, since that completion is rejected with no trusted target and never reaches the transaction.
+- The lock order is `flows.md`'s: the tenant's enforcement row (when it applies), then the connection with the rule's
+  connections in ascending id order, then its request's, then (in the stages) links and codes. A change that voids a
+  connection's requests locks the connection first, so it waits for a completion that holds it, and finds its request
+  finished; a completion that consumed a request before the change refuses it under the lock afterwards.
+- An enforcement change waits for a completion that holds the rule's lock, and a completion that waited sees the rule
+  as changed. The code carries the version checked; the redemption locks the rule again and rechecks it, and the
+  session is written there. On PostgreSQL under `REPEATABLE READ`, a completion that waited may get a serialisation
+  failure instead (SQLSTATE `40001`): it propagates as a server error, the locked transaction rolled back and its
+  request left consumed but not completed.
 
 ### Outcomes
 
@@ -159,8 +173,9 @@ no target is dispatched at once.
 2. The attempt is counted, the method and the connection checked, and the driver correlates the response.
 3. The request is consumed under the connection's lock, then the driver validates the response, and the result is
    built.
-4. Under the connection's and the request's locks: the link is resolved, enforcement is satisfied, the unlinked
-   decision passes, the policy is asked again and the code issued; the request is marked completed.
+4. Under the tenant's enforcement lock (when it applies), the connections' and the request's: the link is resolved,
+   enforcement is satisfied, the unlinked decision passes, the policy is asked again and the code issued; the request
+   is marked completed.
 5. Once that commits, `ResultVerified` and `HandoffIssued` are reported, and the helper answers `completed`, which the
    controller turns into a redirect with `Responses\CompletionResponses`.
 
@@ -176,8 +191,8 @@ no target is dispatched at once.
 - A request voided while the driver validates: refused under the lock with `connection_unavailable`, and no code.
 - An application whose policy no longer allows external sign-in at issuance: `application_not_allowed`, redirected.
 - An application no longer registered when its request is consumed: `rejected(application_not_allowed)`, with no
-  target; its request stays consumed and is not marked completed, since the completion holds no trusted target to
-  report it with.
+  target. Its request is terminal at once: the consumption's own write sets `completed_at` with `consumed_at`, since
+  no locked step runs for a completion with no trusted target to answer to.
 - A database error, an issuer that throws, a stage that resolves to something else and a redirect URI resolver that
   answers what no redirect URI may be all propagate as server errors (SSO-11.4); inside the locked transaction they roll
   it back, so no code is kept, `completed_at` stays unset and nothing is reported, while the request stays consumed.
@@ -205,7 +220,9 @@ no target is dispatched at once.
   boundary.
 - `tests/Feature/Completion/CompletionPipelineTest.php`: the stage of each step, the order, the transaction levels, the
   rows as locked, a refusal ending the pipeline, `completed_at`, a request voided and a connection disabled or gone
-  under the lock, misconfigurations that propagate.
+  under the lock, the lock order (enforcement, then connections in id order, then the request) and the locked policy
+  carried to the enforcement step, no enforcement statement with the feature off or for a completion already refused,
+  an enforcing tenant that moved, misconfigurations that propagate.
 - `tests/Feature/Completion/Stages/StagesTest.php`: each stage alone.
 - `tests/Integration/Completion/ConcurrentCompletionTest.php`: completions of one response, and a completion racing a
   change that voids its request while it validates, the change plain and inside its own transaction, on MySQL and

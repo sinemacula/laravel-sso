@@ -208,4 +208,9 @@ enum FailureReason: string
     // refused because the connection has links; the migration helper relinks or
     // removes them first (SSO-2.13)
     case CONNECTION_HAS_LINKS = 'connection_has_links';
+
+    // A subject migration did not account for every current link of the
+    // connection exactly once, relinked or removed, or named an id that is not
+    // one of them (SSO-2.13)
+    case LINKS_UNACCOUNTED = 'links_unaccounted';
 }

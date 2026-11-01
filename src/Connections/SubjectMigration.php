@@ -29,36 +29,48 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * `subjectNames()` lists) while the connection has links, which
  * `ConnectionService::update()` refuses with `connection_has_links`. It makes
  * the change and, in the same transaction, relinks each link the caller maps to
- * its subject under the new meaning and removes every other.
+ * its subject under the new meaning and removes each link the caller lists.
  *
- * `migrate()` takes the change as `update()` does, and the relinks: each link
- * id of the connection mapped to a list of its new subject, then optionally its
- * new SAML `NameID` format and its new issuer, the format `null` (or left out)
- * for none and the issuer, when `null` or left out, the link's own. It goes in
- * one order, and a refusal writes, revokes and reports nothing:
+ * `migrate()` takes the change as `update()` does, and an exhaustive
+ * disposition of the connection's links: the relinks, each link id mapped to a
+ * list of its new subject, then optionally its new SAML `NameID` format and its
+ * new issuer (the format `null`, or left out, for none, and the issuer, when
+ * `null` or left out, the link's own); and the removals, a list of link ids.
+ * Every link the connection has when the migration runs must be in exactly one
+ * of the two, so a link created after the caller prepared the call is never
+ * removed or kept by accident. It goes in one order, and a refusal writes,
+ * revokes and reports nothing:
  *
  * 1. In one transaction on the storage connection (a savepoint inside the
  *    caller's), the connection is read locked (`connection_not_found` when the
  *    tenant has no such connection, `protocol_unavailable` when its protocol is
  *    not), and then its links, locked, in id order.
- * 2. The change is validated as `update()` validates one, and the relinks with
- *    it, each violation at `relinks.<id>`: `unknown` for an id that is not one
- *    of the connection's links, `not_allowed` for a reserved link (only an
- *    active one is relinked), `invalid_type` for anything but a list of one to
- *    three strings (the format and issuer possibly `null`), and
- *    `invalid_format` for a subject, issuer or format of the wrong length; any
- *    violation is `invalid` (`settings_invalid`). A change that changes nothing
- *    is `unchanged`, and touches no link.
- * 3. The freshness contract is asked, through `checkAll()`, with
+ * 2. The disposition is judged against the locked links: a link in neither the
+ *    relinks nor the removals, an id in both, or an id (or a removal that is
+ *    not a string) that is not one of the connection's links is
+ *    `links_unaccounted`, with nothing changed. Every link's creation raises
+ *    the connection's `links_version` under the same lock, so on PostgreSQL
+ *    under `REPEATABLE READ`, a migration whose snapshot predates a link fails
+ *    to serialise when it locks the connection (SQLSTATE 40001, propagated)
+ *    rather than go on without the link.
+ * 3. The change is validated as `update()` validates one, and the relinks with
+ *    it, each violation at `relinks.<id>`: `not_allowed` for a reserved link
+ *    (only an active one is relinked; a reserved one may be removed),
+ *    `invalid_type` for anything but a list of one to three strings (the format
+ *    and issuer possibly `null`), and `invalid_format` for a subject, issuer or
+ *    format of the wrong length; any violation is `invalid`
+ *    (`settings_invalid`). A change that changes nothing is `unchanged`, and
+ *    touches no link.
+ * 4. The freshness contract is asked, through `checkAll()`, with
  *    `sso.connection.trust`, every operation the change asks and
  *    `sso.link.remove`; `stale` is `freshness_required`.
- * 4. In a savepoint: the change is written and reported (`ConnectionUpdated`),
+ * 5. In a savepoint: the change is written and reported (`ConnectionUpdated`),
  *    and what the connection has in flight is voided (`InFlightVoider`); every
  *    link of the connection is deleted and reported removed (`LinkRemoved`, in
- *    id order), and, for each link not relinked, the identity's sessions
- *    through the connection are revoked
+ *    id order), and, for each link removed rather than relinked, the identity's
+ *    sessions through the connection are revoked
  *    (`RevocationScope::identityInConnection`).
- * 5. Each relinked link's identity is linked to its new subject through
+ * 6. Each relinked link's identity is linked to its new subject through
  *    `Links\LinkStore::create()` with the origin `migration`, in the order the
  *    relinks are given (`LinkCreated`). A new subject already linked in the
  *    connection, another relink's included, is `duplicate` at `relinks.<id>`,
@@ -123,12 +135,14 @@ final readonly class SubjectMigration
 
     /**
      * Make the change to the tenant's connection, relink each link given to its
-     * new subject, and remove every other link of the connection.
+     * new subject, and remove each link listed; every link of the connection is
+     * one or the other.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  array<string, mixed>  $changes
      * @param  array<array-key, mixed>  $relinks
+     * @param  array<array-key, mixed>  $removals
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -140,9 +154,10 @@ final readonly class SubjectMigration
         string $connectionId,
         #[\SensitiveParameter] array $changes,
         #[\SensitiveParameter] array $relinks,
+        array $removals,
         ?ActingIdentity $actor = null,
     ): ConnectionResult {
-        return $this->transaction(function () use ($tenantId, $connectionId, $changes, $relinks, $actor): ConnectionResult {
+        return $this->transaction(function () use ($tenantId, $connectionId, $changes, $relinks, $removals, $actor): ConnectionResult {
 
             $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -150,7 +165,13 @@ final readonly class SubjectMigration
                 return ConnectionResult::refused($locked === null ? FailureReason::CONNECTION_NOT_FOUND : FailureReason::PROTOCOL_UNAVAILABLE);
             }
 
-            return $this->migrateLocked($locked, $changes, $relinks, $actor);
+            $links = self::lockedLinks($locked);
+
+            if (!self::isAccountedFor($links, $relinks, $removals)) {
+                return ConnectionResult::refused(FailureReason::LINKS_UNACCOUNTED);
+            }
+
+            return $this->migrateLocked($locked, $links, $changes, $relinks, $actor);
         });
     }
 
@@ -160,6 +181,7 @@ final readonly class SubjectMigration
      * relink.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  array<string, \SineMacula\Laravel\Sso\Models\Link>  $links
      * @param  array<string, mixed>  $changes
      * @param  array<array-key, mixed>  $relinks
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
@@ -169,9 +191,13 @@ final readonly class SubjectMigration
      * @throws \LogicException
      * @throws \Throwable
      */
-    private function migrateLocked(Connection $locked, #[\SensitiveParameter] array $changes, #[\SensitiveParameter] array $relinks, ?ActingIdentity $actor): ConnectionResult
-    {
-        $links                   = self::lockedLinks($locked);
+    private function migrateLocked(
+        Connection $locked,
+        array $links,
+        #[\SensitiveParameter] array $changes,
+        #[\SensitiveParameter] array $relinks,
+        ?ActingIdentity $actor,
+    ): ConnectionResult {
         [$subjects, $violations] = self::relinks($relinks, $links);
 
         $result = DB::connection(StorageConnection::name())->transaction(
@@ -324,6 +350,31 @@ final readonly class SubjectMigration
     }
 
     /**
+     * Whether the relinks and the removals account for every locked link
+     * exactly once: each link id in one of the two and not in both, and no id
+     * (nor a removal that is not a string) that is not one of the links.
+     * Removals listed twice count once.
+     *
+     * @param  array<string, \SineMacula\Laravel\Sso\Models\Link>  $links
+     * @param  array<array-key, mixed>  $relinks
+     * @param  array<array-key, mixed>  $removals
+     * @return bool
+     */
+    private static function isAccountedFor(array $links, #[\SensitiveParameter] array $relinks, array $removals): bool
+    {
+        if (array_filter($removals, static fn (mixed $id): bool => !is_string($id)) !== []) {
+            return false;
+        }
+
+        // As many ids given as there are links, and every link among them: each
+        // link given exactly once, and nothing else
+        $given   = [...array_keys($relinks), ...array_unique($removals)];
+        $current = array_keys($links);
+
+        return count($given) === count($current) && array_diff($current, $given) === [];
+    }
+
+    /**
      * The new subject of each valid relink, by link id, in the order given, and
      * a violation at `relinks.<id>` for each other.
      *
@@ -340,7 +391,7 @@ final readonly class SubjectMigration
 
         foreach ($relinks as $linkId => $relink) {
 
-            $subject = self::subject($links[$linkId] ?? null, $relink);
+            $subject = self::subject($links[$linkId], $relink);
 
             if ($subject instanceof LinkSubject) {
                 $subjects[$linkId] = $subject;
@@ -354,17 +405,17 @@ final readonly class SubjectMigration
     }
 
     /**
-     * The new subject the relink gives the link, or why it gives none: no such
-     * link, a link that is not active, or a relink of the wrong shape.
+     * The new subject the relink gives the link, or why it gives none: a link
+     * that is not active, or a relink of the wrong shape.
      *
-     * @param  ?\SineMacula\Laravel\Sso\Models\Link  $link
+     * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  mixed  $relink
      * @return \SineMacula\Laravel\Sso\Connections\Enums\ViolationCode|\SineMacula\Laravel\Sso\Links\LinkSubject
      */
-    private static function subject(?Link $link, #[\SensitiveParameter] mixed $relink): LinkSubject|ViolationCode
+    private static function subject(Link $link, #[\SensitiveParameter] mixed $relink): LinkSubject|ViolationCode
     {
-        if ($link === null || $link->state !== LinkState::ACTIVE) {
-            return $link === null ? ViolationCode::UNKNOWN : ViolationCode::NOT_ALLOWED;
+        if ($link->state !== LinkState::ACTIVE) {
+            return ViolationCode::NOT_ALLOWED;
         }
 
         return self::isRelink($relink) ? self::built($relink, $link->issuer) : ViolationCode::INVALID_TYPE;

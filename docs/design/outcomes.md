@@ -68,7 +68,8 @@ the same way:
   (`Connections\SubjectMigration`) answer the same `Connections\ConnectionResult`, in the same order: `disabled` (or
   `unchanged` for a connection already disabled), `deleted` (with no summary, since the connection is gone) and
   `migrated`; a change that may alter what the connection's subjects mean while it has links is refused with
-  `connection_has_links`; see `connection-lifecycle.md`.
+  `connection_has_links`, and a migration whose relinks and removals do not account for every current link exactly
+  once with `links_unaccounted`; see `connection-lifecycle.md`.
 - An application's mistake (an empty tenant id, an acting identity with no type) is an `InvalidArgumentException`; a
   database error, a `SecretEncrypter` that cannot encrypt or a key OpenSSL cannot generate propagates.
 
@@ -107,9 +108,9 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   `Handoffs\Enums\RedemptionStatus`: `redeemed` (the verified result and what the code was bound to), `refused`
   (`handoff_unknown`, `replayed`, `handoff_expired`, `purpose_mismatch`, `application_mismatch`,
   `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`, `enforcement_unsatisfied` or `link_changed`)
-  or `rate_limited` (`retryAfter`). `Handoffs\HandoffRecheck::recheck()`, for an adapter's own redemption, answers
-  the outcome enum `Handoffs\Enums\RecheckOutcome` (`passed` or the first refusal), whose `reason()` names the
-  `FailureReason` a refused redemption reports. See `handoffs.md`.
+  or `rate_limited` (`retryAfter`). `Handoffs\HandoffRecheck::recheck()`, for an adapter's own redemption under the
+  `Handoffs\RecheckLock` its `lock()` took first, answers the outcome enum `Handoffs\Enums\RecheckOutcome` (`passed`
+  or the first refusal), whose `reason()` names the `FailureReason` a refused redemption reports. See `handoffs.md`.
 - **Links.** `Links\LinkService::list()` answers a list of `Links\LinkSummary`, possibly empty; `remove()` answers a
   `Links\LinkResult`: `removed` (the summary) or `refused` (`link_not_found`, for another identity's link as for an
   unknown one, or `freshness_required`). `Links\LinkStore::create()` answers a `Links\LinkCreation`, status

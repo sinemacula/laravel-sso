@@ -103,16 +103,17 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
   `Completion\StageOutcome` (`proceed` or `refuse` with a reason, the state kept either way). The two P6 steps,
   `domain_reservation` and `provisioning`, are `Completion\Stages\UnbuiltStage`s that pass every state on.
 - Transactions: a completion, and a start (named or by discovery), run outside any transaction on the storage
-  connection; called inside one, each is a `LogicException` at entry, before anything is written, so a caller's
-  rollback never undoes a consumption (SSO-5.1) and a caller's transaction never keeps the connection's lock across a
-  call to the driver (SSO-11.5). A redemption, by decision D5, may run inside the redeemer's.
-  `correlation` and `validation` run outside any transaction the pipeline opens (validation may fetch);
-  `consumption` runs in a transaction of its own on the storage connection, which locks the connection's row before the
-  request's, as every transaction here does, so the request is consumed whether the response then passes or fails;
-  every step from `link_resolution` on runs in one transaction on the storage connection
-  that first locks the connection's row and then the request's row, and refuses if the connection is no longer usable
-  or the request was voided since consumption. Events are dispatched after that transaction commits (or after the
-  consumption's, for a refusal before it), never on a rollback.
+  connection; called inside one, each is a `LogicException` at entry, before anything is written, so a caller's rollback
+  never undoes a consumption (SSO-5.1) and a caller's transaction never keeps the connection's lock across a call to the
+  driver (SSO-11.5). A redemption, by decision D5, may run inside the redeemer's. `correlation` and `validation` run
+  outside any transaction the pipeline opens (validation may fetch); `consumption` runs in a transaction of its own on
+  the storage connection, which locks the connection's row before the request's, as every transaction here does, so the
+  request is consumed whether the response then passes or fails; every step from `link_resolution` on runs in one
+  transaction on the storage connection that first locks the tenant's enforcement (when it applies, see the lock order),
+  then the connection's row (with the rule's connections) and then the request's row, and refuses if the connection is
+  no longer usable, the request was voided since consumption, or the enforcing tenant moved since its rule was locked.
+  Events are dispatched after that transaction commits (or after the consumption's, for a refusal before it), never on a
+  rollback.
 - `Completion\CompletionResult` is how a completion ended: `completed` (redirect URI, delivery, reference, issued
   handoff), `failed` (reason, redirect URI, delivery, reference), `rejected` (reason, no trusted target: a 400),
   `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL, P4). It may hold the code, so it
@@ -124,10 +125,34 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
 
 ### Lock order
 
-A connection's row, then its rows in the other tables: domains (P2), requests, codes, links. A tenant's enforcement row
-precedes connection rows (P2). Every re-read under a lock that decides a write is a locking read (`lockForUpdate()`),
-since a caller's MySQL REPEATABLE READ transaction answers a plain read from an older snapshot, and an answer reached
-before the lock ("unchanged", "already done", the state a slow step was based on) is confirmed under it.
+A tenant's enforcement row, then connection rows in ascending id order, then their rows in the other tables: domains
+(P2), requests, codes, links.
+
+- The enforcement row comes first wherever a rule is changed or an admission is judged against one: the enforcement
+  change (P2), a redemption (`HandoffRecheck::lock()`, before the code), and the locked steps of a completion (at the
+  start of `CompletionPipeline::finish()`, before the request). An admission takes it only under the default
+  `DatabaseEnforcement` with the `enforcement` feature on, and locks the row of the enforcing tenant the inheritance
+  contract names. A tenant with no row has one inserted unconfigured (`Enforcement\EnforcementLock`: an upsert that
+  never changes an existing row, then a locking read), which reads everywhere as no row, so racing first lockers queue
+  on the row rather than deadlock on MySQL's gap locks.
+- The connections come next in one locking statement ordered by id: the admission's own connection with every
+  connection the rule names (the union), so a disable of a satisfying connection is ordered too.
+- Anything learnt before the locks to choose them (the code's connection and application, the connection's tenant,
+  the enforcing tenant) is confirmed once they are held: a code that names another connection or application is
+  `handoff_unknown`, a connection gone or of another tenant `connection_unavailable`, and an inheritance contract that
+  names another tenant now is `connection_unavailable`; a different enforcement row is never locked out of order.
+- With the feature off, or another enforcement contract bound, no enforcement row is locked, read or inserted, and the
+  inheritance contract is not asked.
+
+Every re-read under a lock that decides a write is a locking read (`lockForUpdate()`), since a caller's MySQL
+REPEATABLE READ transaction answers a plain read from an older snapshot, and an answer reached before the lock
+("unchanged", "already done", the state a slow step was based on) is confirmed under it. On PostgreSQL under
+`REPEATABLE READ`, a transaction fails to serialise (SQLSTATE `40001`) only when it locks a row that a transaction
+committed since its snapshot updated or deleted; a row that was only locked raises nothing, and a row inserted since
+stays invisible to it. So a writer whose insert a later locker must see also writes the row they both lock: a link's
+creation raises its connection's `links_version` (`Links\LinkStore::create()`), so a subject migration that locks the
+connection after it fails to serialise rather than miss the link. The failure propagates, and a caller retries its whole
+transaction, never a part of it.
 
 ### Start
 
@@ -151,7 +176,7 @@ fallback's navigation (`Protocols\Navigation::toApplication()`), a reference and
   `application_mismatch`, `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`,
   `enforcement_unsatisfied`, `link_changed`, `application_not_allowed`, `rate_limited`.
 - Administration (a helper's result, no event): `link_not_found`, `link_limit_reached`, `subject_already_linked`,
-  `connection_has_links`, with P1's `freshness_required` and `connection_not_found`.
+  `connection_has_links`, `links_unaccounted`, with P1's `freshness_required` and `connection_not_found`.
 
 ### Events
 

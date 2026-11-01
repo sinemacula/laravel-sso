@@ -324,10 +324,12 @@ return [
     |---------------------------------------------------------------------------
     |
     | The least time a discovery start takes, in milliseconds (50 to 2000,
-    | default 250), so a domain that routes to a connection and one that does
-    | not answer in the same time as well as the same shape and status. It
-    | cannot be turned off; raise it if starting a flow through any of your
-    | connections takes longer.
+    | default 250): a timing mitigation, so a domain that routes to a
+    | connection and one that does not answer after the same time when both
+    | finish within it. Work that outlasts it (a slow provider or database)
+    | still shows. Every start sleeps out the rest of it, so plan worker
+    | capacity for it. It cannot be turned off; raise it if starting a flow
+    | through any of your connections takes longer.
     |
     */
 
@@ -355,6 +357,7 @@ return [
         'max_age_seconds' => [
             'connection_trust'         => 300,
             'connection_enable'        => 300,
+            'connection_disable'       => 300,
             'connection_delete'        => 300,
             'connection_idp_initiated' => 300,
             'keys_rotate'              => 300,

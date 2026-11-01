@@ -80,6 +80,7 @@ final class ConnectionsMigrationTest extends TestCase
             'enabled'               => false,
             'has_completed_sign_in' => false,
             'id'                    => false,
+            'links_version'         => false,
             'protocol'              => false,
             'secrets'               => true,
             'settings'              => false,
@@ -110,8 +111,8 @@ final class ConnectionsMigrationTest extends TestCase
     }
 
     /**
-     * A row written with only what the table requires is disabled and has
-     * completed no sign-in.
+     * A row written with only what the table requires is disabled, has
+     * completed no sign-in and has a links version of zero.
      *
      * @return void
      */
@@ -133,6 +134,7 @@ final class ConnectionsMigrationTest extends TestCase
         self::assertNotNull($row);
         self::assertFalse((bool) $row->enabled);
         self::assertFalse((bool) $row->has_completed_sign_in);
+        self::assertSame(0, (int) $row->links_version);
         self::assertNull($row->secrets);
     }
 

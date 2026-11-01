@@ -13,11 +13,13 @@ each, the default that refuses, and the gate every listed mutation calls before 
   only when the caller of the request or job being served authenticated no more than `$maxAgeSeconds` ago, and `stale`
   otherwise, including when there is no caller it can judge (a queued job, a console command). An error it cannot
   answer through propagates as a server error; it never answers `fresh` when it cannot tell.
-- The operations are `Freshness\Enums\FreshnessOperation`, eleven cases whose values are the stable names SSO-2.12
-  lists, in this order: `sso.connection.trust`, `sso.connection.enable`, `sso.connection.delete`,
-  `sso.connection.idp_initiated`, `sso.keys.rotate`, `sso.domain.claim`, `sso.domain.verify`, `sso.domain.remove`,
-  `sso.enforcement.update`, `sso.link.create` and `sso.link.remove`. A name is stable once released: it is never
-  renamed or reused, since an adapter (`laravel-iam`'s among them) may key its own policy on it.
+- The operations are `Freshness\Enums\FreshnessOperation`, twelve cases whose values are the stable names of the
+  operations SSO-2.12 lists, in this order: `sso.connection.trust`, `sso.connection.enable`,
+  `sso.connection.disable`, `sso.connection.delete`, `sso.connection.idp_initiated`, `sso.keys.rotate`,
+  `sso.domain.claim`, `sso.domain.verify`, `sso.domain.remove`, `sso.enforcement.update`, `sso.link.create` and
+  `sso.link.remove`. Enabling and disabling a connection are separate operations, each with its own name and maximum
+  age, so a policy can treat restoring access differently from removing it. A name is stable once released: it is
+  never renamed or reused, since an adapter (`laravel-iam`'s among them) may key its own policy on it.
 - Each operation has its own maximum age, read by `Freshness\MaximumAges::for()` from
   `sso.freshness.max_age_seconds.<key>` on each call, where the key is `FreshnessOperation::configKey()`: the name after
   `sso.`, with the dots as underscores (`sso.connection.trust` is `connection_trust`). Each defaults to 300 seconds

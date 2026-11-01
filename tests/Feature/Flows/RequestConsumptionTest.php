@@ -438,7 +438,8 @@ final class RequestConsumptionTest extends TestCase
     /**
      * A request whose application is no longer registered is refused
      * `application_not_allowed`, with no redirect target, ahead of every other
-     * reason, and consumed.
+     * reason, consumed, and completed in the same write, since its completion
+     * goes no further.
      *
      * @return void
      */
@@ -446,11 +447,65 @@ final class RequestConsumptionTest extends TestCase
     {
         $request = $this->request(['application' => 'retired', 'voided_at' => $this->clock->now(), 'expires_at' => $this->clock->now()]);
 
+        $this->clock->advance(5);
+
         $result = $this->consume(Correlation::solicited(self::STATE));
+        $row    = $this->reread($request);
 
         self::assertRefused(FailureReason::APPLICATION_NOT_ALLOWED, $result, false);
         self::assertSame($request->id, $result->request?->id);
-        self::assertNotNull($this->reread($request)->consumed_at);
+        self::assertSame('2026-11-01T09:30:05+00:00', $row->consumed_at?->toIso8601String());
+        self::assertSame('2026-11-01T09:30:05+00:00', $row->completed_at?->toIso8601String());
+        self::assertSame('2026-11-01T09:30:05+00:00', $result->request->completed_at?->toIso8601String());
+    }
+
+    /**
+     * A request whose application is registered is consumed without being
+     * completed, whether the response may go on or is refused: the completion
+     * marks it completed once it ends.
+     *
+     * @return void
+     */
+    public function testARequestOfARegisteredApplicationIsNotCompletedByItsConsumption(): void
+    {
+        $consumed = $this->request([], 'state-1');
+        $expired  = $this->request(['expires_at' => $this->clock->now()], 'state-2');
+
+        self::assertTrue($this->consume(Correlation::solicited('state-1'))->isConsumed());
+        self::assertRefused(FailureReason::REQUEST_EXPIRED, $this->consume(Correlation::solicited('state-2')), true);
+
+        foreach ([$consumed, $expired] as $request) {
+            self::assertNotNull($this->reread($request)->consumed_at);
+            self::assertNull($this->reread($request)->completed_at);
+        }
+    }
+
+    /**
+     * A malformed application's settings propagate from inside the
+     * consumption's transaction: the request is left neither consumed nor
+     * completed, and no single-use key is recorded for it.
+     *
+     * @return void
+     */
+    public function testAMalformedApplicationLeavesTheRequestUnconsumed(): void
+    {
+        $request = $this->request();
+        $failure = null;
+
+        config()->set('sso.applications.web.delivery', 'post');
+
+        try {
+            $this->consume(Correlation::solicited(self::STATE));
+        } catch (\InvalidArgumentException $exception) {
+            $failure = $exception->getMessage();
+        }
+
+        $row = $this->reread($request);
+
+        self::assertSame('`sso.applications.web.delivery` must be `fragment` or `query`.', $failure);
+        self::assertNull($row->consumed_at);
+        self::assertNull($row->completed_at);
+        self::assertSame([], self::recorded());
     }
 
     /**

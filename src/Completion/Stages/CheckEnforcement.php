@@ -11,12 +11,16 @@ use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * The `enforcement` step (SSO-4.1, SSO-4.6, SSO-9.10): the bound
- * `Contracts\Enforcement` is asked, from current state, for the policy of the
- * connection's tenant on the request's application. A policy that requires
- * sign-in through a satisfying connection, and that this connection does not
- * satisfy, refuses with `enforcement_unsatisfied`; a policy that requires
- * nothing is satisfied by every connection.
+ * The `enforcement` step (SSO-4.1, SSO-4.6, SSO-9.10): the policy of the
+ * connection's tenant on the request's application. Under the package's default
+ * contract with the feature on, it is the one the pipeline judged from the rows
+ * it locked at the start of the locked steps (the enforcing tenant's rule, then
+ * the connections, `CompletionPipeline`), carried on the state, so a change to
+ * the rule waits for the completion's transaction; otherwise the bound
+ * `Contracts\Enforcement` is asked now. A policy that requires sign-in through
+ * a satisfying connection, and that this connection does not satisfy, refuses
+ * with `enforcement_unsatisfied`; a policy that requires nothing is satisfied
+ * by every connection.
  *
  * Otherwise the policy's version, when it has one, goes on with the state, so
  * the handoff carries the version the completion checked. No exemption is
@@ -56,9 +60,9 @@ final readonly class CheckEnforcement implements CompletionStage
     #[\Override]
     public function run(CompletionState $state): StageOutcome
     {
-        $connection  = $state->connection  ?? throw new \LogicException('Enforcement is checked once the connection is read.');
-        $application = $state->application ?? throw new \LogicException('Enforcement is checked once the request is consumed.');
-        $policy      = $this->enforcement->policy($connection->tenant_id, $application->name);
+        $connection  = $state->connection        ?? throw new \LogicException('Enforcement is checked once the connection is read.');
+        $application = $state->application       ?? throw new \LogicException('Enforcement is checked once the request is consumed.');
+        $policy      = $state->enforcementPolicy ?? $this->enforcement->policy($connection->tenant_id, $application->name);
 
         if (!$policy->isSatisfiedBy($connection->id)) {
             return StageOutcome::refuse($state, FailureReason::ENFORCEMENT_UNSATISFIED);

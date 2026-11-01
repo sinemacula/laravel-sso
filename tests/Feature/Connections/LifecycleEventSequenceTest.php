@@ -241,16 +241,18 @@ final class LifecycleEventSequenceTest extends TestCase
         $unknown = '01jbunknownconnection00000';
         $first   = $this->links[0]->id;
         $second  = $this->links[1]->id;
+        $all     = array_map(static fn (Link $link): string => $link->id, $this->links);
+        $collide = [$first => ['x'], $second => ['x']];
 
         return [
             'stale disable'       => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $id),
             'stale delete'        => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $id),
-            'stale migration'     => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['settings' => ['client_id' => 'client-456']], []),
+            'stale migration'     => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['settings' => ['client_id' => 'client-456']], [], $all),
             'missing disable'     => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $unknown),
             'missing delete'      => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $unknown),
-            'missing migration'   => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $unknown, ['display_name' => 'Renamed'], []),
-            'invalid migration'   => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['display_name' => ''], []),
-            'colliding migration' => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['display_name' => 'Renamed'], [$first => ['x'], $second => ['x']]),
+            'missing migration'   => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $unknown, ['display_name' => 'Renamed'], [], $all),
+            'invalid migration'   => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['display_name' => ''], [], $all),
+            'colliding migration' => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['display_name' => 'Renamed'], $collide, [$this->links[2]->id]),
             'linked update'       => fn (): ConnectionResult => $this->connections()->update(self::TENANT, $id, ['settings' => ['client_id' => 'client-456']]),
             'repeated disable'    => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $id),
         ];
@@ -267,7 +269,7 @@ final class LifecycleEventSequenceTest extends TestCase
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['client_id' => 'client-456']], [
             $this->links[2]->id => ['subject-3-new'],
             $this->links[0]->id => ['subject-1-new'],
-        ]);
+        ], [$this->links[1]->id]);
 
         self::assertTrue($result->isChanged());
     }

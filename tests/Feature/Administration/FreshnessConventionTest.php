@@ -69,6 +69,7 @@ final class FreshnessConventionTest extends TestCase
     private const array MAX_AGES = [
         'connection_trust'         => 111,
         'connection_enable'        => 222,
+        'connection_disable'       => 777,
         'connection_idp_initiated' => 333,
         'keys_rotate'              => 444,
         'connection_delete'        => 555,
@@ -173,7 +174,7 @@ final class FreshnessConventionTest extends TestCase
         yield 'update turning IdP-initiated sign-in on' => ['update idp initiated', [FreshnessOperation::CONNECTION_IDP_INITIATED]];
         yield 'update turning IdP-initiated sign-in off' => ['update idp initiated off', [FreshnessOperation::CONNECTION_IDP_INITIATED]];
         yield 'enable' => ['enable', [FreshnessOperation::CONNECTION_ENABLE]];
-        yield 'disable' => ['disable', [FreshnessOperation::CONNECTION_ENABLE]];
+        yield 'disable' => ['disable', [FreshnessOperation::CONNECTION_DISABLE]];
         yield 'delete' => ['delete', [FreshnessOperation::CONNECTION_DELETE]];
         yield 'subject migration' => ['migrate', [FreshnessOperation::CONNECTION_TRUST, FreshnessOperation::LINK_REMOVE]];
         yield 'add next' => ['add next', [FreshnessOperation::KEYS_ROTATE]];
@@ -351,6 +352,7 @@ final class FreshnessConventionTest extends TestCase
                 self::TENANT,
                 $this->oidc,
                 ['settings' => ['issuer' => 'https://login.example.com']],
+                [],
                 [],
                 $this->actor,
             ),

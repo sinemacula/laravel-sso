@@ -60,8 +60,9 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  *
  * Every answer from step 2 on, a refusal included, is held by the `Pacer` until
  * the least time a discovery start takes has passed since it started; an
- * exception is not. Where the answer leads still shows whether a domain routes
- * to an identity provider, as any discovery does.
+ * exception is not. That is a timing mitigation, not indistinguishability: work
+ * that outlasts the floor still shows in the time. Where the answer leads still
+ * shows whether a domain routes to an identity provider, as any discovery does.
  *
  * The email and its domain appear in no event and no log; the public reference
  * is the only flow identifier either carries (SSO-9.8). A database error, a

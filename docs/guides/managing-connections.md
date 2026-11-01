@@ -146,7 +146,7 @@ complete; it is used only once they are.
 $result = $lifecycle->disable($tenant->id, $connectionId, $actor);
 ```
 
-Disabling asks the freshness contract with `sso.connection.enable`, every time, then, in one transaction: turns the
+Disabling asks the freshness contract with `sso.connection.disable`, every time, then, in one transaction: turns the
 connection off, voids what is in flight through it, revokes every session established through it through the session
 revocation contract (see [Revoking sessions](enforcement.md#revoking-sessions)), and reports `ConnectionDisabled`. Its
 domains, links and keys are kept, so enabling it again restores it. Disabling a disabled connection succeeds as
@@ -169,7 +169,8 @@ propagates. A connection whose protocol is no longer registered can still be dis
 ## Migrating subjects
 
 When an organisation moves to another identity provider, or the provider changes how it identifies people, change the
-settings and say, for each link you keep, what its subject is under the new meaning:
+settings and say what happens to every link of the connection: for each link you keep, what its subject is under the
+new meaning, and which links to remove:
 
 ```php
 $result = $migration->migrate($tenant->id, $connectionId, ['settings' => [
@@ -177,17 +178,26 @@ $result = $migration->migrate($tenant->id, $connectionId, ['settings' => [
 ]], [
     $linkId      => ['00u1a2b3c4'],                                 // the new subject
     $otherLinkId => ['E-1042', null, 'https://login.acme.example'], // the subject, no NameID format, the new issuer
-], $actor);
+], [$leaverLinkId, $formerContractorLinkId], $actor);               // the links to remove
 ```
 
 Each relink is a list: the subject, then optionally the SAML NameID format and the issuer. A format left out or `null`
-is none; an issuer left out or `null` is the link's own, so give the new issuer when the change moves to one. Every link
-of the connection you do not list is removed, and its person's sessions through the connection are revoked; a person
-whose link you relink keeps signing in. The change is validated as `update()` validates one, and each relink with it,
-each problem at `relinks.<id>`: `unknown` for an id that is not one of this connection's links, `not_allowed` for a link
-reserved for a sign-in in progress, `invalid_type` for a relink that is not such a list, `invalid_format` for an empty
-or overlong part. It asks freshness for `sso.connection.trust` and `sso.link.remove` (and whatever else the change
-asks), and voids what is in flight.
+is none; an issuer left out or `null` is the link's own, so give the new issuer when the change moves to one. Each link
+you list for removal is removed, and its person's sessions through the connection are revoked; a person whose link you
+relink keeps signing in.
+
+The disposition must be exhaustive: every link the connection has when the migration runs must be either relinked or
+removed, and not both. If a link is left out, named in both, or an id is not one of this connection's links, the
+migration is refused with `links_unaccounted` and nothing changes. That includes a link created after you listed the
+links to prepare the call (someone linked their account in the meantime): read the links again, decide what happens to
+the new one, and call again. Nothing is ever removed just because you did not mention it. On PostgreSQL under
+`REPEATABLE READ`, a migration that races such a link can instead fail with a serialisation failure (SQLSTATE `40001`);
+retry your whole transaction, not just the migration.
+
+The change is validated as `update()` validates one, and each relink with it, each problem at `relinks.<id>`:
+`not_allowed` for a link reserved for a sign-in in progress (remove it instead), `invalid_type` for a relink that is not
+such a list, `invalid_format` for an empty or overlong part. It asks freshness for `sso.connection.trust` and
+`sso.link.remove` (and whatever else the change asks), and voids what is in flight.
 
 Everything happens in one transaction: if a new subject is already linked (two relinks to the same subject, say), the
 result is `invalid` with `duplicate` at that relink, if a person would hold more links than the link limit allows, with
@@ -226,10 +236,10 @@ value, never an exception:
 | `invalid`   | `isInvalid()`                  | `reason`: `settings_invalid`, and `violations` |
 
 A refused `reason` is `freshness_required`, `connection_not_found`, `protocol_unavailable` (not for a disable or a
-deletion) or `connection_has_links` (an update only). A refused or invalid call writes nothing and reports nothing.
-`protocol_unavailable` means no driver is registered under the protocol, or its switch in `sso.features` is off. An
-empty or overlong tenant id is your application's mistake, an `InvalidArgumentException`; a database error or a secret
-encrypter that cannot encrypt propagates.
+deletion), `connection_has_links` (an update only) or `links_unaccounted` (a migration only). A refused or invalid call
+writes nothing and reports nothing. `protocol_unavailable` means no driver is registered under the protocol, or its
+switch in `sso.features` is off. An empty or overlong tenant id is your application's mistake, an
+`InvalidArgumentException`; a database error or a secret encrypter that cannot encrypt propagates.
 
 Each violation names a setting by its dotted path (`issuer`, `signature_algorithms.2`, `extra_parameters.state`,
 `attribute_mapping.email`, `display_name`, `preset`) and a code, never the value given:

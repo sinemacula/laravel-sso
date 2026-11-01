@@ -436,6 +436,28 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
+     * A response whose request's application is no longer registered is
+     * rejected with `application_not_allowed`, with no target, its request
+     * consumed and completed, so it is terminal, and nothing validated.
+     *
+     * @return void
+     */
+    public function testARequestOfAnUnregisteredApplicationIsRejectedAndTerminal(): void
+    {
+        $request = $this->request(['application' => 'retired']);
+
+        self::assertResult(self::rejectedResult(FailureReason::APPLICATION_NOT_ALLOWED), $this->completeAtCallback());
+
+        $row = $this->reread($request);
+
+        self::assertSame('2026-11-01T09:30:00+00:00', $row->consumed_at?->toIso8601String());
+        self::assertSame('2026-11-01T09:30:00+00:00', $row->completed_at?->toIso8601String());
+        self::assertSame([], $this->driver->completions());
+        self::assertSame([], $this->issuer->grants());
+        self::assertResult(self::rejectedResult(FailureReason::REQUEST_UNKNOWN), $this->completeAtCallback());
+    }
+
+    /**
      * A response the driver refuses fails with the driver's reason, redirected
      * to the application, with its request consumed and completed.
      *

@@ -92,6 +92,13 @@ In this order, the first that fails refusing it:
 8. The connection must still be enabled and complete, still satisfy its tenant's enforcement, and the result's link
    must still resolve to the identity it resolved to at completion.
 
+Before the code is locked, the redemption locks the tenant's enforcement (with the `enforcement` feature on and the
+package's default enforcement contract bound), then the connection and the connections the rule names. A change to
+enforcement made at the same time therefore either finishes first, and the redemption sees the new rule, or waits for
+the redemption's transaction to end, and its session revocation then sees the session you created in it. Either way, no
+session survives that the rule now in force does not allow. A tenant that never had a rule has an empty row inserted to
+lock, which reads exactly as no rule.
+
 A redeemed `sign_in` code that resolved to an identity records that the connection has completed a sign-in, which
 enforcement needs before it can be turned on for the tenant (SSO-4.3). A `link` or `reauthenticate` code, an unlinked
 handoff and a code that was never redeemed never do.
@@ -140,11 +147,24 @@ with the redemption: the redemption is then part of it (a savepoint), its events
 undoes it, the consumed code included, so the client can try again. A transaction on another connection is not atomic
 with it (decision D5).
 
+Write the session inside that same transaction. The enforcement lock the redemption takes is held until your
+transaction commits, so a change to enforcement waits for your session to be written and its revocation then removes
+it if the new rule does not allow it. A session written after your transaction commits, or through another connection,
+is not covered: it can be created after the rule changed and escape the change's revocation.
+
+> [!IMPORTANT]
+> On PostgreSQL under `REPEATABLE READ`, a redemption that waited on an enforcement change can fail with a
+> serialisation failure (SQLSTATE `40001`) instead of seeing the new rule. The package propagates it and never retries
+> part of your transaction. Treat it as a server error, or retry your whole transaction from the start (the code is not
+> spent, since the failure rolls everything back). Never catch it and carry on inside the same transaction.
+
 ## Redeeming codes of your own
 
 An adapter that issues handoff codes of its own (binding `Contracts\HandoffIssuer` to its store, as `laravel-iam`
 binds `laravel-authentication`'s codes) redeems them itself, and asks the package's recheck inside the transaction
-that consumes its code, on the package's storage connection:
+that consumes its code, on the package's storage connection. It takes the recheck's lock first, before it locks its own
+code, so every redemption takes the package's lock order (the tenant's enforcement, then the connections, then the
+code) and none deadlocks with an enforcement change:
 
 ```php
 use Illuminate\Support\Facades\DB;
@@ -154,29 +174,47 @@ use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 
 DB::connection(StorageConnection::name())->transaction(function () use ($code, $result, $linkedIdentity) {
-    $code->consume(); // your own atomic, single-use consumption, through this same connection
+    $recheck = app(HandoffRecheck::class);
+    $lock    = $recheck->lock($result->tenantId, $result->connectionId, $result->application); // first
 
-    $outcome = app(HandoffRecheck::class)->recheck($result, $linkedIdentity);
+    $code->consume(); // your own atomic, single-use consumption, locked after, through this same connection
+
+    $outcome = $recheck->recheck($result, $linkedIdentity, $lock);
 
     if ($outcome !== RecheckOutcome::PASSED) {
         return $outcome->reason(); // refuse; your code stays consumed
     }
 
     if ($result->purpose === Purpose::SIGN_IN && $linkedIdentity !== null) {
-        app(HandoffRecheck::class)->acknowledgeSignIn($result);
+        $recheck->acknowledgeSignIn($result, $lock);
     }
 
-    // sign in, link or re-authenticate
+    // sign in, link or re-authenticate, writing the session in this transaction
 });
 ```
 
-- `recheck()` answers `passed`, or the first of `connection_unavailable`, `enforcement_unsatisfied` and
-  `link_changed`; `reason()` gives the `FailureReason` to refuse with. It locks the connection's row until your
-  transaction ends.
-- `acknowledgeSignIn()` records the connection's completed sign-in, only for a `sign_in` result; call it after the
-  recheck passed, for a result linked to an identity.
-- Both throw a `LogicException` outside a transaction on the storage connection, and `acknowledgeSignIn()` for a
-  result of another purpose.
+- `lock()` takes the locks a redemption holds until your transaction ends: with the `enforcement` feature on and the
+  default enforcement contract bound, the tenant's enforcement row (named by the inheritance contract, and inserted
+  empty when the tenant has none) and then, in one statement in id order, the connection and the connections the rule
+  names; otherwise the connection alone. Read your code plainly to learn the result before it, if you need to, but lock
+  your code only after it.
+- `recheck()` takes that lock, and refuses one taken for another tenant, connection or application than the result's
+  with a `LogicException`, so it cannot be reached without the locks. It answers `passed`, or the first of
+  `connection_unavailable` (also when the inheritance contract no longer names the tenant whose rule is locked),
+  `enforcement_unsatisfied` and `link_changed`; `reason()` gives the `FailureReason` to refuse with. Under the default
+  contract it judges enforcement from the locked rows.
+- `acknowledgeSignIn()` records the connection's completed sign-in on the locked row, only for a `sign_in` result; call
+  it after the recheck passed, for a result linked to an identity.
+- All three throw a `LogicException` outside a transaction on the storage connection, and `acknowledgeSignIn()` for a
+  result of another purpose. A lock is only good for the transaction it was taken in.
+- A serialisation failure on PostgreSQL propagates from `lock()`; retry your whole transaction, never a part of it.
+
+If you bind your own `Contracts\Enforcement`, the recheck asks it, under the connection's lock alone. A current read in
+your contract is not enough to keep a session from escaping a rule change: your contract must itself serialise the
+admission against changes to its rule until the session's transaction commits (for example by locking the row your rule
+lives in, in the same transaction), and your revocation must find sessions with current reads. If you bind your own
+`Contracts\EnforcementInheritance`, it is asked inside the redeemer's transaction, before and after the locks: answer
+from state that does not change under the transaction, or read it with a current read.
 
 ## Events
 
