@@ -27,7 +27,14 @@ The current note set is:
   trusts.
 - `freshness.md`: the fresh authentication every operation that could widen, redirect or destroy access asks for, and
   the stable operation names.
-- `administration-events.md`: the events a change to a connection, a key or a certificate reports, and when.
+- `administration-events.md`: the events a change to a connection, a key, a certificate, a domain or a tenant's
+  enforcement reports, and when.
+- `domains.md`: claiming an email domain for a connection and verifying it by DNS TXT record, the resolver contract and
+  its three outcomes, one verified connection per domain, the lock order, and the predicates a domain is judged by.
+- `domain-rechecks.md`: the scheduled recheck of verified domains, the grace period, the immediate suspension of linking
+  and the lapse.
+- `enforcement.md`: a tenant's rule that sessions in it come through its own connections, the enforcement,
+  inheritance, exemption and session revocation contracts, and the version that changes with every change.
 - `storage.md`: where the package's tables live, why they share one connection, how the models and the published
   migrations choose the same connection and table names, and the transaction rule an adapter follows.
 - `configuration.md`: the feature switches, the configuration checked at boot and by `sso:check` for what is enabled,

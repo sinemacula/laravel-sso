@@ -144,6 +144,29 @@ A refused change (`freshness_required`, `settings_invalid` and the rest) and a c
 giving the stored values, enabling an enabled connection) report nothing, not even `FlowFailed`: the helper's result is
 the answer. No administration event carries a secret, a private key, a ciphertext or a setting's value.
 
+### Domain and enforcement events
+
+A connection's domains (see [Domains](domains.md)) and a tenant's enforcement report their changes the same way, once
+the change commits. A domain event's context names the connection that claimed the domain, its tenant and protocol;
+an enforcement event's names the tenant.
+
+| Event                 | Fields beyond the context                                | Dispatched when                                                                                   |
+|-----------------------|----------------------------------------------------------|---------------------------------------------------------------------------------------------------|
+| `DomainClaimed`       | `domainId`, `domain`, `recordName`, `pendingExpiresAt`   | `DomainService::claim()` claimed a domain, or claimed an expired claim again                      |
+| `DomainVerified`      | `domainId`, `domain`, `verifiedAt`                       | `DomainService::verify()` found the token in the domain's TXT record                              |
+| `DomainRemoved`       | `domainId`, `domain`, `state`                            | `DomainService::remove()` removed a claim, in the state it was in                                 |
+| `DomainRecheckFailed` | `domainId`, `domain`, `failure`, `lapsesAt`              | `sso:domains:recheck` found a verified domain's record absent or changed, or could not look it up |
+| `DomainRestored`      | `domainId`, `domain`, `verifiedAt`, `checkedAt`          | `sso:domains:recheck` confirmed a domain whose record had gone, within its grace period           |
+| `DomainLapsed`        | `domainId`, `domain`                                     | `sso:domains:recheck` lapsed a domain at the end of its grace period                              |
+| `EnforcementChanged`  | `enabled`, `connectionIds`, `version`, `previousVersion` | A tenant's enforcement was turned on or off, or its satisfying connections changed                |
+| `ExemptionUsed`       | `enforcementVersion`                                     | A session was established in an enforcing tenant under an exemption                               |
+
+`domain` is the normalised domain, `recordName` the name its TXT record is looked up at, and `failure` a
+`RecheckFailure`: `record_absent` or `record_changed`, which suspend linking by the domain at once and set `lapsesAt`,
+or `lookup_failed`, which changes nothing. No domain event carries the verification token or a record's value. An
+`ExemptionUsed` context names the enforcing tenant as `tenant_id`, the tenant the session is active in as
+`active_tenant_id`, the application, the identity and the session when the caller has one.
+
 ### The acting identity
 
 Each helper takes the identity making the change as its last argument, an `ActingIdentity` of a type and an id as your

@@ -19,13 +19,24 @@ use SineMacula\Laravel\Sso\Config\Checks\StorageCheck;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Connections\MappingCheck;
 use SineMacula\Laravel\Sso\Console\CheckConfigurationCommand;
+use SineMacula\Laravel\Sso\Console\RecheckDomainsCommand;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Contracts\DnsResolver;
+use SineMacula\Laravel\Sso\Contracts\Enforcement;
+use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
+use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
+use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
+use SineMacula\Laravel\Sso\Domains\DomainsCheck;
+use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
+use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
+use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
+use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
 use SineMacula\Laravel\Sso\Fetching\FetcherCheck;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
@@ -37,6 +48,7 @@ use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
 use SineMacula\Laravel\Sso\RateLimiting\RateLimitsCheck;
+use SineMacula\Laravel\Sso\Revocation\NoSessionRevocation;
 use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use SineMacula\Laravel\Sso\Secrets\SecretsCheck;
 use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
@@ -66,11 +78,13 @@ final class SsoServiceProvider extends ServiceProvider
         'freshness'    => FreshnessCheck::class,
         'keys'         => KeysCheck::class,
         'mapping'      => MappingCheck::class,
+        'domains'      => DomainsCheck::class,
     ];
 
     /** @var list<class-string> Every package class that takes a PSR-3 logger. Each is given `Logging\SanitizingLogger`, so nothing the package logs skips sanitisation and redaction (SSO-5.7, SSO-9.8); the application's own `LoggerInterface` binding is left alone. A part of the package that logs adds its class here. */
     public const array LOGGING_CLASSES = [
         GuzzleFetcher::class,
+        SystemDnsResolver::class,
     ];
 
     /** @var list<string> The console commands that start long-running or scheduled work: the queue workers, Horizon, the scheduler and the Octane servers. Each is checked as it starts and refused on a problem, as a request is at boot (SSO-12.3); every other command runs, so a misconfigured application can still run `sso:check`, its migrations and the commands that repair it. */
@@ -95,6 +109,14 @@ final class SsoServiceProvider extends ServiceProvider
         '2026_10_31_000001_create_sso_rate_limits_table.php',
         '2026_11_01_000000_create_sso_connections_table.php',
         '2026_11_01_000001_create_sso_keys_table.php',
+        '2026_11_02_000000_create_sso_domains_table.php',
+        '2026_11_02_000001_create_sso_enforcement_table.php',
+    ];
+
+    /** @var list<class-string<\Illuminate\Console\Command>> The package's console commands, registered in the console only. */
+    private const array COMMANDS = [
+        CheckConfigurationCommand::class,
+        RecheckDomainsCommand::class,
     ];
 
     /**
@@ -105,12 +127,17 @@ final class SsoServiceProvider extends ServiceProvider
      * as any later binding does. A default that holds nothing between calls is
      * a singleton; one that reads configuration or a connection is scoped, so
      * nothing of one request or job outlives it under Octane or a queue worker
-     * (SSO-11.2). The freshness contract's default refuses every operation
-     * (SSO-2.12). The protocol registry is a singleton that builds its drivers
-     * with the application serving (see `ProtocolManager::driver()`). Each is
-     * resolved only when first used. Every package class that logs is given
-     * `SanitizingLogger` by a contextual binding, never by binding
-     * `LoggerInterface` for the whole application.
+     * (SSO-11.2). Each default fails closed: the freshness contract's refuses
+     * every operation (SSO-2.12); the DNS resolver's answers `lookup_failed`
+     * whenever the system resolver cannot answer (SSO-3.2); enforcement is read
+     * from the write connection on every question, inheritance applies each
+     * tenant's own setting, nobody is exempt (SSO-4.1, SSO-4.2, SSO-4.4); and
+     * the session revocation revokes nothing, since the package keeps no
+     * sessions, which its documentation says (SSO-4.5). The protocol registry
+     * is a singleton that builds its drivers with the application serving (see
+     * `ProtocolManager::driver()`). Each is resolved only when first used.
+     * Every package class that logs is given `SanitizingLogger` by a contextual
+     * binding, never by binding `LoggerInterface` for the whole application.
      *
      * @return void
      */
@@ -126,6 +153,11 @@ final class SsoServiceProvider extends ServiceProvider
         $this->app->scopedIf(Fetcher::class, GuzzleFetcher::class);
         $this->app->scopedIf(AttemptLimiter::class, DatabaseAttemptLimiter::class);
         $this->app->singletonIf(Freshness::class, RefusingFreshness::class);
+        $this->app->scopedIf(DnsResolver::class, SystemDnsResolver::class);
+        $this->app->scopedIf(Enforcement::class, DatabaseEnforcement::class);
+        $this->app->singletonIf(EnforcementInheritance::class, OwnTenantInheritance::class);
+        $this->app->singletonIf(EnforcementExemption::class, NoExemptions::class);
+        $this->app->singletonIf(SessionRevocation::class, NoSessionRevocation::class);
         $this->app->singletonIf(ProtocolManager::class);
         $this->app->when(self::LOGGING_CLASSES)->needs(LoggerInterface::class)->give(SanitizingLogger::class);
         $this->app->bindIf(
@@ -187,7 +219,7 @@ final class SsoServiceProvider extends ServiceProvider
             return;
         }
 
-        $this->commands([CheckConfigurationCommand::class]);
+        $this->commands(self::COMMANDS);
     }
 
     /**

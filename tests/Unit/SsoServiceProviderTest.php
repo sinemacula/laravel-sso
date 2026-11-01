@@ -14,15 +14,24 @@ use SineMacula\Laravel\Sso\Clock\SystemClock;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Contracts\DnsResolver;
+use SineMacula\Laravel\Sso\Contracts\Enforcement;
+use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
+use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
+use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
+use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
+use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
+use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
+use SineMacula\Laravel\Sso\Revocation\NoSessionRevocation;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\Fixtures\Fetching\StubHostResolver;
 
@@ -48,6 +57,11 @@ final class SsoServiceProviderTest extends TestCase
         Fetcher::class,
         AttemptLimiter::class,
         Freshness::class,
+        DnsResolver::class,
+        Enforcement::class,
+        EnforcementInheritance::class,
+        EnforcementExemption::class,
+        SessionRevocation::class,
         ProtocolManager::class,
         ConfigurationChecker::class,
     ];
@@ -88,7 +102,8 @@ final class SsoServiceProviderTest extends TestCase
 
         $shared = [
             Clock::class, HostResolver::class, SingleUseStore::class, SecretEncrypter::class, Fetcher::class, AttemptLimiter::class,
-            Freshness::class, ProtocolManager::class,
+            Freshness::class, ProtocolManager::class, DnsResolver::class, Enforcement::class, EnforcementInheritance::class,
+            EnforcementExemption::class, SessionRevocation::class,
         ];
 
         foreach ($shared as $abstract) {
@@ -144,6 +159,39 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
+     * An enforcement inheritance, exemption or session revocation the
+     * application bound before the provider registers is kept (SSO-4.2,
+     * SSO-4.4, SSO-4.5); without one, each default is a singleton.
+     *
+     * @return void
+     */
+    public function testAnEnforcementContractBoundBeforeIsKept(): void
+    {
+        [$app] = self::application();
+
+        $inheritance = new OwnTenantInheritance;
+        $exemption   = new NoExemptions;
+        $revocation  = new NoSessionRevocation;
+
+        $app->instance(EnforcementInheritance::class, $inheritance);
+        $app->instance(EnforcementExemption::class, $exemption);
+        $app->instance(SessionRevocation::class, $revocation);
+
+        (new SsoServiceProvider($app))->register();
+
+        self::assertSame($inheritance, $app->make(EnforcementInheritance::class));
+        self::assertSame($exemption, $app->make(EnforcementExemption::class));
+        self::assertSame($revocation, $app->make(SessionRevocation::class));
+
+        [$fresh] = self::application();
+
+        (new SsoServiceProvider($fresh))->register();
+
+        self::assertInstanceOf(NoSessionRevocation::class, $fresh->make(SessionRevocation::class));
+        self::assertSame($fresh->make(SessionRevocation::class), $fresh->make(SessionRevocation::class));
+    }
+
+    /**
      * Every package class that takes a PSR-3 logger is given `SanitizingLogger`
      * by a contextual binding, and `LoggerInterface` is never bound for the
      * whole application.
@@ -159,7 +207,7 @@ final class SsoServiceProviderTest extends TestCase
 
         (new SsoServiceProvider($app))->register();
 
-        self::assertSame([GuzzleFetcher::class], SsoServiceProvider::LOGGING_CLASSES);
+        self::assertSame([GuzzleFetcher::class, SystemDnsResolver::class], SsoServiceProvider::LOGGING_CLASSES);
 
         foreach (SsoServiceProvider::LOGGING_CLASSES as $class) {
             self::assertSame(SanitizingLogger::class, $app->contextual[$class][$logger] ?? null);
@@ -178,7 +226,7 @@ final class SsoServiceProviderTest extends TestCase
     public function testEveryConfigurationCheckIsRegistered(): void
     {
         self::assertSame(
-            ['features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits', 'freshness', 'keys', 'mapping'],
+            ['features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits', 'freshness', 'keys', 'mapping', 'domains'],
             array_keys(SsoServiceProvider::CONFIGURATION_CHECKS),
         );
     }

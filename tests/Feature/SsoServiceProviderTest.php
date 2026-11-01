@@ -17,15 +17,25 @@ use SineMacula\Laravel\Sso\Clock\SystemClock;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Contracts\DnsResolver;
+use SineMacula\Laravel\Sso\Contracts\Enforcement;
+use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
+use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
+use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
+use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
+use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
+use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
+use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
 use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
+use SineMacula\Laravel\Sso\Revocation\NoSessionRevocation;
 use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
@@ -102,6 +112,8 @@ final class SsoServiceProviderTest extends TestCase
         yield 'the secret encrypter' => [SecretEncrypter::class, LaravelSecretEncrypter::class];
         yield 'the fetcher' => [Fetcher::class, GuzzleFetcher::class];
         yield 'the attempt limiter' => [AttemptLimiter::class, DatabaseAttemptLimiter::class];
+        yield 'the DNS resolver' => [DnsResolver::class, SystemDnsResolver::class];
+        yield 'the enforcement' => [Enforcement::class, DatabaseEnforcement::class];
     }
 
     /**
@@ -153,6 +165,41 @@ final class SsoServiceProviderTest extends TestCase
         self::assertSame($clock, $app->make(Clock::class));
         self::assertSame($resolver, $app->make(HostResolver::class));
         self::assertNotSame($app->make(ConfigurationChecker::class), $app->make(ConfigurationChecker::class));
+    }
+
+    /**
+     * Each stateless enforcement contract with its default.
+     *
+     * @return iterable<string, array{class-string, class-string}>
+     */
+    public static function statelessEnforcementDefaults(): iterable
+    {
+        yield 'the inheritance' => [EnforcementInheritance::class, OwnTenantInheritance::class];
+        yield 'the exemption' => [EnforcementExemption::class, NoExemptions::class];
+        yield 'the session revocation' => [SessionRevocation::class, NoSessionRevocation::class];
+    }
+
+    /**
+     * The enforcement inheritance, exemption and session revocation defaults
+     * hold nothing, so one instance serves every request (SSO-4.2, SSO-4.4,
+     * SSO-4.5).
+     *
+     * @param  class-string  $abstract
+     * @param  class-string  $default
+     * @return void
+     */
+    #[DataProvider('statelessEnforcementDefaults')]
+    public function testEachStatelessEnforcementDefaultOutlivesARequest(string $abstract, string $default): void
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app   = $this->app;
+        $first = $app->make($abstract);
+
+        self::assertInstanceOf($default, $first);
+
+        $app->forgetScopedInstances();
+
+        self::assertSame($first, $app->make($abstract));
     }
 
     /**
@@ -264,6 +311,8 @@ final class SsoServiceProviderTest extends TestCase
             '2026_10_31_000001_create_sso_rate_limits_table.php',
             '2026_11_01_000000_create_sso_connections_table.php',
             '2026_11_01_000001_create_sso_keys_table.php',
+            '2026_11_02_000000_create_sso_domains_table.php',
+            '2026_11_02_000001_create_sso_enforcement_table.php',
         ], array_map(basename(...), array_keys($paths)));
 
         foreach ($paths as $from => $to) {
@@ -310,6 +359,16 @@ final class SsoServiceProviderTest extends TestCase
     public function testTheCheckCommandIsRegistered(): void
     {
         self::assertArrayHasKey('sso:check', Artisan::all());
+    }
+
+    /**
+     * `sso:domains:recheck` is registered in the console.
+     *
+     * @return void
+     */
+    public function testTheDomainRecheckCommandIsRegistered(): void
+    {
+        self::assertArrayHasKey('sso:domains:recheck', Artisan::all());
     }
 
     /**

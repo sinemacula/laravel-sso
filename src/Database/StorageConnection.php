@@ -49,6 +49,8 @@ final class StorageConnection
         'rate_limits.table' => 'sso_rate_limits',
         'connections.table' => 'sso_connections',
         'keys.table'        => 'sso_keys',
+        'domains.table'     => 'sso_domains',
+        'enforcement.table' => 'sso_enforcement',
     ];
 
     /** @var string The key, under `sso.`, of the table that lives on the counters' connection. */

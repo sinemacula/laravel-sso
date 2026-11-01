@@ -122,6 +122,7 @@ final class CheckConfigurationCommandTest extends TestCase
         config()->set('sso.freshness.max_age_seconds.connection_trust', 0);
         config()->set('sso.keys.rsa_bits', 2048);
         config()->set('sso.mapping.max_values', 0);
+        config()->set('sso.domains.recheck_grace_seconds', -1);
 
         $this->app?->forgetInstance('encrypter');
         $this->app?->forgetScopedInstances();
@@ -143,6 +144,7 @@ final class CheckConfigurationCommandTest extends TestCase
             '[freshness] sso.freshness.max_age_seconds.connection_trust must be an integer from 1 to 3600.',
             '[keys] sso.keys.rsa_bits must be one of 3072, 4096.',
             '[mapping] sso.mapping.max_values must be an integer from 1 to 10000.',
+            '[domains] sso.domains.recheck_grace_seconds must be an integer from 0 to 2592000.',
         ], $output);
     }
 
