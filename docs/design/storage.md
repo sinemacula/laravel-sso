@@ -65,7 +65,9 @@ commit with the package follows (SSO-11.7, SSO-11.10).
 
 - `src/Database/StorageConnection.php`: `TABLES`, `name()`, `forRateLimits()`, `connectionFor()`, `table()`,
   `holds()`.
-- `src/Models/SsoModel.php`: the constructor; `src/Database/MigrationCollisionGuard.php`.
+- `src/Models/SsoModel.php`: the constructor and `identifiedAndStamped()`; `src/Database/MigrationCollisionGuard.php`.
+- `src/Models/Connection.php`, `src/Models/ConnectionKey.php` and their migrations (`connections.table`,
+  `keys.table`): records keyed by a ULID and stamped by the package's clock (see `connections.md`).
 - `src/SsoServiceProvider.php`: `MIGRATIONS`, `registerPublishing()`; `src/Config/Checks/StorageCheck.php`;
   `config/sso.php`: `storage`, and each section's `table`.
 

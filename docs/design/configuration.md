@@ -85,6 +85,8 @@ package registers its settings and its check without editing another's (SSO-12.2
   `src/Exceptions/InvalidConfigurationException.php`, `src/Exceptions/MissingExtensionException.php`.
 - `src/Config/Checks/FeaturesCheck.php`, `ExtensionsCheck.php`, `StorageCheck.php`, `EndpointsCheck.php`,
   `ApplicationsCheck.php`.
+- The checks of later parts, each beside the settings it reads: `src/Freshness/FreshnessCheck.php` (`[freshness]`),
+  `src/Keys/KeysCheck.php` (`[keys]`), `src/Connections/MappingCheck.php` (`[mapping]`).
 - `src/Console/CheckConfigurationCommand.php`; `src/SsoServiceProvider.php`: `CONFIGURATION_CHECKS`,
   `WORKER_COMMANDS`, `checkConfiguration()`, `checkConfigurationBeforeWork()`; `config/sso.php`.
 

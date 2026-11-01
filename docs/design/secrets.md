@@ -37,6 +37,14 @@ SSO-11.9).
   is refused.
 - No secret, decrypted or encrypted, is put in an event, a log line or an exception message. Events carry the shared
   context only (see `event-model.md`); a masked type is what an event or a response may carry.
+- A failed write of a ciphertext (a connection's `secrets`, a key's `private_key`) goes through
+  `Database\CiphertextWrite`: Laravel's `QueryException` quotes the statement with its bindings, and chains the driver's
+  message, which PostgreSQL's `DETAIL` can fill with the failing row, so it becomes a
+  `Database\CiphertextWriteException` (a `RuntimeException`) that names only the SQLSTATE and chains nothing. It still
+  propagates as a server error and rolls the transaction back. To keep bindings out of the messages of the application's
+  other queries on the storage connection, set Laravel's `mask_bindings_in_exception_messages` on it.
+- Every parameter that carries a plaintext secret, or the settings an administrator gave with their secrets among them,
+  is `#[\SensitiveParameter]`, so a trace collected with `zend.exception_ignore_args` off shows it redacted.
 - Every comparison of a secret, verifier, code or digest goes through `Secrets\ConstantTime`: `equals()` for two
   values, `matchesDigest()` for a value against a stored lower-case hex digest under a cryptographic hash PHP supports
   (SHA-256 by default). Neither `===`, `==` nor `strcmp()` compares one. Only the known value's length can show through
@@ -81,6 +89,7 @@ SSO-11.9).
 - `src/Contracts/SecretEncrypter.php`; `src/Secrets/LaravelSecretEncrypter.php`.
 - `src/Secrets/Secret.php`, `src/Secrets/MaskedSecret.php`, `src/Secrets/MaskedKey.php`.
 - `src/Secrets/ConstantTime.php`.
+- `src/Database/CiphertextWrite.php`.
 - `src/Secrets/SecretsCheck.php`; `src/SsoServiceProvider.php`: the `scopedIf` binding and `CONFIGURATION_CHECKS`.
 
 ## Authoritative Tests
@@ -93,6 +102,8 @@ SSO-11.9).
 - `tests/Feature/Secrets/SecretEncrypterBindingTest.php`
 - `tests/Feature/Secrets/SecretsCheckTest.php`
 - `tests/Integration/Secrets/KeyRotationTest.php`
+- `tests/Integration/Connections/ConnectionServiceTest.php`
+- `tests/Feature/Database/CiphertextWriteTest.php`
 
 ## Change Triggers
 

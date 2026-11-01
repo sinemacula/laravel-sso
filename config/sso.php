@@ -24,8 +24,9 @@ return [
     | while the application runs: moving the tables is a deploy, with a
     | migration the application performs and a worker restart.
     |
-    | Each table's name is set in its own section (`single_use.table`,
-    | `rate_limits.table`), each defaulting to an `sso_` prefix.
+    | Each table's name is set in its own section (`connections.table`,
+    | `keys.table`, `single_use.table`, `rate_limits.table`), each defaulting
+    | to an `sso_` prefix.
     |
     */
 
@@ -141,6 +142,101 @@ return [
 
     'clock' => [
         'skew_seconds' => env('SSO_CLOCK_SKEW_SECONDS', 60),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Connections
+    |---------------------------------------------------------------------------
+    |
+    | The table each tenant's connections are kept in, on the storage
+    | connection: one row per trust in one identity provider over one
+    | protocol, with its settings, its secrets (encrypted), its attribute
+    | mapping and whether it is enabled. Connections are rows, managed through
+    | the package's helpers, never entries here.
+    |
+    */
+
+    'connections' => [
+        'table' => env('SSO_CONNECTIONS_TABLE', 'sso_connections'),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Keys and certificates
+    |---------------------------------------------------------------------------
+    |
+    | The table each connection's own key pairs and trusted identity provider
+    | certificates are kept in, on the storage connection, and how the package
+    | generates and rotates its keys. A generated RSA key has a modulus of
+    | `rsa_bits`, 3072 or 4096 bits, and an elliptic curve key is always on
+    | P-256. A generated self-signed certificate is valid for
+    | `certificate_days`, from one day to ten years; its dates are reported,
+    | never enforced. A key replaced as current is still accepted for
+    | decryption for `overlap_seconds`, from none to 90 days. A certificate's
+    | expiry is reported as near `expiry_warning_days` ahead, from one day to
+    | a year.
+    |
+    */
+
+    'keys' => [
+        'table'               => env('SSO_KEYS_TABLE', 'sso_keys'),
+        'rsa_bits'            => env('SSO_KEYS_RSA_BITS', 3072),
+        'certificate_days'    => env('SSO_KEYS_CERTIFICATE_DAYS', 730),
+        'overlap_seconds'     => env('SSO_KEYS_OVERLAP_SECONDS', 604800),
+        'expiry_warning_days' => env('SSO_KEYS_EXPIRY_WARNING_DAYS', 30),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Attribute mapping
+    |---------------------------------------------------------------------------
+    |
+    | The caps on what a connection's attribute mapping carries. Mapped values
+    | are profile data, never used to select an identity: the longest value
+    | kept (`max_value_length`, 64 to 65535 characters), the most values one
+    | attribute keeps (`max_values`, 1 to 10000, a list of groups say), and the
+    | most custom keys a mapping may declare (`max_custom_attributes`, 0 to
+    | 100).
+    |
+    */
+
+    'mapping' => [
+        'max_value_length'      => env('SSO_MAPPING_MAX_VALUE_LENGTH', 1024),
+        'max_values'            => env('SSO_MAPPING_MAX_VALUES', 100),
+        'max_custom_attributes' => env('SSO_MAPPING_MAX_CUSTOM_ATTRIBUTES', 20),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Fresh authentication
+    |---------------------------------------------------------------------------
+    |
+    | Before each operation that could widen or redirect access, or destroy
+    | it, the package asks the bound freshness contract whether the caller
+    | authenticated within the operation's maximum age, in seconds (1 to
+    | 3600). The default contract refuses every operation: bind your own, or
+    | let `laravel-iam` bind `laravel-authentication`'s, before using the
+    | management helpers. Each key is the operation's stable name after `sso.`,
+    | with the dots as underscores (`sso.connection.trust` is
+    | `connection_trust`).
+    |
+    */
+
+    'freshness' => [
+        'max_age_seconds' => [
+            'connection_trust'         => 300,
+            'connection_enable'        => 300,
+            'connection_delete'        => 300,
+            'connection_idp_initiated' => 300,
+            'keys_rotate'              => 300,
+            'domain_claim'             => 300,
+            'domain_verify'            => 300,
+            'domain_remove'            => 300,
+            'enforcement_update'       => 300,
+            'link_create'              => 300,
+            'link_remove'              => 300,
+        ],
     ],
 
     /*

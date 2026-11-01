@@ -47,6 +47,8 @@ final class StorageConnection
     public const array TABLES = [
         'single_use.table'  => 'sso_single_use_keys',
         'rate_limits.table' => 'sso_rate_limits',
+        'connections.table' => 'sso_connections',
+        'keys.table'        => 'sso_keys',
     ];
 
     /** @var string The key, under `sso.`, of the table that lives on the counters' connection. */

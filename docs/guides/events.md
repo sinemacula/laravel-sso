@@ -112,3 +112,122 @@ A queued listener (`ShouldQueue`) receives every package event as a synchronous 
 
 The unlinked-result event is the one exception: it is dispatched synchronously, inside the flow and before any handoff
 is issued, so a listener can create the identity in time. A queued listener on it runs too late to provision anything.
+
+## Administration events
+
+Every change your administration screens make through the management helpers (see [Managing
+connections](managing-connections.md) and [Keys and certificates](keys.md)) is reported with one event, once the change
+commits, so an audit trail can record who changed which identity provider's trust, and when. Each is in
+`SineMacula\Laravel\Sso\Events` and carries the context above, with the connection's id, its tenant and its protocol.
+
+| Event                | Fields beyond the context                          | Dispatched when                                                                 |
+|----------------------|----------------------------------------------------|---------------------------------------------------------------------------------|
+| `ConnectionCreated`  | none                                               | `ConnectionService::create()` created a connection, disabled                    |
+| `ConnectionUpdated`  | `changedSettings`: the names of what changed       | `update()` changed a setting, a secret, the display name or the mapping         |
+| `ConnectionEnabled`  | none                                               | `enable()` enabled a disabled connection                                        |
+| `ConnectionDisabled` | none                                               | A connection was disabled; no helper does so yet                                |
+| `ConnectionDeleted`  | none                                               | A connection was deleted; no helper does so yet                                 |
+| `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter` | `KeyService::addNext()` added a key pair, or `trustCertificate()` a certificate |
+| `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`     | `makeCurrent()` made a key current, or `addNext()` added a use's first key      |
+| `KeyRetired`         | `keyId`, `use`, `fingerprint`                      | `retire()` removed a key, or `distrustCertificate()` a certificate              |
+| `KeyNearingExpiry`   | `keyId`, `use`, `fingerprint`, `notAfter`          | `ExpiryReport::report()` found its validity ending within the warning, or ended |
+
+`changedSettings` names what changed, never its value: the settings in the order the protocol lists them, then the
+secrets, then `display_name` and `attribute_mapping`, such as `['token_endpoint', 'client_secret', 'display_name']`. A
+rotated client secret is reported as `client_secret`, and nothing of the secret itself. `use` is a `KeyUse`, `state` a
+`KeyState` (`current` or `next` for a key pair, `null` for a trusted certificate), `fingerprint` the lower-case hex
+SHA-256 an administrator compares with the identity provider's, `notAfter` the end of the certificate's validity, and
+`previousKeyId` the key a new current key replaced, now retiring, or `null`. The first key of a use is reported twice,
+`KeyAdded` then `KeyMadeCurrent`.
+
+A refused change (`freshness_required`, `settings_invalid` and the rest) and a change that changed nothing (an update
+giving the stored values, enabling an enabled connection) report nothing, not even `FlowFailed`: the helper's result is
+the answer. No administration event carries a secret, a private key, a ciphertext or a setting's value.
+
+### The acting identity
+
+Each helper takes the identity making the change as its last argument, an `ActingIdentity` of a type and an id as your
+application knows them; under `laravel-iam`, the identity's morph class and key. It reaches the context as
+`acting_identity_morph_class` and `acting_identity_id`, and is `null` when you pass none. The package never decides who
+may make a change: authorise the user first, then pass them so the event says who did.
+
+```php
+use SineMacula\Laravel\Sso\Administration\ActingIdentity;
+
+$actor = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
+
+$connections->update($tenantId, $connectionId, ['settings' => ['token_endpoint' => $url]], $actor);
+```
+
+### Recording an audit trail
+
+Listen on the administration events you keep, and store the context's record with the event's own fields. A queued
+listener receives them as a synchronous one does, and only once the change has committed:
+
+```php
+use Illuminate\Support\Facades\Event;
+use SineMacula\Laravel\Sso\Contracts\SsoEvent;
+use SineMacula\Laravel\Sso\Events\ConnectionCreated;
+use SineMacula\Laravel\Sso\Events\ConnectionDeleted;
+use SineMacula\Laravel\Sso\Events\ConnectionDisabled;
+use SineMacula\Laravel\Sso\Events\ConnectionEnabled;
+use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
+use SineMacula\Laravel\Sso\Events\KeyAdded;
+use SineMacula\Laravel\Sso\Events\KeyMadeCurrent;
+use SineMacula\Laravel\Sso\Events\KeyRetired;
+
+Event::listen([
+    ConnectionCreated::class,
+    ConnectionUpdated::class,
+    ConnectionEnabled::class,
+    ConnectionDisabled::class,
+    ConnectionDeleted::class,
+    KeyAdded::class,
+    KeyMadeCurrent::class,
+    KeyRetired::class,
+], function (SsoEvent $event): void {
+    $context = $event->context();
+
+    AuditEntry::create([
+        'event'         => class_basename($event),
+        'tenant_id'     => $context->tenantId,
+        'connection_id' => $context->connectionId,
+        'actor_type'    => $context->actingIdentityMorphClass,
+        'actor_id'      => $context->actingIdentityId,
+        'details'       => match (true) {
+            $event instanceof ConnectionUpdated => ['changed' => $event->changedSettings],
+            $event instanceof KeyAdded          => ['key_id' => $event->keyId, 'use' => $event->use->value, 'fingerprint' => $event->fingerprint],
+            $event instanceof KeyMadeCurrent    => ['key_id' => $event->keyId, 'replaced' => $event->previousKeyId],
+            $event instanceof KeyRetired        => ['key_id' => $event->keyId, 'fingerprint' => $event->fingerprint],
+            default                             => [],
+        },
+        'context'       => $context->toArray(),
+    ]);
+});
+```
+
+### Keys and certificates nearing expiry
+
+`SineMacula\Laravel\Sso\Keys\ExpiryReport::report()` finds every key and certificate, of every connection, whose
+validity ends within `keys.expiry_warning_days` (30 days by default), or within the days you pass (1 to 365), or has
+already ended. It dispatches one `KeyNearingExpiry` for each, with no acting identity, and returns them as `KeySummary`
+values, earliest end of validity first. A retiring key whose overlap has ended is left out, and so is a key with no end
+of validity.
+
+The expiry is reported, never enforced: an expired certificate is still trusted, since trust comes from the certificate
+you configured, not its dates. The report changes nothing, so run it on a schedule and tell an administrator to rotate:
+
+```php
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Schedule;
+use SineMacula\Laravel\Sso\Events\KeyNearingExpiry;
+use SineMacula\Laravel\Sso\Keys\ExpiryReport;
+
+Schedule::call(static fn () => app(ExpiryReport::class)->report())->daily();
+
+Event::listen(KeyNearingExpiry::class, function (KeyNearingExpiry $event): void {
+    SecurityTeam::notify(new CertificateExpiring($event->context()->connectionId, $event->fingerprint, $event->notAfter));
+});
+```
+
+Each run reports every such key again, until it is rotated or removed.

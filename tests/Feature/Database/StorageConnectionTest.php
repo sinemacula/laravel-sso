@@ -123,7 +123,12 @@ final class StorageConnectionTest extends TestCase
      */
     public function testEachTableTakesItsConfiguredName(): void
     {
-        self::assertSame(['single_use.table' => 'sso_single_use_keys', 'rate_limits.table' => 'sso_rate_limits'], StorageConnection::TABLES);
+        self::assertSame([
+            'single_use.table'  => 'sso_single_use_keys',
+            'rate_limits.table' => 'sso_rate_limits',
+            'connections.table' => 'sso_connections',
+            'keys.table'        => 'sso_keys',
+        ], StorageConnection::TABLES);
 
         foreach (StorageConnection::TABLES as $key => $default) {
             self::assertStringStartsWith('sso_', $default);
@@ -194,7 +199,9 @@ final class StorageConnectionTest extends TestCase
 
                 self::fail('Expected the key to be refused.');
             } catch (\LogicException $exception) {
-                self::assertSame('`sso.links.table` names no package table; the tables are named by `sso.single_use.table`, `sso.rate_limits.table`.', $exception->getMessage());
+                $known = '`sso.single_use.table`, `sso.rate_limits.table`, `sso.connections.table`, `sso.keys.table`';
+
+                self::assertSame("`sso.links.table` names no package table; the tables are named by {$known}.", $exception->getMessage());
             }
         }
     }

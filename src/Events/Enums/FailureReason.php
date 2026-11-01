@@ -11,6 +11,10 @@ namespace SineMacula\Laravel\Sso\Events\Enums;
  * operation fires, on the result an operation returns, and as the code a
  * failure redirect carries (SSO-5.7); the application words it (SSO-12.6).
  *
+ * The administration group is the reason a management helper refused a change
+ * (SSO-2.11, SSO-2.12), carried on the helper's result only: a refused change
+ * fires no event, since it changed nothing.
+ *
  * Backed, so SIEM consumers count failure modes without scraping log messages,
  * and stable once released: a case is never renamed or reused, and a removed
  * one leaves its value unused. Each later item adds the cases it reports here,
@@ -98,4 +102,28 @@ enum FailureReason: string
     // connection or the TLS handshake failed, the response was too large or too
     // slow, or it redirected too often (SSO-2.9)
     case FETCH_FAILED = 'fetch_failed';
+
+    // Administration, on a management helper's result only: the freshness
+    // contract answered `stale`, so the caller must authenticate again within
+    // the operation's maximum age (SSO-2.11, SSO-2.12)
+    case FRESHNESS_REQUIRED = 'freshness_required';
+
+    // No connection with that id belongs to the tenant named
+    case CONNECTION_NOT_FOUND = 'connection_not_found';
+
+    // No key or certificate with that id belongs to the connection
+    case KEY_NOT_FOUND = 'key_not_found';
+
+    // A setting, the attribute mapping or a certificate was refused; the result
+    // carries the violations
+    case SETTINGS_INVALID = 'settings_invalid';
+
+    // No driver is registered under the protocol, or its feature is off in
+    // `sso.features`
+    case PROTOCOL_UNAVAILABLE = 'protocol_unavailable';
+
+    // The key is not in a state the operation can move it from: making current
+    // a key that is not next, retiring the current key, adding a second next
+    // key
+    case KEY_STATE_CONFLICT = 'key_state_conflict';
 }

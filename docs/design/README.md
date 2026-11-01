@@ -19,6 +19,15 @@ decision and its evidence rather than a contract.
 
 The current note set is:
 
+- `connections.md`: what a connection holds, the protocol driver contract and its registry, what makes a connection
+  usable, and presets.
+- `connection-settings.md`: the SAML and OIDC settings, the attribute mapping, and the management helpers that create,
+  update, read, list and enable connections.
+- `keys.md`: the service provider's key pairs and their rotation, and the identity provider certificates a connection
+  trusts.
+- `freshness.md`: the fresh authentication every operation that could widen, redirect or destroy access asks for, and
+  the stable operation names.
+- `administration-events.md`: the events a change to a connection, a key or a certificate reports, and when.
 - `storage.md`: where the package's tables live, why they share one connection, how the models and the published
   migrations choose the same connection and table names, and the transaction rule an adapter follows.
 - `configuration.md`: the feature switches, the configuration checked at boot and by `sso:check` for what is enabled,

@@ -252,6 +252,11 @@ final readonly class TlsServer
         if ($signed === false || !openssl_x509_export_to_file($signed, $directory . '/certificate.pem') || !openssl_pkey_export_to_file($key, $directory . '/key.pem')) {
             throw new \RuntimeException('The test certificate could not be made: ' . openssl_error_string());
         }
+
+        // Leave nothing in OpenSSL's error queue for a later test to find.
+        do {
+            $error = openssl_error_string();
+        } while ($error !== false);
     }
 
     /**

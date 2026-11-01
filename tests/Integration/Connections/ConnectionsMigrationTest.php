@@ -1,0 +1,194 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace Tests\Integration\Connections;
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\CoversNothing;
+use SineMacula\Laravel\Sso\Database\TableAlreadyExistsException;
+use Tests\TestCase;
+
+/**
+ * Integration tests for the shipped connections migration, on whichever engine
+ * the suite runs against: the table's shape and defaults, its index, the guard
+ * against an existing table, the rollback, and the connection and name it runs
+ * under.
+ *
+ * Marked `#[CoversNothing]` because a migration is an anonymous class PHPUnit
+ * cannot attribute coverage to.
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ *
+ * @internal
+ */
+#[CoversNothing]
+final class ConnectionsMigrationTest extends TestCase
+{
+    /** @var string Absolute path to the shipped connections migration. */
+    private const string MIGRATION_PATH = __DIR__ . '/../../../database/migrations/2026_11_01_000000_create_sso_connections_table.php';
+
+    /** @var string The table's default name. */
+    private const string TABLE = 'sso_connections';
+
+    /**
+     * Run the shipped migration.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->migration()->up(); // @phpstan-ignore method.notFound
+    }
+
+    /**
+     * Drop the table under any name a test gave it.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function tearDown(): void
+    {
+        Schema::dropIfExists(self::TABLE);
+        Schema::dropIfExists('idp_connections');
+
+        parent::tearDown();
+    }
+
+    /**
+     * The table has exactly these columns, only the secrets nullable, with the
+     * id as its primary key.
+     *
+     * @return void
+     */
+    public function testCreatesTheColumns(): void
+    {
+        $columns = array_column(Schema::getColumns(self::TABLE), 'nullable', 'name');
+
+        ksort($columns);
+
+        self::assertSame([
+            'attribute_mapping'     => false,
+            'created_at'            => false,
+            'display_name'          => false,
+            'enabled'               => false,
+            'has_completed_sign_in' => false,
+            'id'                    => false,
+            'protocol'              => false,
+            'secrets'               => true,
+            'settings'              => false,
+            'tenant_id'             => false,
+            'updated_at'            => false,
+        ], $columns);
+
+        $primary = array_values(array_filter(Schema::getIndexes(self::TABLE), static fn (array $index): bool => $index['primary']));
+
+        self::assertCount(1, $primary);
+        self::assertSame(['id'], $primary[0]['columns']);
+    }
+
+    /**
+     * The one secondary index is on the tenant, for listing a tenant's
+     * connections, and is not unique: a tenant may have several.
+     *
+     * @return void
+     */
+    public function testIndexesTheTenant(): void
+    {
+        $secondary = array_values(array_filter(Schema::getIndexes(self::TABLE), static fn (array $index): bool => !$index['primary']));
+
+        self::assertCount(1, $secondary);
+        self::assertSame(['tenant_id'], $secondary[0]['columns']);
+        self::assertFalse($secondary[0]['unique']);
+        self::assertSame('sso_connections_tenant_index', $secondary[0]['name']);
+    }
+
+    /**
+     * A row written with only what the table requires is disabled and has
+     * completed no sign-in.
+     *
+     * @return void
+     */
+    public function testANewRowIsDisabledAndHasCompletedNoSignIn(): void
+    {
+        DB::table(self::TABLE)->insert([
+            'id'                => '01jbexampleconnection00000',
+            'tenant_id'         => 'tenant-1',
+            'protocol'          => 'oidc',
+            'display_name'      => 'Example',
+            'settings'          => '{}',
+            'attribute_mapping' => '{}',
+            'created_at'        => '2026-11-01 09:30:00',
+            'updated_at'        => '2026-11-01 09:30:00',
+        ]);
+
+        $row = DB::table(self::TABLE)->first();
+
+        self::assertNotNull($row);
+        self::assertFalse((bool) $row->enabled);
+        self::assertFalse((bool) $row->has_completed_sign_in);
+        self::assertNull($row->secrets);
+    }
+
+    /**
+     * Running the migration over an existing table is refused before any
+     * change, naming the setting that renames the table.
+     *
+     * @return void
+     */
+    public function testRefusesAnExistingTable(): void
+    {
+        $this->expectException(TableAlreadyExistsException::class);
+        $this->expectExceptionMessage('Set `connections.table` in config/sso.php');
+
+        $this->migration()->up(); // @phpstan-ignore method.notFound
+    }
+
+    /**
+     * The rollback drops the table.
+     *
+     * @return void
+     */
+    public function testTheRollbackDropsTheTable(): void
+    {
+        $this->migration()->down(); // @phpstan-ignore method.notFound
+
+        self::assertFalse(Schema::hasTable(self::TABLE));
+    }
+
+    /**
+     * The table is created under its configured name, with its index named from
+     * it.
+     *
+     * @return void
+     */
+    public function testCreatesTheTableUnderItsConfiguredName(): void
+    {
+        config()->set('sso.connections.table', 'idp_connections');
+
+        try {
+            $this->migration()->up(); // @phpstan-ignore method.notFound
+
+            self::assertTrue(Schema::hasTable('idp_connections'));
+            self::assertContains('idp_connections_tenant_index', array_column(Schema::getIndexes('idp_connections'), 'name'));
+        } finally {
+            config()->set('sso.connections.table', self::TABLE);
+        }
+    }
+
+    /**
+     * The shipped migration.
+     *
+     * @return \Illuminate\Database\Migrations\Migration
+     */
+    private function migration(): Migration
+    {
+        return require self::MIGRATION_PATH;
+    }
+}

@@ -27,8 +27,19 @@ use Illuminate\Database\Eloquent\Model;
  *
  * @internal
  */
-final class UtcDateTime implements CastsAttributes
+final readonly class UtcDateTime implements CastsAttributes
 {
+    /**
+     * Constructor.
+     *
+     * @param  bool  $withoutObjectCaching
+     */
+    public function __construct(
+
+        /** Whether Eloquent reads the stored value again rather than hand back the instant it was given: always, so a read is the `CarbonImmutable` in UTC that `get()` answers, whatever kind of instant was set. */
+        public bool $withoutObjectCaching = true,
+    ) {}
+
     /**
      * The instant, or the Unix time, as the model's connection stores times, in
      * UTC, to the whole second.
