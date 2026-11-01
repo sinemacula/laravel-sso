@@ -84,9 +84,17 @@ final class FlowModelsTest extends TestCase
         config()->set('sso.authorization_requests.table', 'idp_requests');
         config()->set('sso.handoff_codes.table', 'idp_codes');
 
-        self::assertSame('idp_links', (new Link)->getTable());
-        self::assertSame('idp_requests', (new AuthorizationRequest)->getTable());
-        self::assertSame('idp_codes', (new HandoffCode)->getTable());
+        try {
+            self::assertSame('idp_links', (new Link)->getTable());
+            self::assertSame('idp_requests', (new AuthorizationRequest)->getTable());
+            self::assertSame('idp_codes', (new HandoffCode)->getTable());
+        } finally {
+            // Put the names back, so tearDown drops the tables setUp created
+            // rather than leaving them for the next test on a real database.
+            config()->set('sso.links.table', 'sso_links');
+            config()->set('sso.authorization_requests.table', 'sso_authorization_requests');
+            config()->set('sso.handoff_codes.table', 'sso_handoff_codes');
+        }
     }
 
     /**
