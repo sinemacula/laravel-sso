@@ -545,7 +545,7 @@ final class AdministrationEventSequenceTest extends TestCase
             'unknown key'                  => fn (): KeyResult => $this->keys()->retire(self::TENANT, $saml, self::UNKNOWN, $this->actor),
             'own key distrusted'           => fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $saml, $current, $this->actor),
             'certificate trusted twice'    => fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $saml, Certificates::distinct(31), $this->actor),
-            'second next key'              => fn (): KeyResult => $this->keys()->addNext(self::TENANT, $saml, KeyUse::SP_SIGNING, KeyType::EC, $this->actor),
+            'second next key'              => fn (): KeyResult => $this->keys()->addNext(self::TENANT, $saml, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor),
             'current key retired'          => fn (): KeyResult => $this->keys()->retire(self::TENANT, $saml, $current, $this->actor),
         ];
     }
@@ -613,7 +613,7 @@ final class AdministrationEventSequenceTest extends TestCase
      */
     private function addNext(string $connectionId): KeySummary
     {
-        $key = $this->keys()->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, KeyType::EC, $this->actor)->key;
+        $key = $this->keys()->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor)->key;
 
         self::assertInstanceOf(KeySummary::class, $key);
 

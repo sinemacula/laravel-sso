@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
 use SineMacula\Laravel\Sso\Protocols\Navigation;
+use SineMacula\Laravel\Sso\Protocols\ReplayRecord;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 use SineMacula\Laravel\Sso\Protocols\Start;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
@@ -60,6 +61,9 @@ final class VerifyingDriver implements ProtocolDriver
 
     /** @var ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason The reason every response is refused with, when set. */
     public ?FailureReason $refusal = null;
+
+    /** @var ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord What a verified response asks the completion to record against replay, if anything. */
+    public ?ReplayRecord $replay = null;
 
     /** @var ?\Closure(): void What runs as the driver next validates, once, before it answers. */
     public ?\Closure $onComplete = null;
@@ -159,7 +163,7 @@ final class VerifyingDriver implements ProtocolDriver
             $onComplete();
         }
 
-        return $this->refusal === null ? Completion::verified($this->claims ?? self::claims()) : Completion::refused($this->refusal);
+        return $this->refusal === null ? Completion::verified($this->claims ?? self::claims(), $this->replay) : Completion::refused($this->refusal);
     }
 
     /**

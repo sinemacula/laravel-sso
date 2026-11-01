@@ -277,8 +277,8 @@ final class TrustChangeVoidingTest extends TestCase
 
         $this->clock->advance(60);
 
-        $current = self::keyOf($this->keys()->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING, KeyType::EC));
-        $next    = self::keyOf($this->keys()->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING, KeyType::EC));
+        $current = self::keyOf($this->keys()->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING, KeyType::RSA));
+        $next    = self::keyOf($this->keys()->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING, KeyType::RSA));
 
         self::assertTrue($this->keys()->makeCurrent(self::TENANT, $connection->id, $next)->isSucceeded());
         self::assertTrue($this->keys()->retire(self::TENANT, $connection->id, $current)->isSucceeded());
@@ -287,18 +287,24 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * Trusting a certificate and distrusting one each void what is in flight.
+     * Trusting a signing certificate is additive and voids nothing; trusting a
+     * metadata signing anchor, and distrusting a certificate, each void what is
+     * in flight.
      *
      * @return void
      */
-    public function testTrustingAndDistrustingACertificateVoid(): void
+    public function testTrustingAnAnchorAndDistrustingACertificateVoid(): void
     {
         $connection = $this->saml();
         $rows       = $this->populate($connection);
 
         $this->clock->advance(60);
 
-        $certificate = self::keyOf($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::ecP256()));
+        $certificate = self::keyOf($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::distinct(0)));
+
+        $this->assertNotVoided($rows);
+
+        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::distinct(1), null, KeyUse::METADATA_SIGNING)->isSucceeded());
 
         $this->assertVoided($rows);
 
@@ -327,7 +333,7 @@ final class TrustChangeVoidingTest extends TestCase
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::ecP256())->isRefused());
+        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::distinct(0))->isRefused());
 
         $this->assertNotVoided($rows);
     }

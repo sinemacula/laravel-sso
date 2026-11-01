@@ -17,7 +17,6 @@ use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcDriver;
 use SineMacula\Laravel\Sso\Protocols\PlaceholderDriver;
-use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use Tests\Fixtures\Protocols\ExampleConnection;
@@ -35,20 +34,19 @@ use Tests\Fixtures\Protocols\ExampleSettings;
  * @internal
  */
 #[CoversClass(PlaceholderDriver::class)]
-#[CoversClass(Saml2Driver::class)]
 #[CoversClass(OidcDriver::class)]
 final class PlaceholderDriverTest extends TestCase
 {
     /**
-     * Rows of `[driver, name]`: the package's drivers, by name.
+     * Rows of `[driver, name]`: the package's drivers still to be built, by
+     * name.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Contracts\ProtocolDriver, 1: string}>
      */
     public static function provideDrivers(): iterable
     {
         yield from [
-            'saml2' => [new Saml2Driver, 'saml2'],
-            'oidc'  => [new OidcDriver, 'oidc'],
+            'oidc' => [new OidcDriver, 'oidc'],
         ];
     }
 
@@ -66,7 +64,7 @@ final class PlaceholderDriverTest extends TestCase
     #[DataProvider('provideDrivers')]
     public function testFailsEveryFlowClosed(ProtocolDriver $driver, string $name): void
     {
-        $connection  = new ExampleConnection($name, ['issuer' => 'https://idp.example.com', 'idp_entity_id' => 'https://idp.example.com']);
+        $connection  = new ExampleConnection($name, ['issuer' => 'https://idp.example.com']);
         $reference   = RequestReference::generate();
         $start       = $driver->start($connection, new StartRequest(Purpose::SIGN_IN, 'web', $reference, new Secret('state')));
         $response    = CompletionRequest::fromRequest(Request::create('https://api.example.com/callback?code=a&state=b'));
@@ -86,13 +84,12 @@ final class PlaceholderDriverTest extends TestCase
     }
 
     /**
-     * The package's drivers are registered under their names.
+     * The OIDC driver is registered under its name.
      *
      * @return void
      */
-    public function testTheDriversNames(): void
+    public function testTheDriversName(): void
     {
-        self::assertSame('saml2', Saml2Driver::NAME);
         self::assertSame('oidc', OidcDriver::NAME);
     }
 

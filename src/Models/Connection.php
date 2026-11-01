@@ -20,7 +20,12 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * (`Links\LinkStore::create()`), so a link's insert also writes this row; and
  * its flows version, which every authorisation request stored and every handoff
  * code issued through it raises under its lock, so either insert also writes
- * this row (`Connections\InFlightVoider`).
+ * this row (`Connections\InFlightVoider`); its trust version, which every
+ * change that voids what is in flight through it, and enabling it, raises under
+ * its lock; and its SAML metadata refresh state: the metadata version every
+ * refresh that writes raises, the last validated fetch, the earliest
+ * `validUntil` it applied, when the next refresh is due, how many failed in a
+ * row, and until when a refresh in progress holds its claim (SSO-2.8).
  *
  * Its key is a lower-case ULID, the `{connection}` of its endpoints, and its
  * timestamps come from the package's clock (see `SsoModel`). Changing its
@@ -48,6 +53,13 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property bool $has_completed_sign_in
  * @property int $links_version
  * @property int $flows_version
+ * @property int $trust_version
+ * @property int $metadata_version
+ * @property ?\Carbon\CarbonImmutable $metadata_fetched_at
+ * @property ?\Carbon\CarbonImmutable $metadata_valid_until
+ * @property ?\Carbon\CarbonImmutable $metadata_refresh_at
+ * @property int $metadata_refresh_failures
+ * @property ?\Carbon\CarbonImmutable $metadata_claimed_until
  * @property \Carbon\CarbonImmutable $created_at
  * @property \Carbon\CarbonImmutable $updated_at
  */
@@ -197,14 +209,21 @@ final class Connection extends SsoModel implements SsoConnection
     protected function casts(): array
     {
         return [
-            'settings'              => 'array',
-            'attribute_mapping'     => 'array',
-            'enabled'               => 'boolean',
-            'has_completed_sign_in' => 'boolean',
-            'links_version'         => 'integer',
-            'flows_version'         => 'integer',
-            'created_at'            => UtcDateTime::class,
-            'updated_at'            => UtcDateTime::class,
+            'settings'                  => 'array',
+            'attribute_mapping'         => 'array',
+            'enabled'                   => 'boolean',
+            'has_completed_sign_in'     => 'boolean',
+            'links_version'             => 'integer',
+            'flows_version'             => 'integer',
+            'trust_version'             => 'integer',
+            'metadata_version'          => 'integer',
+            'metadata_fetched_at'       => UtcDateTime::class,
+            'metadata_valid_until'      => UtcDateTime::class,
+            'metadata_refresh_at'       => UtcDateTime::class,
+            'metadata_refresh_failures' => 'integer',
+            'metadata_claimed_until'    => UtcDateTime::class,
+            'created_at'                => UtcDateTime::class,
+            'updated_at'                => UtcDateTime::class,
         ];
     }
 }

@@ -148,6 +148,59 @@ return [
 
     /*
     |---------------------------------------------------------------------------
+    | SAML 2.0
+    |---------------------------------------------------------------------------
+    |
+    | The caps and windows every SAML connection is held to; every check is
+    | always on. A posted `SAMLResponse` longer than `max_response_bytes` is
+    | refused before it is decoded (16 KiB to 1 MiB, default 256 KiB), a
+    | decoded one longer than `max_xml_bytes` before it is parsed (16 KiB to
+    | 1 MiB, default 192 KiB), and an assertion decrypted from an
+    | `EncryptedAssertion` longer than `max_decrypted_bytes` before it is
+    | parsed (4 KiB to 1 MiB, default 128 KiB). A response's and an assertion's
+    | `IssueInstant` may be at most `issue_instant_max_age_seconds` old (30 to
+    | 3600, default 300), with the clock skew on top.
+    |
+    */
+
+    'saml2' => [
+        'max_response_bytes'            => env('SSO_SAML2_MAX_RESPONSE_BYTES', 262144),
+        'max_xml_bytes'                 => env('SSO_SAML2_MAX_XML_BYTES', 196608),
+        'max_decrypted_bytes'           => env('SSO_SAML2_MAX_DECRYPTED_BYTES', 131072),
+        'issue_instant_max_age_seconds' => env('SSO_SAML2_ISSUE_INSTANT_MAX_AGE_SECONDS', 300),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Metadata refresh
+    |---------------------------------------------------------------------------
+    |
+    | How the scheduled refresh of a SAML connection's metadata runs, for the
+    | connections that opt in while `features.metadata_refresh` is on. After a
+    | success the next refresh is due `refresh_interval_seconds` later (an
+    | hour to a week, default a day); after a failure it waits
+    | `backoff_initial_seconds` (a minute to an hour, default 5 minutes),
+    | doubling with each failure in a row up to `backoff_max_seconds` (5
+    | minutes to a day, default 6 hours). What a refresh applied stops being
+    | used `stale_limit_seconds` after its last validated fetch (a day to a
+    | year, default 30 days, or 0 for no limit, which you must set
+    | explicitly), or at its metadata's `validUntil`, whichever comes first.
+    | A server's claim on a refresh holds for `claim_seconds` (30 to 3600,
+    | default 300), so racing servers refresh a connection once. Run the
+    | refresh command more often than the initial backoff.
+    |
+    */
+
+    'metadata' => [
+        'refresh_interval_seconds' => env('SSO_METADATA_REFRESH_INTERVAL_SECONDS', 86400),
+        'backoff_initial_seconds'  => env('SSO_METADATA_BACKOFF_INITIAL_SECONDS', 300),
+        'backoff_max_seconds'      => env('SSO_METADATA_BACKOFF_MAX_SECONDS', 21600),
+        'stale_limit_seconds'      => env('SSO_METADATA_STALE_LIMIT_SECONDS', 2592000),
+        'claim_seconds'            => env('SSO_METADATA_CLAIM_SECONDS', 300),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
     | Connections
     |---------------------------------------------------------------------------
     |

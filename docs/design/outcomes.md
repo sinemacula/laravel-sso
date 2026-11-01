@@ -97,13 +97,13 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   (both `request_unknown`).
 - **Completing a flow.** `Completion\CompletionService` answers a `Completion\CompletionResult`, status
   `Completion\Enums\CompletionStatus`: `completed` (the redirect URI, the delivery, the reference and the issued
-  handoff), `failed` (a refusal with a trusted redirect target: the reason, redirected to the application),
-  `rejected` (a refusal with none: `request_unknown`, `connection_unavailable` or `application_not_allowed`, a 400),
-  `rate_limited` (`retryAfter`, a 429) or `reinitiated` (P4). A failure carries the reason of the step that refused:
-  the consumption's above, a driver's (`signature_invalid`, `issuer_mismatch` and the other protocol reasons),
-  `enforcement_unsatisfied`, `unlinked` and `application_not_allowed`. `Responses\CompletionResponses` turns it into
-  the response value the application answers with. A completion called inside a transaction open on the storage
-  connection is a `LogicException`. See `completion.md` and `completion-responses.md`.
+  handoff), `failed` (a refusal with a trusted redirect target: the reason, redirected to the application), `rejected`
+  (a refusal with none: `request_unknown`, `connection_unavailable` or `application_not_allowed`, a 400), `rate_limited`
+  (`retryAfter`, a 429) or `reinitiated` (SSO-5.8). A failure carries the reason of the step that refused: the
+  consumption's above, a driver's (`signature_invalid`, `issuer_mismatch` and the other protocol reasons),
+  `enforcement_unsatisfied`, `unlinked` and `application_not_allowed`. `Responses\CompletionResponses` turns it into the
+  response value the application answers with. A completion called inside a transaction open on the storage connection
+  is a `LogicException`. See `completion.md` and `completion-responses.md`.
 - **Redeeming a handoff.** `Handoffs\HandoffRedemption::redeem()` answers a `Handoffs\RedemptionResult`, status
   `Handoffs\Enums\RedemptionStatus`: `redeemed` (the verified result and what the code was bound to), `refused`
   (`handoff_unknown`, `replayed`, `handoff_expired`, `purpose_mismatch`, `application_mismatch`,

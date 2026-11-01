@@ -65,6 +65,14 @@ The current note set is:
 - `localization.md`: the messages put in front of a consumer, translated under the package's namespace.
 - `saml-library.md`: why the package parses and verifies SAML with `simplesamlphp/saml2` v6, the adversarial fixture
   results behind the choice, and the conditions the package's adapter holds the library to.
+- `saml-driver.md`: the `saml2` driver as a whole, each call and its collaborator, and how it plugs into the completion
+  without bypassing consumption, the lock order or enforcement.
+- `saml-adapter.md`: the one namespace that calls the SAML library, its hardened parsing, caps and structure checks,
+  the pinned verifier and the SSO-6.7 signature and encryption policy, and the values a read response is given as.
+- `saml-requests.md`, `saml-responses.md`, `idp-initiated.md`, `service-provider-metadata.md` and `metadata-refresh.md`:
+  the SAML driver's `AuthnRequest` and its bindings, the validation of a solicited response and its replay record,
+  re-initiation from an unsolicited response, the service provider's metadata, and metadata import, scheduled refresh,
+  expiry and the trust version, each on the driver `saml-driver.md` and the adapter `saml-adapter.md` lay down.
 - `jose-library.md`: why the package verifies ID tokens and signs client assertions with `web-token/jwt-library`, the
   hostile-token and clock results behind the choice, and the rules the package's adapter adds around it.
 

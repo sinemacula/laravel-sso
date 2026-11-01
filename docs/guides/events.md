@@ -124,37 +124,51 @@ with the operation's flow (`$event->flow`, a `Flow`) and a machine-readable reas
 | `callback`              | An OIDC authorisation response at the callback                              |
 | `redemption`            | A handoff code presented for redemption                                     |
 
-| Reason                    | Meaning                                                                                   |
-|---------------------------|-------------------------------------------------------------------------------------------|
-| `connection_unavailable`  | The connection is unknown, disabled or incomplete; the same answer for each               |
-| `application_not_allowed` | The application does not allow sign-in through an external provider                       |
-| `request_unknown`         | No stored authorisation request matches, or it was already used                           |
-| `request_expired`         | The authorisation request expired                                                         |
-| `signature_invalid`       | A required signature is missing, does not verify, or uses a key or algorithm not allowed  |
-| `issuer_mismatch`         | The issuer is not the connection's                                                        |
-| `audience_mismatch`       | The audience does not name this service provider or client                                |
-| `recipient_mismatch`      | The recipient or destination is not the connection's assertion consumer service           |
-| `assertion_expired`       | The assertion or ID token is not yet valid, expired, or is too old                        |
-| `replayed`                | The assertion was seen before, or could not be recorded as seen                           |
-| `nonce_mismatch`          | The ID token's nonce is not the one the request stored                                    |
-| `provider_error`          | The identity provider answered with an error                                              |
-| `metadata_expired`        | The connection's metadata is past its `validUntil` and no refresh has succeeded           |
-| `unlinked`                | A sign-in resolved to no identity and the application does not allow unlinked handoffs    |
-| `purpose_mismatch`        | A handoff code was presented to the redemption of another purpose                         |
-| `verifier_mismatch`       | The verifier presented with a handoff code does not match its challenge                   |
-| `rate_limited`            | The IP address, email domain or connection used up its attempts for now                   |
-| `challenge_invalid`       | The S256 challenge a start was given is not 43 base64url characters                       |
-| `session_ineligible`      | A `reauthenticate` flow's identity is not signed in through the connection on its session |
-| `discovery_no_match`      | Discovery found no connection for the email's domain; the client got the fallback         |
-| `connection_mismatch`     | A response or a handoff code was presented for another connection than its own            |
-| `application_mismatch`    | A handoff code was presented for another application than its own                         |
-| `enforcement_unsatisfied` | The connection does not satisfy its tenant's enforcement for the application              |
-| `handoff_unknown`         | No handoff code is stored for what was presented, or it was voided                        |
-| `handoff_expired`         | The handoff code expired                                                                  |
-| `link_changed`            | The link a handoff code resolved was removed, or now names another identity               |
-| `freshness_required`      | A `link` flow was started without fresh enough authentication                             |
-| `fetch_refused`           | An outbound request to the identity provider was refused before it was sent               |
-| `fetch_failed`            | An outbound request to the identity provider was sent and failed                          |
+| Reason                            | Meaning                                                                                   |
+|-----------------------------------|-------------------------------------------------------------------------------------------|
+| `connection_unavailable`          | The connection is unknown, disabled or incomplete; the same answer for each               |
+| `application_not_allowed`         | The application does not allow sign-in through an external provider                       |
+| `request_unknown`                 | No stored authorisation request matches, or it was already used                           |
+| `request_expired`                 | The authorisation request expired                                                         |
+| `signature_invalid`               | A required signature is missing, does not verify, or uses a key or algorithm not allowed  |
+| `issuer_mismatch`                 | The issuer is not the connection's                                                        |
+| `audience_mismatch`               | The audience does not name this service provider or client                                |
+| `recipient_mismatch`              | The recipient or destination is not the connection's assertion consumer service           |
+| `assertion_expired`               | The assertion or ID token is not yet valid, expired, or is too old                        |
+| `replayed`                        | The assertion was seen before, or could not be recorded as seen                           |
+| `nonce_mismatch`                  | The ID token's nonce is not the one the request stored                                    |
+| `provider_error`                  | The identity provider answered with an error                                              |
+| `metadata_expired`                | The connection's metadata is past its `validUntil` and no refresh has succeeded           |
+| `unlinked`                        | A sign-in resolved to no identity and the application does not allow unlinked handoffs    |
+| `purpose_mismatch`                | A handoff code was presented to the redemption of another purpose                         |
+| `verifier_mismatch`               | The verifier presented with a handoff code does not match its challenge                   |
+| `rate_limited`                    | The IP address, email domain or connection used up its attempts for now                   |
+| `challenge_invalid`               | The S256 challenge a start was given is not 43 base64url characters                       |
+| `session_ineligible`              | A `reauthenticate` flow's identity is not signed in through the connection on its session |
+| `discovery_no_match`              | Discovery found no connection for the email's domain; the client got the fallback         |
+| `connection_mismatch`             | A response or a handoff code was presented for another connection than its own            |
+| `application_mismatch`            | A handoff code was presented for another application than its own                         |
+| `enforcement_unsatisfied`         | The connection does not satisfy its tenant's enforcement for the application              |
+| `handoff_unknown`                 | No handoff code is stored for what was presented, or it was voided                        |
+| `handoff_expired`                 | The handoff code expired                                                                  |
+| `link_changed`                    | The link a handoff code resolved was removed, or now names another identity               |
+| `freshness_required`              | A `link` flow was started without fresh enough authentication                             |
+| `fetch_refused`                   | An outbound request to the identity provider was refused before it was sent               |
+| `fetch_failed`                    | An outbound request to the identity provider was sent and failed                          |
+| `response_invalid`                | The SAML response is too large, malformed, not schema-valid, or holds a misplaced element |
+| `decryption_failed`               | The encrypted assertion could not be decrypted under the connection's algorithms          |
+| `encryption_required`             | The connection requires an encrypted assertion and the response carried a plain one       |
+| `subject_invalid`                 | The subject is missing, transient, of a format not allowed, or has a wrong qualifier      |
+| `request_mismatch`                | The `RelayState` or a signed `InResponseTo` names another request than the consumed one   |
+| `authentication_expired`          | The authentication is older than allowed, or older than the reauthentication request      |
+| `authentication_context_mismatch` | The authentication context is not one the connection requires                             |
+| `condition_unsupported`           | The assertion carries a condition the package does not understand                         |
+| `unsolicited_not_allowed`         | An unsolicited response reached a connection that does not allow IdP-initiated sign-in    |
+| `metadata_invalid`                | The identity provider's metadata is malformed, not schema-valid, or holds nothing usable  |
+| `metadata_signature_invalid`      | The metadata is not signed by the connection's metadata signing anchor                    |
+| `metadata_entity_not_found`       | The metadata holds no entity with the connection's entity id                              |
+| `metadata_conflict`               | A metadata refresh lost to a change made while it fetched, and wrote nothing              |
+| `metadata_refresh_in_progress`    | Another server is refreshing the connection's metadata                                    |
 
 The reasons and flows are stable: a value is never renamed or reused, so you can count failure modes by them.
 
@@ -164,14 +178,15 @@ Each flow reports what it did with one event per step that changed something, on
 Each is in `SineMacula\Laravel\Sso\Events` and carries the context above, the request's public reference among it;
 none holds a handoff code, a verifier, protocol state, a subject, a mapped attribute or the verified result.
 
-| Event                         | Fields beyond the context | Dispatched when                                                                    |
-|-------------------------------|---------------------------|------------------------------------------------------------------------------------|
-| `AuthorizationRequestStarted` | none                      | A start stored its authorisation request and sent the client on                    |
-| `ResultVerified`              | none                      | A completion's response passed every check, before what the completion did with it |
-| `HandoffIssued`               | none                      | A completion issued a handoff code                                                 |
-| `HandoffRedeemed`             | none                      | The package's own redemption redeemed a handoff code                               |
-| `LinkCreated`                 | `origin`: how it was made | A link was made by a `link` flow, provisioning, a verified domain or a migration   |
-| `LinkRemoved`                 | none                      | A link was removed, and the identity's sessions through the connection revoked     |
+| Event                            | Fields beyond the context | Dispatched when                                                                        |
+|----------------------------------|---------------------------|----------------------------------------------------------------------------------------|
+| `AuthorizationRequestStarted`    | none                      | A start stored its authorisation request and sent the client on                        |
+| `ResultVerified`                 | none                      | A completion's response passed every check, before what the completion did with it     |
+| `HandoffIssued`                  | none                      | A completion issued a handoff code                                                     |
+| `HandoffRedeemed`                | none                      | The package's own redemption redeemed a handoff code                                   |
+| `LinkCreated`                    | `origin`: how it was made | A link was made by a `link` flow, provisioning, a verified domain or a migration       |
+| `LinkRemoved`                    | none                      | A link was removed, and the identity's sessions through the connection revoked         |
+| `UnsolicitedResponseReinitiated` | none                      | An unsolicited SAML response passed every check and the client was sent to start again |
 
 `AuthorizationRequestStarted`'s context names the connection, its tenant and protocol, the application, the purpose and
 the request's public reference, with the identity a `link` or `reauthenticate` was started for and the session of a
@@ -208,17 +223,26 @@ connections](managing-connections.md) and [Keys and certificates](keys.md)) is r
 commits, so an audit trail can record who changed which identity provider's trust, and when. Each is in
 `SineMacula\Laravel\Sso\Events` and carries the context above, with the connection's id, its tenant and its protocol.
 
-| Event                | Fields beyond the context                          | Dispatched when                                                                 |
-|----------------------|----------------------------------------------------|---------------------------------------------------------------------------------|
-| `ConnectionCreated`  | none                                               | `ConnectionService::create()` created a connection, disabled                    |
-| `ConnectionUpdated`  | `changedSettings`: the names of what changed       | `update()` or `SubjectMigration::migrate()` changed what the connection holds   |
-| `ConnectionEnabled`  | none                                               | `enable()` enabled a disabled connection                                        |
-| `ConnectionDisabled` | none                                               | `ConnectionLifecycle::disable()` disabled an enabled connection                 |
-| `ConnectionDeleted`  | none                                               | `ConnectionLifecycle::delete()` deleted a connection and everything it held     |
-| `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter` | `KeyService::addNext()` added a key pair, or `trustCertificate()` a certificate |
-| `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`     | `makeCurrent()` made a key current, or `addNext()` added a use's first key      |
-| `KeyRetired`         | `keyId`, `use`, `fingerprint`                      | `retire()` removed a key, or `distrustCertificate()` a certificate              |
-| `KeyNearingExpiry`   | `keyId`, `use`, `fingerprint`, `notAfter`          | `ExpiryReport::report()` found its validity ending within the warning, or ended |
+| Event                   | Fields beyond the context                            | Dispatched when                                                                 |
+|-------------------------|------------------------------------------------------|---------------------------------------------------------------------------------|
+| `ConnectionCreated`     | none                                                 | `ConnectionService::create()` created a connection, disabled                    |
+| `ConnectionUpdated`     | `changedSettings`: the names of what changed         | `update()` or `SubjectMigration::migrate()` changed what the connection holds   |
+| `ConnectionEnabled`     | none                                                 | `enable()` enabled a disabled connection                                        |
+| `ConnectionDisabled`    | none                                                 | `ConnectionLifecycle::disable()` disabled an enabled connection                 |
+| `ConnectionDeleted`     | none                                                 | `ConnectionLifecycle::delete()` deleted a connection and everything it held     |
+| `KeyAdded`              | `keyId`, `use`, `state`, `fingerprint`, `notAfter`   | `KeyService::addNext()` added a key pair, or `trustCertificate()` a certificate |
+| `KeyMadeCurrent`        | `keyId`, `use`, `fingerprint`, `previousKeyId`       | `makeCurrent()` made a key current, or `addNext()` added a use's first key      |
+| `KeyRetired`            | `keyId`, `use`, `fingerprint`                        | `retire()` removed a key, or `distrustCertificate()` a certificate              |
+| `KeyNearingExpiry`      | `keyId`, `use`, `fingerprint`, `notAfter`            | `ExpiryReport::report()` found its validity ending within the warning, or ended |
+| `MetadataRefreshed`     | `changedSettings`, `metadataVersion`, `trustChanged` | A metadata refresh validated the identity provider's metadata and applied it    |
+| `MetadataRefreshFailed` | `reason`, `failures`, `nextAttemptAt`                | A metadata refresh failed; the last good metadata is kept                       |
+
+A metadata refresh's `changedSettings` names the settings it changed, such as `['sso_url', 'idp_signing_certificates']`,
+and none when nothing changed; `trustChanged` says whether it removed or replaced a trusted certificate or moved the
+single sign-on URL or binding, which voids every flow in flight through the connection, and `metadataVersion` is the
+connection's version after it. A failed refresh's `reason` is `fetch_refused`, `fetch_failed`, `metadata_invalid`,
+`metadata_signature_invalid`, `metadata_entity_not_found`, `metadata_conflict` or `metadata_expired`, `failures` the
+failures in a row, and `nextAttemptAt` when the next scheduled attempt is due.
 
 `changedSettings` names what changed, never its value: the settings in the order the protocol lists them, then the
 secrets, then `display_name` and `attribute_mapping`, such as `['token_endpoint', 'client_secret', 'display_name']`. A

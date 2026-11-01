@@ -24,9 +24,10 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
  * - `decryption()` answers the current encryption key, then each retiring one
  *   whose overlap has not ended by the clock's now, newest first, so a response
  *   encrypted for a key just replaced still decrypts (SSO-2.7).
- * - `trustedCertificates()` answers every certificate the connection trusts,
- *   oldest first, whatever its dates: expiry is reported, never enforced
- *   (SSO-2.6).
+ * - `trustedCertificates()` answers every certificate the connection trusts for
+ *   the use (its identity provider's signing certificates by default, or its
+ *   metadata signing anchors), oldest first, whatever its dates: expiry is
+ *   reported, never enforced (SSO-2.6, SSO-2.8).
  * - `privateKey()` decrypts a key's private half for the call that signs or
  *   decrypts with it, as a `Secrets\Secret`; a key of another connection, or a
  *   trusted certificate, is a caller's mistake, a `LogicException`.
@@ -138,18 +139,23 @@ final readonly class KeyRing
     }
 
     /**
-     * Every identity provider certificate the connection trusts, oldest first,
+     * Every certificate the connection trusts for the use, oldest first,
      * whatever its dates.
      *
      * @param  string  $connectionId
+     * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
      * @return list<\SineMacula\Laravel\Sso\Keys\KeySummary>
      *
      * @throws \InvalidArgumentException
      */
-    public function trustedCertificates(string $connectionId): array
+    public function trustedCertificates(string $connectionId, KeyUse $use = KeyUse::IDP_SIGNING): array
     {
+        if (!$use->isTrustedCertificate()) {
+            throw new \InvalidArgumentException(sprintf('[%s] is not a use of a trusted certificate.', $use->value));
+        }
+
         $keys = self::of($connectionId)
-            ->where('use', KeyUse::IDP_SIGNING->value)
+            ->where('use', $use->value)
             ->orderBy('created_at')
             ->orderBy('id')
             ->get()

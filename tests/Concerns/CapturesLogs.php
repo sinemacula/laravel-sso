@@ -112,7 +112,7 @@ trait CapturesLogs
      */
     protected function assertLoggedContains(string ...$needles): void
     {
-        $text = implode("\n", array_map(self::logRecordText(...), $this->capturedLogRecords()));
+        $text = implode("\0", array_map(self::logRecordText(...), $this->capturedLogRecords()));
 
         foreach ($needles as $needle) {
             self::assertStringContainsString($needle, $text);
@@ -138,7 +138,8 @@ trait CapturesLogs
 
     /**
      * Everything searchable in the record: its message, its context
-     * JSON-encoded, and each scalar value in its context.
+     * JSON-encoded, and each scalar value in its context, joined by NUL so a
+     * line break in a value is still found.
      *
      * @param  array{channel: string, level: string, message: string, context: array<array-key, mixed>}  $record
      * @return string
@@ -156,7 +157,7 @@ trait CapturesLogs
             $values[] = (string) $value;
         });
 
-        return implode("\n", [
+        return implode("\0", [
             $record['message'],
             (string) json_encode($record['context'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR),
             ...$values,

@@ -38,7 +38,10 @@ use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
+use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
+use SineMacula\Laravel\Sso\Protocols\Saml2\UnsolicitedResponses;
+use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
 use SineMacula\Laravel\Sso\Revocation\NoSessionRevocation;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\Fixtures\Fetching\StubHostResolver;
@@ -224,7 +227,10 @@ final class SsoServiceProviderTest extends TestCase
 
         (new SsoServiceProvider($app))->register();
 
-        self::assertSame([GuzzleFetcher::class, SystemDnsResolver::class], SsoServiceProvider::LOGGING_CLASSES);
+        self::assertSame(
+            [GuzzleFetcher::class, SystemDnsResolver::class, AssertionValidator::class, UnsolicitedResponses::class, MetadataRefresher::class],
+            SsoServiceProvider::LOGGING_CLASSES,
+        );
 
         foreach (SsoServiceProvider::LOGGING_CLASSES as $class) {
             self::assertSame(SanitizingLogger::class, $app->contextual[$class][$logger] ?? null);
@@ -245,7 +251,7 @@ final class SsoServiceProviderTest extends TestCase
         self::assertSame(
             [
                 'features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits', 'freshness', 'keys',
-                'mapping', 'domains', 'flows',
+                'mapping', 'domains', 'flows', 'saml2', 'metadata',
             ],
             array_keys(SsoServiceProvider::CONFIGURATION_CHECKS),
         );

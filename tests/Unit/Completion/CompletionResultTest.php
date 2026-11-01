@@ -143,16 +143,16 @@ final class CompletionResultTest extends TestCase
     }
 
     /**
-     * The steps run in this order, the locked transaction from link resolution
-     * on.
+     * The steps run in this order, the locked transaction from the replay
+     * recording on.
      *
      * @return void
      */
     public function testTheStepsAndTheirOrder(): void
     {
         self::assertSame([
-            'correlation', 'consumption', 'validation', 'link_resolution', 'enforcement', 'domain_reservation', 'provisioning', 'unlinked_decision',
-            'handoff_issuance',
+            'correlation', 'consumption', 'validation', 'replay_recording', 'link_resolution', 'enforcement', 'domain_reservation', 'provisioning',
+            'unlinked_decision', 'handoff_issuance',
         ], array_column(CompletionStep::cases(), 'value'));
 
         $locked = array_values(array_map(
@@ -160,7 +160,7 @@ final class CompletionResultTest extends TestCase
             array_filter(CompletionStep::cases(), static fn (CompletionStep $step): bool => $step->isLocked()),
         ));
 
-        self::assertSame(['link_resolution', 'enforcement', 'domain_reservation', 'provisioning', 'unlinked_decision', 'handoff_issuance'], $locked);
+        self::assertSame(['replay_recording', 'link_resolution', 'enforcement', 'domain_reservation', 'provisioning', 'unlinked_decision', 'handoff_issuance'], $locked);
     }
 
     /**

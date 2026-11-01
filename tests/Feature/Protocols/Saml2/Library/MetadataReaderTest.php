@@ -1,0 +1,811 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace Tests\Feature\Protocols\Saml2\Library;
+
+use Carbon\CarbonImmutable;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
+use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Protocols\Saml2\Library\MetadataReader;
+use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
+use SineMacula\Laravel\Sso\Secrets\MaskedKey;
+use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
+use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
+use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
+use SineMacula\Laravel\Sso\Testing\Saml\XmlSigner;
+use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Keys\Certificates;
+use Tests\TestCase;
+
+/**
+ * Feature tests for the metadata validation profile (SSO-2.8, SSO-6.1,
+ * SSO-6.11), through the reader every import and refresh uses, on the fake
+ * identity provider's metadata: the entity chosen from an aggregate by its
+ * pinned id; an entity missing, named twice, wrapped or carrying a signature
+ * anywhere but its own refused; with anchors, a signature of its own or of its
+ * aggregate required and every signature on its path verified, one by another
+ * key or tampered with refused; the earliest `validUntil` of the path as the
+ * expiry; a document type, an entity or a document over the fetcher's cap
+ * refused; only RSA certificates, once each, by use; the HTTP-Redirect and
+ * HTTP-POST services, the connection's binding preferred; and the read value
+ * redacted.
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ *
+ * @internal
+ */
+#[CoversClass(MetadataReader::class)]
+#[CoversClass(IdpMetadata::class)]
+final class MetadataReaderTest extends TestCase
+{
+    /** @var string The entity id the provider has. */
+    private const string ENTITY_ID = FakeSamlIdentityProvider::ENTITY_ID;
+
+    /** @var string Another entity in an aggregate. */
+    private const string OTHER = 'https://other.example.test/saml';
+
+    /** @var string The HTTP-POST single sign-on URL the metadata names besides. */
+    private const string POST_URL = 'https://idp.example.test/saml/post';
+
+    /** @var ?\SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider The provider, made once. */
+    private static ?FakeSamlIdentityProvider $idp = null;
+
+    /** @var ?\SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider The attacker, made once. */
+    private static ?FakeSamlIdentityProvider $attacker = null;
+
+    /**
+     * Bind a fixed clock.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
+    }
+
+    /**
+     * An entity alone is read whole: its id, its HTTP-Redirect service, its
+     * signing certificate as a canonical PEM with its fingerprint, no
+     * encryption certificate, its NameID format and no expiry.
+     *
+     * @return void
+     */
+    public function testReadsAnEntityWhole(): void
+    {
+        $metadata = $this->read(self::metadata()->toXml());
+
+        self::assertTrue($metadata->isRead());
+        self::assertNull($metadata->reason);
+        self::assertNull($metadata->detail);
+        self::assertSame([
+            self::ENTITY_ID,
+            FakeSamlIdentityProvider::SSO_URL,
+            'http_redirect',
+            [self::certificate(self::idp()->certificate())],
+            [],
+            [FakeSamlResponse::PERSISTENT],
+            null,
+        ], self::values($metadata));
+    }
+
+    /**
+     * From an aggregate, the entity is chosen by its id alone.
+     *
+     * @return void
+     */
+    public function testChoosesTheEntityFromAnAggregateByItsId(): void
+    {
+        $xml = self::metadata()->with(['aggregate' => [self::OTHER, 'urn:example:third']])->toXml();
+
+        self::assertSame(self::ENTITY_ID, $this->read($xml)->entityId());
+        self::assertSame(self::OTHER, $this->read($xml, self::OTHER)->entityId());
+        self::assertSame('urn:example:third', $this->read($xml, 'urn:example:third')->entityId());
+    }
+
+    /**
+     * Rows of `[entity id]`: an id no entity has, one differing only in case or
+     * by a trailing slash, and none.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideMissingEntities(): iterable
+    {
+        yield from [
+            'another id'         => ['https://nobody.example.test/saml'],
+            'another case'       => ['https://IDP.example.test/saml'],
+            'a trailing slash'   => [self::ENTITY_ID . '/'],
+            'an empty entity id' => [''],
+        ];
+    }
+
+    /**
+     * An entity id no entity has exactly is not found.
+     *
+     * @param  string  $entityId
+     * @return void
+     */
+    #[DataProvider('provideMissingEntities')]
+    public function testAnEntityNotThereIsNotFound(string $entityId): void
+    {
+        self::assertRefused(FailureReason::METADATA_ENTITY_NOT_FOUND, 'entity_not_found', $this->read(self::metadata()->toXml(), $entityId));
+    }
+
+    /**
+     * An empty entity id never chooses an entity, even one whose entity id is
+     * empty.
+     *
+     * @return void
+     */
+    public function testAnEmptyEntityIdNeverChoosesAnEntity(): void
+    {
+        self::assertRefused(FailureReason::METADATA_ENTITY_NOT_FOUND, 'entity_not_found', $this->read(self::metadata()->with(['entity_id' => ''])->toXml(), ''));
+    }
+
+    /**
+     * An entity named twice is refused, wherever the second is: beside the
+     * first with an id of its own, or with the same `ID`, which the schema
+     * refuses.
+     *
+     * @return void
+     */
+    public function testAnEntityNamedTwiceIsRefused(): void
+    {
+        $aggregate = self::metadata()->with(['aggregate' => [self::OTHER]])->toXml();
+        $second    = self::renamedIds(self::metadata()->toXml(), 'second');
+        $twice     = str_replace('</md:EntitiesDescriptor>', $second . '</md:EntitiesDescriptor>', $aggregate);
+
+        self::assertRefused(FailureReason::METADATA_INVALID, 'duplicate_entity', $this->read($twice));
+        self::assertRefused(FailureReason::METADATA_INVALID, 'schema', $this->read(self::metadata()->with(['aggregate' => [self::ENTITY_ID]])->toXml()));
+    }
+
+    /**
+     * Rows of `[xml, anchored, reason, detail]`: an entity wrapped where no
+     * entity may be, and a signature where no signature may be.
+     *
+     * @return iterable<string, array{0: \Closure(): string, 1: bool, 2: \SineMacula\Laravel\Sso\Events\Enums\FailureReason, 3: string}>
+     */
+    public static function provideWrappedEntities(): iterable
+    {
+        $hidden = static fn (): string => self::renamedIds(self::metadata()->toXml(), 'hidden');
+        $signed = static fn (): string => self::metadata()->with(['aggregate' => [self::OTHER], 'sign' => 'aggregate'])->toXml();
+        $object = static fn (string $xml): string => (string) preg_replace('#</ds:KeyInfo>#', '</ds:KeyInfo><ds:Object>' . $hidden() . '</ds:Object>', $xml, 1);
+
+        yield from [
+            'a copy in the aggregate signature' => [static fn (): string => $object($signed()), true, FailureReason::METADATA_INVALID, 'duplicate_entity'],
+            'the only copy in a signature'      => [
+                static fn (): string => $object(str_replace('entityID="' . self::ENTITY_ID . '"', 'entityID="https://moved.example.test"', $signed())),
+                false,
+                FailureReason::METADATA_INVALID,
+                'entity_location',
+            ],
+            'the only copy in extensions' => [
+                static fn (): string => str_replace(
+                    '<md:IDPSSODescriptor',
+                    '<md:Extensions>' . $hidden() . '</md:Extensions><md:IDPSSODescriptor',
+                    self::metadata()->with(['entity_id' => self::OTHER])->toXml(),
+                ),
+                false,
+                FailureReason::METADATA_INVALID,
+                'schema',
+            ],
+            'a signature in the role descriptor' => [
+                static fn (): string => str_replace('<md:KeyDescriptor', self::roleSignature() . '<md:KeyDescriptor', self::metadata()->toXml()),
+                false,
+                FailureReason::METADATA_INVALID,
+                'signature_location',
+            ],
+        ];
+    }
+
+    /**
+     * An entity anywhere but at the root or in an aggregate, and a signature
+     * anywhere in the entity but its own, are refused.
+     *
+     * @param  \Closure(): string  $xml
+     * @param  bool  $anchored
+     * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @param  string  $detail
+     * @return void
+     */
+    #[DataProvider('provideWrappedEntities')]
+    public function testAWrappedEntityOrSignatureIsRefused(\Closure $xml, bool $anchored, FailureReason $reason, string $detail): void
+    {
+        self::assertRefused($reason, $detail, $this->read($xml(), anchors: $anchored ? [self::idp()->certificate()] : []));
+    }
+
+    /**
+     * Rows of `[changes]`: metadata signed by the provider, its entity alone,
+     * in an aggregate, or the aggregate.
+     *
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function provideSignedMetadata(): iterable
+    {
+        yield from [
+            'the entity signed'                  => [['sign' => 'entity']],
+            'an aggregate, the entity signed'    => [['aggregate' => [self::OTHER], 'sign' => 'entity']],
+            'an aggregate, the aggregate signed' => [['aggregate' => [self::OTHER], 'sign' => 'aggregate']],
+        ];
+    }
+
+    /**
+     * With an anchor, metadata whose entity a signature by the anchor covers,
+     * its own or its aggregate's, is read.
+     *
+     * @param  array<string, mixed>  $changes
+     * @return void
+     */
+    #[DataProvider('provideSignedMetadata')]
+    public function testMetadataSignedByAnAnchorIsRead(array $changes): void
+    {
+        $metadata = $this->read(self::metadata()->with($changes)->toXml(), anchors: [Certificates::distinct(0), self::idp()->certificate()]);
+
+        self::assertTrue($metadata->isRead());
+        self::assertSame(self::ENTITY_ID, $metadata->entityId());
+    }
+
+    /**
+     * With an anchor, unsigned metadata is refused, alone or in an aggregate.
+     *
+     * @return void
+     */
+    public function testUnsignedMetadataIsRefusedWithAnAnchor(): void
+    {
+        $anchors = [self::idp()->certificate()];
+
+        self::assertRefused(FailureReason::METADATA_SIGNATURE_INVALID, 'unsigned', $this->read(self::metadata()->toXml(), anchors: $anchors));
+        self::assertRefused(FailureReason::METADATA_SIGNATURE_INVALID, 'unsigned', $this->read(self::metadata()->with(['aggregate' => [self::OTHER]])->toXml(), anchors: $anchors));
+    }
+
+    /**
+     * Metadata signed by the attacker, its entity or its aggregate, is refused
+     * with an anchor, and read without one: no signature is read then.
+     *
+     * @param  array<string, mixed>  $changes
+     * @return void
+     */
+    #[DataProvider('provideSignedMetadata')]
+    public function testMetadataSignedByTheAttackerIsRefused(array $changes): void
+    {
+        $xml = self::metadata()->with($changes)->signedBy(self::attacker()->signer())->toXml();
+
+        self::assertRefused(FailureReason::METADATA_SIGNATURE_INVALID, 'signature', $this->read($xml, anchors: [self::idp()->certificate()]));
+        self::assertTrue($this->read($xml)->isRead());
+    }
+
+    /**
+     * Every signature on the entity's path must verify: an aggregate signed by
+     * the anchor around an entity the attacker signed is refused, and the
+     * reverse; both signed by the anchor is read.
+     *
+     * @return void
+     */
+    public function testEverySignatureOnThePathMustVerify(): void
+    {
+        $anchors  = [self::idp()->certificate()];
+        $inner    = self::metadata()->with(['aggregate' => [self::OTHER], 'sign' => 'entity']);
+        $attacked = self::signedRoot($inner->signedBy(self::attacker()->signer())->toXml(), self::idp()->signer());
+        $reverse  = self::signedRoot($inner->toXml(), self::attacker()->signer());
+        $both     = self::signedRoot($inner->toXml(), self::idp()->signer());
+
+        self::assertRefused(FailureReason::METADATA_SIGNATURE_INVALID, 'signature', $this->read($attacked, anchors: $anchors));
+        self::assertRefused(FailureReason::METADATA_SIGNATURE_INVALID, 'signature', $this->read($reverse, anchors: $anchors));
+        self::assertTrue($this->read($both, anchors: $anchors)->isRead());
+    }
+
+    /**
+     * A signed aggregate changed after it was signed is refused, wherever the
+     * change is.
+     *
+     * @return void
+     */
+    public function testATamperedAggregateIsRefused(): void
+    {
+        $xml = self::metadata()->with(['aggregate' => [self::OTHER], 'sign' => 'aggregate'])->toXml();
+
+        self::assertRefused(
+            FailureReason::METADATA_SIGNATURE_INVALID,
+            'signature',
+            $this->read(str_replace(self::OTHER, 'https://other2.example.test/saml', $xml), anchors: [self::idp()->certificate()]),
+        );
+        self::assertRefused(
+            FailureReason::METADATA_SIGNATURE_INVALID,
+            'signature',
+            $this->read(str_replace(FakeSamlIdentityProvider::SSO_URL, 'https://evil.example.test/sso', $xml), anchors: [self::idp()->certificate()]),
+        );
+    }
+
+    /**
+     * Rows of `[changes, expired, expiry]`: an entity and an aggregate's
+     * `validUntil` around now, and when the metadata expires.
+     *
+     * @return iterable<string, array{0: array<string, mixed>, 1: bool, 2: ?string}>
+     */
+    public static function provideExpiries(): iterable
+    {
+        $at = static fn (string $instant): CarbonImmutable => CarbonImmutable::parse($instant);
+
+        yield from [
+            'undated'                         => [[], false, null],
+            'a cache duration alone'          => [['cache_duration' => 'PT1S'], false, null],
+            'the entity, a second after now'  => [['valid_until' => $at('2026-11-01T09:30:01Z')], false, '2026-11-01T09:30:01+00:00'],
+            'the entity, at now'              => [['valid_until' => $at('2026-11-01T09:30:00Z')], true, null],
+            'the entity, a second before now' => [['valid_until' => $at('2026-11-01T09:29:59Z')], true, null],
+            'the aggregate earlier'           => [
+                ['valid_until' => $at('2026-12-01T00:00:00Z'), 'aggregate' => [self::OTHER], 'aggregate_valid_until' => $at('2026-11-02T00:00:00Z')],
+                false,
+                '2026-11-02T00:00:00+00:00',
+            ],
+            'the entity earlier' => [
+                ['valid_until' => $at('2026-11-02T00:00:00Z'), 'aggregate' => [self::OTHER], 'aggregate_valid_until' => $at('2026-12-01T00:00:00Z')],
+                false,
+                '2026-11-02T00:00:00+00:00',
+            ],
+            'the aggregate alone'   => [['aggregate' => [self::OTHER], 'aggregate_valid_until' => $at('2026-11-03T00:00:00Z')], false, '2026-11-03T00:00:00+00:00'],
+            'the aggregate expired' => [
+                ['valid_until' => $at('2026-12-01T00:00:00Z'), 'aggregate' => [self::OTHER], 'aggregate_valid_until' => $at('2026-11-01T09:30:00Z')],
+                true,
+                null,
+            ],
+        ];
+    }
+
+    /**
+     * The expiry is the earliest `validUntil` of the entity and its aggregate;
+     * metadata whose expiry is not after now is refused.
+     *
+     * @param  array<string, mixed>  $changes
+     * @param  bool  $expired
+     * @param  ?string  $expiry
+     * @return void
+     */
+    #[DataProvider('provideExpiries')]
+    public function testTheEarliestValidUntilIsTheExpiry(array $changes, bool $expired, ?string $expiry): void
+    {
+        $metadata = $this->read(self::metadata()->with($changes)->toXml());
+
+        if ($expired) {
+            self::assertRefused(FailureReason::METADATA_EXPIRED, 'expired', $metadata);
+
+            return;
+        }
+
+        self::assertSame($expiry, $metadata->validUntil()?->toIso8601String());
+    }
+
+    /**
+     * A `validUntil` the schema allows but with a year of more than four digits
+     * is refused.
+     *
+     * @return void
+     */
+    public function testAValidUntilBeyondAFourDigitYearIsRefused(): void
+    {
+        $xml = str_replace(' entityID=', ' validUntil="10000-01-01T00:00:00Z" entityID=', self::metadata()->toXml());
+
+        self::assertRefused(FailureReason::METADATA_INVALID, 'valid_until', $this->read($xml));
+    }
+
+    /**
+     * Rows of `[valid until, expired]`: a `validUntil` with a zone, without one
+     * (read as UTC), and with fractions.
+     *
+     * @return iterable<string, array{0: string, 1: bool}>
+     */
+    public static function provideInstants(): iterable
+    {
+        yield from [
+            'an offset, at now'           => ['2026-11-01T10:30:00+01:00', true],
+            'an offset, a second later'   => ['2026-11-01T10:30:01+01:00', false],
+            'no zone, a second later'     => ['2026-11-01T09:30:01', false],
+            'no zone, at now'             => ['2026-11-01T09:30:00', true],
+            'fractions, half a second on' => ['2026-11-01T09:30:00.500Z', false],
+        ];
+    }
+
+    /**
+     * A `validUntil` is read as the instant it names, one with no zone as UTC.
+     *
+     * @param  string  $validUntil
+     * @param  bool  $expired
+     * @return void
+     */
+    #[DataProvider('provideInstants')]
+    public function testAValidUntilIsReadAsTheInstantItNames(string $validUntil, bool $expired): void
+    {
+        $metadata = $this->read(str_replace(' entityID=', ' validUntil="' . $validUntil . '" entityID=', self::metadata()->toXml()));
+
+        self::assertSame(!$expired, $metadata->isRead());
+        self::assertSame($expired ? FailureReason::METADATA_EXPIRED : null, $metadata->reason);
+    }
+
+    /**
+     * Rows of `[xml, detail]`: a document the hardened parser refuses.
+     *
+     * @return iterable<string, array{0: \Closure(): string, 1: string}>
+     */
+    public static function provideHostileDocuments(): iterable
+    {
+        $secret = dirname(__DIR__, 4) . '/Fixtures/Saml/xxe-secret.txt';
+
+        yield from [
+            'an internal entity' => [static fn (): string => '<!DOCTYPE md:EntityDescriptor [<!ENTITY x "y">]>' . self::metadata()->toXml(), 'unparseable'],
+            'an external entity' => [
+                static fn (): string => '<!DOCTYPE md:EntityDescriptor [<!ENTITY x SYSTEM "file://' . $secret . '">]>'
+                    . str_replace('persistent<', 'persistent&x;<', self::metadata()->toXml()),
+                'unparseable',
+            ],
+            'not XML'          => [static fn (): string => 'metadata', 'unparseable'],
+            'not metadata'     => [static fn (): string => self::organization(), 'not_metadata'],
+            'invalid metadata' => [static fn (): string => str_replace(' entityID=', ' validUntil="tomorrow" entityID=', self::metadata()->toXml()), 'schema'],
+        ];
+    }
+
+    /**
+     * A document type, an entity, a document that is not XML, a valid one that
+     * is not an entity or an aggregate, and invalid metadata are refused.
+     *
+     * @param  \Closure(): string  $xml
+     * @param  string  $detail
+     * @return void
+     */
+    #[DataProvider('provideHostileDocuments')]
+    public function testAHostileDocumentIsRefused(\Closure $xml, string $detail): void
+    {
+        self::assertRefused(FailureReason::METADATA_INVALID, $detail, $this->read($xml()));
+    }
+
+    /**
+     * The document is held to the fetcher's cap: one byte over it is refused,
+     * at it is read.
+     *
+     * @return void
+     */
+    public function testTheDocumentIsHeldToTheFetchersCap(): void
+    {
+        $xml = self::metadata()->with(['name_id_formats' => array_fill(0, 20, FakeSamlResponse::PERSISTENT)])->toXml();
+
+        config()->set('sso.fetcher.max_response_bytes', strlen($xml) - 1);
+
+        self::assertRefused(FailureReason::METADATA_INVALID, 'too_large', $this->read($xml));
+
+        config()->set('sso.fetcher.max_response_bytes', strlen($xml));
+
+        self::assertTrue($this->read($xml)->isRead());
+    }
+
+    /**
+     * Only RSA certificates of at least 2048 bits are read, each once: an
+     * elliptic curve or a weak one is ignored, and metadata with no usable
+     * signing certificate is refused.
+     *
+     * @return void
+     */
+    public function testOnlyUsableRsaCertificatesAreReadOnceEach(): void
+    {
+        $rsa      = self::idp()->certificate();
+        $mixed    = [Certificates::ecP256(), $rsa, Certificates::rsa1024(), $rsa, Certificates::distinct(1)];
+        $metadata = $this->read(self::metadata()->with(['signing_certificates' => $mixed])->toXml());
+
+        self::assertSame([self::certificate($rsa), self::certificate(Certificates::distinct(1))], $metadata->signingCertificates());
+        self::assertRefused(
+            FailureReason::METADATA_INVALID,
+            'signing_certificate',
+            $this->read(self::metadata()->with(['signing_certificates' => [Certificates::ecP256()]])->toXml()),
+        );
+        self::assertRefused(FailureReason::METADATA_INVALID, 'signing_certificate', $this->read(self::metadata()->with(['signing_certificates' => []])->toXml()));
+
+        $empty = '<md:KeyDescriptor use="signing"><ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:X509Data>'
+            . '<ds:X509Certificate></ds:X509Certificate></ds:X509Data></ds:KeyInfo></md:KeyDescriptor>';
+
+        self::assertSame([self::certificate($rsa)], $this->read(str_replace('<md:KeyDescriptor', $empty . '<md:KeyDescriptor', self::metadata()->toXml()))->signingCertificates());
+    }
+
+    /**
+     * A key descriptor's use decides what its certificate is for; one with no
+     * use is for both.
+     *
+     * @return void
+     */
+    public function testAKeyDescriptorsUseDecidesWhatItsCertificateIsFor(): void
+    {
+        $signing    = self::idp()->certificate();
+        $encryption = Certificates::distinct(2);
+        $metadata   = $this->read(self::metadata()->with(['encryption_certificates' => [$encryption]])->toXml());
+        $unused     = $this->read(str_replace(' use="signing"', '', self::metadata()->toXml()));
+
+        self::assertSame([self::certificate($signing)], $metadata->signingCertificates());
+        self::assertSame([self::certificate($encryption)], $metadata->encryptionCertificates());
+        self::assertSame([self::certificate($signing)], $unused->signingCertificates());
+        self::assertSame([self::certificate($signing)], $unused->encryptionCertificates());
+    }
+
+    /**
+     * Rows of `[changes, preferred, binding, url]`: the services the metadata
+     * names, the binding the connection uses, and the service chosen.
+     *
+     * @return iterable<string, array{0: array<string, mixed>, 1: ?string, 2: string, 3: string}>
+     */
+    public static function provideServices(): iterable
+    {
+        $both = ['post_sso_url' => self::POST_URL];
+        $post = ['sso_binding' => FakeSamlMetadata::HTTP_POST, 'sso_url' => self::POST_URL];
+
+        yield from [
+            'both, none preferred'           => [$both, null, 'http_redirect', FakeSamlIdentityProvider::SSO_URL],
+            'both, redirect preferred'       => [$both, 'http_redirect', 'http_redirect', FakeSamlIdentityProvider::SSO_URL],
+            'both, post preferred'           => [$both, 'http_post', 'http_post', self::POST_URL],
+            'redirect alone, post preferred' => [[], 'http_post', 'http_redirect', FakeSamlIdentityProvider::SSO_URL],
+            'post alone, none preferred'     => [$post, null, 'http_post', self::POST_URL],
+            'post alone, unknown preferred'  => [$post, 'artifact', 'http_post', self::POST_URL],
+        ];
+    }
+
+    /**
+     * The service of the binding the connection uses is chosen when the
+     * metadata names one, then HTTP-Redirect, then HTTP-POST.
+     *
+     * @param  array<string, mixed>  $changes
+     * @param  ?string  $preferred
+     * @param  string  $binding
+     * @param  string  $url
+     * @return void
+     */
+    #[DataProvider('provideServices')]
+    public function testChoosesTheServiceOfThePreferredBinding(array $changes, ?string $preferred, string $binding, string $url): void
+    {
+        $metadata = $this->read(self::metadata()->with($changes)->toXml(), binding: $preferred);
+
+        self::assertSame([$binding, $url], [$metadata->ssoBinding(), $metadata->ssoUrl()]);
+    }
+
+    /**
+     * The first service of a binding is chosen, and a service of any other
+     * binding is ignored: with none of the two, the metadata is refused.
+     *
+     * @return void
+     */
+    public function testOnlyTheFirstRedirectOrPostServiceIsUsed(): void
+    {
+        $second   = '<md:SingleSignOnService Binding="' . FakeSamlMetadata::HTTP_REDIRECT . '" Location="https://second.example.test/sso"/>';
+        $artifact = ['sso_binding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact'];
+        $two      = str_replace('</md:IDPSSODescriptor>', $second . '</md:IDPSSODescriptor>', self::metadata()->toXml());
+
+        self::assertSame(FakeSamlIdentityProvider::SSO_URL, $this->read($two)->ssoUrl());
+        self::assertRefused(FailureReason::METADATA_INVALID, 'sso_service', $this->read(self::metadata()->with($artifact)->toXml()));
+        self::assertSame(self::POST_URL, $this->read(self::metadata()->with([...$artifact, 'post_sso_url' => self::POST_URL])->toXml())->ssoUrl());
+    }
+
+    /**
+     * The entity must have exactly one identity provider descriptor that
+     * supports SAML 2.0, wherever the protocol is in its list.
+     *
+     * @return void
+     */
+    public function testExactlyOneSaml2IdentityProviderDescriptorIsNeeded(): void
+    {
+        $xml    = self::metadata()->toXml();
+        $saml2  = 'protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol"';
+        $second = '<md:IDPSSODescriptor ' . $saml2 . '>'
+            . '<md:SingleSignOnService Binding="' . FakeSamlMetadata::HTTP_POST . '" Location="' . self::POST_URL . '"/>'
+            . '</md:IDPSSODescriptor>';
+
+        $saml1 = str_replace($saml2, 'protocolSupportEnumeration="urn:oasis:names:tc:SAML:1.1:protocol"', $xml);
+
+        self::assertRefused(FailureReason::METADATA_INVALID, 'idp_descriptor', $this->read($saml1));
+        self::assertRefused(FailureReason::METADATA_INVALID, 'idp_descriptor', $this->read(str_replace('</md:EntityDescriptor>', $second . '</md:EntityDescriptor>', $xml)));
+        self::assertTrue($this->read(str_replace($saml2, 'protocolSupportEnumeration=" urn:example:other  urn:oasis:names:tc:SAML:2.0:protocol "', $xml))->isRead());
+    }
+
+    /**
+     * The NameID formats are read as text, trimmed, once each, and a comment
+     * inside one cannot change it.
+     *
+     * @return void
+     */
+    public function testNameIdFormatsAreReadAsTextOnceEach(): void
+    {
+        $formats = [' urn:example:one ', 'urn:example:two', 'urn:example:one'];
+        $xml     = str_replace('urn:example:two', 'urn:example:<!-- a comment -->two', self::metadata()->with(['name_id_formats' => $formats])->toXml());
+
+        self::assertSame(['urn:example:one', 'urn:example:two'], $this->read($xml)->nameIdFormats());
+    }
+
+    /**
+     * Read metadata shows nothing it holds in a dump or JSON; refused metadata
+     * answers no value.
+     *
+     * @return void
+     */
+    public function testTheMetadataIsRedactedAndRefusedHoldsNothing(): void
+    {
+        $metadata = $this->read(self::metadata()->toXml());
+        $refused  = $this->read(self::metadata()->toXml(), 'urn:example:nobody');
+
+        self::assertSame(['values' => '[redacted]'], $metadata->__debugInfo());
+        self::assertSame('{"values":"[redacted]"}', json_encode($metadata));
+        self::assertStringNotContainsString(self::ENTITY_ID, print_r($metadata, true));
+
+        $this->expectExceptionObject(new \LogicException('Refused metadata holds no value.'));
+
+        $refused->entityId();
+    }
+
+    /**
+     * Metadata that was read refuses to be serialised.
+     *
+     * @return void
+     */
+    public function testTheMetadataRefusesSerialisation(): void
+    {
+        $metadata = $this->read(self::metadata()->toXml());
+
+        $this->expectExceptionObject(new \LogicException('A ' . IdpMetadata::class . ' cannot be serialised.'));
+
+        serialize($metadata);
+    }
+
+    /**
+     * Read the XML with the reader from the container.
+     *
+     * @param  string  $xml
+     * @param  string  $entityId
+     * @param  list<string>  $anchors
+     * @param  ?string  $binding
+     * @return \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata
+     */
+    private function read(string $xml, string $entityId = self::ENTITY_ID, array $anchors = [], ?string $binding = null): IdpMetadata
+    {
+        return app(MetadataReader::class)->read($xml, $entityId, $anchors, $binding);
+    }
+
+    /**
+     * Assert the metadata was refused for the reason by the rule.
+     *
+     * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @param  string  $detail
+     * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
+     * @return void
+     */
+    private static function assertRefused(FailureReason $reason, string $detail, IdpMetadata $metadata): void
+    {
+        self::assertFalse($metadata->isRead());
+        self::assertSame([$reason, $detail], [$metadata->reason, $metadata->detail]);
+    }
+
+    /**
+     * Everything read metadata holds, in order.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
+     * @return list<mixed>
+     */
+    private static function values(IdpMetadata $metadata): array
+    {
+        return [
+            $metadata->entityId(),
+            $metadata->ssoUrl(),
+            $metadata->ssoBinding(),
+            $metadata->signingCertificates(),
+            $metadata->encryptionCertificates(),
+            $metadata->nameIdFormats(),
+            $metadata->validUntil(),
+        ];
+    }
+
+    /**
+     * The certificate as the reader answers it: its canonical PEM and its
+     * fingerprint.
+     *
+     * @param  string  $pem
+     * @return array{certificate: string, fingerprint: string}
+     */
+    private static function certificate(string $pem): array
+    {
+        $masked = MaskedKey::fromCertificate($pem);
+
+        return ['certificate' => (string) $masked->certificate, 'fingerprint' => (string) $masked->fingerprint];
+    }
+
+    /**
+     * The XML with every `ID` given a prefix, so a copy of an entity repeats
+     * none.
+     *
+     * @param  string  $xml
+     * @param  string  $prefix
+     * @return string
+     */
+    private static function renamedIds(string $xml, string $prefix): string
+    {
+        return str_replace(' ID="_', ' ID="_' . $prefix, $xml);
+    }
+
+    /**
+     * The XML with its root signed by the signer.
+     *
+     * @param  string  $xml
+     * @param  \SineMacula\Laravel\Sso\Testing\Saml\XmlSigner  $signer
+     * @return string
+     *
+     * @throws \LogicException
+     */
+    private static function signedRoot(string $xml, XmlSigner $signer): string
+    {
+        $document = new \DOMDocument;
+
+        self::assertTrue($document->loadXML($xml, LIBXML_NONET));
+        self::assertNotNull($document->documentElement);
+
+        $signer->sign($document->documentElement);
+
+        try {
+            return (string) $document->saveXML($document->documentElement);
+        } catch (\DOMException $exception) {
+            throw new \LogicException('The signed document could not be written.', 0, $exception);
+        }
+    }
+
+    /**
+     * A signature, valid in form, as a role descriptor may carry one.
+     *
+     * @return string
+     */
+    private static function roleSignature(): string
+    {
+        return '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignedInfo>'
+            . '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>'
+            . '<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>'
+            . '<ds:Reference URI=""><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>AAAA</ds:DigestValue></ds:Reference>'
+            . '</ds:SignedInfo><ds:SignatureValue>AAAA</ds:SignatureValue></ds:Signature>';
+    }
+
+    /**
+     * Valid metadata that is neither an entity nor an aggregate.
+     *
+     * @return string
+     */
+    private static function organization(): string
+    {
+        return '<md:Organization xmlns:md="' . FakeSamlMetadata::NS_MD . '">'
+            . '<md:OrganizationName xml:lang="en">Example</md:OrganizationName>'
+            . '<md:OrganizationDisplayName xml:lang="en">Example</md:OrganizationDisplayName>'
+            . '<md:OrganizationURL xml:lang="en">https://example.test</md:OrganizationURL>'
+            . '</md:Organization>';
+    }
+
+    /**
+     * The provider's unsigned metadata.
+     *
+     * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata
+     */
+    private static function metadata(): FakeSamlMetadata
+    {
+        return self::idp()->metadata();
+    }
+
+    /**
+     * The provider, made once.
+     *
+     * @return \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider
+     */
+    private static function idp(): FakeSamlIdentityProvider
+    {
+        return self::$idp ??= new FakeSamlIdentityProvider;
+    }
+
+    /**
+     * The attacker, made once, with a key the connection never trusts.
+     *
+     * @return \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider
+     */
+    private static function attacker(): FakeSamlIdentityProvider
+    {
+        return self::$attacker ??= new FakeSamlIdentityProvider('https://attacker.example.test/saml');
+    }
+}

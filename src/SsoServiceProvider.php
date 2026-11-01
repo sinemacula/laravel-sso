@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Connections\MappingCheck;
 use SineMacula\Laravel\Sso\Console\CheckConfigurationCommand;
 use SineMacula\Laravel\Sso\Console\RecheckDomainsCommand;
+use SineMacula\Laravel\Sso\Console\RefreshMetadataCommand;
 use SineMacula\Laravel\Sso\Contracts\ApplicationPolicy;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -61,7 +62,12 @@ use SineMacula\Laravel\Sso\Links\NoLinks;
 use SineMacula\Laravel\Sso\Links\OneLinkPerConnection;
 use SineMacula\Laravel\Sso\Logging\LoggingCheck;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
+use SineMacula\Laravel\Sso\Metadata\MetadataCheck;
+use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
+use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Check;
+use SineMacula\Laravel\Sso\Protocols\Saml2\UnsolicitedResponses;
+use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
 use SineMacula\Laravel\Sso\RateLimiting\RateLimitsCheck;
 use SineMacula\Laravel\Sso\Results\ProviderDeadlineLimitsSession;
@@ -97,12 +103,17 @@ final class SsoServiceProvider extends ServiceProvider
         'mapping'      => MappingCheck::class,
         'domains'      => DomainsCheck::class,
         'flows'        => FlowsCheck::class,
+        'saml2'        => Saml2Check::class,
+        'metadata'     => MetadataCheck::class,
     ];
 
     /** @var list<class-string> Every package class that takes a PSR-3 logger. Each is given `Logging\SanitizingLogger`, so nothing the package logs skips sanitisation and redaction (SSO-5.7, SSO-9.8); the application's own `LoggerInterface` binding is left alone. A part of the package that logs adds its class here. */
     public const array LOGGING_CLASSES = [
         GuzzleFetcher::class,
         SystemDnsResolver::class,
+        AssertionValidator::class,
+        UnsolicitedResponses::class,
+        MetadataRefresher::class,
     ];
 
     /** @var list<string> The console commands that start long-running or scheduled work: the queue workers, Horizon, the scheduler and the Octane servers. Each is checked as it starts and refused on a problem, as a request is at boot (SSO-12.3); every other command runs, so a misconfigured application can still run `sso:check`, its migrations and the commands that repair it. */
@@ -138,6 +149,7 @@ final class SsoServiceProvider extends ServiceProvider
     private const array COMMANDS = [
         CheckConfigurationCommand::class,
         RecheckDomainsCommand::class,
+        RefreshMetadataCommand::class,
     ];
 
     /**

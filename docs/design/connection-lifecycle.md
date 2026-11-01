@@ -45,12 +45,19 @@ helper), `keys.md` (trusted certificates), `domains.md` (`DomainWithdrawal`) and
 | `ConnectionLifecycle::delete()`                                         | yes   | `sso.connection.delete`                             |
 | `ConnectionService::update()` that asks `sso.connection.trust`          | yes   | `sso.connection.trust`, and what else it asks       |
 | `ConnectionService::update()` that asks only another operation, or none | no    | what it asks                                        |
-| `KeyService::trustCertificate()`, `distrustCertificate()`               | yes   | `sso.connection.trust`                              |
+| `KeyService::trustCertificate()` of a metadata signing anchor           | yes   | `sso.connection.trust`                              |
+| `KeyService::trustCertificate()` of an identity provider certificate    | no    | `sso.connection.trust`                              |
+| `KeyService::distrustCertificate()`                                     | yes   | `sso.connection.trust`                              |
+| A metadata refresh that removes a certificate or moves the endpoint     | yes   | none: a system job (`metadata-refresh.md`)          |
+| A metadata refresh that only adds certificates                          | no    | none                                                |
 | `KeyService::addNext()`, `makeCurrent()`, `retire()`                    | no    | `sso.keys.rotate`                                   |
 | `SubjectMigration::migrate()`                                           | yes   | `sso.connection.trust`, `sso.link.remove`, and more |
 
 A key of the service provider's own keeps what subjects mean and what the identity provider signs, so its rotation
-voids nothing. A refused or unchanged change voids nothing.
+voids nothing. An identity provider certificate trusted beside the others only adds a key a signature may verify with,
+so a provider's next certificate can be trusted ahead of its switch without voiding its own flows; removing one, and
+any change to the metadata signing anchors, voids. Each voiding change raises the connection's trust version. A
+refused or unchanged change voids nothing.
 
 ### Disabling and deleting
 

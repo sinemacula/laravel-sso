@@ -13,6 +13,12 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  * established (the connection, the request's reference, the identity) and
  * redirected to the application's URI once a request was found.
  *
+ * The correlation step alone may instead hand the completion to re-initiation
+ * (SSO-5.8): an unsolicited SAML response, with its correlation on the state,
+ * at a connection whose driver re-initiates. Such an outcome neither proceeds
+ * nor is refused; the pipeline runs no further step and answers it through
+ * `Completion\UnsolicitedReinitiation`.
+ *
  * @api
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -25,6 +31,7 @@ final readonly class StageOutcome
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @param  bool  $reinitiating
      */
     private function __construct(
 
@@ -33,6 +40,9 @@ final readonly class StageOutcome
 
         /** Why the completion was refused, for a refusal. */
         public ?FailureReason $reason,
+
+        /** Whether the completion is handed to re-initiation. */
+        private bool $reinitiating = false,
     ) {}
 
     /**
@@ -59,13 +69,25 @@ final readonly class StageOutcome
     }
 
     /**
+     * Hand the completion of an unsolicited response to re-initiation, with no
+     * further step run.
+     *
+     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
+     * @return self
+     */
+    public static function reinitiate(CompletionState $state): self
+    {
+        return new self($state, null, true);
+    }
+
+    /**
      * Whether the completion goes on.
      *
      * @return bool
      */
     public function isProceeding(): bool
     {
-        return $this->reason === null;
+        return $this->reason === null && !$this->reinitiating;
     }
 
     /**
@@ -76,5 +98,15 @@ final readonly class StageOutcome
     public function isRefused(): bool
     {
         return $this->reason !== null;
+    }
+
+    /**
+     * Whether the completion is handed to re-initiation.
+     *
+     * @return bool
+     */
+    public function isReinitiating(): bool
+    {
+        return $this->reinitiating;
     }
 }

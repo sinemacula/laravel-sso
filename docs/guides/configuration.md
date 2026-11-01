@@ -22,6 +22,15 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `endpoints.paths.metadata`                           | `/auth/sso/connections/{connection}/metadata`   |                                               | [Endpoints](#endpoints)                         |
 | `applications`                                       | `[]`                                            |                                               | [Applications](#applications)                   |
 | `clock.skew_seconds`                                 | `60`                                            | `SSO_CLOCK_SKEW_SECONDS`                      | [Clock](clock.md)                               |
+| `saml2.max_response_bytes`                           | `262144`                                        | `SSO_SAML2_MAX_RESPONSE_BYTES`                | [Signing in with SAML](saml-sign-in.md)         |
+| `saml2.max_xml_bytes`                                | `196608`                                        | `SSO_SAML2_MAX_XML_BYTES`                     | [Signing in with SAML](saml-sign-in.md)         |
+| `saml2.max_decrypted_bytes`                          | `131072`                                        | `SSO_SAML2_MAX_DECRYPTED_BYTES`               | [Signing in with SAML](saml-sign-in.md)         |
+| `saml2.issue_instant_max_age_seconds`                | `300`                                           | `SSO_SAML2_ISSUE_INSTANT_MAX_AGE_SECONDS`     | [Signing in with SAML](saml-sign-in.md)         |
+| `metadata.refresh_interval_seconds`                  | `86400`                                         | `SSO_METADATA_REFRESH_INTERVAL_SECONDS`       | [SAML metadata](saml-metadata.md)               |
+| `metadata.backoff_initial_seconds`                   | `300`                                           | `SSO_METADATA_BACKOFF_INITIAL_SECONDS`        | [SAML metadata](saml-metadata.md)               |
+| `metadata.backoff_max_seconds`                       | `21600`                                         | `SSO_METADATA_BACKOFF_MAX_SECONDS`            | [SAML metadata](saml-metadata.md)               |
+| `metadata.stale_limit_seconds`                       | `2592000`                                       | `SSO_METADATA_STALE_LIMIT_SECONDS`            | [SAML metadata](saml-metadata.md)               |
+| `metadata.claim_seconds`                             | `300`                                           | `SSO_METADATA_CLAIM_SECONDS`                  | [SAML metadata](saml-metadata.md)               |
 | `connections.table`                                  | `sso_connections`                               | `SSO_CONNECTIONS_TABLE`                       | [Connections](connections.md)                   |
 | `keys.table`                                         | `sso_keys`                                      | `SSO_KEYS_TABLE`                              | [Keys and certificates](keys.md)                |
 | `keys.rsa_bits`                                      | `3072`                                          | `SSO_KEYS_RSA_BITS`                           | [Keys and certificates](keys.md)                |

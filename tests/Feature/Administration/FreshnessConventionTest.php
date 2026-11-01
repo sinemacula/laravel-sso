@@ -401,8 +401,8 @@ final class FreshnessConventionTest extends TestCase
         $this->saml             = (string) $saml->connection?->id;
         $this->samlIdpInitiated = (string) $on->connection?->id;
 
-        $this->currentKey         = $this->summary($this->keys()->addNext(self::TENANT, $this->saml, KeyUse::SP_SIGNING, KeyType::EC, $this->actor))->id;
-        $this->nextKey            = $this->summary($this->keys()->addNext(self::TENANT, $this->saml, KeyUse::SP_SIGNING, KeyType::EC, $this->actor))->id;
+        $this->currentKey         = $this->summary($this->keys()->addNext(self::TENANT, $this->saml, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor))->id;
+        $this->nextKey            = $this->summary($this->keys()->addNext(self::TENANT, $this->saml, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor))->id;
         $this->trustedCertificate = $this->summary($this->keys()->trustCertificate(self::TENANT, $this->saml, Certificates::distinct(40), $this->actor))->id;
 
         self::assertNotSame($this->currentKey, $this->nextKey);

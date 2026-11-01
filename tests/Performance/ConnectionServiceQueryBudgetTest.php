@@ -23,7 +23,8 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
  *   the update, when something changed; nothing changed, it writes nothing. A
  *   change to a subject setting (the issuer) also reads the connection's links
  *   with a locking read, and a trust change also voids the connection's
- *   requests and handoff codes in flight, one update each;
+ *   requests and handoff codes in flight and raises its trust version, one
+ *   update each;
  * - `enable()` reads once and writes once, or writes nothing for an enabled
  *   connection;
  * - `get()` and `list()` read once, and write nothing.
@@ -100,15 +101,15 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * An update that changes the issuer is the locked read, the locking read of
-     * the links, the update and the two voiding updates.
+     * the links, the update, the two voiding updates and the trust version.
      *
      * @return void
      */
-    public function testAnIssuerChangeIsTwoReadsAndThreeUpdates(): void
+    public function testAnIssuerChangeIsTwoReadsAndFourUpdates(): void
     {
         $id = $this->createdId();
 
-        $result = $this->assertQueryBudget(2, 3, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, [
+        $result = $this->assertQueryBudget(2, 4, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, [
             'display_name' => 'Renamed',
             'settings'     => ['issuer' => 'https://login.example.com', 'client_secret' => 'a-new-client-secret'],
         ]));

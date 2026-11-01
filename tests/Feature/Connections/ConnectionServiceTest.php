@@ -674,9 +674,15 @@ final class ConnectionServiceTest extends TestCase
 
         $this->freshness->reset();
 
-        $this->service()->update(self::TENANT, $id, ['settings' => ['force_authn' => false, 'requested_authn_context' => ['urn:x:y']]]);
+        $this->service()->update(self::TENANT, $id, ['settings' => ['force_authn' => false]]);
 
         self::assertSame([], $this->freshness->operations());
+
+        $this->freshness->reset();
+
+        $this->service()->update(self::TENANT, $id, ['settings' => ['requested_authn_context' => ['urn:x:y']]]);
+
+        self::assertSame([FreshnessOperation::CONNECTION_TRUST], $this->freshness->operations());
 
         $this->freshness->reset();
 

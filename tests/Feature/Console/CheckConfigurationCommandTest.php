@@ -109,6 +109,8 @@ final class CheckConfigurationCommandTest extends TestCase
         $this->checkEverything();
         $this->useThePackage();
 
+        config()->set('sso.features.metadata_refresh', true);
+
         [$code, $output] = $this->check();
 
         self::assertSame(0, $code);
@@ -124,6 +126,8 @@ final class CheckConfigurationCommandTest extends TestCase
         config()->set('sso.mapping.max_values', 0);
         config()->set('sso.domains.recheck_grace_seconds', -1);
         config()->set('sso.authorization_requests.ttl_seconds', 901);
+        config()->set('sso.saml2.max_response_bytes', 16383);
+        config()->set('sso.metadata.claim_seconds', 3601);
 
         $this->app?->forgetInstance('encrypter');
         $this->app?->forgetScopedInstances();
@@ -147,6 +151,8 @@ final class CheckConfigurationCommandTest extends TestCase
             '[mapping] sso.mapping.max_values must be an integer from 1 to 10000.',
             '[domains] sso.domains.recheck_grace_seconds must be an integer from 0 to 2592000.',
             '[flows] sso.authorization_requests.ttl_seconds must be an integer from 60 to 900.',
+            '[saml2] sso.saml2.max_response_bytes must be an integer from 16384 to 1048576.',
+            '[metadata] sso.metadata.claim_seconds must be an integer from 30 to 3600.',
         ], $output);
     }
 

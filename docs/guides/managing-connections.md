@@ -83,16 +83,19 @@ stored, while a list such as `scopes` is compared in order. Otherwise `changedSe
 then secrets, then `display_name` and `attribute_mapping`.
 
 Only a change to a setting that could widen or redirect access asks the freshness contract: the issuer or entity id,
-the endpoints, the client id and secret, the subject settings and the algorithms ask `sso.connection.trust`;
-IdP-initiated sign-in and its start URL ask `sso.connection.idp_initiated`; the scopes, extra parameters, request
-options, display name and mapping ask nothing.
+the endpoints, the client id and secret, the subject settings, the algorithms, the SAML response policy
+(`want_assertions_signed`, `require_encrypted_assertions`, `requested_authn_context`,
+`max_authentication_age_seconds`) and metadata refresh (`metadata_url`, `metadata_refresh`) ask
+`sso.connection.trust`; IdP-initiated sign-in and its start URL ask `sso.connection.idp_initiated`; the scopes, extra
+parameters, request options (`sign_authn_requests`, `force_authn`), display name and mapping ask nothing.
 
 ### Trust changes and sign-ins in progress
 
 An update that asks `sso.connection.trust` also voids, in the same transaction, everything in flight through the
-connection: every sign-in started but not yet finished, and every handoff code issued but not yet redeemed. Trusting or
-distrusting an identity provider certificate does the same (see [Keys and certificates](keys.md)); rotating a key of
-your own does not. See [what voiding does to people signing in](#what-voiding-does-to-people-signing-in).
+connection: every sign-in started but not yet finished, and every handoff code issued but not yet redeemed.
+Distrusting an identity provider certificate, and changing a metadata signing anchor, do the same (see
+[Keys and certificates](keys.md)); trusting another identity provider certificate, and rotating a key of your own, do
+not. See [what voiding does to people signing in](#what-voiding-does-to-people-signing-in).
 
 ### Settings that change what subjects mean
 
@@ -262,28 +265,34 @@ Each violation names a setting by its dotted path (`issuer`, `signature_algorith
 
 ## SAML settings
 
-| Setting                        | Allowed                                                                       | Default              |
-|--------------------------------|-------------------------------------------------------------------------------|----------------------|
-| `idp_entity_id`                | An `https:`, `http:` or `urn:` URI, at most 1024 bytes, no whitespace         | none (required)      |
-| `sso_url`                      | An `https` URL, no userinfo or fragment, at most 2048 bytes                   | none (required)      |
-| `sso_binding`                  | `http_redirect`, `http_post`                                                  | `http_redirect`      |
-| `subject_source`               | `name_id`, `attribute`                                                        | `name_id`            |
-| `subject_attribute`            | An attribute name, at most 1024 bytes; only with `attribute`, and then needed | none                 |
-| `name_id_format`               | `persistent`, `email`, `unspecified` (never `transient`)                      | `persistent`         |
-| `sign_authn_requests`          | `true`, `false`                                                               | `false`              |
-| `want_assertions_signed`       | `true`, `false`                                                               | `true`               |
-| `require_encrypted_assertions` | `true` (with `sso.features.encrypted_assertions` on), `false`                 | `false`              |
-| `signature_algorithms`         | RSA, RSA-PSS (`MGF1`) and ECDSA over SHA-256, SHA-384 or SHA-512; no SHA-1    | all nine             |
-| `encryption_algorithms`        | RSA-OAEP key transport; AES-GCM, or AES-CBC when listed; never RSA 1.5        | RSA-OAEP and AES-GCM |
-| `force_authn`                  | `true`, `false`                                                               | `false`              |
-| `requested_authn_context`      | Up to 10 context class URIs, each at most 1024 bytes                          | none                 |
-| `idp_initiated`                | `true` (with `sso.features.idp_initiated` on), `false`                        | `false`              |
-| `idp_initiated_start_url`      | An `https` URL, as `sso_url`; needed when `idp_initiated` is on               | none                 |
+| Setting                          | Allowed                                                                       | Default                    |
+|----------------------------------|-------------------------------------------------------------------------------|----------------------------|
+| `idp_entity_id`                  | An `https:`, `http:` or `urn:` URI, at most 1024 bytes, no whitespace         | none (required)            |
+| `sso_url`                        | An `https` URL, no userinfo or fragment, at most 2048 bytes                   | none (required)            |
+| `sso_binding`                    | `http_redirect`, `http_post`                                                  | `http_redirect`            |
+| `subject_source`                 | `name_id`, `attribute`                                                        | `name_id`                  |
+| `subject_attribute`              | An attribute name, at most 1024 bytes; only with `attribute`, and then needed | none                       |
+| `name_id_format`                 | `persistent`, `email`, `unspecified` (never `transient`)                      | `persistent`               |
+| `sign_authn_requests`            | `true`, `false`                                                               | `false`                    |
+| `want_assertions_signed`         | `true`, `false`                                                               | `true`                     |
+| `require_encrypted_assertions`   | `true` (with `sso.features.encrypted_assertions` on), `false`                 | `false`                    |
+| `signature_algorithms`           | RSA over SHA-256, SHA-384 or SHA-512; no SHA-1                                | all three                  |
+| `encryption_algorithms`          | RSA-OAEP key transport; AES-128-GCM or AES-192-GCM, or AES-CBC when listed    | RSA-OAEP and both AES-GCM  |
+| `force_authn`                    | `true`, `false`                                                               | `false`                    |
+| `requested_authn_context`        | Up to 10 context class URIs, each at most 1024 bytes                          | none                       |
+| `max_authentication_age_seconds` | 60 to 604800 (a week)                                                         | none                       |
+| `idp_initiated`                  | `true` (with `sso.features.idp_initiated` on), `false`                        | `false`                    |
+| `idp_initiated_start_url`        | An `https` URL, as `sso_url`; needed when `idp_initiated` is on               | none                       |
+| `metadata_url`                   | An `https` URL, as `sso_url`; needed when `metadata_refresh` is on            | none                       |
+| `metadata_refresh`               | `true` (with `sso.features.metadata_refresh` on), `false`                     | `false`                    |
 
 The algorithms are given by their XML Signature and XML Encryption URIs, for example
-`http://www.w3.org/2001/04/xmldsig-more#rsa-sha256` and `http://www.w3.org/2009/xmlenc11#aes256-gcm`; an encryption
-list holds at least one key transport and one data algorithm. A SAML connection has no secret among its settings: its
-key pairs and trusted certificates are managed with its keys (see [Keys and certificates](keys.md)).
+`http://www.w3.org/2001/04/xmldsig-more#rsa-sha256` and `http://www.w3.org/2009/xmlenc11#aes128-gcm`; an encryption
+list holds at least one key transport and one data algorithm, and never RSA 1.5. These are what the SAML library the
+package uses can verify and decrypt: it has no ECDSA or RSA-PSS signatures, and it cannot decrypt AES-256-GCM until its
+next major version, so neither is accepted. A SAML connection has no secret among its settings: its key pairs and
+trusted certificates are managed with its keys (see [Keys and certificates](keys.md)). Setting up a SAML connection
+from start to finish is described in [Setting up a SAML connection](saml-connections.md).
 
 ## OIDC settings
 

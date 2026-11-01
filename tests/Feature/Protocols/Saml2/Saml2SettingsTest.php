@@ -36,10 +36,16 @@ final class Saml2SettingsTest extends TestCase
     /** @var string The SHA-256 RSA signature algorithm. */
     private const string RSA_SHA256 = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256';
 
+    /** @var string RSA-PSS with SHA-256, which the library does not verify. */
+    private const string RSA_PSS = 'http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1';
+
     /** @var string The RSA-OAEP key transport algorithm. */
     private const string RSA_OAEP = 'http://www.w3.org/2009/xmlenc11#rsa-oaep';
 
-    /** @var string The AES-256-GCM data encryption algorithm. */
+    /** @var string The AES-128-GCM data encryption algorithm. */
+    private const string AES128_GCM = 'http://www.w3.org/2009/xmlenc11#aes128-gcm';
+
+    /** @var string The AES-256-GCM data encryption algorithm, which the library cannot decrypt. */
     private const string AES256_GCM = 'http://www.w3.org/2009/xmlenc11#aes256-gcm';
 
     /**
@@ -63,11 +69,16 @@ final class Saml2SettingsTest extends TestCase
             'force_authn'                  => false,
             'requested_authn_context'      => [],
             'idp_initiated'                => false,
+            'metadata_refresh'             => false,
         ], $settings->toArray());
 
         self::assertSame([], $settings->violations());
-        self::assertCount(9, Saml2Settings::SIGNATURE_ALGORITHMS);
-        self::assertNotContains('http://www.w3.org/2000/09/xmldsig#rsa-sha1', Saml2Settings::SIGNATURE_ALGORITHMS);
+        self::assertSame([
+            'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
+            'http://www.w3.org/2001/04/xmldsig-more#rsa-sha384',
+            'http://www.w3.org/2001/04/xmldsig-more#rsa-sha512',
+        ], Saml2Settings::SIGNATURE_ALGORITHMS);
+        self::assertSame(['http://www.w3.org/2009/xmlenc11#aes128-gcm', 'http://www.w3.org/2009/xmlenc11#aes192-gcm'], Saml2Settings::DATA_ENCRYPTION_ALGORITHMS);
     }
 
     /**
@@ -107,23 +118,27 @@ final class Saml2SettingsTest extends TestCase
     {
         config()->set('sso.features.encrypted_assertions', true);
         config()->set('sso.features.idp_initiated', true);
+        config()->set('sso.features.metadata_refresh', true);
 
         $settings = Saml2Settings::fromArray([
-            'idp_entity_id'                => 'urn:example:idp',
-            'sso_url'                      => 'https://idp.example.com:8443/sso?tenant=1',
-            'sso_binding'                  => 'http_post',
-            'subject_source'               => 'attribute',
-            'subject_attribute'            => 'employee id',
-            'name_id_format'               => 'unspecified',
-            'sign_authn_requests'          => true,
-            'want_assertions_signed'       => false,
-            'require_encrypted_assertions' => true,
-            'signature_algorithms'         => Saml2Settings::SIGNATURE_ALGORITHMS,
-            'encryption_algorithms'        => [...Saml2Settings::KEY_TRANSPORT_ALGORITHMS, ...Saml2Settings::DATA_ENCRYPTION_ALGORITHMS, ...Saml2Settings::CBC_ALGORITHMS],
-            'force_authn'                  => true,
-            'requested_authn_context'      => array_fill(0, Saml2Settings::MAX_AUTHN_CONTEXTS, 'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'),
-            'idp_initiated'                => true,
-            'idp_initiated_start_url'      => 'https://app.example.com/sso/start',
+            'idp_entity_id'                  => 'urn:example:idp',
+            'sso_url'                        => 'https://idp.example.com:8443/sso?tenant=1',
+            'sso_binding'                    => 'http_post',
+            'subject_source'                 => 'attribute',
+            'subject_attribute'              => 'employee id',
+            'name_id_format'                 => 'unspecified',
+            'sign_authn_requests'            => true,
+            'want_assertions_signed'         => false,
+            'require_encrypted_assertions'   => true,
+            'signature_algorithms'           => Saml2Settings::SIGNATURE_ALGORITHMS,
+            'encryption_algorithms'          => [...Saml2Settings::KEY_TRANSPORT_ALGORITHMS, ...Saml2Settings::DATA_ENCRYPTION_ALGORITHMS, ...Saml2Settings::CBC_ALGORITHMS],
+            'force_authn'                    => true,
+            'requested_authn_context'        => array_fill(0, Saml2Settings::MAX_AUTHN_CONTEXTS, 'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'),
+            'max_authentication_age_seconds' => 3600,
+            'idp_initiated'                  => true,
+            'idp_initiated_start_url'        => 'https://app.example.com/sso/start',
+            'metadata_url'                   => 'https://idp.example.com/metadata.xml',
+            'metadata_refresh'               => true,
         ]);
 
         self::assertSame([], $settings->violations());
@@ -139,6 +154,10 @@ final class Saml2SettingsTest extends TestCase
 
         self::assertSame([], Saml2Settings::fromArray(['sso_url' => 'https://[2001:db8::1]/sso'])->violations());
         self::assertSame([], Saml2Settings::fromArray(['idp_entity_id' => 'urn:x:' . str_repeat('a', 1018)])->violations());
+
+        foreach ([Saml2Settings::MIN_AUTHENTICATION_AGE_SECONDS, Saml2Settings::MAX_AUTHENTICATION_AGE_SECONDS] as $age) {
+            self::assertSame([], Saml2Settings::fromArray(['max_authentication_age_seconds' => $age])->violations(), (string) $age);
+        }
     }
 
     /**
@@ -199,11 +218,19 @@ final class Saml2SettingsTest extends TestCase
             'a signature algorithm number' => [['signature_algorithms' => [256]], [['signature_algorithms.0', 'invalid_type']]],
             'no encryption algorithm'      => [['encryption_algorithms' => []], [['encryption_algorithms', 'required']]],
             'rsa 1.5'                      => [
-                ['encryption_algorithms' => [self::RSA_OAEP, 'http://www.w3.org/2001/04/xmlenc#rsa-1_5', self::AES256_GCM]],
+                ['encryption_algorithms' => [self::RSA_OAEP, 'http://www.w3.org/2001/04/xmlenc#rsa-1_5', self::AES128_GCM]],
                 [['encryption_algorithms.1', 'not_allowed']],
             ],
-            'an encryption algorithm twice' => [['encryption_algorithms' => [self::RSA_OAEP, self::AES256_GCM, self::AES256_GCM]], [['encryption_algorithms.2', 'duplicate']]],
-            'no key transport'              => [['encryption_algorithms' => [self::AES256_GCM]], [['encryption_algorithms', 'required']]],
+            'an encryption algorithm twice' => [['encryption_algorithms' => [self::RSA_OAEP, self::AES128_GCM, self::AES128_GCM]], [['encryption_algorithms.2', 'duplicate']]],
+            'no key transport'              => [['encryption_algorithms' => [self::AES128_GCM]], [['encryption_algorithms', 'required']]],
+            'aes-256-gcm'                   => [['encryption_algorithms' => [self::RSA_OAEP, self::AES256_GCM]], [['encryption_algorithms.1', 'not_allowed']]],
+            'ecdsa'                         => [['signature_algorithms' => ['http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256']], [['signature_algorithms.0', 'not_allowed']]],
+            'rsa-pss'                       => [['signature_algorithms' => [self::RSA_PSS]], [['signature_algorithms.0', 'not_allowed']]],
+            'an age as a string'            => [['max_authentication_age_seconds' => '3600'], [['max_authentication_age_seconds', 'invalid_type']]],
+            'an age one under the least'    => [['max_authentication_age_seconds' => 59], [['max_authentication_age_seconds', 'not_allowed']]],
+            'an age one over the most'      => [['max_authentication_age_seconds' => 604801], [['max_authentication_age_seconds', 'not_allowed']]],
+            'an http metadata url'          => [['metadata_url' => 'http://idp.example.com/metadata'], [['metadata_url', 'not_https']]],
+            'a string for metadata refresh' => [['metadata_refresh' => 'yes'], [['metadata_refresh', 'invalid_type']]],
             'no data encryption'            => [['encryption_algorithms' => [self::RSA_OAEP]], [['encryption_algorithms', 'required']]],
             'too many context classes'      => [['requested_authn_context' => array_fill(0, 11, 'urn:x:y')], [['requested_authn_context', 'too_many']]],
             'a context class string'        => [['requested_authn_context' => 'urn:x:y'], [['requested_authn_context', 'invalid_type']]],
@@ -277,6 +304,27 @@ final class Saml2SettingsTest extends TestCase
         self::assertSame([['idp_initiated_start_url', 'required']], self::violationsOf($withoutUrl));
         self::assertSame([], self::violationsOf($withUrl));
         self::assertSame([], self::violationsOf(Saml2Settings::fromArray(['idp_initiated_start_url' => 'https://app.example.com/start'])));
+    }
+
+    /**
+     * The metadata refresh may be on only while its feature is, and then needs
+     * the metadata URL; the URL alone is allowed either way.
+     *
+     * @return void
+     */
+    public function testRequiresTheFeatureAndAUrlForTheMetadataRefresh(): void
+    {
+        $withoutUrl = Saml2Settings::fromArray(['metadata_refresh' => true]);
+        $withUrl    = Saml2Settings::fromArray(['metadata_refresh' => true, 'metadata_url' => 'https://idp.example.com/metadata']);
+
+        self::assertSame([['metadata_url', 'required'], ['metadata_refresh', 'unsupported']], self::violationsOf($withoutUrl));
+        self::assertSame([['metadata_refresh', 'unsupported']], self::violationsOf($withUrl));
+
+        config()->set('sso.features.metadata_refresh', true);
+
+        self::assertSame([['metadata_url', 'required']], self::violationsOf($withoutUrl));
+        self::assertSame([], self::violationsOf($withUrl));
+        self::assertSame([], self::violationsOf(Saml2Settings::fromArray(['metadata_url' => 'https://idp.example.com/metadata', 'metadata_refresh' => false])));
     }
 
     /**

@@ -32,12 +32,13 @@ use Tests\Fixtures\Keys\Certificates;
  *   made current);
  * - `retire()`: 4 reads (the connection and the key, twice), 1 write (the
  *   delete);
- * - `distrustCertificate()`: 4 reads (the connection and the key, twice), 3
+ * - `distrustCertificate()`: 4 reads (the connection and the key, twice), 4
  *   writes (the delete, then the requests and the handoff codes in flight
- *   voided);
- * - `trustCertificate()`: 4 reads (the connection and the fingerprints trusted,
- *   twice), 3 writes (the insert, then the requests and the handoff codes in
- *   flight voided);
+ *   voided, and the connection's trust version raised);
+ * - `trustCertificate()` of a signing certificate: 4 reads (the connection and
+ *   the fingerprints trusted, twice), 1 write (the insert), since an additive
+ *   certificate voids nothing; of a metadata signing anchor, the insert, the
+ *   two voiding updates and the trust version, 4 writes;
  * - `keys()`: 2 reads (the connection, then its rows), no write.
  *
  * A refusal stops where it is decided, with no write: a stale caller costs the
@@ -125,28 +126,41 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Trusting a certificate is four reads, one insert and the two voiding
-     * updates.
+     * Trusting a signing certificate is four reads and the insert alone.
      *
      * @return void
      */
-    public function testTrustingACertificateIsFourReadsAndThreeWrites(): void
+    public function testTrustingASigningCertificateIsFourReadsAndOneWrite(): void
     {
-        $result = $this->assertQueryBudget(4, 3, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::ecP256()));
+        $result = $this->assertQueryBudget(4, 1, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0)));
 
         self::assertTrue($result->isSucceeded());
     }
 
     /**
-     * Distrusting a certificate is four reads, one delete and the two voiding
-     * updates.
+     * Trusting a metadata signing anchor is four reads, the insert, the two
+     * voiding updates and the trust version.
      *
      * @return void
      */
-    public function testDistrustingACertificateIsFourReadsAndThreeWrites(): void
+    public function testTrustingAnAnchorIsFourReadsAndFourWrites(): void
     {
-        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::ecP256()));
-        $result      = $this->assertQueryBudget(4, 3, fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id));
+        $anchor = Certificates::distinct(0);
+        $result = $this->assertQueryBudget(4, 4, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $anchor, null, KeyUse::METADATA_SIGNING));
+
+        self::assertTrue($result->isSucceeded());
+    }
+
+    /**
+     * Distrusting a certificate is four reads, one delete, the two voiding
+     * updates and the trust version.
+     *
+     * @return void
+     */
+    public function testDistrustingACertificateIsFourReadsAndFourWrites(): void
+    {
+        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0)));
+        $result      = $this->assertQueryBudget(4, 4, fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id));
 
         self::assertTrue($result->isSucceeded());
     }
@@ -160,7 +174,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     {
         $this->add();
         $this->add();
-        $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::ecP256());
+        $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0));
 
         $keys = $this->assertQueryBudget(2, 0, fn (): ?array => $this->keys()->keys(self::TENANT, $this->connection->id));
 
@@ -184,7 +198,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
         $refusals = [
             $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id)),
             $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_ENCRYPTION)),
-            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::ecP256())),
+            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0))),
         ];
 
         foreach ($refusals as $refusal) {
@@ -199,7 +213,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
      */
     private function add(): KeyResult
     {
-        return $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::EC);
+        return $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
     }
 
     /**

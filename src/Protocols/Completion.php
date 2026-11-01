@@ -14,9 +14,11 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
  *
  * A driver answers `verified` only once every check of its protocol has passed
  * against the consumed request; the completion pipeline then builds the
- * `VerifiedResult` from the claims. Every refusal is a value: a malformed,
- * unsigned, expired or replayed response, an unsuccessful SAML status or an
- * OIDC `error` response.
+ * `VerifiedResult` from the claims. A verified SAML response also carries the
+ * `ReplayRecord` of its assertion, which the completion records in its locked
+ * transaction before any downstream effect, refusing a repeat with `replayed`
+ * (SSO-6.6). Every refusal is a value: a malformed, unsigned, expired or
+ * replayed response, an unsuccessful SAML status or an OIDC `error` response.
  *
  * @api
  *
@@ -30,6 +32,7 @@ final readonly class Completion
      *
      * @param  ?\SineMacula\Laravel\Sso\Results\VerifiedClaims  $claims
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay
      */
     private function __construct(
 
@@ -38,17 +41,22 @@ final readonly class Completion
 
         /** Why the response was refused, for a refused one. */
         public ?FailureReason $reason,
+
+        /** What the completion records against replay, for a verified response that carries one. */
+        public ?ReplayRecord $replay = null,
     ) {}
 
     /**
-     * The response passed every check, with what they verified.
+     * The response passed every check, with what they verified and, for one
+     * that must never be accepted twice, what records it against replay.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedClaims  $claims
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay
      * @return self
      */
-    public static function verified(VerifiedClaims $claims): self
+    public static function verified(VerifiedClaims $claims, ?ReplayRecord $replay = null): self
     {
-        return new self($claims, null);
+        return new self($claims, null, $replay);
     }
 
     /**

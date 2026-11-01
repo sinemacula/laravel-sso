@@ -51,12 +51,14 @@ final class FailureReasonTest extends TestCase
             'issuer_mismatch', 'audience_mismatch', 'recipient_mismatch', 'assertion_expired', 'replayed', 'nonce_mismatch',
             'provider_error', 'metadata_expired', 'unlinked', 'purpose_mismatch', 'verifier_mismatch', 'rate_limited',
             'challenge_invalid', 'session_ineligible', 'discovery_no_match', 'connection_mismatch', 'application_mismatch',
-            'enforcement_unsatisfied', 'handoff_unknown', 'handoff_expired', 'link_changed',
-            'fetch_refused', 'fetch_failed', 'freshness_required', 'connection_not_found', 'key_not_found',
+            'enforcement_unsatisfied', 'handoff_unknown', 'handoff_expired', 'link_changed', 'response_invalid', 'decryption_failed',
+            'encryption_required', 'subject_invalid', 'request_mismatch', 'authentication_expired', 'authentication_context_mismatch',
+            'condition_unsupported', 'unsolicited_not_allowed', 'fetch_refused', 'fetch_failed', 'freshness_required', 'connection_not_found', 'key_not_found',
             'settings_invalid', 'protocol_unavailable', 'key_state_conflict', 'domain_not_found', 'domain_unavailable',
             'domain_claim_expired', 'domain_record_not_found', 'domain_lookup_failed', 'feature_disabled',
             'completed_sign_in_required', 'link_not_found', 'link_limit_reached', 'subject_already_linked', 'connection_has_links',
-            'links_unaccounted',
+            'links_unaccounted', 'metadata_invalid', 'metadata_signature_invalid', 'metadata_entity_not_found', 'metadata_conflict',
+            'metadata_refresh_in_progress',
         ], array_column(FailureReason::cases(), 'value'));
     }
 

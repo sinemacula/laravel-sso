@@ -42,6 +42,11 @@ use SineMacula\Laravel\Sso\Models\HandoffCode;
  * fails to serialise (SQLSTATE `40001`) when it locks the connection, before it
  * voids anything, and never commits with the new request or code left unvoided.
  *
+ * It raises the connection's trust version by one on the locked row, so a flow
+ * that holds no request to void (an unsolicited SAML response, which captures
+ * the version before it validates) and a metadata refresh (which captures it
+ * before it fetches) find the change under the lock and refuse.
+ *
  * It then calls `reservationsVoided()`, which does nothing yet: linking by a
  * verified domain adds there the voiding of the connection's open link
  * reservations (state `reserved`), so a trust change, a disable or a deletion
@@ -71,8 +76,9 @@ readonly class InFlightVoider
 
     /**
      * Void the unfinished requests and unredeemed handoff codes of the locked
-     * connection, then its open link reservations. Called inside the
-     * transaction that changes the connection, with its row locked.
+     * connection, raise its trust version, then void its open link
+     * reservations. Called inside the transaction that changes the connection,
+     * with its row locked.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @return void
@@ -89,6 +95,8 @@ readonly class InFlightVoider
 
         self::voided(AuthorizationRequest::query(), $locked, 'completed_at', $now);
         self::voided(HandoffCode::query(), $locked, 'redeemed_at', $now);
+
+        $locked->increment('trust_version');
 
         $this->reservationsVoided($locked);
     }
