@@ -28,6 +28,13 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `keys.certificate_days`                              | `730`                                           | `SSO_KEYS_CERTIFICATE_DAYS`           | [Keys and certificates](keys.md)                |
 | `keys.overlap_seconds`                               | `604800`                                        | `SSO_KEYS_OVERLAP_SECONDS`            | [Keys and certificates](keys.md)                |
 | `keys.expiry_warning_days`                           | `30`                                            | `SSO_KEYS_EXPIRY_WARNING_DAYS`        | [Keys and certificates](keys.md)                |
+| `domains.table`                                      | `sso_domains`                                   | `SSO_DOMAINS_TABLE`                   | [Domains](domains.md)                           |
+| `domains.record_name`                                | `_sso-verification`                             | `SSO_DOMAINS_RECORD_NAME`             | [Domains](domains.md)                           |
+| `domains.refused`                                    | `[]`                                            |                                       | [Domains](domains.md)                           |
+| `domains.pending_expiry_seconds`                     | `604800`                                        | `SSO_DOMAINS_PENDING_EXPIRY_SECONDS`  | [Domains](domains.md)                           |
+| `domains.recheck_grace_seconds`                      | `259200`                                        | `SSO_DOMAINS_RECHECK_GRACE_SECONDS`   | [Domains](domains.md)                           |
+| `domains.linking_max_age_seconds`                    | `86400`                                         | `SSO_DOMAINS_LINKING_MAX_AGE_SECONDS` | [Domains](domains.md)                           |
+| `enforcement.table`                                  | `sso_enforcement`                               | `SSO_ENFORCEMENT_TABLE`               | [Enforcement](enforcement.md)                   |
 | `mapping.max_value_length`                           | `1024`                                          | `SSO_MAPPING_MAX_VALUE_LENGTH`        | [Managing connections](managing-connections.md) |
 | `mapping.max_values`                                 | `100`                                           | `SSO_MAPPING_MAX_VALUES`              | [Managing connections](managing-connections.md) |
 | `mapping.max_custom_attributes`                      | `20`                                            | `SSO_MAPPING_MAX_CUSTOM_ATTRIBUTES`   | [Managing connections](managing-connections.md) |
@@ -150,9 +157,9 @@ php artisan sso:check
 
 It prints `[subject] OK`, `[subject] not enabled` for what is off, or one line per problem, and exits `1` when there
 is a problem. The subjects are `features` (always checked), `extensions`, `storage`, `endpoints`, `applications`,
-`clock`, `secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys` and `mapping` (each checked while a
-protocol is on). The check reads configuration only: it opens no database connection and prints no secret or
-configured value. What the last eight check is in their guides: [Clock](clock.md), [Secrets](secrets.md),
+`clock`, `secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys`, `mapping` and `domains` (each checked
+while a protocol is on). The check reads configuration only: it opens no database connection and prints no secret or
+configured value. What the last nine check is in their guides: [Clock](clock.md), [Secrets](secrets.md),
 [Outbound requests](outbound-requests.md), [Logging](logging.md), [Rate limits](rate-limits.md),
-[Fresh authentication](freshness.md), [Keys and certificates](keys.md) and
-[Managing connections](managing-connections.md).
+[Fresh authentication](freshness.md), [Keys and certificates](keys.md), [Managing connections](managing-connections.md)
+and [Domains](domains.md).

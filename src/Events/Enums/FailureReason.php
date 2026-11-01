@@ -126,4 +126,30 @@ enum FailureReason: string
     // a key that is not next, retiring the current key, adding a second next
     // key
     case KEY_STATE_CONFLICT = 'key_state_conflict';
+
+    // No claim of that domain belongs to the connection named
+    case DOMAIN_NOT_FOUND = 'domain_not_found';
+
+    // The domain is verified for another connection, of this tenant or any
+    // other; which one is never said (SSO-3.2)
+    case DOMAIN_UNAVAILABLE = 'domain_unavailable';
+
+    // The pending claim expired before it was verified; claiming the domain
+    // again gives it a new token (SSO-3.2)
+    case DOMAIN_CLAIM_EXPIRED = 'domain_claim_expired';
+
+    // The domain's TXT record is missing, or none of its records is the claim's
+    // token (SSO-3.2)
+    case DOMAIN_RECORD_NOT_FOUND = 'domain_record_not_found';
+
+    // The DNS resolver could not answer, which proves nothing either way; the
+    // verification can be tried again (SSO-3.2, decision D3)
+    case DOMAIN_LOOKUP_FAILED = 'domain_lookup_failed';
+
+    // The feature the helper belongs to is off in `sso.features`
+    case FEATURE_DISABLED = 'feature_disabled';
+
+    // Enforcement cannot be turned on: none of the connections that would
+    // satisfy it is enabled and has completed a sign-in (SSO-4.3)
+    case COMPLETED_SIGN_IN_REQUIRED = 'completed_sign_in_required';
 }

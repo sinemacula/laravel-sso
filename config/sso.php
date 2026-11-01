@@ -25,8 +25,8 @@ return [
     | migration the application performs and a worker restart.
     |
     | Each table's name is set in its own section (`connections.table`,
-    | `keys.table`, `single_use.table`, `rate_limits.table`), each defaulting
-    | to an `sso_` prefix.
+    | `keys.table`, `domains.table`, `enforcement.table`, `single_use.table`,
+    | `rate_limits.table`), each defaulting to an `sso_` prefix.
     |
     */
 
@@ -205,6 +205,64 @@ return [
         'max_value_length'      => env('SSO_MAPPING_MAX_VALUE_LENGTH', 1024),
         'max_values'            => env('SSO_MAPPING_MAX_VALUES', 100),
         'max_custom_attributes' => env('SSO_MAPPING_MAX_CUSTOM_ATTRIBUTES', 20),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Domains
+    |---------------------------------------------------------------------------
+    |
+    | The table each connection's claimed email domains are kept in, on the
+    | storage connection, and how a claim is verified and kept verified. A
+    | domain is claimed exactly as given (a verified domain covers none of its
+    | subdomains), pending until a DNS TXT record at `record_name` under it
+    | (`_sso-verification.example.com`) carries the claim's token, and verified
+    | for at most one connection at a time.
+    |
+    | - `record_name`: the name the TXT record is looked up at under the
+    |   domain, one to four labels of lower-case letters, digits, `-` and `_`,
+    |   at most 63 characters. Each claim keeps the name it was made with, so
+    |   changing it affects new claims only.
+    | - `refused`: domains no tenant may claim, added to the public mailbox
+    |   providers the package always refuses (`gmail.com`, `outlook.com` and
+    |   the like); it never removes one. A listed domain's subdomains are
+    |   refused too.
+    | - `pending_expiry_seconds`: how long a claim waits to be verified, an
+    |   hour to 30 days (default 7 days). An expired claim is claimed again
+    |   for a new token.
+    | - `recheck_grace_seconds`: how long a verified domain whose record has
+    |   gone keeps routing discovery before it lapses, none to 30 days (default
+    |   3 days). Linking by the domain stops at once.
+    | - `linking_max_age_seconds`: how recent a domain's last successful check
+    |   must be for it to allow linking by email, 60 seconds to 24 hours, the
+    |   default and the ceiling, so a stopped scheduler cannot extend it.
+    |
+    */
+
+    'domains' => [
+        'table'                   => env('SSO_DOMAINS_TABLE', 'sso_domains'),
+        'record_name'             => env('SSO_DOMAINS_RECORD_NAME', '_sso-verification'),
+        'refused'                 => [],
+        'pending_expiry_seconds'  => env('SSO_DOMAINS_PENDING_EXPIRY_SECONDS', 604800),
+        'recheck_grace_seconds'   => env('SSO_DOMAINS_RECHECK_GRACE_SECONDS', 259200),
+        'linking_max_age_seconds' => env('SSO_DOMAINS_LINKING_MAX_AGE_SECONDS', 86400),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Enforcement
+    |---------------------------------------------------------------------------
+    |
+    | The table each tenant's enforcement is kept in, on the storage
+    | connection: whether sessions active in the tenant must be established
+    | through one of its own connections, which connections satisfy it, and
+    | the version that changes with every change. Enforcement is off for every
+    | tenant until `features.enforcement` is on and a tenant turns it on.
+    |
+    */
+
+    'enforcement' => [
+        'table' => env('SSO_ENFORCEMENT_TABLE', 'sso_enforcement'),
     ],
 
     /*

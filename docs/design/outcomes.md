@@ -59,6 +59,11 @@ the same way:
   the storage connection, and report through `Administration\AdministrationEvents` inside it. A refusal at any step
   writes nothing and dispatches nothing.
 - A read answers `null` for a connection it did not find (`get()`), and a list, possibly empty, otherwise.
+- The domain helpers (`Domains\DomainService`) answer a `Domains\DomainResult` the same way, with the domain
+  reasons of `FailureReason` (`domain_not_found`, `domain_unavailable`, `domain_claim_expired`,
+  `domain_record_not_found`, `domain_lookup_failed`), and `rate_limited` with `retryAfter` for a verification; see
+  `domains.md`. The enforcement helpers add `feature_disabled` and `completed_sign_in_required`; see
+  `enforcement.md`.
 - An application's mistake (an empty tenant id, an acting identity with no type) is an `InvalidArgumentException`; a
   database error, a `SecretEncrypter` that cannot encrypt or a key OpenSSL cannot generate propagates.
 

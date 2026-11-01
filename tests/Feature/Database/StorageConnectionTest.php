@@ -128,6 +128,8 @@ final class StorageConnectionTest extends TestCase
             'rate_limits.table' => 'sso_rate_limits',
             'connections.table' => 'sso_connections',
             'keys.table'        => 'sso_keys',
+            'domains.table'     => 'sso_domains',
+            'enforcement.table' => 'sso_enforcement',
         ], StorageConnection::TABLES);
 
         foreach (StorageConnection::TABLES as $key => $default) {
@@ -199,7 +201,7 @@ final class StorageConnectionTest extends TestCase
 
                 self::fail('Expected the key to be refused.');
             } catch (\LogicException $exception) {
-                $known = '`sso.single_use.table`, `sso.rate_limits.table`, `sso.connections.table`, `sso.keys.table`';
+                $known = '`sso.single_use.table`, `sso.rate_limits.table`, `sso.connections.table`, `sso.keys.table`, `sso.domains.table`, `sso.enforcement.table`';
 
                 self::assertSame("`sso.links.table` names no package table; the tables are named by {$known}.", $exception->getMessage());
             }

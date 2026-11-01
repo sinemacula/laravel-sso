@@ -6,8 +6,8 @@ This note records the events a change to a connection, a key or a certificate re
 what it never carries (SSO-10.4), who dispatches each and when, after the change commits and never when it rolls back
 (SSO-10.5), and the nearing-expiry report, which reports a certificate's end of validity and never enforces it (SSO-2.6,
 SSO-11.12). Audit trails attach to these events to record who changed an identity provider's trust, so their shape and
-their timing are a contract. The domain, enforcement, metadata and link events arrive with their parts of the package
-and follow the same rules.
+their timing are a contract. The domain and enforcement events follow the same rules and are listed under "Domain and
+enforcement events" below; the metadata and link events arrive with their parts of the package.
 
 ## Invariants
 
@@ -104,6 +104,32 @@ and follow the same rules.
   nothing: an expired certificate is still trusted, and no key is withdrawn. The scheduled command `sso:keys:expiring`,
   and the de-duplication that keeps it from reporting a key on every run, arrive with BL-70.
 
+### Domain and enforcement events
+
+- Eight more events, in `src/Events`, each `final readonly`, implementing `Contracts\SsoEvent` with its context first:
+
+  | Event                 | Fields beyond the context                                | Reported by                                                    |
+  |-----------------------|----------------------------------------------------------|----------------------------------------------------------------|
+  | `DomainClaimed`       | `domainId`, `domain`, `recordName`, `pendingExpiresAt`   | `DomainEvents::claimed()`, from `DomainService::claim()`       |
+  | `DomainVerified`      | `domainId`, `domain`, `verifiedAt`                       | `DomainEvents::verified()`, from `DomainService::verify()`     |
+  | `DomainRemoved`       | `domainId`, `domain`, `state`                            | `DomainEvents::removed()`, from `DomainService::remove()`      |
+  | `DomainRecheckFailed` | `domainId`, `domain`, `failure`, `lapsesAt`              | `DomainEvents::recheckFailed()`, from the scheduled recheck    |
+  | `DomainRestored`      | `domainId`, `domain`, `verifiedAt`, `checkedAt`          | `DomainEvents::restored()`, from the scheduled recheck         |
+  | `DomainLapsed`        | `domainId`, `domain`                                     | `DomainEvents::lapsed()`, from the scheduled recheck           |
+  | `EnforcementChanged`  | `enabled`, `connectionIds`, `version`, `previousVersion` | `EnforcementEvents::changed()`, from the enforcement helper    |
+  | `ExemptionUsed`       | `enforcementVersion`                                     | `EnforcementEvents::exemptionUsed()`, from the exemption gate  |
+
+- A domain event's context names the connection that claimed the domain, its tenant and protocol, and the acting
+  identity for a change a helper made; a recheck's has none. An enforcement change's context names the tenant and the
+  acting identity, and no connection. An exemption's names the enforcing tenant (`tenantId`), the tenant the session
+  is active in (`activeTenantId`), the application, the identity and the session when the caller passed one.
+- No domain event carries the verification token or a DNS record's value; `failure` is a
+  `Domains\Enums\RecheckFailure`, `state` a `Domains\Enums\DomainState`, and every time a `CarbonImmutable` in UTC.
+  `EnforcementChanged::$connectionIds` is a list of ids, each once, in id order.
+- Each is handed to `Events\AfterCommitDispatcher` inside the transaction that made the change, after the write (and,
+  for an enforcement change, after the revocation it needed), so it reaches listeners once the change commits and
+  never when it rolls back. A refusal or a no-op reports nothing.
+
 ## Success Path
 
 1. The application's administration screen authorises its user, then calls a helper with the tenant, the connection and
@@ -137,7 +163,8 @@ and follow the same rules.
 
 ## Implementation Anchors
 
-- `src/Administration/AdministrationEvents.php`, `src/Administration/ActingIdentity.php`.
+- `src/Administration/AdministrationEvents.php`, `src/Administration/ActingIdentity.php`,
+  `src/Administration/DomainEvents.php`, `src/Administration/EnforcementEvents.php`.
 - `src/Events/ConnectionCreated.php`, `ConnectionUpdated.php`, `ConnectionEnabled.php`, `ConnectionDisabled.php`,
   `ConnectionDeleted.php`, `KeyAdded.php`, `KeyMadeCurrent.php`, `KeyRetired.php`, `KeyNearingExpiry.php`.
 - `src/Events/EventContexts.php`, `src/Events/AfterCommitDispatcher.php`: the projection and the dispatch.
@@ -175,6 +202,9 @@ and follow the same rules.
   `testATransactionOnAnotherConnectionDefersNothing`, `testAQueuedListenerReceivesTheUpdateIntact`.
 - `tests/Integration/Administration/NoSecretInAdministrationEventsTest.php`
   `testNoEventHoldsASecretOrASettingValue`.
+- `tests/Unit/Events/DomainAndEnforcementEventClassesTest.php`,
+  `tests/Feature/Administration/DomainAndEnforcementEventsTest.php`,
+  `tests/Integration/Domains/DomainEventsAfterCommitTest.php`.
 
 ## Change Triggers
 

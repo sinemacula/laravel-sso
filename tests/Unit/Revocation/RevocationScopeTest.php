@@ -1,0 +1,133 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace Tests\Unit\Revocation;
+
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\TestCase;
+use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
+use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
+use SineMacula\Laravel\Sso\Revocation\RevocationScope;
+
+/**
+ * Unit tests for the scope of a session revocation (SSO-4.5): the three scopes,
+ * each with its reason and only the fields it needs, the reasons a connection's
+ * sessions may be revoked for, and the stable enum values.
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ *
+ * @internal
+ */
+#[CoversClass(RevocationScope::class)]
+#[CoversClass(RevocationReason::class)]
+#[CoversClass(RevocationScopeKind::class)]
+final class RevocationScopeTest extends TestCase
+{
+    /**
+     * The tenant scope carries the policy now in force, for its enforcing
+     * tenant, and nothing else.
+     *
+     * @return void
+     */
+    public function testTheTenantScopeCarriesThePolicy(): void
+    {
+        $policy = EnforcementPolicy::required('child-1', 'parent-1', ['c-1'], 'v1');
+        $scope  = RevocationScope::tenant($policy);
+
+        self::assertSame(RevocationScopeKind::TENANT, $scope->kind);
+        self::assertSame(RevocationReason::ENFORCEMENT_CHANGED, $scope->reason);
+        self::assertSame('parent-1', $scope->tenantId);
+        self::assertSame($policy, $scope->policy);
+        self::assertNull($scope->connectionId);
+        self::assertNull($scope->identity);
+    }
+
+    /**
+     * The connection scope is for a disabled or deleted connection only.
+     *
+     * @return void
+     */
+    public function testTheConnectionScopeIsForADisabledOrDeletedConnection(): void
+    {
+        $disabled = RevocationScope::connection('tenant-1', 'c-1', RevocationReason::CONNECTION_DISABLED);
+        $deleted  = RevocationScope::connection('tenant-1', 'c-1', RevocationReason::CONNECTION_DELETED);
+
+        self::assertSame(RevocationScopeKind::CONNECTION, $disabled->kind);
+        self::assertSame(RevocationReason::CONNECTION_DISABLED, $disabled->reason);
+        self::assertSame(RevocationReason::CONNECTION_DELETED, $deleted->reason);
+        self::assertSame('c-1', $deleted->connectionId);
+        self::assertNull($deleted->policy);
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        RevocationScope::connection('tenant-1', 'c-1', RevocationReason::LINK_REMOVED);
+    }
+
+    /**
+     * The identity scope names the identity and the connection, for a link
+     * removed.
+     *
+     * @return void
+     */
+    public function testTheIdentityScopeNamesTheIdentityAndTheConnection(): void
+    {
+        $identity = new IdentityReference('App\Models\User', '7');
+        $scope    = RevocationScope::identityInConnection('tenant-1', 'c-1', $identity);
+
+        self::assertSame(RevocationScopeKind::IDENTITY_CONNECTION, $scope->kind);
+        self::assertSame(RevocationReason::LINK_REMOVED, $scope->reason);
+        self::assertSame($identity, $scope->identity);
+        self::assertSame('c-1', $scope->connectionId);
+    }
+
+    /**
+     * Rows of `[build]`: each connection scope with an empty tenant, and with
+     * an empty connection.
+     *
+     * @return iterable<string, array{\Closure(): \SineMacula\Laravel\Sso\Revocation\RevocationScope}>
+     */
+    public static function provideScopesMissingAnId(): iterable
+    {
+        $identity = new IdentityReference('App\Models\User', '7');
+
+        yield 'connection, no tenant' => [static fn (): RevocationScope => RevocationScope::connection('', 'c-1', RevocationReason::CONNECTION_DISABLED)];
+
+        yield 'connection, no connection' => [static fn (): RevocationScope => RevocationScope::connection('tenant-1', '', RevocationReason::CONNECTION_DELETED)];
+
+        yield 'identity, no tenant' => [static fn (): RevocationScope => RevocationScope::identityInConnection('', 'c-1', $identity)];
+
+        yield 'identity, no connection' => [static fn (): RevocationScope => RevocationScope::identityInConnection('tenant-1', '', $identity)];
+    }
+
+    /**
+     * A connection scope names its tenant and connection: either one empty is
+     * refused, by both constructors.
+     *
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Revocation\RevocationScope  $build
+     * @return void
+     */
+    #[DataProvider('provideScopesMissingAnId')]
+    public function testAConnectionScopeNamesItsTenantAndConnection(\Closure $build): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('A revocation scope names its tenant and connection.');
+
+        $build();
+    }
+
+    /**
+     * The values are these, in this order.
+     *
+     * @return void
+     */
+    public function testTheValuesAreStable(): void
+    {
+        self::assertSame(['tenant', 'connection', 'identity_connection'], array_column(RevocationScopeKind::cases(), 'value'));
+        self::assertSame(['enforcement_changed', 'connection_disabled', 'connection_deleted', 'link_removed'], array_column(RevocationReason::cases(), 'value'));
+    }
+}

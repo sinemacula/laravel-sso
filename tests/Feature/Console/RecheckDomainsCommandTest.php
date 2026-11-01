@@ -1,0 +1,200 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace Tests\Feature\Console;
+
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Artisan;
+use PHPUnit\Framework\Attributes\CoversClass;
+use SineMacula\Laravel\Sso\Console\RecheckDomainsCommand;
+use SineMacula\Laravel\Sso\Domains\DomainRechecker;
+use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
+use SineMacula\Laravel\Sso\Models\Domain;
+use Tests\Feature\Domains\DomainServiceTestCase;
+
+/**
+ * Feature tests for `sso:domains:recheck` (SSO-3.3, SSO-11.12): a line for each
+ * domain whose check did more than confirm it, the count of each outcome, a
+ * non-zero exit when a lookup failed or the run stopped on an exception (named
+ * by its class alone), and a second run that changes and reports nothing new.
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ *
+ * @internal
+ */
+#[CoversClass(RecheckDomainsCommand::class)]
+final class RecheckDomainsCommandTest extends DomainServiceTestCase
+{
+    /** @var string The token `makeDomain()` gives a claim. */
+    private const string TOKEN = 'abababababababababababababababababababababababababababababababab';
+
+    /** @var string The summary of a run that checked nothing. */
+    private const string NOTHING = 'Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, skipped 0';
+
+    /**
+     * With no verified domain, the run prints the summary alone and passes.
+     *
+     * @return void
+     */
+    public function testWithNoDomainsPrintsTheSummaryAlone(): void
+    {
+        [$code, $output] = $this->recheckFromConsole();
+
+        self::assertSame(0, $code);
+        self::assertSame([self::NOTHING], $output);
+    }
+
+    /**
+     * Each domain restored, suspended or lapsed is printed with its connection,
+     * in the order it was checked; a confirmed one is not; the summary counts
+     * each outcome, and the run passes.
+     *
+     * @return void
+     */
+    public function testPrintsEachChangeThenTheSummary(): void
+    {
+        $id = $this->connection->id;
+
+        $this->verifiedClaim('lapsing.example.com', '2026-10-29T09:30:00Z', ['linking_suspended_at' => '2026-10-29T10:30:00Z', 'lapses_at' => '2026-11-01T10:00:00Z']);
+        $this->verifiedClaim('restored.example.com', '2026-10-30T09:30:00Z', ['linking_suspended_at' => '2026-10-31T09:30:00Z', 'lapses_at' => '2026-11-03T09:30:00Z']);
+        $this->verifiedClaim('absent.example.com', '2026-10-31T09:30:00Z');
+        $this->verifiedClaim('confirmed.example.com', '2026-11-01T09:30:00Z');
+
+        $this->clock->advance(3600);
+        $this->dns
+            ->found('_sso-verification.restored.example.com', self::TOKEN)
+            ->absent('_sso-verification.absent.example.com')
+            ->found('_sso-verification.confirmed.example.com', self::TOKEN);
+
+        [$code, $output] = $this->recheckFromConsole();
+
+        self::assertSame(0, $code);
+        self::assertSame([
+            "[lapsed] lapsing.example.com (connection {$id})",
+            "[restored] restored.example.com (connection {$id})",
+            "[suspended] absent.example.com (connection {$id})",
+            'Domains rechecked: confirmed 1, restored 1, suspended 1, still_failing 0, lapsed 1, lookup_failed 0, skipped 0',
+        ], $output);
+    }
+
+    /**
+     * A failed lookup is printed, counted, and fails the run.
+     *
+     * @return void
+     */
+    public function testAFailedLookupFailsTheRun(): void
+    {
+        $id = $this->connection->id;
+
+        $this->verifiedClaim('example.com', '2026-11-01T09:30:00Z');
+        $this->clock->advance(3600);
+        $this->dns->failing('_sso-verification.example.com');
+
+        [$code, $output] = $this->recheckFromConsole();
+
+        self::assertSame(1, $code);
+        self::assertSame([
+            "[lookup_failed] example.com (connection {$id})",
+            'Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 1, skipped 0',
+        ], $output);
+    }
+
+    /**
+     * A second run with the same DNS leaves every claim as the first left it
+     * and reports nothing new: at the same instant it has nothing to check, and
+     * later a confirmed domain is still not printed while a suspended one is
+     * printed as still failing.
+     *
+     * @return void
+     */
+    public function testASecondRunReportsNothingNew(): void
+    {
+        $id = $this->connection->id;
+
+        $this->verifiedClaim('absent.example.com', '2026-10-31T09:30:00Z');
+        $this->verifiedClaim('confirmed.example.com', '2026-11-01T09:30:00Z');
+
+        $this->clock->advance(3600);
+        $this->dns->absent('_sso-verification.absent.example.com')->found('_sso-verification.confirmed.example.com', self::TOKEN);
+
+        [$first] = $this->recheckFromConsole();
+
+        $state = Domain::query()->orderBy('id')->get()->map(static fn (Domain $claim): array => $claim->getAttributes())->all();
+
+        [$second, $again] = $this->recheckFromConsole();
+
+        self::assertSame([0, 0], [$first, $second]);
+        self::assertSame([self::NOTHING], $again);
+        self::assertSame($state, Domain::query()->orderBy('id')->get()->map(static fn (Domain $claim): array => $claim->getAttributes())->all());
+
+        $this->clock->advance(3600);
+
+        [, $later] = $this->recheckFromConsole();
+
+        self::assertSame([
+            "[still_failing] absent.example.com (connection {$id})",
+            'Domains rechecked: confirmed 1, restored 0, suspended 0, still_failing 1, lapsed 0, lookup_failed 0, skipped 0',
+        ], $later);
+    }
+
+    /**
+     * A run stopped by an exception fails, naming the exception's class and
+     * nothing it carried; the claim it was checking keeps its lease only until
+     * the lease expires.
+     *
+     * @return void
+     */
+    public function testAnExceptionStopsTheRunNamingItsClassAlone(): void
+    {
+        $claim = $this->verifiedClaim('example.com', '2026-11-01T09:30:00Z');
+
+        $this->clock->advance(3600);
+
+        [$code, $output] = $this->recheckFromConsole();
+
+        $leasedUntil = Domain::query()->findOrFail($claim->id)->recheck_leased_until;
+
+        self::assertSame(1, $code);
+        self::assertSame(['The domain recheck stopped on LogicException.'], $output);
+        self::assertStringNotContainsString('_sso-verification', implode("\n", $output));
+        self::assertSame(
+            $this->clock->now()->addSeconds(DomainRechecker::LEASE_SECONDS)->toAtomString(),
+            $leasedUntil?->toAtomString(),
+        );
+    }
+
+    /**
+     * Make the tenant's connection's verified claim of the domain, last checked
+     * at the time given, with any other attributes as times.
+     *
+     * @param  string  $domain
+     * @param  string  $checkedAt
+     * @param  array<string, string>  $times
+     * @return \SineMacula\Laravel\Sso\Models\Domain
+     */
+    private function verifiedClaim(string $domain, string $checkedAt, array $times = []): Domain
+    {
+        $attributes = array_map(static fn (string $time): CarbonImmutable => CarbonImmutable::parse($time), $times);
+
+        return $this->makeDomain($this->connection, $domain, [
+            'state'                    => DomainState::VERIFIED,
+            'last_successful_check_at' => CarbonImmutable::parse($checkedAt),
+        ] + $attributes);
+    }
+
+    /**
+     * Run `sso:domains:recheck`, and answer its exit code and the lines it
+     * printed, trimmed, without blank ones.
+     *
+     * @return array{int, list<string>}
+     */
+    private function recheckFromConsole(): array
+    {
+        $code   = Artisan::call('sso:domains:recheck');
+        $output = array_values(array_filter(explode("\n", Artisan::output()), static fn (string $line): bool => trim($line) !== ''));
+
+        return [$code, array_map(trim(...), $output)];
+    }
+}

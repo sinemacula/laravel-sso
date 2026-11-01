@@ -61,7 +61,8 @@ first attempt in it, and a full limit waits until its window ends.
   without a trailing dot, and in its ASCII form, so `Bücher.example` and `xn--bcher-kva.example` share one limit.
 - **Per connection** limits on completions stop a flood of forged responses at one tenant's endpoint; size them for
   the tenant's peak sign-ins a minute. The metadata and domain check limits bound how often the package reaches out to
-  a provider's or a domain's servers on the connection's behalf; scheduled checks need only a few an hour.
+  a provider's or a domain's servers on the connection's behalf. The scheduled domain recheck takes no attempt, since
+  no request drives it (see [Domain rechecks](domain-rechecks.md)).
 - A refused attempt is not counted, so a client that keeps trying is never locked out for longer than the window.
   Shorter windows recover sooner; longer windows with a higher `max` tolerate bursts.
 
