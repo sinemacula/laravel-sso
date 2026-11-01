@@ -637,7 +637,7 @@ final class CompletionServiceTest extends TestCase
 
         self::assertTrue($this->completeAtCallback()->isCompleted());
 
-        $grant = $this->issuer->soleGrant();
+        $grant  = $this->issuer->soleGrant();
         $pinned = $grant->result->toArray();
 
         // MySQL keeps a JSON object's keys in its own order, not as written.
