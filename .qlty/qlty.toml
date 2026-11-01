@@ -16,7 +16,6 @@ exclude_patterns = [
     "**/dist/**",
     "**/node_modules/**",
     "**/vendor/**",
-    ".claude/**",
     ".qlty/configs/**",
     ".sinemacula/**",
 ]
