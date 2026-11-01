@@ -17,8 +17,11 @@ namespace SineMacula\Laravel\Sso\Results;
  * protocol, application, purpose and request reference to make the
  * `VerifiedResult`. It holds no assertion, token or secret, but it holds raw
  * provider values, so it lives only for the completion that verified it: a dump
- * shows the names of the attributes and never their values, and it refuses to
- * be serialised or unserialised.
+ * shows the names of the attributes and never their values; `json_encode()`,
+ * and a logger's normaliser that falls back to it, write the issuer, the NameID
+ * format, each attribute's name with its kind and the redacted forms of the
+ * authentication context and the linking email, never the subject or a value
+ * the provider asserted; and it refuses to be serialised or unserialised.
  *
  * The issuer and subject are 1 to 1024 bytes and kept exactly as received,
  * never trimmed or normalised (SSO-6.9); a NameID format is 1 to 255 bytes. A
@@ -31,7 +34,7 @@ namespace SineMacula\Laravel\Sso\Results;
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
-final readonly class VerifiedClaims
+final readonly class VerifiedClaims implements \JsonSerializable
 {
     /**
      * Constructor.
@@ -115,5 +118,26 @@ final readonly class VerifiedClaims
     public function __unserialize(array $data): void
     {
         throw new \LogicException('Verified claims cannot be unserialised.');
+    }
+
+    /**
+     * What `json_encode()` writes: the issuer, the NameID format, each
+     * attribute's name with the kind of its value, and the redacted forms of
+     * the authentication context and the linking email; never the subject or an
+     * attribute's value.
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function jsonSerialize(): array
+    {
+        return [
+            'issuer'                 => $this->issuer,
+            'subject'                => StoredValues::REDACTED,
+            'name_id_format'         => $this->nameIdFormat,
+            'attributes'             => array_map(get_debug_type(...), $this->attributes),
+            'authentication_context' => $this->authenticationContext->jsonSerialize(),
+            'linking_email'          => $this->linkingEmail?->jsonSerialize(),
+        ];
     }
 }

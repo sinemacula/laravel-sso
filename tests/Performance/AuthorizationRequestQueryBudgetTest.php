@@ -32,8 +32,9 @@ use Tests\Fixtures\Protocols\StartingDriver;
  * - a start is its attempt counted against the IP address (an update and an
  *   insert for a new counter, one update after), one read of the connection,
  *   then, in the transaction that stores the request, one locking read of the
- *   connection again and the insert of the request; a `link` asks the freshness
- *   contract and costs the same;
+ *   connection again, the insert of the request and the update that raises the
+ *   connection's flows version; a `link` asks the freshness contract and costs
+ *   the same;
  * - a start a full limit refuses stops at the limiter (its update, the insert
  *   its key refuses, the update again and one read); one whose application is
  *   not allowed at its attempt; one whose connection is unknown, or whose
@@ -99,15 +100,16 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
 
     /**
      * The first start creates the IP address's counter; a later one updates it.
-     * Each reads the connection, locks it again, and inserts the request.
+     * Each reads the connection, locks it again, inserts the request and raises
+     * the connection's flows version.
      *
      * @return void
      */
-    public function testAStartIsItsAttemptTwoReadsAndOneInsert(): void
+    public function testAStartIsItsAttemptTwoReadsAnInsertAndAnUpdate(): void
     {
-        $first = $this->assertQueryBudget(2, 3, fn (): StartResult => $this->startFlow());
-        $later = $this->assertQueryBudget(2, 2, fn (): StartResult => $this->startFlow());
-        $link  = $this->assertQueryBudget(2, 2, fn (): StartResult => $this->startFlow('web', Purpose::LINK, new IdentityReference('App\Models\User', '42')));
+        $first = $this->assertQueryBudget(2, 4, fn (): StartResult => $this->startFlow());
+        $later = $this->assertQueryBudget(2, 3, fn (): StartResult => $this->startFlow());
+        $link  = $this->assertQueryBudget(2, 3, fn (): StartResult => $this->startFlow('web', Purpose::LINK, new IdentityReference('App\Models\User', '42')));
 
         self::assertTrue($first->isStarted());
         self::assertTrue($later->isStarted());

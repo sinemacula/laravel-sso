@@ -23,6 +23,7 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
   | `enabled`               | Whether the connection is enabled (default `false`)                                    |
   | `has_completed_sign_in` | Whether a `sign_in` through it has been redeemed (default `false`; SSO-4.3)            |
   | `links_version`         | Raised by one for each link created through it (default `0`; see `links.md`)           |
+  | `flows_version`         | Raised by one for each request stored and code issued through it (default `0`)         |
   | `created_at`            | When it was created, whole seconds in UTC, from the package's clock                    |
   | `updated_at`            | When it last changed, whole seconds in UTC, from the package's clock                   |
 
@@ -45,6 +46,11 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
   lock, for each link it inserts. It means nothing on its own; it makes a link's insert also write the connection's row,
   so a PostgreSQL `REPEATABLE READ` transaction that locks the row after the creation commits fails to serialise rather
   than go on without the link (see `flows.md`'s lock order).
+- `flows_version` has exactly two writers, each raising it by one under the connection's lock:
+  `Flows\AuthorizationRequestService` for each authorisation request it stores, and `Handoffs\DatabaseHandoffStore` for
+  each handoff code it issues. It means nothing on its own; it makes either insert also write the connection's row, so
+  a PostgreSQL `REPEATABLE READ` change that locks the row after the insert commits fails to serialise rather than void
+  the connection's flows without the new request or code (see `connection-lifecycle.md`).
 - Each model of a record (connections, keys and certificates) is keyed and stamped by
   `SsoModel::identifiedAndStamped()`: a lower-case ULID unless one is set, and `created_at` and `updated_at` from
   `Contracts\Clock` (SSO-11.13), stored in UTC through `Casts\UtcDateTime`. Laravel's own timestamps are off, so a
@@ -94,7 +100,10 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
   `ServiceProviderDescription`) are the contract's shape now; the authorisation request (BL-32) and completion pipeline
   (BL-34) add to them, through new named constructors and fields, before the real drivers land. `StartRequest` holds
   the protocol state as `Secrets\Secret` values, and `CompletionRequest` (which carries an assertion or a code) shows
-  nothing in a dump and refuses to be serialised.
+  nothing in a dump and refuses to be serialised. `Navigation` holds its URL and form fields (an OIDC request's
+  `state`, `nonce` and `code_challenge`, a SAML form's `SAMLRequest` and `RelayState`) in `\SensitiveParameterValue`,
+  gives them through `url()`, `fields()` and `jsonSerialize()` (the start response's `navigation`), and shows in a dump
+  only its type, its URL with every query value and any fragment redacted, and its fields' names.
 
 ## Success Path
 

@@ -12,12 +12,13 @@ use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Flows\Verifier;
 use SineMacula\Laravel\Sso\Protocols\Navigation;
+use Tests\Concerns\DumpsValues;
 
 /**
  * Unit tests for the answer to a start: started with its reference, navigation
  * and the verifier generated once; refused; or rate limited with its wait; each
  * answered with `Cache-Control: no-store`, the body revealing the verifier and
- * nothing else ever showing it.
+ * the navigation's protocol values, and no dump ever showing them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,6 +29,8 @@ use SineMacula\Laravel\Sso\Protocols\Navigation;
 #[CoversClass(StartStatus::class)]
 final class StartResultTest extends TestCase
 {
+    use DumpsValues;
+
     /**
      * A started answer's body is the reference, the navigation and, once, the
      * generated verifier.
@@ -150,6 +153,62 @@ final class StartResultTest extends TestCase
         $this->expectExceptionObject(new \LogicException('A start result cannot be serialised.'));
 
         serialize($result);
+    }
+
+    /**
+     * No dump of a started answer, leading by an OIDC redirect or a SAML post,
+     * shows a query value, a field's value or the verifier, while its body
+     * carries every one of them exactly.
+     *
+     * @return void
+     */
+    public function testNoDumpShowsTheNavigationsProtocolValues(): void
+    {
+        $reference = RequestReference::fromString(str_repeat('r', 32));
+        $verifier  = Verifier::fromString(str_repeat('v', 43));
+        $oidcUrl   = 'https://idp.example.com/authorize?client_id=client-123&state=the-oidc-state-value&nonce=the-oidc-nonce-value&code_challenge=the-oidc-challenge-value';
+        $samlField = ['SAMLRequest' => 'PHNhbWxwOkF1dGhuUmVxdWVzdA', 'RelayState' => 'the-saml-relay-state'];
+        $redirect  = StartResult::started($reference, Navigation::redirect($oidcUrl), $verifier);
+        $post      = StartResult::started($reference, Navigation::post('https://idp.example.com/sso', $samlField), $verifier);
+        $values    = [
+            'client-123',
+            'the-oidc-state-value',
+            'the-oidc-nonce-value',
+            'the-oidc-challenge-value',
+            'PHNhbWxwOkF1dGhuUmVxdWVzdA',
+            'the-saml-relay-state',
+            str_repeat('v', 43),
+        ];
+
+        self::assertSame(
+            ['type' => 'redirect', 'url' => 'https://idp.example.com/authorize?client_id=[redacted]&state=[redacted]&nonce=[redacted]&code_challenge=[redacted]'],
+            $redirect->__debugInfo()['navigation'],
+        );
+        self::assertSame(
+            ['type' => 'post', 'url' => 'https://idp.example.com/sso', 'fields' => ['SAMLRequest' => '[redacted]', 'RelayState' => '[redacted]']],
+            $post->__debugInfo()['navigation'],
+        );
+
+        foreach ([$redirect, $post] as $result) {
+            foreach (self::dumps($result) as $dumper => $dumped) {
+
+                self::assertStringContainsString('StartResult', $dumped, $dumper);
+
+                foreach ($values as $value) {
+                    self::assertStringNotContainsString($value, $dumped, "{$dumper} shows [{$value}].");
+                }
+            }
+        }
+
+        $redirectBody = ['reference' => str_repeat('r', 32), 'navigation' => ['type' => 'redirect', 'url' => $oidcUrl], 'verifier' => str_repeat('v', 43)];
+        $postBody     = [
+            'reference'  => str_repeat('r', 32),
+            'navigation' => ['type' => 'post', 'url' => 'https://idp.example.com/sso', 'fields' => $samlField],
+            'verifier'   => str_repeat('v', 43),
+        ];
+
+        self::assertSame($redirectBody, $redirect->body());
+        self::assertSame($postBody, $post->body());
     }
 
     /**

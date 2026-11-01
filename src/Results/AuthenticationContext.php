@@ -18,12 +18,16 @@ use Carbon\CarbonImmutable;
  * is 1 to 1024 bytes, each method 1 to 255, and at most 32 methods are kept; a
  * part the assertion did not state is `null` (or no methods).
  *
+ * `toArray()` is the stored form, holding every value. `json_encode()`, and a
+ * logger's normaliser that falls back to it, write only which parts were stated
+ * and how many methods, never a value the provider asserted.
+ *
  * @api
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
-final readonly class AuthenticationContext
+final readonly class AuthenticationContext implements \JsonSerializable
 {
     /** @var int The most methods kept. */
     public const int MAX_METHODS = 32;
@@ -80,6 +84,24 @@ final readonly class AuthenticationContext
             'context_class'             => $this->contextClass,
             'provider_session_id'       => $this->providerSessionId,
             'provider_session_deadline' => StoredValues::instant($this->providerSessionDeadline),
+        ];
+    }
+
+    /**
+     * What `json_encode()` writes: each part as `[redacted]` when stated and
+     * `null` when not, and the number of methods, never a value.
+     *
+     * @return array{authenticated_at: ?string, methods: int, context_class: ?string, provider_session_id: ?string, provider_session_deadline: ?string}
+     */
+    #[\Override]
+    public function jsonSerialize(): array
+    {
+        return [
+            'authenticated_at'          => StoredValues::redacted($this->authenticatedAt),
+            'methods'                   => count($this->methods),
+            'context_class'             => StoredValues::redacted($this->contextClass),
+            'provider_session_id'       => StoredValues::redacted($this->providerSessionId),
+            'provider_session_deadline' => StoredValues::redacted($this->providerSessionDeadline),
         ];
     }
 

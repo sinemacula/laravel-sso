@@ -70,6 +70,14 @@ reasons by flow and the events each operation reports. Each part's own behaviour
 - `Results\VerifiedClaims` is what a driver verified (issuer, subject, format, raw attributes by provider name,
   authentication context, linking email); it lives only for its completion (no serialisation, a dump shows attribute
   names only).
+- `VerifiedClaims`, `AuthenticationContext` and `LinkingEmail` hold provider values in public properties, so each
+  writes a redacted projection to `json_encode()`, which is also what a Monolog formatter's normaliser and any other
+  JSON-based logger write of it: the claims' issuer, NameID format, each attribute's name with the kind of its value
+  (`string`, `array`, `int`...), and the redacted forms of their context and linking email; the context's parts as
+  `[redacted]` when stated and `null` when not, with the number of methods; the linking email's source, with its email
+  and organisation `[redacted]`. Never the subject or a value the provider asserted. `toArray()` stays the stored form
+  of the context and the linking email, which `VerifiedResult::toArray()` builds on, so a verified result's storage
+  serialisation is unchanged.
 
 ### Contracts and defaults
 
@@ -151,15 +159,21 @@ REPEATABLE READ transaction answers a plain read from an older snapshot, and an 
 committed since its snapshot updated or deleted; a row that was only locked raises nothing, and a row inserted since
 stays invisible to it. So a writer whose insert a later locker must see also writes the row they both lock: a link's
 creation raises its connection's `links_version` (`Links\LinkStore::create()`), so a subject migration that locks the
-connection after it fails to serialise rather than miss the link. The failure propagates, and a caller retries its whole
-transaction, never a part of it.
+connection after it fails to serialise rather than miss the link; a stored authorisation request and an issued handoff
+code each raise their connection's `flows_version` (`Flows\AuthorizationRequestService`,
+`Handoffs\DatabaseHandoffStore`), so a change that voids the connection's flows (`Connections\InFlightVoider`) and locks
+the connection after either fails to serialise rather than leave the new request or code unvoided. The failure
+propagates, and a caller retries its whole transaction, never a part of it.
 
 ### Start
 
 `Flows\StartResult` answers a start (`started` with reference, navigation and the generated verifier, `refused`, or
 `rate_limited`), with `body()` (`{reference, navigation, verifier?}`, the one place a verifier is revealed, or
-`{error, retry_after?}`) and `headers()` (`Cache-Control: no-store`, and `Retry-After`). A discovery miss and a start
-naming an unknown or disabled connection for an application that offers discovery answer `started`, with the
+`{error, retry_after?}`) and `headers()` (`Cache-Control: no-store`, and `Retry-After`). `body()` carries the
+navigation whole, as `Protocols\Navigation::jsonSerialize()` gives it; a dump of the result shows no verifier, and the
+navigation only as the navigation's own dump does, its URL's query values and fragment and its fields' values
+redacted, so no `state`, `nonce`, `code_challenge`, `SAMLRequest` or `RelayState` reaches a dump. A discovery miss and a
+start naming an unknown or disabled connection for an application that offers discovery answer `started`, with the
 fallback's navigation (`Protocols\Navigation::toApplication()`), a reference and a verifier in the same shape.
 `Flows\FlowSettings` reads `sso.authorization_requests.ttl_seconds` (60 to 900, default 600) and
 `sso.discovery.minimum_duration_milliseconds` (50 to 2000, default 250); `[flows]` checks both at boot.
@@ -223,7 +237,8 @@ one `Events\FlowFailed`. No event holds a code, verifier, state, nonce, subject,
   `tests/Feature/Models/Casts/BinaryStringTest.php`.
 - `tests/Unit/Flows/`, `tests/Unit/Handoffs/`, `tests/Unit/Results/`, `tests/Unit/Protocols/CorrelationTest.php`,
   `tests/Unit/Protocols/ConsumedRequestTest.php`, `tests/Unit/Completion/CompletionResultTest.php`,
-  `tests/Feature/Completion/CompletionStateTest.php`, `tests/Unit/Events/FlowEventClassesTest.php`.
+  `tests/Feature/Completion/CompletionStateTest.php`, `tests/Unit/Events/FlowEventClassesTest.php`,
+  `tests/Feature/Results/ResultPartsLoggingTest.php` (no provider value in a result part's JSON or logged context).
 - `tests/Feature/Flows/FlowsCheckTest.php`, `tests/Feature/SsoServiceProviderTest.php`.
 
 ## Change Triggers

@@ -17,6 +17,10 @@ completion is in `completion.md`.
   generates a `HandoffCode` (43 base64url characters, 256 bits) and inserts one row through `Models\HandoffCode` on
   the storage connection, inside the completion's transaction; it opens none of its own, so a completion rolled back
   keeps no code (decision D5).
+- The completion holds the connection's row lock when it asks, and the store raises the connection's `flows_version` by
+  one under it for each code it issues, so the insert also writes the connection's row: a PostgreSQL `REPEATABLE READ`
+  change whose snapshot predates the code fails to serialise when it locks the connection, rather than void the
+  connection's codes without it (`Connections\InFlightVoider`, `connection-lifecycle.md`).
 - The row holds `code_digest`, the lower-case hex SHA-256 of the code, never the code; `purpose`, `application`,
   `connection_id` and `request_reference`, from the result; `handoff_challenge`, the client's S256 challenge;
   `identity_type` and `identity_id` (`link`, `reauthenticate`) and `session_id` (`reauthenticate`), from the grant;

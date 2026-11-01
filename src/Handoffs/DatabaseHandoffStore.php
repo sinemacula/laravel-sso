@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Handoffs;
 
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
+use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 
 /**
@@ -26,6 +27,13 @@ use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
  * the expiry. Times are kept to the whole second, so a code expires at most a
  * second before its grant says; the issued handoff carries the expiry as
  * stored.
+ *
+ * The completion holds the connection's row lock when it asks, and the issue
+ * raises the connection's flows version by one under it, so the code's insert
+ * also writes the connection's row: a PostgreSQL `REPEATABLE READ` change whose
+ * snapshot predates the code then fails to serialise when it locks the row,
+ * rather than void the connection's codes without this one
+ * (`Connections\InFlightVoider`).
  *
  * The code is answered once, in the `IssuedHandoff`, for the completion's
  * redirect; it is never stored, logged or put in an event. A database error, a
@@ -86,6 +94,20 @@ final readonly class DatabaseHandoffStore implements HandoffIssuer
             'expires_at'           => $grant->expiresAt,
         ])->save();
 
+        self::raiseFlowsVersion($result->connectionId);
+
         return new IssuedHandoff($code, $row->expires_at);
+    }
+
+    /**
+     * Raise the connection's flows version by one, under the lock the
+     * completion holds, so the code's insert also writes the connection's row.
+     *
+     * @param  string  $connectionId
+     * @return void
+     */
+    private static function raiseFlowsVersion(string $connectionId): void
+    {
+        Connection::query()->useWritePdo()->whereKey($connectionId)->increment('flows_version');
     }
 }

@@ -26,8 +26,9 @@ use Tests\Fixtures\Protocols\StartingDriver;
  * - the attempt is counted against the IP address and the email's domain, an
  *   update and an insert for each new counter and one update for each after;
  * - a match then reads the domain's verified claim and its connection, and, in
- *   the transaction that stores the request, locks the connection again and
- *   inserts the request: three reads and one insert;
+ *   the transaction that stores the request, locks the connection again,
+ *   inserts the request and raises the connection's flows version: three
+ *   reads, an insert and an update;
  * - a miss reads the claim alone, and the connection too when the claim's
  *   connection is unusable; an email whose domain does not normalise reads
  *   nothing and counts the IP address alone;
@@ -83,14 +84,15 @@ final class DiscoveryQueryBudgetTest extends PerformanceContractTestCase
     /**
      * The first match creates the IP address's and the domain's counters; a
      * later one updates them. Each reads the claim and the connection, locks
-     * the connection again, and inserts the request.
+     * the connection again, inserts the request and raises the connection's
+     * flows version.
      *
      * @return void
      */
-    public function testAMatchIsItsAttemptThreeReadsAndOneInsert(): void
+    public function testAMatchIsItsAttemptThreeReadsAnInsertAndAnUpdate(): void
     {
-        $first = $this->assertQueryBudget(3, 5, fn (): StartResult => $this->discover('someone@example.com'));
-        $later = $this->assertQueryBudget(3, 3, fn (): StartResult => $this->discover('other@example.com'));
+        $first = $this->assertQueryBudget(3, 6, fn (): StartResult => $this->discover('someone@example.com'));
+        $later = $this->assertQueryBudget(3, 4, fn (): StartResult => $this->discover('other@example.com'));
 
         self::assertSame(['https://idp.example.com/authorize?client_id=client-123', 'https://idp.example.com/authorize?client_id=client-123'], [
             $first->navigation?->jsonSerialize()['url'],

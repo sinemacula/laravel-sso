@@ -33,7 +33,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  * SSO-11.5, SSO-11.8), each redemption measured once the IP address's counter
  * exists, so every redemption first costs its update:
  *
- * - issuing a code is one insert;
+ * - issuing a code is one insert and the update that raises its connection's
+ *   flows version;
  * - a linked `sign_in` redeemed reads the code by its digest, then, in its
  *   transaction, reads the connection's tenant, locks the connection and the
  *   code, writes the single-use record and the code's mark, and marks the
@@ -108,15 +109,17 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Issuing a code is one insert.
+     * Issuing a code is one insert, and one update that raises its connection's
+     * flows version.
      *
      * @return void
      */
-    public function testIssuingACodeIsOneInsert(): void
+    public function testIssuingACodeIsOneInsertAndOneUpdate(): void
     {
-        $issued = $this->assertQueryBudget(0, 1, fn (): IssuedHandoff => $this->store()->issue($this->grant()));
+        $issued = $this->assertQueryBudget(0, 2, fn (): IssuedHandoff => $this->store()->issue($this->grant()));
 
         self::assertSame(1, StoredCode::query()->count());
+        self::assertSame(1, Connection::query()->findOrFail($this->connection->id)->flows_version);
         self::assertSame(hash('sha256', $issued->code->reveal()), StoredCode::query()->sole()->code_digest);
     }
 

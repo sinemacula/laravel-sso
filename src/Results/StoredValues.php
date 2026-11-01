@@ -10,7 +10,7 @@ use Carbon\CarbonImmutable;
  * The checks a verified result and its parts make of what they hold, and the
  * one form an instant is written in and read back from, so a result built at
  * completion and one restored from a handoff code's store are judged the same
- * way.
+ * way; and the one form a provider value takes in a part's redacted JSON.
  *
  * A malformed value at construction is the caller's mistake
  * (`InvalidArgumentException`); a malformed stored value is corrupt storage
@@ -26,10 +26,25 @@ final class StoredValues
     /** @var string The form an instant is stored in: UTC, to the microsecond. */
     public const string INSTANT_FORMAT = 'Y-m-d\TH:i:s.u\Z';
 
+    /** @var string What a part's redacted JSON shows in place of a provider value. */
+    public const string REDACTED = '[redacted]';
+
     /**
      * Disallow instantiation; utility container only.
      */
     private function __construct() {}
+
+    /**
+     * What a part's redacted JSON shows of a provider value: `[redacted]` for
+     * one stated, `null` for none.
+     *
+     * @param  mixed  $value
+     * @return ?string
+     */
+    public static function redacted(#[\SensitiveParameter] mixed $value): ?string
+    {
+        return $value === null ? null : self::REDACTED;
+    }
 
     /**
      * Refuse a string that is empty or longer than the bytes allowed.

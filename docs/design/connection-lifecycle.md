@@ -29,6 +29,13 @@ helper), `keys.md` (trusted certificates), `domains.md` (`DomainWithdrawal`) and
   completion or redemption that holds the lock, and then finds its request finished or its code redeemed, or is waited
   for, and the completion refuses a voided request with `connection_unavailable` and the redemption a voided code with
   `handoff_unknown`.
+- The void's updates see a row inserted since the change's snapshot on MySQL and under PostgreSQL's `READ COMMITTED`,
+  but not under PostgreSQL's `REPEATABLE READ`. So every insert it must void also writes the connection's row: storing
+  an authorisation request (`Flows\AuthorizationRequestService`) and issuing a handoff code
+  (`Handoffs\DatabaseHandoffStore`) each raise the connection's `flows_version` by one under its lock, and a change
+  whose snapshot predates either insert fails to serialise (SQLSTATE `40001`, which propagates) when it locks the
+  connection, before it voids or deletes anything. No change commits with a request or code left unvoided, and no
+  deletion with one left behind.
 
 ### Which changes void
 
@@ -182,6 +189,8 @@ read under the lock that decides a write is a locking read (`lockForUpdate()`), 
   `tests/Feature/Keys/TrustedCertificatesTest.php` (the certificate voiding),
   `tests/Unit/Connections/ConnectionResultTest.php`.
 - `tests/Integration/Connections/ConcurrentLifecycleTest.php`,
+  `tests/Integration/Connections/ConcurrentFlowVoidingTest.php` (a trust change and a deletion under `REPEATABLE READ`
+  after a flow inserted since their snapshot; MySQL and PostgreSQL),
   `tests/Integration/Connections/LifecycleRevocationTransactionTest.php`,
   `tests/Integration/Connections/ConnectionDeletionTest.php`.
 - `tests/Performance/ConnectionLifecycleQueryBudgetTest.php`.

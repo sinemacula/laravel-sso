@@ -65,6 +65,13 @@ return new class extends Migration {
             // fails to serialise rather than miss the link (SubjectMigration).
             $blueprint->unsignedBigInteger('links_version')->default(0);
 
+            // Raised by every authorisation request stored and every handoff
+            // code issued through the connection, under its lock, so either
+            // insert also writes this row: a PostgreSQL REPEATABLE READ change
+            // that then locks the row fails to serialise rather than leave the
+            // new request or code unvoided (InFlightVoider).
+            $blueprint->unsignedBigInteger('flows_version')->default(0);
+
             // Whole seconds in UTC, from the package's clock.
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);

@@ -19,12 +19,16 @@ use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
  * normaliser, never the package, decides how it compares. The organisation is 1
  * to 255 bytes when given.
  *
+ * `toArray()` is the stored form, holding every value. `json_encode()`, and a
+ * logger's normaliser that falls back to it, write only the source and whether
+ * an organisation was given, never the email or the organisation.
+ *
  * @api
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
-final readonly class LinkingEmail
+final readonly class LinkingEmail implements \JsonSerializable
 {
     /** @var int The longest email, in bytes. */
     public const int MAX_EMAIL_LENGTH = 320;
@@ -78,6 +82,19 @@ final readonly class LinkingEmail
     public function toArray(): array
     {
         return ['email' => $this->email, 'source' => $this->source->value, 'organization' => $this->organization];
+    }
+
+    /**
+     * What `json_encode()` writes: the source, and the email and the
+     * organisation as `[redacted]` (the organisation `null` when none was
+     * given), never a value.
+     *
+     * @return array{email: string, source: string, organization: ?string}
+     */
+    #[\Override]
+    public function jsonSerialize(): array
+    {
+        return ['email' => StoredValues::REDACTED, 'source' => $this->source->value, 'organization' => StoredValues::redacted($this->organization)];
     }
 
     /**

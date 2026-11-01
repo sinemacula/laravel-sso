@@ -554,10 +554,8 @@ final class EnforcementAdmissionRaceTest extends TestCase
             DB::connection()->getPdo();
 
             $outcome = $body();
-        } catch (QueryException $e) {
-            $outcome = self::isSerializationFailure($e) ? ['status' => self::SERIALIZATION_FAILURE] : ['status' => 'error', 'reason' => $e->getMessage()];
         } catch (\Throwable $e) {
-            $outcome = ['status' => 'error', 'reason' => $e::class . ': ' . $e->getMessage()];
+            $outcome = self::isSerializationFailure($e) ? ['status' => self::SERIALIZATION_FAILURE] : ['status' => 'error', 'reason' => $e::class . ': ' . $e->getMessage()];
         }
 
         file_put_contents("{$this->outcomes}/{$process}", json_encode($outcome));
@@ -568,18 +566,24 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Whether the error is PostgreSQL's serialisation failure: SQLSTATE 40001
-     * on PostgreSQL, where a deadlock is 40P01 instead. On MySQL, 40001 is a
-     * deadlock (error 1213), which the race must never meet.
+     * Whether the error, or one it was thrown for, is PostgreSQL's
+     * serialisation failure: SQLSTATE 40001 on PostgreSQL, where a deadlock is
+     * 40P01 instead. Inside a caller's transaction, Laravel rethrows it as a
+     * `DeadlockException` whose previous error is the query's. On MySQL, 40001
+     * is a deadlock (error 1213), which the race must never meet.
      *
-     * @param  \Illuminate\Database\QueryException  $exception
+     * @param  \Throwable  $exception
      * @return bool
      */
-    private static function isSerializationFailure(QueryException $exception): bool
+    private static function isSerializationFailure(\Throwable $exception): bool
     {
-        $isSerializationState = (string) $exception->getCode() === '40001';
+        for ($error = $exception; $error !== null; $error = $error->getPrevious()) {
+            if ($error instanceof QueryException && (string) $error->getCode() === '40001') {
+                return DB::connection()->getDriverName() === 'pgsql';
+            }
+        }
 
-        return $isSerializationState && DB::connection()->getDriverName() === 'pgsql';
+        return false;
     }
 
     /**

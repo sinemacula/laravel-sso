@@ -18,8 +18,10 @@ use SineMacula\Laravel\Sso\Protocols\Navigation;
  * and is the one place the generated verifier is revealed; `headers()` are the
  * headers that response is sent with, `Cache-Control: no-store` whenever it
  * carries a verifier and on every other answer too (SSO-9.8). A discovery miss
- * answers exactly this shape (SSO-3.5). A dump never shows the verifier, and
- * the result refuses to be serialised.
+ * answers exactly this shape (SSO-3.5). A dump never shows the verifier, nor
+ * the navigation's query values or form field values (the state, the nonce, a
+ * `SAMLRequest`), which only `body()` carries; the result refuses to be
+ * serialised.
  *
  * @api
  *
@@ -63,7 +65,8 @@ final readonly class StartResult
     ) {}
 
     /**
-     * What a dump shows: never the verifier.
+     * What a dump shows: never the verifier, and the navigation as its own dump
+     * shows it, never a query value or a field's value.
      *
      * @return array<string, mixed>
      */
@@ -72,7 +75,7 @@ final readonly class StartResult
         return [
             'status'      => $this->status->value,
             'reference'   => $this->reference?->value,
-            'navigation'  => $this->navigation?->jsonSerialize(),
+            'navigation'  => $this->navigation?->__debugInfo(),
             'verifier'    => $this->verifier === null ? null : '[redacted]',
             'reason'      => $this->reason?->value,
             'retry_after' => $this->retryAfter,

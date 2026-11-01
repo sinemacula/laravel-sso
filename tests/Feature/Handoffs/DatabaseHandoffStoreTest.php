@@ -18,8 +18,10 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffCode;
 use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Results\ExampleResults;
@@ -30,8 +32,8 @@ use Tests\TestCase;
  * SSO-11.9): the row an issued code is stored as, every column pinned; only the
  * code's digest kept, never the code; the verified result encrypted and
  * restored exactly; the expiry kept to the second and answered as stored; a new
- * code for every issue; and nothing kept when the completion's transaction
- * rolls back.
+ * code for every issue, each raising its connection's flows version by one;
+ * and nothing kept when the completion's transaction rolls back.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,7 +43,7 @@ use Tests\TestCase;
 #[CoversClass(DatabaseHandoffStore::class)]
 final class DatabaseHandoffStoreTest extends TestCase
 {
-    use UsesFlowTables;
+    use UsesConnections, UsesFlowTables;
 
     /** @var string The connection every example result names. */
     private const string CONNECTION_ID = '01jbexampleconnection00000';
@@ -61,6 +63,7 @@ final class DatabaseHandoffStoreTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
 
+        $this->createConnectionTables();
         $this->createFlowTables();
     }
 
@@ -73,6 +76,7 @@ final class DatabaseHandoffStoreTest extends TestCase
     protected function tearDown(): void
     {
         $this->dropFlowTables();
+        $this->dropConnectionTables();
 
         parent::tearDown();
     }
@@ -276,6 +280,71 @@ final class DatabaseHandoffStoreTest extends TestCase
     }
 
     /**
+     * Each code issued raises its connection's flows version by exactly one,
+     * and no other connection's; an issue that fails before its insert raises
+     * nothing.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testEachIssueRaisesItsConnectionsFlowsVersionByOne(): void
+    {
+        $connection = $this->makeConnection(['id' => self::CONNECTION_ID]);
+        $other      = $this->makeConnection();
+
+        self::assertSame([0, 0], self::flowsVersions($connection, $other));
+
+        $this->issue();
+
+        self::assertSame([1, 0], self::flowsVersions($connection, $other));
+
+        $this->issue();
+
+        self::assertSame([2, 0], self::flowsVersions($connection, $other));
+
+        $this->app?->instance(SecretEncrypter::class, new class implements SecretEncrypter {
+            /**
+             * Fail.
+             *
+             * @param  string  $secret
+             * @return string
+             *
+             * @throws \RuntimeException
+             */
+            #[\Override]
+            public function encrypt(#[\SensitiveParameter] string $secret): string
+            {
+                unset($secret);
+
+                throw new \RuntimeException('Cannot encrypt.');
+            }
+
+            /**
+             * Never called.
+             *
+             * @param  string  $ciphertext
+             * @return string
+             */
+            #[\Override]
+            public function decrypt(string $ciphertext): string
+            {
+                return $ciphertext;
+            }
+        });
+
+        try {
+            $this->issue();
+            self::fail('A code was issued without its result encrypted.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('Cannot encrypt.', $exception->getMessage());
+        }
+
+        self::assertSame([2, 0], self::flowsVersions($connection, $other));
+        self::assertSame(2, StoredCode::query()->count());
+    }
+
+    /**
      * Issued inside the completion's transaction, a code is kept only when it
      * commits: a rollback keeps nothing.
      *
@@ -316,6 +385,17 @@ final class DatabaseHandoffStoreTest extends TestCase
             expiresAt: $expiresAt ?? CarbonImmutable::parse('2026-11-01T09:31:00Z'),
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
         ));
+    }
+
+    /**
+     * The flows version of each connection, read again.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  ...$connections
+     * @return list<int>
+     */
+    private static function flowsVersions(Connection ...$connections): array
+    {
+        return array_values(array_map(static fn (Connection $connection): int => Connection::query()->findOrFail($connection->id)->flows_version, $connections));
     }
 
     /**

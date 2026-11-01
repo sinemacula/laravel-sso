@@ -33,6 +33,15 @@ use SineMacula\Laravel\Sso\Models\HandoffCode;
  * that commits apart from the change could leave the change undone and the
  * flows voided, or the reverse.
  *
+ * Its updates cannot see a row inserted since the snapshot of a PostgreSQL
+ * `REPEATABLE READ` transaction, so every insert it must void also writes the
+ * connection's row: storing an authorisation request
+ * (`Flows\AuthorizationRequestService`) and issuing a handoff code
+ * (`Handoffs\DatabaseHandoffStore`) each raise the connection's `flows_version`
+ * by one under its lock. A change whose snapshot predates either insert then
+ * fails to serialise (SQLSTATE `40001`) when it locks the connection, before it
+ * voids anything, and never commits with the new request or code left unvoided.
+ *
  * It then calls `reservationsVoided()`, which does nothing yet: linking by a
  * verified domain adds there the voiding of the connection's open link
  * reservations (state `reserved`), so a trust change, a disable or a deletion

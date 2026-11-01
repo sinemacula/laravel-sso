@@ -19,8 +19,8 @@ use Tests\Fixtures\Results\ExampleResults;
 /**
  * Unit tests for the parts of a verified result: the authentication context and
  * its bounds, the linking email and its form, the claims a driver verified,
- * kept out of dumps and serialisation, the default deadline answer, and the
- * stable values of their enums.
+ * kept out of dumps and serialisation, each part's JSON showing no provider
+ * value, the default deadline answer, and the stable values of their enums.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -184,6 +184,81 @@ final class ResultPartsTest extends TestCase
     }
 
     /**
+     * A context's JSON shows which parts were stated, each `[redacted]`, and
+     * how many methods, never a value: an empty one states nothing.
+     *
+     * @return void
+     */
+    public function testTheAuthenticationContextsJsonShowsNoValue(): void
+    {
+        self::assertSame([
+            'authenticated_at'          => null,
+            'methods'                   => 0,
+            'context_class'             => null,
+            'provider_session_id'       => null,
+            'provider_session_deadline' => null,
+        ], (new AuthenticationContext)->jsonSerialize());
+        self::assertSame(
+            '{"authenticated_at":"[redacted]","methods":2,"context_class":"[redacted]","provider_session_id":"[redacted]","provider_session_deadline":"[redacted]"}',
+            json_encode(ExampleResults::context()),
+        );
+    }
+
+    /**
+     * A linking email's JSON shows its source, and its email and organisation
+     * as `[redacted]`, the organisation `null` when none was given.
+     *
+     * @return void
+     */
+    public function testTheLinkingEmailsJsonShowsNoValue(): void
+    {
+        self::assertSame(
+            '{"email":"[redacted]","source":"saml_attribute","organization":"[redacted]"}',
+            json_encode(new LinkingEmail('person@example.com', LinkingEmailSource::SAML_ATTRIBUTE, 'example-org')),
+        );
+        $email = new LinkingEmail('person@example.com', LinkingEmailSource::ID_TOKEN);
+
+        self::assertSame(['email' => '[redacted]', 'source' => 'id_token', 'organization' => null], $email->jsonSerialize());
+    }
+
+    /**
+     * Claims' JSON shows the issuer, the format, each attribute's name with the
+     * kind of its value, and the redacted context and linking email, never the
+     * subject or a value the provider asserted.
+     *
+     * @return void
+     */
+    public function testTheClaimsJsonShowsNoProviderValue(): void
+    {
+        self::assertSame(
+            '{"issuer":"https:\/\/idp.example.com","subject":"[redacted]","name_id_format":"urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",'
+            . '"attributes":{"mail":"array","memberOf":"array"},"authentication_context":{"authenticated_at":"[redacted]","methods":2,"context_class":"[redacted]",'
+            . '"provider_session_id":"[redacted]","provider_session_deadline":"[redacted]"},"linking_email":null}',
+            json_encode(ExampleResults::claims()),
+        );
+
+        $claims = new VerifiedClaims(
+            'https://op.example.com',
+            'sub-1',
+            null,
+            ['email' => 'person@example.com', 'age' => 42, 'verified' => true, 'nickname' => null],
+            new AuthenticationContext,
+            new LinkingEmail('person@example.com', LinkingEmailSource::ID_TOKEN),
+        );
+
+        self::assertSame([
+            'issuer'                 => 'https://op.example.com',
+            'subject'                => '[redacted]',
+            'name_id_format'         => null,
+            'attributes'             => ['email' => 'string', 'age' => 'int', 'verified' => 'bool', 'nickname' => 'null'],
+            'authentication_context' => (new AuthenticationContext)->jsonSerialize(),
+            'linking_email'          => ['email' => '[redacted]', 'source' => 'id_token', 'organization' => null],
+        ], $claims->jsonSerialize());
+        self::assertStringNotContainsString('person@example.com', (string) json_encode($claims));
+        self::assertStringNotContainsString('sub-1', (string) json_encode($claims));
+    }
+
+    /**
      * Claims cannot be serialised.
      *
      * @return void
@@ -262,6 +337,11 @@ final class ResultPartsTest extends TestCase
         $throwing = static fn (\Throwable $error): \Closure => static fn (): never => throw $error;
 
         self::assertSame('Y-m-d\TH:i:s.u\Z', StoredValues::INSTANT_FORMAT);
+        self::assertSame('[redacted]', StoredValues::REDACTED);
+        self::assertNull(StoredValues::redacted(null));
+        self::assertSame('[redacted]', StoredValues::redacted('a'));
+        self::assertSame('[redacted]', StoredValues::redacted(''));
+        self::assertSame('[redacted]', StoredValues::redacted(0));
         self::assertSame('a', StoredValues::string(['k' => 'a'], 'k'));
         self::assertNull(StoredValues::optionalString([], 'k'));
         self::assertNull(StoredValues::optionalString(['k' => null], 'k'));

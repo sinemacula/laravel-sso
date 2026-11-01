@@ -89,7 +89,7 @@ final class ConnectionUsabilityTest extends TestCase
 
         $start = $manager->protocol($read->getProtocol())->start($read, new StartRequest(Purpose::SIGN_IN, 'web', RequestReference::generate(), new Secret('state')));
 
-        self::assertSame('https://idp.example.com', $start->navigation?->url);
+        self::assertSame('https://idp.example.com', $start->navigation?->url());
 
         $stored->forceFill(['settings' => []])->save();
 

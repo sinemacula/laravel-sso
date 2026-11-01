@@ -69,7 +69,10 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  *    verifier encrypted; the challenge; the identity and the session; and an
  *    expiry of `FlowSettings::requestTtlSeconds()`; the transaction first locks
  *    the connection's row, and a connection gone or changed since step 5 is
- *    `connection_unavailable`, answered as step 5 answers it;
+ *    `connection_unavailable`, answered as step 5 answers it; a stored request
+ *    raises the connection's flows version by one, under that lock, so a
+ *    PostgreSQL `REPEATABLE READ` change that locks the row later fails to
+ *    serialise rather than miss the request (`Connections\InFlightVoider`);
  * 10. `AuthorizationRequestStarted` is reported once that commits;
  * 11. the answer is `started`, with the generated verifier when one was.
  *
@@ -486,6 +489,11 @@ final readonly class AuthorizationRequestService
      * or its switch, settings or secrets changed since: a change that voids its
      * connection's requests has then committed, and would not void this one.
      *
+     * A stored request raises the connection's flows version by one, so the
+     * insert also writes the locked row: a PostgreSQL `REPEATABLE READ` change
+     * whose snapshot predates it then fails to serialise when it locks the row,
+     * rather than go on to void the connection's requests without this one.
+     *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array<string, mixed>  $attributes
      * @return bool
@@ -503,6 +511,9 @@ final readonly class AuthorizationRequestService
             $request = new AuthorizationRequest;
 
             $request->forceFill($attributes)->save();
+
+            // The insert also writes the locked connection's row.
+            Connection::query()->useWritePdo()->whereKey($connection->id)->increment('flows_version');
 
             $this->events->started($connection, $request);
 

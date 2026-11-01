@@ -43,8 +43,11 @@ the race. The tables, the value types and the completion they feed are in `flows
   9. in a transaction on the storage connection: the connection's row is read again
      locked for update, the first lock of every flow, and when it is gone or its switch, settings or secrets changed
      since step 5 the start answers as step 5 does, writing nothing; otherwise the request is inserted through its
-     model. The values are compared as cast, the settings' maps whatever their key order (a JSON column need not keep
-     it, and a connection just created holds its values as given), a list's order still counting;
+     model, and the connection's `flows_version` raised by one under the lock, so the insert also writes the
+     connection's row: a PostgreSQL `REPEATABLE READ` change whose snapshot predates the request fails to serialise
+     when it locks the connection, rather than void the connection's requests without it (`Connections\InFlightVoider`).
+     The values are compared as cast, the settings' maps whatever their key order (a JSON column need not keep it, and
+     a connection just created holds its values as given), a list's order still counting;
   10. `Events\AuthorizationRequestStarted`, dispatched after that transaction commits (`Events\AfterCommitDispatcher`);
   11. `StartResult::started($reference, $navigation, $verifier)`, the verifier only when the package generated it.
 - The stored request holds `reference`; `state_digest` and `nonce_digest`, the lower-case hex SHA-256 of the state and

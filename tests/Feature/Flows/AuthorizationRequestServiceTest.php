@@ -749,6 +749,42 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
+     * Each request stored raises its connection's flows version by exactly one,
+     * and no other connection's; a start refused before or at the store writes
+     * nothing, and raises nothing.
+     *
+     * @return void
+     */
+    public function testEachStoredRequestRaisesItsConnectionsFlowsVersionByOne(): void
+    {
+        $connection = $this->connection;
+        $other      = $this->usableConnection();
+
+        self::assertSame([0, 0], self::flowsVersions($connection, $other));
+
+        $this->startFlow();
+
+        self::assertSame([1, 0], self::flowsVersions($connection, $other));
+
+        $this->startFlow();
+
+        self::assertSame([2, 0], self::flowsVersions($connection, $other));
+
+        $this->driver->refusal = FailureReason::METADATA_EXPIRED;
+
+        $this->assertRefused(FailureReason::METADATA_EXPIRED, $this->startFlow(), 2);
+
+        $this->driver->refusal = null;
+        $this->driver->onStart = static function () use ($connection): void {
+            $connection->forceFill(['settings' => ['issuer' => 'https://other.example.com']])->save();
+        };
+
+        $this->assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->startFlow(), 2);
+
+        self::assertSame([2, 0], self::flowsVersions($connection, $other));
+    }
+
+    /**
      * The connection a start began with is compared with its locked row as
      * cast, its maps whatever their key order, at any depth: a list given in
      * another order is another connection, a map given in another order is the
@@ -851,14 +887,16 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * Assert the start was refused with the reason, wrote no request, and
-     * answers the error with `Cache-Control: no-store`.
+     * Assert the start was refused with the reason, wrote no request, leaving
+     * the requests stored before, and answers the error with `Cache-Control:
+     * no-store`.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $result
+     * @param  int  $stored
      * @return void
      */
-    private function assertRefused(FailureReason $reason, StartResult $result): void
+    private function assertRefused(FailureReason $reason, StartResult $result, int $stored = 0): void
     {
         self::assertSame(StartStatus::REFUSED, $result->status, $reason->value);
         self::assertTrue($result->isRefused());
@@ -868,7 +906,18 @@ final class AuthorizationRequestServiceTest extends TestCase
         self::assertNull($result->verifier);
         self::assertSame(['error' => $reason->value], $result->body());
         self::assertSame(['Cache-Control' => 'no-store'], $result->headers());
-        self::assertSame(0, AuthorizationRequest::query()->count());
+        self::assertSame($stored, AuthorizationRequest::query()->count());
+    }
+
+    /**
+     * The flows version of each connection, read again.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  ...$connections
+     * @return list<int>
+     */
+    private static function flowsVersions(Connection ...$connections): array
+    {
+        return array_values(array_map(static fn (Connection $connection): int => Connection::query()->findOrFail($connection->id)->flows_version, $connections));
     }
 
     /**
