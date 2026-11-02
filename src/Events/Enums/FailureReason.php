@@ -75,8 +75,8 @@ enum FailureReason: string
     // success (SSO-6.9, SSO-7.1)
     case PROVIDER_ERROR = 'provider_error';
 
-    // The connection's settings came from metadata whose `validUntil` has
-    // passed, and no refresh has succeeded since (SSO-2.8)
+    // Something fetched for the connection is past its `validUntil` or its
+    // stale limit, counted from that resource's own validated fetch (SSO-2.8)
     case METADATA_EXPIRED = 'metadata_expired';
 
     // A `sign_in` result resolves to no identity, holds no reservation, and the
@@ -232,7 +232,9 @@ enum FailureReason: string
     // verification can be tried again (SSO-3.2, decision D3)
     case DOMAIN_LOOKUP_FAILED = 'domain_lookup_failed';
 
-    // The feature the helper belongs to is off in `sso.features`
+    // The feature the helper belongs to is off in `sso.features`; for an
+    // administrator's refresh, the connection's protocol is off or it has no
+    // URL the package may fetch
     case FEATURE_DISABLED = 'feature_disabled';
 
     // Enforcement cannot be turned on: none of the connections that would

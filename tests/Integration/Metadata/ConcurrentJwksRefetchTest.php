@@ -223,6 +223,7 @@ final class ConcurrentJwksRefetchTest extends TestCase
         self::assertSame(['selection' => 'found', 'events' => []], $loser, $reported);
         self::assertCount(1, glob("{$this->outcomes}/fetched-*") ?: [], $reported);
         self::assertSame(1, $this->row()->jwks_version, $reported);
+        self::assertSame(1, $this->row()->jwks_refetch_suppressed, $reported);
     }
 
     /**
@@ -259,6 +260,7 @@ final class ConcurrentJwksRefetchTest extends TestCase
         self::assertSame(['selection' => 'unknown', 'events' => []], $loser, $reported);
         self::assertCount(1, glob("{$this->outcomes}/fetched-*") ?: [], $reported);
         self::assertSame(1, $this->row()->jwks_version, $reported);
+        self::assertSame(1, $this->row()->jwks_refetch_suppressed, $reported);
     }
 
     /**

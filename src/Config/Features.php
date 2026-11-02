@@ -39,7 +39,7 @@ final class Features
      */
     public static function enabled(Feature $feature): bool
     {
-        return BooleanSetting::isOn($feature->key(), Config::get($feature->key(), false));
+        return BooleanSetting::isOn($feature->key(), Config::get($feature->key(), $feature->isOnByDefault()));
     }
 
     /**
@@ -51,7 +51,7 @@ final class Features
      */
     public static function requested(Feature $feature): bool
     {
-        return BooleanSetting::parse(Config::get($feature->key(), false)) !== false;
+        return BooleanSetting::parse(Config::get($feature->key(), $feature->isOnByDefault())) !== false;
     }
 
     /**

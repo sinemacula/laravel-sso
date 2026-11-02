@@ -13,8 +13,6 @@ SAML is off until you switch it on, with the features the organisation's identit
 SSO_SAML2=true
 # Only when a connection requires encrypted assertions
 SSO_ENCRYPTED_ASSERTIONS=true
-# Only when a connection refreshes its identity provider's metadata on a schedule
-SSO_METADATA_REFRESH=true
 # Only when a connection allows sign-in started at the identity provider
 SSO_IDP_INITIATED=true
 ```
@@ -100,7 +98,7 @@ $keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $actor);
 
 A signature is valid when any trusted certificate verifies it; a certificate carried in a response is never trusted for
 itself. To keep the certificates and the sign-on endpoint up to date from the identity provider's metadata, save its
-`metadata_url`, switch `metadata_refresh` on, and optionally trust a metadata signing anchor (see
+`metadata_url`, run the refresh command, and optionally trust a metadata signing anchor (see
 [SAML metadata](saml-metadata.md#refreshing-on-a-schedule)).
 
 ### Large federation metadata

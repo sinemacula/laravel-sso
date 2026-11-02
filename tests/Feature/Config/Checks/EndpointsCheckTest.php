@@ -62,6 +62,8 @@ final class EndpointsCheckTest extends TestCase
         yield 'a pattern with it twice' => [['sso.endpoints.paths.metadata' => '/sso/{connection}/{connection}'], [$path('metadata')]];
         yield 'another placeholder' => [['sso.endpoints.paths.callback' => '/sso/{tenant}/{connection}'], [$path('callback')]];
         yield 'a query' => [['sso.endpoints.paths.callback' => '/sso/{connection}?x=1'], [$path('callback')]];
+        yield 'a JWKS pattern without the connection' => [['sso.endpoints.paths.jwks' => '/sso/jwks'], [$path('jwks')]];
+        yield 'no JWKS pattern' => [['sso.endpoints.paths.jwks' => null], [$path('jwks')]];
         yield 'a dot segment' => [['sso.endpoints.paths.assertion_consumer_service' => '/sso/../{connection}'], [$path('assertion_consumer_service')]];
         yield 'not a string' => [['sso.endpoints.paths.callback' => null], [$path('callback')]];
         yield 'two the same' => [

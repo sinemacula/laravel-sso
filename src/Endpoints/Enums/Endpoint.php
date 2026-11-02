@@ -26,4 +26,8 @@ enum Endpoint: string
 
     // The service provider metadata, and the default entity id (SSO-5.9)
     case METADATA = 'metadata';
+
+    // The public JWKS of an OIDC connection's client assertion keys, which a
+    // provider fetches as the client's `jwks_uri` (SSO-5.9)
+    case JWKS = 'jwks';
 }

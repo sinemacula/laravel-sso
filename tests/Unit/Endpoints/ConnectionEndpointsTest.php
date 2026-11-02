@@ -32,22 +32,31 @@ final class ConnectionEndpointsTest extends TestCase
      */
     public function testKeepsEachUrl(): void
     {
-        $endpoints = new ConnectionEndpoints('https://sp.example.com/acs', 'https://sp.example.com/cb?c=1', 'https://sp.example.com/entity', 'http://127.0.0.1:8000/md');
+        $endpoints = new ConnectionEndpoints(
+            'https://sp.example.com/acs',
+            'https://sp.example.com/cb?c=1',
+            'https://sp.example.com/entity',
+            'http://127.0.0.1:8000/md',
+            'https://sp.example.com/jwks',
+        );
 
         self::assertSame('https://sp.example.com/acs', $endpoints->assertionConsumerService);
         self::assertSame('https://sp.example.com/cb?c=1', $endpoints->callback);
         self::assertSame('https://sp.example.com/entity', $endpoints->entityId);
         self::assertSame('http://127.0.0.1:8000/md', $endpoints->metadata);
+        self::assertSame('https://sp.example.com/jwks', $endpoints->jwks);
         self::assertSame('https://sp.example.com/acs', $endpoints->url(Endpoint::ASSERTION_CONSUMER_SERVICE));
         self::assertSame('https://sp.example.com/cb?c=1', $endpoints->url(Endpoint::CALLBACK));
         self::assertSame('http://127.0.0.1:8000/md', $endpoints->url(Endpoint::METADATA));
+        self::assertSame('https://sp.example.com/jwks', $endpoints->url(Endpoint::JWKS));
         self::assertSame([
             'assertion_consumer_service' => 'https://sp.example.com/acs',
             'callback'                   => 'https://sp.example.com/cb?c=1',
             'entity_id'                  => 'https://sp.example.com/entity',
             'metadata'                   => 'http://127.0.0.1:8000/md',
+            'jwks'                       => 'https://sp.example.com/jwks',
         ], $endpoints->jsonSerialize());
-        self::assertSame(['assertion_consumer_service', 'callback', 'metadata'], array_column(Endpoint::cases(), 'value'));
+        self::assertSame(['assertion_consumer_service', 'callback', 'metadata', 'jwks'], array_column(Endpoint::cases(), 'value'));
     }
 
     /**
@@ -64,6 +73,9 @@ final class ConnectionEndpointsTest extends TestCase
         yield 'metadata with user information' => [3, 'https://user@sp.example.com/md', 'endpoints.metadata'];
         yield 'a wildcard' => [0, 'https://*.example.com/acs', 'endpoints.assertion_consumer_service'];
         yield 'a private-use scheme' => [1, 'com.example.app:/cb', 'endpoints.callback'];
+        yield 'a plain http public JWKS URL' => [4, 'http://sp.example.com/jwks', 'endpoints.jwks'];
+        yield 'a public JWKS URL with a wildcard' => [4, 'https://*.example.com/jwks', 'endpoints.jwks'];
+        yield 'a public JWKS URL with a fragment' => [4, 'https://sp.example.com/jwks#x', 'endpoints.jwks'];
     }
 
     /**
@@ -77,7 +89,7 @@ final class ConnectionEndpointsTest extends TestCase
     #[DataProvider('provideMalformedUrls')]
     public function testRefusesAMalformedUrl(int $position, string $url, string $key): void
     {
-        $urls            = ['https://sp.example.com/acs', 'https://sp.example.com/cb', 'https://sp.example.com/entity', 'https://sp.example.com/md'];
+        $urls            = ['https://sp.example.com/acs', 'https://sp.example.com/cb', 'https://sp.example.com/entity', 'https://sp.example.com/md', 'https://sp.example.com/jwks'];
         $urls[$position] = $url;
 
         $this->expectExceptionObject(new \InvalidArgumentException(

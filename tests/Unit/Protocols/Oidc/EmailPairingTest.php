@@ -35,6 +35,46 @@ final class EmailPairingTest extends TestCase
     private const string USERINFO_EMAIL = 'userinfo@example.test';
 
     /**
+     * Rows of `[flag]`: a value of `email_verified` that is not a JSON boolean.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function provideNonBooleanFlags(): iterable
+    {
+        yield 'the string true' => ['true'];
+        yield 'the string false' => ['false'];
+        yield 'the string True' => ['True'];
+        yield 'one' => [1];
+        yield 'zero' => [0];
+        yield 'a float' => [1.0];
+        yield 'null' => [null];
+        yield 'an object' => [['value' => true]];
+        yield 'a list' => [[true]];
+        yield 'an empty list' => [[]];
+    }
+
+    /**
+     * A flag that is not a JSON boolean gives no evidence from either source:
+     * the pair is unknown, nothing is coerced and no linking email follows, and
+     * the other source's flag never stands in for it when the source has the
+     * email.
+     *
+     * @param  mixed  $flag
+     * @return void
+     */
+    #[DataProvider('provideNonBooleanFlags')]
+    public function testANonBooleanFlagIsUnknown(mixed $flag): void
+    {
+        $fromToken    = EmailPairing::of(['email' => self::TOKEN_EMAIL, 'email_verified' => $flag], ['email' => self::USERINFO_EMAIL, 'email_verified' => true]);
+        $fromUserInfo = EmailPairing::of(['email_verified' => true], ['email' => self::USERINFO_EMAIL, 'email_verified' => $flag]);
+
+        self::assertSame(['email' => self::TOKEN_EMAIL, 'verified' => null, 'source' => 'id_token'], $fromToken?->toArray());
+        self::assertSame(['email' => self::USERINFO_EMAIL, 'verified' => null, 'source' => 'userinfo'], $fromUserInfo?->toArray());
+        self::assertNull(EmailPairing::linkingEmail($fromToken));
+        self::assertNull(EmailPairing::linkingEmail($fromUserInfo));
+    }
+
+    /**
      * Rows of `[ID token, UserInfo, pair]`: every combination of the sources.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: ?array<string, mixed>, 2: ?array<string, mixed>}>
@@ -129,18 +169,20 @@ final class EmailPairingTest extends TestCase
         yield 'a numeric email' => [['email' => 1], false];
         yield 'a null email' => [['email' => null], false];
         yield 'a list for an email' => [['email' => ['a@b']], false];
-        yield 'the string true' => [['email_verified' => 'true'], false];
-        yield 'the string false' => [['email_verified' => 'false'], false];
-        yield 'one' => [['email_verified' => 1], false];
-        yield 'zero' => [['email_verified' => 0], false];
-        yield 'a null flag' => [['email_verified' => null], false];
-        yield 'a good email and a string flag' => [['email' => 'a@b', 'email_verified' => 'true'], false];
+        yield 'the string true' => [['email_verified' => 'true'], true];
+        yield 'the string false' => [['email_verified' => 'false'], true];
+        yield 'one' => [['email_verified' => 1], true];
+        yield 'zero' => [['email_verified' => 0], true];
+        yield 'a null flag' => [['email_verified' => null], true];
+        yield 'an object flag' => [['email_verified' => ['a' => true]], true];
+        yield 'a list flag' => [['email_verified' => [true]], true];
+        yield 'a good email and a string flag' => [['email' => 'a@b', 'email_verified' => 'true'], true];
         yield 'a bad email and a good flag' => [['email' => 1, 'email_verified' => true], false];
     }
 
     /**
-     * `email` is a string of 1 to 320 bytes and `email_verified` a strict
-     * boolean, each when present; present as `null` is not missing.
+     * `email` is a string of 1 to 320 bytes when present; present as `null` is
+     * not missing. Whatever `email_verified` holds never refuses the claims.
      *
      * @param  array<string, mixed>  $claims
      * @param  bool  $fits
@@ -161,9 +203,7 @@ final class EmailPairingTest extends TestCase
     public static function provideUntypedSources(): iterable
     {
         yield 'the ID token email' => [['email' => 1], null];
-        yield 'the ID token flag' => [['email' => 'a@b', 'email_verified' => 'true'], null];
         yield 'the UserInfo email' => [[], ['email' => 1]];
-        yield 'the UserInfo flag' => [[], ['email' => 'a@b', 'email_verified' => 'true']];
     }
 
     /**
@@ -176,7 +216,7 @@ final class EmailPairingTest extends TestCase
     #[DataProvider('provideUntypedSources')]
     public function testUntypedClaimsAreTheCallersMistake(array $idToken, ?array $userInfo): void
     {
-        $this->expectExceptionObject(new \LogicException('An email and its email_verified are typed before they are paired.'));
+        $this->expectExceptionObject(new \LogicException('An email is typed before it is paired.'));
 
         EmailPairing::of($idToken, $userInfo);
     }

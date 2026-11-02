@@ -13,12 +13,13 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `features.discovery`                                 | `false`                                         | `SSO_DISCOVERY`                               | [Features](#features)                           |
 | `features.enforcement`                               | `false`                                         | `SSO_ENFORCEMENT`                             | [Features](#features)                           |
 | `features.encrypted_assertions`                      | `false`                                         | `SSO_ENCRYPTED_ASSERTIONS`                    | [Features](#features)                           |
-| `features.metadata_refresh`                          | `false`                                         | `SSO_METADATA_REFRESH`                        | [Features](#features)                           |
+| `features.metadata_refresh`                          | `true`                                          | `SSO_METADATA_REFRESH`                        | [Features](#features)                           |
 | `features.idp_initiated`                             | `false`                                         | `SSO_IDP_INITIATED`                           | [Features](#features)                           |
 | `features.domain_linking`                            | `false`                                         | `SSO_DOMAIN_LINKING`                          | [Features](#features)                           |
 | `endpoints.base_url`                                 | `null`                                          | `SSO_BASE_URL`                                | [Endpoints](#endpoints)                         |
 | `endpoints.paths.assertion_consumer_service`         | `/auth/sso/connections/{connection}/assertions` |                                               | [Endpoints](#endpoints)                         |
 | `endpoints.paths.callback`                           | `/auth/sso/connections/{connection}/callback`   |                                               | [Endpoints](#endpoints)                         |
+| `endpoints.paths.jwks`                               | `/auth/sso/connections/{connection}/jwks`       |                                               | [Endpoints](#endpoints)                         |
 | `endpoints.paths.metadata`                           | `/auth/sso/connections/{connection}/metadata`   |                                               | [Endpoints](#endpoints)                         |
 | `applications`                                       | `[]`                                            |                                               | [Applications](#applications)                   |
 | `clock.skew_seconds`                                 | `60`                                            | `SSO_CLOCK_SKEW_SECONDS`                      | [Clock](clock.md)                               |
@@ -114,7 +115,7 @@ default:
   60, default 10) in place of `fetcher.timeout_seconds`, and are never retried.
 
 The scheduled refresh of a connection's discovery document and JWKS keeps the `metadata` cadence, backoff, claim, queue
-and stale limit, each resource counting from its own last validated fetch.
+and stale limit, each resource counting from its own last validated fetch, whether or not it is scheduled.
 
 ## Storage
 
@@ -135,10 +136,12 @@ migration you write and a restart of every worker.
 
 ## Features
 
-`features` holds a switch per feature, each `false` by default. `saml2` and `oidc` turn the protocols on; with neither
-on the package is not in use, and nothing but these switches is checked. Every other feature needs a protocol on, and
-`encrypted_assertions` and `idp_initiated` need `saml2`. A feature that is on lets an application or a connection opt
-into it; it never opts in for them.
+`features` holds a switch per feature, each `false` by default, but for `metadata_refresh`, the scheduled refresh, which
+is `true`: it has nothing to do until a protocol is on, and turning it off stops the schedule, never the stale limit or
+an administrator's refresh. `saml2` and `oidc` turn the protocols on; with neither on the package is not in use, and
+nothing but these switches is checked. Every other feature needs a protocol on, and `encrypted_assertions` and
+`idp_initiated` need `saml2`. A feature that is on lets an application or a connection opt into it; it never opts in for
+them.
 
 Each switch is `true` or `false` (`1` and `0`, as numbers or strings, are read the same). Anything else, a switch the
 package does not have (a misspelt one would leave the feature off), or a feature on without the protocol it needs fails
@@ -146,8 +149,9 @@ the boot check.
 
 ## Endpoints
 
-The package builds each connection's assertion consumer service, OIDC callback, metadata URL and service provider
-entity id from `endpoints.base_url` and the path pattern of each endpoint, never from the request's host or headers.
+The package builds each connection's assertion consumer service, OIDC callback, metadata URL, service provider
+entity id and public JWKS URL from `endpoints.base_url` and the path pattern of each endpoint, never from the request's
+host or headers. It adds no route for any of them.
 The base URL is an absolute `https` URL (or `http` on `127.0.0.1` or `[::1]` for development) with no query or
 fragment, and is required while a protocol is on; it may carry a path prefix. Each pattern is an absolute path holding
 `{connection}` once, with no query, fragment, other placeholder or dot segment, and the patterns differ. Route the same
@@ -155,8 +159,9 @@ paths to the package's helpers in your application; an application with another 
 resolver.
 
 With the defaults and `SSO_BASE_URL=https://api.example.com`, connection `01k…` has its assertion consumer service at
-`https://api.example.com/auth/sso/connections/01k…/assertions`, its callback at `…/callback`, and its metadata, which
-is also its service provider entity id, at `…/metadata`. To lay the URLs out another way, bind your own
+`https://api.example.com/auth/sso/connections/01k…/assertions`, its callback at `…/callback`, its metadata, which is
+also its service provider entity id, at `…/metadata`, and its public JWKS, for an OIDC connection using
+`private_key_jwt`, at `…/jwks`. To lay the URLs out another way, bind your own
 `Contracts\EndpointResolver`; it is given the connection and answers an `Endpoints\ConnectionEndpoints`, which refuses
 anything but an absolute `https` URL (or `http` on a loopback address) with no user information, fragment or wildcard:
 
@@ -170,7 +175,7 @@ $this->app->scoped(EndpointResolver::class, fn () => new class implements Endpoi
     {
         $base = 'https://sso.example.com/' . rawurlencode($connection->getConnectionId());
 
-        return new ConnectionEndpoints("{$base}/acs", "{$base}/callback", "{$base}/metadata", "{$base}/metadata");
+        return new ConnectionEndpoints("{$base}/acs", "{$base}/callback", "{$base}/metadata", "{$base}/metadata", "{$base}/jwks");
     }
 });
 ```

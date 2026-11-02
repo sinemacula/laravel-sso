@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Metadata;
 
+use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKey;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
 
@@ -11,7 +12,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
  * The settings an import of an OpenID provider's discovery document proposes
  * for a connection (SSO-2.8), for an administrator to review: nothing in it is
  * written or trusted until it is saved through
- * `Connections\ConnectionService::update()`, with freshness.
+ * `Connections\ImportSaver::save()`, with freshness.
  *
  * - `settings()`: `issuer`, `authorization_endpoint`, `token_endpoint`,
  *   `jwks_uri`, `userinfo_endpoint` when the document names one, `returns_iss`
@@ -22,7 +23,9 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
  *   proposes;
  * - `keys()`: each admitted key's `kid`, `kty` and `alg`, for review. No other
  *   member of a key is held, and no secret: the keys themselves are stored by
- *   the first refresh or refetch, never by a save.
+ *   the first refresh or refetch, never by a save;
+ * - `fetch()`: the fetch the document came from, to give
+ *   `Connections\ImportSaver::save()` so the stale limit counts from it.
  *
  * Everything in it came from whoever serves the issuer's URL, so it is held in
  * a `\SensitiveParameterValue`: a dump and `json_encode()` show the names and
@@ -48,7 +51,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
  *         id_token_algorithms: list<string>
  *     },
  *     auth_methods: list<string>,
- *     keys: list<array{kid: ?string, kty: string, alg: ?string}>
+ *     keys: list<array{kid: ?string, kty: string, alg: ?string}>,
+ *     validated_at: \Carbon\CarbonImmutable
  * }
  */
 final readonly class ProposedOidcSettings implements \JsonSerializable
@@ -117,25 +121,28 @@ final readonly class ProposedOidcSettings implements \JsonSerializable
     }
 
     /**
-     * What the read document and the keys its JWKS gave propose.
+     * What the read document, validated at the moment given, and the keys its
+     * JWKS gave propose.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\DiscoveryDocument  $document
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet  $keys
+     * @param  \Carbon\CarbonImmutable  $validatedAt
      * @return self
      *
      * @throws \LogicException
      */
-    public static function of(DiscoveryDocument $document, ProviderKeySet $keys): self
+    public static function of(DiscoveryDocument $document, ProviderKeySet $keys, CarbonImmutable $validatedAt): self
     {
         return new self([
             'settings'     => $document->settings(),
             'auth_methods' => $document->authMethods(),
             'keys'         => array_map(static fn (ProviderKey $key): array => self::reviewOf($key), $keys->keys),
+            'validated_at' => $validatedAt,
         ]);
     }
 
     /**
-     * The settings proposed, ready to give `ConnectionService::update()`.
+     * The settings proposed, ready to give `ImportSaver::save()`.
      *
      * @return DiscoverySettings
      */
@@ -164,6 +171,16 @@ final readonly class ProposedOidcSettings implements \JsonSerializable
     public function keys(): array
     {
         return $this->all()['keys'];
+    }
+
+    /**
+     * The fetch the document came from.
+     *
+     * @return \SineMacula\Laravel\Sso\Metadata\ValidatedFetch
+     */
+    public function fetch(): ValidatedFetch
+    {
+        return new ValidatedFetch($this->all()['validated_at']);
     }
 
     /**

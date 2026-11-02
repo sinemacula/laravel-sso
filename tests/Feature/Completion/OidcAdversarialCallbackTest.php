@@ -8,12 +8,15 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
+use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
@@ -37,8 +40,10 @@ use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\Oidc\IdTokenValidator;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
+use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
+use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
@@ -323,7 +328,6 @@ final class OidcAdversarialCallbackTest extends TestCase
             'at_hash wrong'           => [[], static fn (FakeIdToken $t): FakeIdToken => $t->with('at_hash', 'wrong'), FailureReason::AT_HASH_MISMATCH],
             'at_hash another'         => [[], static fn (FakeIdToken $t): FakeIdToken => $t->accessTokenHash('another-access-token'), FailureReason::AT_HASH_MISMATCH],
             'sub an integer'          => [[], static fn (FakeIdToken $t): FakeIdToken => $t->with('sub', 1), FailureReason::ID_TOKEN_INVALID],
-            'email_verified as text'  => [[], static fn (FakeIdToken $t): FakeIdToken => $t->with('email_verified', 'true'), FailureReason::ID_TOKEN_INVALID],
             'auth_time in the future' => [
                 [],
                 static fn (FakeIdToken $t): FakeIdToken => $t->with('auth_time', self::issuedAt($t) + self::SKEW + 1),
@@ -433,9 +437,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     /**
      * Rows of `[auth_time, reason]`: when a reauthentication's person
      * authenticated, in seconds from now, with the request started 10 seconds
-     * ago. `max_age` 0 decides the two refused for their age: on a clock that
-     * did not move it refuses whatever the start rule would, and the row older
-     * than the start is refused by both.
+     * ago, so its start less the 60 second skew is 70 seconds ago.
      *
      * @return iterable<string, array{0: ?int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -444,16 +446,17 @@ final class OidcAdversarialCallbackTest extends TestCase
         yield from [
             'as it completes'       => [0, null],
             'at the skew'           => [-60, null],
-            'past max_age 0'        => [-61, FailureReason::AUTHENTICATION_EXPIRED],
-            'before the start too'  => [-3600, FailureReason::AUTHENTICATION_EXPIRED],
+            'at the start and skew' => [-70, null],
+            'before it'             => [-71, FailureReason::AUTHENTICATION_EXPIRED],
+            'long before it'        => [-3600, FailureReason::AUTHENTICATION_EXPIRED],
             'absent'                => [null, FailureReason::ID_TOKEN_INVALID],
             'past now and the skew' => [61, FailureReason::ASSERTION_EXPIRED],
         ];
     }
 
     /**
-     * A `reauthenticate` is held to `auth_time`: required, no older than the
-     * skew by `max_age` 0, and never in the future past the skew.
+     * A `reauthenticate` is held to `auth_time`: required, no earlier than its
+     * request's start less the skew, and never in the future past the skew.
      *
      * @param  ?int  $authenticatedAgo
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -483,9 +486,8 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * With the clock moved back since the start, `max_age` 0 no longer refuses
-     * what the start rule does, so it alone decides: `auth_time` is never
-     * earlier than the request's start less the skew.
+     * With the clock moved back since the start the rule is unchanged:
+     * `auth_time` is never earlier than the request's start less the skew.
      *
      * @param  int  $authenticatedAgo
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -497,6 +499,81 @@ final class OidcAdversarialCallbackTest extends TestCase
     public function testTheStartAloneDecidesAfterTheClockMovedBack(int $authenticatedAgo, ?FailureReason $reason): void
     {
         $this->assertReauthentication(-30, $authenticatedAgo, $reason);
+    }
+
+    /**
+     * Rows of `[auth_time, reason]`: a reauthentication whose callback arrives
+     * five minutes after its request started, in seconds from now, so its start
+     * less the 60 second skew is 360 seconds ago.
+     *
+     * @return iterable<string, array{0: int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideSlowCallbacks(): iterable
+    {
+        yield from [
+            'as the request started'   => [-300, null],
+            'at its start and skew'    => [-360, null],
+            'a second before it'       => [-361, FailureReason::AUTHENTICATION_EXPIRED],
+            'just as the callback ran' => [0, null],
+        ];
+    }
+
+    /**
+     * A fresh authentication with a slow callback passes: `max_age=0` is sent
+     * upstream, but it is the request's start that is enforced, never how long
+     * the callback took.
+     *
+     * @param  int  $authenticatedAgo
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    #[DataProvider('provideSlowCallbacks')]
+    public function testASlowCallbackIsNeverRefusedForItsOwnDelay(int $authenticatedAgo, ?FailureReason $reason): void
+    {
+        $this->assertReauthentication(300, $authenticatedAgo, $reason);
+    }
+
+    /**
+     * Keys past their limit refuse a callback with the schedule off too,
+     * turning it off never meaning unlimited trust; the callback cannot recover
+     * the connection by fetching, with an unknown `kid` or not, and an
+     * administrator's refresh does.
+     *
+     * @return void
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    public function testAnExpiredConnectionIsRecoveredByAnAdministratorNotACallback(): void
+    {
+        config()->set('sso.features.metadata_refresh', false);
+
+        $connection = $this->honestConnection(['metadata_refresh' => false]);
+
+        $connection->forceFill(['jwks_fetched_at' => $this->clock->now()->subSeconds(2592000 - 1)])->save();
+
+        $this->provider->publish(self::next())->signWith(self::next());
+
+        $grant   = $this->granted($connection);
+        $request = $this->latestRequest();
+
+        $this->clock->advance(1);
+        $this->startRecordingEvents();
+
+        $this->assertRefused($this->receiveCallback($connection, $grant), FailureReason::METADATA_EXPIRED, $request);
+        self::assertSame([], $this->fetchPurposes());
+        self::assertNull($connection->fresh()?->jwks_refetch_at);
+
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
+        $refreshed = app(MetadataRefresher::class)->refreshNow($connection->tenant_id, $connection->id, new ActingIdentity('App\Models\User', '42'));
+
+        self::assertTrue($refreshed->isRefreshed());
+        self::assertTrue($this->receiveCallback($connection, $this->granted($connection))->isCompleted());
     }
 
     /**
@@ -642,16 +719,16 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Key rotation, removing: the token of the new `kid` verifies, but the
-     * refetch removed a key, which voided the flows in flight, its own among
-     * them, so the completion is refused under the lock, the request voided and
-     * the trust version raised once.
+     * Key rotation, removing: the token of the new `kid` verifies, and the
+     * refetch removed a key, which voided the flows in flight and raised the
+     * trust version once, but spared this one, which finishes across exactly
+     * that transition (`OidcKeyRotationCompletionTest` holds the rest).
      *
      * @return void
      *
      * @throws \Random\RandomException
      */
-    public function testARemovingRotationVoidsItsOwnCallback(): void
+    public function testARemovingRotationLetsItsOwnCallbackFinish(): void
     {
         $connection = $this->honestConnection();
         $version    = (int) $connection->fresh()?->trust_version;
@@ -665,16 +742,107 @@ final class OidcAdversarialCallbackTest extends TestCase
 
         $result = $this->receiveCallback($connection, $grant);
 
-        $this->assertRefused($result, FailureReason::CONNECTION_UNAVAILABLE, $request);
-        $this->assertEventSequence([JwksRefreshed::class, ResultVerified::class, FlowFailed::class]);
+        self::assertTrue($result->isCompleted());
+        self::assertNotNull($result->handoff);
+        $this->assertEventSequence([JwksRefreshed::class, ResultVerified::class, HandoffIssued::class]);
+        $this->assertNoFailure();
 
         $refreshed = $this->recordedEvents()[0];
 
         self::assertInstanceOf(JwksRefreshed::class, $refreshed);
         self::assertSame([1, 1, true], [$refreshed->keysAdded, $refreshed->keysRemoved, $refreshed->trustChanged]);
-        self::assertNotNull($request->fresh()?->voided_at);
+        self::assertNull($request->fresh()?->voided_at);
+        self::assertNotNull($request->fresh()?->completed_at);
         self::assertSame($version + 1, $connection->fresh()?->trust_version);
         self::assertCount(1, $this->jwksFetches());
+    }
+
+    /**
+     * Rows of `[flag]`: an `email_verified` that is not a JSON boolean,
+     * Cognito's strings among them.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function provideNonBooleanFlags(): iterable
+    {
+        yield from [
+            'the string true'  => ['true'],
+            'the string false' => ['false'],
+            'one'              => [1],
+            'an object'        => [['value' => true]],
+            'null'             => [null],
+        ];
+    }
+
+    /**
+     * Through the whole path, an ID token's `email_verified` that is not a JSON
+     * boolean gives no evidence and does not refuse the sign-in: the email is
+     * asserted as unknown, and no linking email comes of it.
+     *
+     * @param  mixed  $flag
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    #[DataProvider('provideNonBooleanFlags')]
+    public function testANonBooleanEmailVerifiedDoesNotRefuseTheSignIn(mixed $flag): void
+    {
+        $connection = $this->honestConnection();
+        $grant      = $this->granted($connection, static fn (FakeIdToken $t): FakeIdToken => $t->with('email', 'person@example.test')->with('email_verified', $flag));
+        $result     = $this->receiveCallback($connection, $grant);
+
+        self::assertTrue($result->isCompleted());
+        self::assertSame([], $this->jwksFetches());
+        self::assertSame(['email' => 'person@example.test', 'verified' => null, 'source' => 'id_token'], self::handedOff()->assertedEmail?->toArray());
+        self::assertNull(self::handedOff()->linkingEmail);
+    }
+
+    /**
+     * Through the whole path, UserInfo's `email_verified` that is not a JSON
+     * boolean is treated alike: the request is made, the sign-in goes on, and
+     * the email it asserts is unknown, with no linking email.
+     *
+     * @param  mixed  $flag
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    #[DataProvider('provideNonBooleanFlags')]
+    public function testANonBooleanUserInfoFlagDoesNotRefuseTheSignIn(mixed $flag): void
+    {
+        $connection = $this->honestConnection(['fetch_userinfo' => true, 'userinfo_endpoint' => $this->provider->endpoint('userinfo')]);
+
+        $this->provider->withUserInfo(['email' => 'person@example.test', 'email_verified' => $flag]);
+
+        $result = $this->receiveCallback($connection, $this->granted($connection));
+
+        self::assertTrue($result->isCompleted());
+        self::assertContains(FetchPurpose::USERINFO, $this->fetchPurposes());
+        self::assertSame(['email' => 'person@example.test', 'verified' => null, 'source' => 'userinfo'], self::handedOff()->assertedEmail?->toArray());
+        self::assertNull(self::handedOff()->linkingEmail);
+    }
+
+    /**
+     * A true or false `email_verified` is the evidence it says through the
+     * whole path, whichever source gave the email, and only true links.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testABooleanEmailVerifiedThroughTheWholePath(): void
+    {
+        $connection = $this->honestConnection();
+
+        foreach ([true, false] as $flag) {
+
+            $grant = $this->granted($connection, static fn (FakeIdToken $t): FakeIdToken => $t->with('email', 'person@example.test')->with('email_verified', $flag));
+
+            self::assertTrue($this->receiveCallback($connection, $grant)->isCompleted());
+            self::assertSame($flag, self::handedOff()->assertedEmail?->toArray()['verified']);
+
+            HandoffCode::query()->delete();
+        }
     }
 
     /**
@@ -898,6 +1066,21 @@ final class OidcAdversarialCallbackTest extends TestCase
         }
 
         return $this->connectionOf(['id_token_algorithms' => $case->algorithms], $case->stage === 'jwks_refused' ? null : self::stored($case->jwks, $case->algorithms));
+    }
+
+    /**
+     * The verified result the code issued carries, as a redemption reads it.
+     *
+     * @return \SineMacula\Laravel\Sso\Results\VerifiedResult
+     *
+     * @throws \UnexpectedValueException
+     */
+    private static function handedOff(): VerifiedResult
+    {
+        /** @var array<string, mixed> $stored */
+        $stored = json_decode(app(SecretEncrypter::class)->decrypt(HandoffCode::query()->sole()->result), true);
+
+        return VerifiedResult::restore($stored);
     }
 
     /**

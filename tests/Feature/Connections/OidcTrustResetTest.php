@@ -164,6 +164,32 @@ final class OidcTrustResetTest extends TestCase
     }
 
     /**
+     * With the refresh off, an endpoint saved by hand makes the connection
+     * follow no document: when one was last validated is cleared, and its keys
+     * are left alone. Turning the refresh off alone clears nothing.
+     *
+     * @return void
+     */
+    public function testAnEndpointSavedByHandEndsTheDocumentsDeadline(): void
+    {
+        $connection = $this->connection();
+        $before     = self::state($this->row($connection));
+
+        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => false]])->status);
+        self::assertSame($before['metadata_fetched_at'], self::state($this->row($connection))['metadata_fetched_at']);
+
+        $moved = ['settings' => ['token_endpoint' => 'https://new.example.test/token']];
+
+        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $connection->id, $moved)->status);
+
+        $after = self::state($this->row($connection));
+
+        self::assertSame([null, null], [$after['metadata_fetched_at'], $after['metadata_valid_until']]);
+        self::assertSame($before['jwks'], $after['jwks']);
+        self::assertSame($before['jwks_fetched_at'], $after['jwks_fetched_at']);
+    }
+
+    /**
      * An update that gives what is stored changes nothing and clears nothing.
      *
      * @return void

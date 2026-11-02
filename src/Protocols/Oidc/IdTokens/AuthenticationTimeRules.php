@@ -14,12 +14,15 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\TimeClaims;
  * precision against the package's clock and the skew given per call:
  *
  * - after now plus the skew is `assertion_expired`;
- * - absent, when `max_age` was asked for, is `id_token_invalid`, and absent
- *   otherwise stays unknown;
- * - more than `max_age` plus the skew before now is `authentication_expired`;
- * - for a `reauthenticate`, more than the skew before the request started is
- *   `authentication_expired`. A request's start is kept to the whole second, so
- *   it is compared as stored.
+ * - absent, when a `max_age` was asked for or the authentication must follow a
+ *   moment, is `id_token_invalid`, and absent otherwise stays unknown;
+ * - a positive `max_age` is the configured authentication age: more than it
+ *   plus the skew before now is `authentication_expired`. A `max_age` of 0 sets
+ *   no age: it asks the provider to authenticate afresh, which the moment given
+ *   judges, never how long the callback took to arrive;
+ * - more than the skew before the moment given (for a `reauthenticate` or a
+ *   `max_age` of 0, when the request started) is `authentication_expired`. A
+ *   request's start is kept to the whole second, so it is compared as stored.
  *
  * It holds nothing between calls (SSO-11.2).
  *
@@ -37,14 +40,14 @@ final class AuthenticationTimeRules
 
     /**
      * Why the token's `auth_time` refuses it at now with the skew, under the
-     * `max_age` asked for (`null` for none) and the moment a `reauthenticate`
-     * started (`null` for any other flow); `null` when it passes.
+     * `max_age` asked for (`null` for none) and the moment the authentication
+     * must follow (`null` for none); `null` when it passes.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  \Carbon\CarbonImmutable  $now
      * @param  int  $skewSeconds
      * @param  ?int  $maxAgeSeconds
-     * @param  ?\Carbon\CarbonImmutable  $reauthenticationStartedAt
+     * @param  ?\Carbon\CarbonImmutable  $notBefore
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
      */
     public static function refusal(
@@ -52,12 +55,12 @@ final class AuthenticationTimeRules
         CarbonImmutable $now,
         int $skewSeconds,
         ?int $maxAgeSeconds,
-        ?CarbonImmutable $reauthenticationStartedAt = null,
+        ?CarbonImmutable $notBefore = null,
     ): ?FailureReason {
         $authenticatedAt = TimeClaims::numericDate($claims['auth_time'] ?? null);
 
         if ($authenticatedAt === null) {
-            return $maxAgeSeconds === null ? null : FailureReason::ID_TOKEN_INVALID;
+            return $maxAgeSeconds === null && $notBefore === null ? null : FailureReason::ID_TOKEN_INVALID;
         }
 
         $instant = TimeClaims::instant($now);
@@ -66,9 +69,9 @@ final class AuthenticationTimeRules
             return FailureReason::ASSERTION_EXPIRED;
         }
 
-        $tooOld   = $maxAgeSeconds             !== null && $instant                                                           - $authenticatedAt > $maxAgeSeconds + $skewSeconds;
-        $tooEarly = $reauthenticationStartedAt !== null && $authenticatedAt < TimeClaims::instant($reauthenticationStartedAt) - $skewSeconds;
+        $earliest = $notBefore === null ? -INF : TimeClaims::instant($notBefore) - $skewSeconds;
+        $tooOld   = $maxAgeSeconds > 0 && $instant                               - $authenticatedAt > $maxAgeSeconds + $skewSeconds;
 
-        return $tooOld || $tooEarly ? FailureReason::AUTHENTICATION_EXPIRED : null;
+        return $tooOld || $authenticatedAt < $earliest ? FailureReason::AUTHENTICATION_EXPIRED : null;
     }
 }

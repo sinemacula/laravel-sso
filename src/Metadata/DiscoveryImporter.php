@@ -28,7 +28,8 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * answers the settings they propose (SSO-2.8, SSO-2.11), for an administrator
  * to review: an import writes and trusts nothing, and reports no event. What it
  * proposes is trusted only once saved through
- * `Connections\ConnectionService::update()`, with freshness.
+ * `Connections\ImportSaver::save()`, with freshness, which stamps the fetch the
+ * proposal carries so the stale limit counts from it.
  *
  * `import()` follows one order. While OIDC is not available
  * (`sso.features.oidc` off) it is `protocol_unavailable` before anything else;
@@ -56,12 +57,13 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  *   a JWKS refused is `jwks_invalid`.
  *
  * Each is noted the moment it validated, so each resource's stale limit counts
- * from its own validated fetch. The import fetches while it is called, so it
- * refuses to run inside a transaction on the storage connection (a
- * `LogicException`), and logs nothing. A database error propagates (SSO-11.4).
- * It holds the protocols, the lookup, the limiter, the fetcher, the limits and
- * the clock, none of which keeps anything of one request for the next
- * (SSO-11.2).
+ * from its own validated fetch, and what a proposal saves counts from the
+ * document's (`ProposedOidcSettings::fetch()`). The import fetches while it is
+ * called, so it refuses to run inside a transaction on the storage connection
+ * (a `LogicException`), and logs nothing. A database error propagates
+ * (SSO-11.4). It holds the protocols, the lookup, the limiter, the fetcher, the
+ * limits and the clock, none of which keeps anything of one request for the
+ * next (SSO-11.2).
  *
  * @api
  *
@@ -173,6 +175,32 @@ final readonly class DiscoveryImporter
     }
 
     /**
+     * Fetch and validate the JWKS at the URL given under the allow-list given,
+     * noting the moment it validated, with no discovery document: what a
+     * connection whose document is not fetched refreshes from (`ProviderKeySet`
+     * as the document).
+     *
+     * @param  string  $jwksUri
+     * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
+     * @return \SineMacula\Laravel\Sso\Metadata\FetchedMetadata
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function fetchKeys(string $jwksUri, AlgorithmAllowList $allowed): FetchedMetadata
+    {
+        $maxBytes = $this->limits->maxJwksBytes();
+        $fetched  = $this->fetcher->fetch(FetchRequest::jwks($jwksUri, $maxBytes));
+
+        if (!$fetched->isSuccessful()) {
+            return FetchedMetadata::refused($fetched->reason ?? FailureReason::FETCH_FAILED, $fetched->status);
+        }
+
+        $keys = ProviderKeySet::read((string) $fetched->body(), $allowed, $maxBytes, $this->limits->maxJwksKeys());
+
+        return $keys === null ? FetchedMetadata::refused(FailureReason::JWKS_INVALID, $fetched->status) : FetchedMetadata::read($keys, $this->clock->now());
+    }
+
+    /**
      * The tenant's OIDC connection named, `null` when none is named, or the
      * refusal of the import: an unavailable protocol or invalid issuer before
      * anything is looked up, and a connection that is unknown, another tenant's
@@ -235,20 +263,14 @@ final readonly class DiscoveryImporter
      */
     private function withKeys(DiscoveryDocument $document, AlgorithmAllowList $allowed, CarbonImmutable $validatedAt): FetchedMetadata
     {
-        $maxBytes = $this->limits->maxJwksBytes();
-        $fetched  = $this->fetcher->fetch(FetchRequest::jwks($document->jwksUri(), $maxBytes));
+        $fetched = $this->fetchKeys($document->jwksUri(), $allowed);
+        $keys    = $fetched->document();
 
-        if (!$fetched->isSuccessful()) {
-            return FetchedMetadata::refused($fetched->reason ?? FailureReason::FETCH_FAILED, $fetched->status);
+        if (!$keys instanceof ProviderKeySet || $fetched->validatedAt === null) {
+            return $fetched;
         }
 
-        $keys = ProviderKeySet::read((string) $fetched->body(), $allowed, $maxBytes, $this->limits->maxJwksKeys());
-
-        if ($keys === null) {
-            return FetchedMetadata::refused(FailureReason::JWKS_INVALID, $fetched->status);
-        }
-
-        return FetchedMetadata::read(new OidcMetadata($document, $keys, $this->clock->now()), $validatedAt);
+        return FetchedMetadata::read(new OidcMetadata($document, $keys, $fetched->validatedAt), $validatedAt);
     }
 
     /**
@@ -264,10 +286,10 @@ final readonly class DiscoveryImporter
     {
         $metadata = $fetched->document();
 
-        if (!$metadata instanceof OidcMetadata) {
+        if (!$metadata instanceof OidcMetadata || $fetched->validatedAt === null) {
             return DiscoveryImport::refused($fetched->reason ?? FailureReason::DISCOVERY_INVALID);
         }
 
-        return DiscoveryImport::proposed(ProposedOidcSettings::of($metadata->document(), $metadata->keys()));
+        return DiscoveryImport::proposed(ProposedOidcSettings::of($metadata->document(), $metadata->keys(), $fetched->validatedAt));
     }
 }

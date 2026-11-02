@@ -125,7 +125,10 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
   no longer usable, the request was voided since consumption or its stored trust version is no longer the connection's,
   or the enforcing tenant moved since its rule was locked. The trust version is stored on every request at start
   (compared under the connection's lock before the insert), checked at consumption against the locked connection
-  before validation or any provider call, and checked again under the completion's lock.
+  before validation or any provider call, and checked again under the completion's lock. One exception, and only one,
+  crosses a trust version: the sign-in whose own token triggered an unknown-`kid` refetch that removed a key may finish
+  across exactly that transition, on a `Protocols\TransitionReceipt` judged at those locks (`oidc-driver.md`); it never
+  restores a voided request and never adopts a later trust version.
   Events are dispatched after that transaction commits (or after the consumption's, for a refusal before it), never on a
   rollback.
 - `Completion\CompletionResult` is how a completion ended: `completed` (redirect URI, delivery, reference, issued
@@ -222,7 +225,10 @@ one `Events\FlowFailed`. No event holds a code, verifier, state, nonce, subject,
   request's consumption is never inside a caller's transaction (a completion there is refused), and a code's, inside a
   redeemer's, is undone only with the redemption it belongs to; a replay is refused.
 - A disable or trust change voids every unfinished request and every unredeemed code of the connection in its own
-  transaction; a completion that consumed a request before the change refuses it under the lock afterwards.
+  transaction; a completion that consumed a request before the change refuses it under the lock afterwards. A
+  callback's own key rotation spares that one consumed request, in the same transaction that voids the rest and records
+  the transition for it in memory alone; a process that dies before its final locks leaves the request consumed and
+  never completed, which nothing can complete, since the receipt died with it.
 - A database error is never a refusal: it propagates as a server error (SSO-11.4).
 
 ## Implementation Anchors

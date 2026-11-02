@@ -2,9 +2,9 @@
 
 An identity provider describes itself in SAML 2.0 metadata: its entity id, where to send people to sign in, and the
 certificates it signs with. The package can fill a SAML connection in from that metadata, given as XML or fetched from a
-URL, and, when you switch it on, keep the connection's certificates and sign-in endpoint up to date from it on a
-schedule. See [Managing connections](managing-connections.md) for the settings themselves and [Keys](keys.md) for
-trusted certificates.
+URL, and, once you save a `metadata_url`, keep the connection's certificates and sign-in endpoint up to date from it on
+a schedule unless you opt the connection out. See [Managing connections](managing-connections.md) for the settings
+themselves and [Keys](keys.md) for trusted certificates.
 
 ## Importing metadata
 
@@ -50,10 +50,10 @@ Once the administrator has compared the certificate fingerprints with the ones t
 proposal:
 
 ```php
-use SineMacula\Laravel\Sso\Connections\ConnectionService;
+use SineMacula\Laravel\Sso\Connections\ImportSaver;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 
-app(ConnectionService::class)->update($tenant->id, $connection->id, ['settings' => $proposed->settings()], $actor);
+app(ImportSaver::class)->save($tenant->id, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch(), $actor);
 
 foreach ($proposed->signingCertificates() as $certificate) {
     app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $certificate['certificate'], $actor);
@@ -62,6 +62,12 @@ foreach ($proposed->signingCertificates() as $certificate) {
 
 Each of those asks the freshness contract, as any trust change does. The proposal never sets the NameID format: choose
 `name_id_format` from `nameIdFormats()` yourself.
+
+`save()` makes the update `ConnectionService::update()` would and stamps the fetch `fetch()` carries, so
+[what you saved expires](#when-refreshed-settings-expire) from that fetch, even with the schedule off. Metadata you gave
+as XML came from no fetch: `fetch()` is `null`, and you save it with `ConnectionService::update()`, as by hand. Saving a
+new import of the same settings renews the connection, on the record, as `ConnectionUpdated` naming
+`metadata_fetched_at`, and voids nothing.
 
 | Reason                       | When                                                                                                                                                                             |
 |------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -99,18 +105,21 @@ flight, so a refresh that began before it is refused.
 
 ## Refreshing on a schedule
 
-Refreshing is off unless you switch it on, for the application and then per connection:
-
-```dotenv
-SSO_METADATA_REFRESH=true
-```
+A connection with a `metadata_url` refreshes on the schedule by default, so saving the URL is all it takes:
 
 ```php
 app(ConnectionService::class)->update($tenant->id, $connection->id, ['settings' => [
-    'metadata_url'     => 'https://idp.example.com/metadata.xml',
-    'metadata_refresh' => true,
+    'metadata_url' => 'https://idp.example.com/metadata.xml',
 ]], $actor);
 ```
+
+Set `metadata_refresh` to `false` to opt a connection out, or `SSO_METADATA_REFRESH=false` to stop the schedule for the
+whole application. Neither stops [what a refresh applied expiring](#when-refreshed-settings-expire), and an
+administrator's refresh still works. Left unset, the setting follows the URL, so adding or removing the URL needs no
+other change. With `sso.features.saml2` off, nothing refreshes and nothing fetches. Without a
+[metadata signing anchor](#a-metadata-signing-anchor), a refresh trusts what the saved URL serves over verified TLS, and
+replaces the signing certificates with it: add an anchor where the provider signs its metadata, or opt the connection
+out if that is more than you accept.
 
 A refresh fetches only that saved `https` URL, reads the entity the connection already names (`idp_entity_id`, never
 changed by a refresh), checks the signature when the connection has an anchor, and then changes only:
@@ -123,7 +132,11 @@ It never touches the subject settings, the attribute mapping or enforcement. A r
 provider publishing its next key) leaves the flows in flight alone; one that removes or replaces a certificate, or moves
 the sign-on endpoint, voids them, as the same change by hand would.
 
-Run the command from the scheduler, every 5 minutes or more often, and a queue worker for the queue it sends to:
+**You must run the command**, or nothing refreshes and the connection's fetched settings expire after 30 days: run it
+from the scheduler, every 5 minutes or more often, with `php artisan schedule:work` or a cron entry for
+`schedule:run`. Each job goes to your application's default queue connection (`database` in a stock Laravel install)
+unless `SSO_METADATA_QUEUE_CONNECTION` says otherwise, so run `php artisan queue:work` for it, unless that connection is
+`sync` or the command runs with `--sync`.
 
 ```php
 // bootstrap/app.php
@@ -175,7 +188,9 @@ Metadata refreshed: refreshed 3, failed 1, conflict 0, in_progress 0, rate_limit
 It exits 0 whatever the outcomes, which the events report; and 1 only when the run stopped on an exception, which it
 names by class alone.
 
-To refresh a connection at once, for an administrator, skipping its backoff, name the administrator who asked:
+To refresh a connection at once, for an administrator, name the administrator who asked. This skips its backoff, and
+works with the schedule off, with the connection's `metadata_refresh` off and on a connection that has already expired,
+so it is how you recover one the schedule does not touch:
 
 ```php
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
@@ -194,8 +209,10 @@ $result->changedSettings; // ['sso_url', 'idp_signing_certificates'], say
 The acting identity is required: every refresh an administrator asks for is reported as theirs. Each counts against
 the connection's metadata limit (`sso.rate_limits.metadata`, 10 an hour per connection by default, shared with URL
 imports naming the connection) before anything is claimed or fetched, so an administrator cannot hammer the provider.
-`refreshNow()` runs in the request that calls it, so call it from a queued job when the metadata is large. It asks no
-freshness: it does no more than the schedule would. `in_progress` means another server is refreshing it now; a refresh
+`refreshNow()` runs in the request that calls it, so call it from a queued job when the metadata is large. Where the
+schedule would refresh the connection too it asks no freshness, since it writes no more than the schedule would. With
+`metadata_refresh` or `SSO_METADATA_REFRESH` off it asks the freshness contract as `sso.connection.trust`, since it
+replaces what you told the schedule to leave alone. `in_progress` means another server is refreshing it now; a refresh
 never runs twice at once.
 
 | Outcome        | When                                                                                                      |
@@ -206,7 +223,7 @@ never runs twice at once.
 | `in_progress`  | Another server holds the connection's claim                                                               |
 | `rate_limited` | `refreshNow()` past the connection's metadata limit, with `retryAfter`; nothing ran                       |
 | `skipped`      | A scheduled or queued run found it claimed, refreshed by another server, or no longer due                 |
-| `refused`      | `refreshNow()` named no such connection, or one that does not refresh                                     |
+| `refused`      | `refreshNow()` named no such connection, its protocol is off, it has no URL, or freshness was refused     |
 
 A certificate an administrator trusts while a refresh is fetching is never removed by that refresh, even though a
 refresh replaces the certificates exactly: the refresh compares the certificates and anchors it read before it fetched
@@ -216,16 +233,20 @@ administrator's change standing. The next refresh starts from it.
 ## When refreshed settings expire
 
 Settings a refresh applied stop being used, and sign-ins through the connection fail with `metadata_expired` until a
-refresh succeeds, at the earlier of:
+scheduled or administrator's refresh succeeds, at the earlier of:
 
 - the metadata's `validUntil`, the earliest of the entity and every aggregate around it;
 - 30 days after the last successful refresh validated the document it applied (`sso.metadata.stale_limit_seconds`, a
   day to a year): the moment the fetched document was validated, not the later moment its write committed. A refresh
   checks this again when it commits, so it never writes metadata that has already expired.
 
-Undated metadata is bounded by the second alone. Setting `stale_limit_seconds` to `0` removes the limit; you must set it
-explicitly, and then only a `validUntil` ever expires the settings. A connection no refresh has written (its settings
-entered by hand or imported once) never expires.
+This does not depend on the schedule: turning it off never means unlimited trust. Undated metadata is bounded by the
+second alone. Setting `stale_limit_seconds` to `0` removes the limit; you must set it explicitly, and then only a
+`validUntil` ever expires the settings. Settings [saved from a fetched import](#importing-metadata) count from that
+fetch and its `validUntil`, so the same limits apply before any refresh has run. A connection nothing has fetched for
+yet, its settings entered by hand or given as XML, has no deadline: nothing it holds came from a fetch that could go
+stale. Its first refresh starts the clock. An expired connection with no `metadata_url` has no refresh to recover
+through: import again and save, or save a URL and refresh.
 
 ## Large federation metadata
 

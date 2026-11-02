@@ -138,7 +138,7 @@ with the operation's flow (`$event->flow`, a `Flow`) and a machine-readable reas
 | `replayed`                        | The assertion was seen before, or could not be recorded as seen                           |
 | `nonce_mismatch`                  | The ID token's nonce is not the one the request stored                                    |
 | `provider_error`                  | The identity provider answered with an error                                              |
-| `metadata_expired`                | The connection's metadata is past its `validUntil` and no refresh has succeeded           |
+| `metadata_expired`                | Something fetched for the connection is past its `validUntil` or stale limit              |
 | `unlinked`                        | A sign-in resolved to no identity and the application does not allow unlinked handoffs    |
 | `purpose_mismatch`                | A handoff code was presented to the redemption of another purpose                         |
 | `verifier_mismatch`               | The verifier presented with a handoff code does not match its challenge                   |
@@ -247,13 +247,14 @@ commits, so an audit trail can record who changed which identity provider's trus
 
 A metadata refresh, of a SAML connection's metadata or an OIDC connection's discovery document and JWKS, reports
 `MetadataRefreshed` or `MetadataRefreshFailed`; an OIDC connection's refetch of its JWKS on an unknown `kid` reports
-`JwksRefreshed` or `JwksRefreshFailed` instead, with no acting identity. A metadata refresh's `changedSettings` names
-the settings it changed, such as `['sso_url', 'idp_signing_certificates']`, and none when nothing changed;
-`trustChanged` says whether it removed or replaced a trusted certificate or moved the single sign-on URL or binding,
-which voids every flow in flight through the connection, and `metadataVersion` is the connection's version after it. A
-failed refresh's `reason` is `fetch_refused`, `fetch_failed`, `metadata_invalid`, `metadata_signature_invalid`,
-`metadata_entity_not_found`, `metadata_conflict` or `metadata_expired`, `failures` the failures in a row, and
-`nextAttemptAt` when the next scheduled attempt is due.
+`JwksRefreshed` or `JwksRefreshFailed` instead, with no acting identity, and a refetch that removes a key lets the one
+sign-in that asked finish, so `trustChanged` true does not always mean that flow failed. A metadata refresh's
+`changedSettings` names the settings it changed, such as `['sso_url', 'idp_signing_certificates']`, and none when
+nothing changed; `trustChanged` says whether it removed or replaced a trusted certificate or moved the single sign-on
+URL or binding, which voids every flow in flight through the connection, and `metadataVersion` is the connection's
+version after it. A failed refresh's `reason` is `fetch_refused`, `fetch_failed`, `metadata_invalid`,
+`metadata_signature_invalid`, `metadata_entity_not_found`, `metadata_conflict` or `metadata_expired`, `failures` the
+failures in a row, and `nextAttemptAt` when the next scheduled attempt is due.
 
 `changedSettings` names what changed, never its value: the settings in the order the protocol lists them, then the
 secrets, then `display_name` and `attribute_mapping`, such as `['token_endpoint', 'client_secret', 'display_name']`. A

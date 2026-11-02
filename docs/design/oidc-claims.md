@@ -36,10 +36,10 @@ the verified result is built from the claims is `completion.md`.
 
 - A signed or encrypted UserInfo response is not supported, so it is refused whatever its body. Any other content type
   is not judged: the body decides.
-- The claims the package reads are `email` (a string of 1 to 320 bytes), `email_verified` (a strict boolean, so the
-  string `true` is refused), and `name`, `given_name` and `family_name` (strings). A member present as `null` is not
-  missing, so it is refused; a member absent is unknown. No other claim is judged here, since the mapping keeps only
-  strings and lists of strings.
+- The claims the package types are `email` (a string of 1 to 320 bytes) and `name`, `given_name` and `family_name`
+  (strings). A member present as `null` is not missing, so it is refused; a member absent is unknown. `email_verified`
+  never refuses anything (below), and no other claim is judged here, since the mapping keeps only strings and lists of
+  strings.
 - The reader reads the body with `StrictJson::decodeMembers()`, where an integer too large for PHP is a float, so
   `{"sub":123456789012345678901234567890}` is not a string and a number is never taken for its digits, in the claims it
   judges and in those it hands on.
@@ -54,7 +54,7 @@ the verified result is built from the claims is `completion.md`.
 - A claim that does not fit what a result holds is `id_token_invalid`, never an exception, though the ID token's
   validation types them first: `amr` not a list of at most 32 strings of 1 to 255 bytes; `acr` or `sid` not a string of
   1 to 1024 bytes; `auth_time` not a number from `0` up to the last second of the year 9999, the most `StoredValues` can
-  write and read back; `email` or `email_verified` that `EmailPairing::fits()` refuses; an issuer or subject over 1024
+  write and read back; an `email` that `EmailPairing::fits()` refuses; an issuer or subject over 1024
   bytes. A member present as `null` does not fit.
 - The raw attributes the mapping reads are the ID token's claims with UserInfo's laid over them, so UserInfo wins for
   mapped attributes, less every name in `AttributeMapping::RESERVED_OIDC_SOURCES` from either source: the protocol and
@@ -67,9 +67,11 @@ the verified result is built from the claims is `completion.md`.
 - `EmailPairing::of()` takes the pair from the ID token when it carries `email`, even when UserInfo has its own;
   otherwise from UserInfo when it was fetched and carries `email`; otherwise there is none.
 - `email_verified` is read from that source alone, so another source's flag never vouches for an email: an ID token with
-  an `email` and no flag is `null`, whatever UserInfo says. It is carried exactly as asserted, `true`, `false` or `null`
-  (unknown), in `Results\AssertedEmail` with its source (SSO-7.7), which the verified result keeps apart from the mapped
-  attributes and stores with the handoff (`completion.md`).
+  an `email` and no flag is `null`, whatever UserInfo says. The owner decided how it reads: only JSON `true` is evidence
+  of verification, JSON `false` stays `false`, and anything else (a string such as `"true"`, a number, an object, an
+  array or `null`) gives no evidence and does not refuse the sign-in. Nothing is coerced. It is carried as `true`,
+  `false` or `null` (unknown) in `Results\AssertedEmail` with its source (SSO-7.7), which the verified result keeps
+  apart from the mapped attributes and stores with the handoff (`completion.md`).
 - `EmailPairing::linkingEmail()` gives a `Results\LinkingEmail` only when the pair's `email_verified` is exactly `true`
   and the email has one `@` between a local part and a domain, by `LinkingEmail`'s own rule, with the pair's source and
   no organisation. Nothing is ever read from the mapped attributes (SSO-8.8). Whether a link is then made is P6's.
@@ -107,8 +109,9 @@ the verified result is built from the claims is `completion.md`.
   request stays consumed, so the person starts again. With `fetch_userinfo` off, nothing is requested.
 - An expired or under-scoped access token: `provider_error`, logged by its code alone.
 - A `sub` that differs in case, in whitespace or in Unicode form from the ID token's: `userinfo_invalid`.
-- `email_verified` as the string `"true"`, which some providers send: `userinfo_invalid` from UserInfo,
-  `id_token_invalid` from the ID token. No provider's strings are read as booleans.
+- `email_verified` as the string `"true"` or `"false"`, which some providers send: the sign-in goes on and the pair is
+  unknown, from the ID token and from UserInfo alike. No provider's strings are read as booleans, so no linking email
+  comes of one.
 - A UserInfo member present as `null` for a claim the package reads: `userinfo_invalid`.
 - A verified email that is not well formed: the asserted pair keeps it as it is, and there is no linking email.
 - A connection whose mapping reads the email from another claim: the mapped email is that claim's, and the asserted pair
@@ -140,6 +143,6 @@ the verified result is built from the claims is `completion.md`.
 - A new claim the package reads, from either source, or a change to its type.
 - A change to which source an email or an authentication claim comes from.
 - UserInfo becoming optional when on, or a signed UserInfo response being supported.
-- A decision to accept the string `true` for `email_verified`.
+- A decision to read anything but a JSON boolean as evidence in `email_verified`.
 - The organisation claim (P6) reaching the linking email.
 - Anything new logged, evented or kept from a provider's answer.

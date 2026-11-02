@@ -5,10 +5,13 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
 
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome;
+use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 
 /**
  * Which stored key verifies an ID token's signature (SSO-7.3): the one found,
- * or why there is none (`ProviderKeySet::select()`).
+ * or why there is none (`ProviderKeySet::select()`). A key found by the token's
+ * own refetch, when that refetch removed a key, carries the receipt of the
+ * trust change it made (`Protocols\TransitionReceipt`).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,6 +25,7 @@ final readonly class KeySelection
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome  $outcome
      * @param  ?\SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKey  $key
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
      */
     private function __construct(
 
@@ -30,6 +34,9 @@ final readonly class KeySelection
 
         /** The key, once found. */
         public ?ProviderKey $key = null,
+
+        /** The receipt of the trust change the token's own refetch made, if any. */
+        public ?TransitionReceipt $receipt = null,
     ) {}
 
     /**
@@ -71,6 +78,18 @@ final readonly class KeySelection
     public static function overtaken(): self
     {
         return new self(KeySelectionOutcome::OVERTAKEN);
+    }
+
+    /**
+     * The selection, with the receipt of the trust change the token's own
+     * refetch made.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
+     * @return self
+     */
+    public function withReceipt(TransitionReceipt $receipt): self
+    {
+        return new self($this->outcome, $this->key, $receipt);
     }
 
     /**

@@ -69,7 +69,6 @@ final class Saml2SettingsTest extends TestCase
             'force_authn'                  => false,
             'requested_authn_context'      => [],
             'idp_initiated'                => false,
-            'metadata_refresh'             => false,
         ], $settings->toArray());
 
         self::assertSame([], $settings->violations());
@@ -307,24 +306,42 @@ final class Saml2SettingsTest extends TestCase
     }
 
     /**
-     * The metadata refresh may be on only while its feature is, and then needs
-     * the metadata URL; the URL alone is allowed either way.
+     * An explicit metadata refresh needs the metadata URL, whatever the feature
+     * says, since the feature stops only the schedule; the URL alone is
+     * allowed.
      *
      * @return void
      */
-    public function testRequiresTheFeatureAndAUrlForTheMetadataRefresh(): void
+    public function testAnExplicitMetadataRefreshNeedsAUrlWhateverTheFeatureSays(): void
     {
         $withoutUrl = Saml2Settings::fromArray(['metadata_refresh' => true]);
         $withUrl    = Saml2Settings::fromArray(['metadata_refresh' => true, 'metadata_url' => 'https://idp.example.com/metadata']);
 
-        self::assertSame([['metadata_url', 'required'], ['metadata_refresh', 'unsupported']], self::violationsOf($withoutUrl));
-        self::assertSame([['metadata_refresh', 'unsupported']], self::violationsOf($withUrl));
+        foreach ([false, true] as $feature) {
+            config()->set('sso.features.metadata_refresh', $feature);
 
-        config()->set('sso.features.metadata_refresh', true);
+            self::assertSame([['metadata_url', 'required']], self::violationsOf($withoutUrl));
+            self::assertSame([], self::violationsOf($withUrl));
+            self::assertSame([], self::violationsOf(Saml2Settings::fromArray(['metadata_url' => 'https://idp.example.com/metadata', 'metadata_refresh' => false])));
+            self::assertSame([], self::violationsOf(Saml2Settings::fromArray(['metadata_url' => 'https://idp.example.com/metadata'])));
+            self::assertSame([], self::violationsOf(Saml2Settings::fromArray([])));
 
-        self::assertSame([['metadata_url', 'required']], self::violationsOf($withoutUrl));
-        self::assertSame([], self::violationsOf($withUrl));
-        self::assertSame([], self::violationsOf(Saml2Settings::fromArray(['metadata_url' => 'https://idp.example.com/metadata', 'metadata_refresh' => false])));
+            $malformed = Saml2Settings::fromArray(['metadata_url' => 'https://idp.example.com/metadata', 'metadata_refresh' => 1]);
+
+            self::assertSame([['metadata_refresh', 'invalid_type']], self::violationsOf($malformed));
+        }
+    }
+
+    /**
+     * The refresh switch is stored only when it is given, so a connection
+     * follows its URL until an administrator says otherwise.
+     *
+     * @return void
+     */
+    public function testTheMetadataRefreshIsStoredOnlyWhenGiven(): void
+    {
+        self::assertArrayNotHasKey('metadata_refresh', Saml2Settings::fromArray(['metadata_url' => 'https://idp.example.com/metadata'])->toArray());
+        self::assertFalse(Saml2Settings::fromArray(['metadata_refresh' => false])->toArray()['metadata_refresh']);
     }
 
     /**

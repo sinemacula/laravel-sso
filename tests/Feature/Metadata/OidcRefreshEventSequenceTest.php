@@ -233,6 +233,8 @@ final class OidcRefreshEventSequenceTest extends TestCase
      */
     public function testARefreshFailureReportsOneFailure(): void
     {
+        Connection::query()->whereKey($this->connection->id)->update(['metadata_fetched_at' => '2026-10-31 09:30:00']);
+
         $this->provider->respond('discovery', FetchResult::failed());
 
         $this->refresher()->refreshDue();
@@ -468,14 +470,15 @@ final class OidcRefreshEventSequenceTest extends TestCase
              * Void, then fail.
              *
              * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+             * @param  ?string  $spared
              * @return void
              *
              * @throws \RuntimeException
              */
             #[\Override]
-            public function voidFor(Connection $locked): void
+            public function voidFor(Connection $locked, ?string $spared = null): void
             {
-                parent::voidFor($locked);
+                parent::voidFor($locked, $spared);
 
                 throw new \RuntimeException('Rolled back.');
             }

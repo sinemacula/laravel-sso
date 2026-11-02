@@ -328,16 +328,22 @@ final class MetadataSettingsTest extends TestCase
         $check = new MetadataCheck(config());
 
         config()->set('sso.features.saml2', false);
-        config()->set('sso.features.metadata_refresh', false);
+        config()->set('sso.features.oidc', false);
+        config()->set('sso.features.metadata_refresh', true);
+        self::assertFalse($check->applies());
+
+        config()->set('sso.features.metadata_refresh', 'maybe');
         self::assertFalse($check->applies());
 
         config()->set('sso.features.saml2', true);
+        config()->set('sso.features.metadata_refresh', false);
         self::assertTrue($check->applies());
-        self::assertSame([1048576], array_map(static fn (\Closure $check): mixed => $check(), $check->checks()));
+        self::assertSame([1048576, 86400, 300, 21600, 2592000, 300], array_map(static fn (\Closure $check): mixed => $check(), $check->checks()));
 
         config()->set('sso.features.saml2', false);
-        config()->set('sso.features.metadata_refresh', 'maybe');
+        config()->set('sso.features.oidc', true);
         self::assertTrue($check->applies());
+        self::assertSame([1048576, 86400, 300, 21600, 2592000, 300], array_map(static fn (\Closure $check): mixed => $check(), $check->checks()));
 
         config()->set('sso.features.metadata_refresh', true);
         self::assertTrue($check->applies());

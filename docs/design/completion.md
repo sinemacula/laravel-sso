@@ -139,11 +139,12 @@ made, from what a driver verified and never from client input (SSO-8.1):
   refused) it locks the connection's row alone, with no enforcement statement and no inheritance call. Then the
   request's row. Each is a locking read on the write connection, so none answers from an older `REPEATABLE READ`
   snapshot. A completion still going on is refused with `connection_unavailable` when the connection is gone or no
-  longer usable, when the request is gone, its `voided_at` is set or its `trust_version` is not the locked connection's,
+  longer usable, when the request is gone, its `voided_at` is set or its `trust_version` is not the locked connection's
+  (unless `Metadata\TransitionReceipts` permits exactly the key rotation its own validation made, `oidc-driver.md`),
   or when the inheritance contract, asked again, no longer names the tenant whose rule is locked: validation was based
   on the connection and the request as they were before, and a change since (a disable, a trust change that voids the
-  connection's requests, BL-37) wins. It is refused with `metadata_expired` when what a metadata refresh applied to the
-  locked connection has expired by now (`Metadata\MetadataExpiry`, SSO-2.8): metadata that lapses, by its `validUntil`
+  connection's requests, BL-37) wins. It is refused with `metadata_expired` when anything fetched for the locked
+  connection has expired by now (`Metadata\MetadataExpiry`, SSO-2.8): metadata that lapses, by its `validUntil`
   or the stale limit, while the response is validated is never used. Otherwise every locked step runs in that
   transaction, on the rows as locked, with the policy the locked rule gives.
 - The same transaction sets the request's `completed_at`, whether the completion completed or was refused (a refusal at

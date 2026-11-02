@@ -28,14 +28,30 @@ final class FeaturesTest extends TestCase
      *
      * @return void
      */
-    public function testEveryFeatureIsOffByDefault(): void
+    public function testEveryFeatureButTheScheduledRefreshIsOffByDefault(): void
     {
         foreach (Feature::cases() as $feature) {
-            self::assertFalse(Features::enabled($feature), $feature->value);
-            self::assertFalse(Features::requested($feature), $feature->value);
+            self::assertSame($feature === Feature::METADATA_REFRESH, Features::enabled($feature), $feature->value);
+            self::assertSame($feature === Feature::METADATA_REFRESH, Features::requested($feature), $feature->value);
         }
 
         self::assertFalse(Features::isInUse());
+    }
+
+    /**
+     * A switch removed from the configuration reads as its default, the
+     * scheduled refresh's being on.
+     *
+     * @return void
+     */
+    public function testAnAbsentSwitchReadsAsItsDefault(): void
+    {
+        config()->set('sso.features', []);
+
+        self::assertTrue(Features::enabled(Feature::METADATA_REFRESH));
+        self::assertTrue(Features::requested(Feature::METADATA_REFRESH));
+        self::assertFalse(Features::enabled(Feature::OIDC));
+        self::assertFalse(Features::requested(Feature::OIDC));
     }
 
     /**

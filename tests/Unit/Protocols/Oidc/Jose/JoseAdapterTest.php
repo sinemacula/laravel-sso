@@ -202,6 +202,93 @@ final class JoseAdapterTest extends TestCase
     }
 
     /**
+     * Rows of `[key, pinned, header]`: an algorithm a key can be pinned to.
+     *
+     * @return iterable<string, array{0: string, 1: string, 2: string}>
+     */
+    public static function providePinnedAlgorithms(): iterable
+    {
+        yield from [
+            'RSA, PS256'  => ['rsa', 'PS256', 'PS256'],
+            'RSA, RS256'  => ['rsa', 'RS256', 'RS256'],
+            'P-256 ES256' => ['P-256', 'ES256', 'ES256'],
+        ];
+    }
+
+    /**
+     * The assertion is signed under the pinned algorithm, its header and the
+     * published JWK agreeing, and the `kid` does not depend on the algorithm.
+     *
+     * @param  string  $key
+     * @param  string  $pinned
+     * @param  string  $header
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    #[DataProvider('providePinnedAlgorithms')]
+    public function testAClientAssertionIsSignedUnderThePinnedAlgorithm(string $key, string $pinned, string $header): void
+    {
+        $signer    = self::key($key);
+        $now       = CarbonImmutable::createFromTimestampUTC(1900000000);
+        $assertion = (new JoseAdapter)->signClientAssertion('client-1', 'https://op.example.test/token', new Secret($signer->privateKeyPem), $now, $pinned)->reveal();
+        $read      = json_decode(JwsSigner::decode(explode('.', $assertion)[0]), true);
+
+        self::assertTrue(JwsSigner::verify($assertion, $signer->publicKeyPem));
+        self::assertIsArray($read);
+        self::assertSame($header, $read['alg']);
+        self::assertSame($header, ClientKey::publicJwk($signer->publicKeyPem, $pinned)['alg']);
+        self::assertSame(ClientKey::publicJwk($signer->publicKeyPem)['kid'], $read['kid']);
+        self::assertSame(ClientKey::publicJwk($signer->publicKeyPem)['kid'], ClientKey::publicJwk($signer->publicKeyPem, $pinned)['kid']);
+    }
+
+    /**
+     * Rows of `[key, pinned]`: an algorithm the key cannot sign under.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideIncompatibleAlgorithms(): iterable
+    {
+        yield from [
+            'RSA, ES256'     => ['rsa', 'ES256'],
+            'RSA, RS384'     => ['rsa', 'RS384'],
+            'RSA, none'      => ['rsa', 'none'],
+            'RSA, of a case' => ['rsa', 'rs256'],
+            'P-256, PS256'   => ['P-256', 'PS256'],
+            'P-256, RS256'   => ['P-256', 'RS256'],
+            'P-256, ES384'   => ['P-256', 'ES384'],
+        ];
+    }
+
+    /**
+     * A pinned algorithm the key cannot sign under is refused, whether it signs
+     * or publishes, and never falls back to the key's default.
+     *
+     * @param  string  $key
+     * @param  string  $pinned
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    #[DataProvider('provideIncompatibleAlgorithms')]
+    public function testAnIncompatibleAlgorithmIsRefused(string $key, string $pinned): void
+    {
+        $signer  = self::key($key);
+        $refused = 'A client assertion algorithm must fit its key: PS256 or RS256 for an RSA key, ES256 for a P-256 key.';
+
+        try {
+            ClientKey::publicJwk($signer->publicKeyPem, $pinned);
+            self::fail('A key was published under an algorithm it cannot sign with.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame($refused, $exception->getMessage());
+        }
+
+        $this->expectExceptionObject(new \InvalidArgumentException($refused));
+
+        (new JoseAdapter)->signClientAssertion('client-1', 'https://op.example.test/token', new Secret($signer->privateKeyPem), CarbonImmutable::now(), $pinned);
+    }
+
+    /**
      * A client assertion needs its client and its token endpoint.
      *
      * @return void

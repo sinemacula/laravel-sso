@@ -30,16 +30,19 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
  * - `isComplete()`: the settings are complete (`OidcSettings::isComplete()`),
  *   and the connection holds its client authentication's credential: a client
  *   secret for `client_secret_basic` and `client_secret_post`, a current
- *   `client_assertion` key for `private_key_jwt`. Only a complete, enabled
- *   connection is used (SSO-2.1).
+ *   `client_assertion` key that fits the connection's pinned algorithm for
+ *   `private_key_jwt`. Only a complete, enabled connection is used (SSO-2.1).
  * - `start()` (`AuthorizationRequests`) and `complete()` (`CallbackCompletion`)
  *   are refused with `metadata_expired`, before their collaborator is asked,
- *   while what a refresh applied to the connection has expired (its discovery
+ *   while what was fetched for the connection has expired (its discovery
  *   document or its JWKS, `Metadata\MetadataExpiry`, SSO-2.8).
  * - `correlate()` (`CallbackCorrelator`) reads which request a callback answers
  *   by its `state`, validating nothing.
  * - `describe()` (`RelyingPartyDescription`) is what an administrator registers
- *   at the provider.
+ *   at the provider, naming the public JWKS URL for `private_key_jwt`;
+ *   `describeWithInlineKeys()` is the same document with the keys in it
+ *   instead, for a provider that requires uploaded keys; and `publicKeys()` is
+ *   the body of the public JWKS URL, which the application serves.
  *
  * Every JOSE library call is made inside the adapter's namespace
  * (`Protocols\Oidc\Jose`); the driver and its collaborators read only the
@@ -83,7 +86,7 @@ final readonly class OidcDriver implements ProtocolDriver
         /** Whether the connection's client secret is set. */
         private ConnectionSecrets $secrets,
 
-        /** Whether what a refresh applied has expired. */
+        /** Whether what was fetched has expired. */
         private MetadataExpiry $metadata,
 
         /** Starts an authorisation code flow. */
@@ -128,14 +131,14 @@ final readonly class OidcDriver implements ProtocolDriver
         }
 
         if (OidcOptions::of($connection)->clientAuthentication() === self::PRIVATE_KEY_JWT) {
-            return $this->keys->current($connection->getConnectionId(), KeyUse::CLIENT_ASSERTION) !== null;
+            return $this->holdsAssertionKey($connection);
         }
 
         return $this->secrets->isSet($connection, OidcSetting::CLIENT_SECRET->value);
     }
 
     /**
-     * Start an authorisation code flow, unless what a refresh applied expired.
+     * Start an authorisation code flow, unless what was fetched has expired.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\StartRequest  $request
@@ -167,8 +170,8 @@ final readonly class OidcDriver implements ProtocolDriver
     }
 
     /**
-     * Complete the callback against the consumed request, unless what a refresh
-     * applied expired.
+     * Complete the callback against the consumed request, unless what was
+     * fetched has expired.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
@@ -197,5 +200,45 @@ final readonly class OidcDriver implements ProtocolDriver
     public function describe(SsoConnection $connection): ServiceProviderDescription
     {
         return $this->description->describe($connection, OidcOptions::of($connection));
+    }
+
+    /**
+     * Describe the connection's relying party side with its public keys in the
+     * document, for a provider that requires uploaded keys.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription
+     */
+    public function describeWithInlineKeys(SsoConnection $connection): ServiceProviderDescription
+    {
+        return $this->description->describeWithInlineKeys($connection, OidcOptions::of($connection));
+    }
+
+    /**
+     * The body of the connection's public JWKS URL: its current and next public
+     * keys.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription
+     */
+    public function publicKeys(SsoConnection $connection): ServiceProviderDescription
+    {
+        return $this->description->publicKeys($connection, OidcOptions::of($connection));
+    }
+
+    /**
+     * Whether the connection holds a current client assertion key that fits its
+     * pinned algorithm.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @return bool
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function holdsAssertionKey(SsoConnection $connection): bool
+    {
+        $key = $this->keys->current($connection->getConnectionId(), KeyUse::CLIENT_ASSERTION);
+
+        return $key !== null && ClientAssertionAlgorithm::fits(OidcOptions::of($connection)->clientAssertionAlgorithm(), $key->type);
     }
 }

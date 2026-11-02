@@ -27,10 +27,10 @@ use SineMacula\Laravel\Sso\Config\IntegerSetting;
  *   the next is due after the initial wait, doubling with each failure in a row
  *   up to the maximum, a minute to an hour (default 5 minutes) and 5 minutes to
  *   a day (default 6 hours); a success resets it.
- * - `stale_limit_seconds`: how long after the last validated fetch what a
- *   refresh applied is still used, a day to a year (default 30 days), or `0`
- *   for no limit, which an application must set explicitly; checked again when
- *   a refresh commits.
+ * - `stale_limit_seconds`: how long after its own last validated fetch each
+ *   fetched resource is still used, whether its refresh is scheduled or not, a
+ *   day to a year (default 30 days), or `0` for no limit, which an application
+ *   must set explicitly; checked again when a refresh or a refetch commits.
  * - `claim_seconds`: how long a server's claim on a connection's refresh holds
  *   while it fetches, so racing servers refresh it once, 30 seconds to an hour
  *   (default 5 minutes); an administrator's refresh skips the backoff, never
@@ -63,7 +63,7 @@ final readonly class MetadataSettings
     /** @var int The longest wait after failures when none is configured, in seconds (6 hours). */
     public const int DEFAULT_BACKOFF_MAX_SECONDS = 21600;
 
-    /** @var int How long what a refresh applied is used when none is configured, in seconds (30 days). */
+    /** @var int How long a fetched resource is used when none is configured, in seconds (30 days). */
     public const int DEFAULT_STALE_LIMIT_SECONDS = 2592000;
 
     /** @var int How long a refresh claim holds when none is configured, in seconds (5 minutes). */
@@ -176,7 +176,7 @@ final readonly class MetadataSettings
     }
 
     /**
-     * How long after the last validated fetch what a refresh applied is used,
+     * How long after its own last validated fetch a fetched resource is used,
      * in seconds, or `null` for no limit.
      *
      * @return ?int

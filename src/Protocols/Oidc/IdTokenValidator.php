@@ -16,8 +16,10 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens\AccessTokenHash;
 use SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens\AudienceRules;
 use SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens\AuthenticationTimeRules;
 use SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens\ClaimTypes;
+use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\JoseAdapter;
+use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\KeySelection;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\TimeClaims;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\IdTokenValidation;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse;
@@ -32,8 +34,15 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken;
  *    token it does not read is `id_token_invalid`;
  * 2. the key, from the connection's stored JWKS (`Metadata\ProviderKeys`, which
  *    refetches once on an unknown `kid`): only a key found goes on, unknown or
- *    refused is `signature_invalid`, and a refetch a trust change overtook is
- *    `connection_unavailable`, as the completion's locks would have answered;
+ *    refused is `signature_invalid`, and a connection gone or a trust change
+ *    found while looking is `connection_unavailable`, as the completion's locks
+ *    would have answered. Before a refetch, steps 4 to 10 run on the token's
+ *    unverified claims, for rejection only: a token that would be refused
+ *    anyway fetches nothing and leaves the shared cooldown unclaimed, answered
+ *    `signature_invalid` like any token no key the connection holds verifies,
+ *    so the answer says nothing of its claims. Unverified claims never
+ *    establish identity or choose a URL to fetch, and every step runs again
+ *    after the signature;
  * 3. the signature, `Jose\JoseAdapter::verify()`, under the connection's
  *    allow-list: `signature_invalid`;
  * 4. every claim the package reads has its exact type
@@ -45,13 +54,18 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken;
  *    and skew, never the library's: `assertion_expired`;
  * 8. `nonce`, a string of 1 to 512 bytes whose digest is the one the request
  *    stored, compared in constant time; none is `nonce_mismatch`;
- * 9. `auth_time` (`IdTokens\AuthenticationTimeRules`), with the `max_age` asked
- *    for: the connection's, or 0 for a `reauthenticate`;
+ * 9. `auth_time` (`IdTokens\AuthenticationTimeRules`), under the connection's
+ *    `max_age` and, for a `reauthenticate` or a `max_age` of 0, not before the
+ *    request started less the skew, never relative to when the callback runs;
  * 10. `at_hash` when present (`IdTokens\AccessTokenHash`): `at_hash_mismatch`.
  *
- * A claim is judged only once the signature has verified with a key the
+ * A claim decides a refusal only once the signature has verified with a key the
  * connection holds, so no refusal says anything of a token that is not the
  * provider's.
+ *
+ * A token validated under keys its own refetch rotated carries that refetch's
+ * `Protocols\TransitionReceipt` on: it is handed on only here, once every step
+ * has passed under the keys the rotation left.
  *
  * It runs outside any transaction, since the refetch fetches. A database error,
  * a misconfigured limit and a misconfigured allow-list propagate (SSO-11.4). It
@@ -118,29 +132,23 @@ readonly class IdTokenValidator
             return IdTokenValidation::refused(FailureReason::ID_TOKEN_INVALID);
         }
 
-        $reason = $this->signatureRefusal($connection, $options, $token) ?? $this->claimsRefusal($options, $tokens, $token, $consumed);
+        $allowed   = $options->algorithms();
+        $selection = $this->keys->select($connection, $token, $allowed, $consumed, fn (): bool => $this->claimsRefusal($options, $tokens, $token, $consumed) !== null);
+        $reason    = $this->signatureRefusal($selection, $token, $allowed) ?? $this->claimsRefusal($options, $tokens, $token, $consumed);
 
-        return $reason === null ? IdTokenValidation::validated(self::validated($token)) : IdTokenValidation::refused($reason);
+        return $reason === null ? IdTokenValidation::validated(self::validated($token), $selection->receipt) : IdTokenValidation::refused($reason);
     }
 
     /**
      * Why the token's key or signature refuses it (steps 2 and 3), or `null`.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
-     * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
+     * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\KeySelection  $selection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
+     * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
-     *
-     * @throws \InvalidArgumentException
-     * @throws \LogicException
-     * @throws \Random\RandomException
-     * @throws \Throwable
      */
-    private function signatureRefusal(SsoConnection $connection, OidcOptions $options, CompactToken $token): ?FailureReason
+    private function signatureRefusal(KeySelection $selection, CompactToken $token, AlgorithmAllowList $allowed): ?FailureReason
     {
-        $allowed   = $options->algorithms();
-        $selection = $this->keys->select($connection, $token, $allowed);
-
         if ($selection->isOvertaken()) {
             return FailureReason::CONNECTION_UNAVAILABLE;
         }
@@ -215,8 +223,9 @@ readonly class IdTokenValidator
     }
 
     /**
-     * Why `auth_time` refuses the token, under the `max_age` the flow asked for
-     * and, for a `reauthenticate`, when the request started.
+     * Why `auth_time` refuses the token, under the connection's `max_age` and,
+     * for a `reauthenticate` or a `max_age` of 0, which each ask the provider
+     * to authenticate afresh, when the request started.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  \Carbon\CarbonImmutable  $now
@@ -232,9 +241,10 @@ readonly class IdTokenValidator
         OidcOptions $options,
         ConsumedRequest $consumed,
     ): ?FailureReason {
-        $reauthenticating = $consumed->purpose === Purpose::REAUTHENTICATE;
+        $maxAge = $options->maxAge();
+        $afresh = $consumed->purpose === Purpose::REAUTHENTICATE || $maxAge === 0;
 
-        return AuthenticationTimeRules::refusal($claims, $now, $skewSeconds, $reauthenticating ? 0 : $options->maxAge(), $reauthenticating ? $consumed->startedAt : null);
+        return AuthenticationTimeRules::refusal($claims, $now, $skewSeconds, $maxAge, $afresh ? $consumed->startedAt : null);
     }
 
     /**

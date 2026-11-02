@@ -180,7 +180,7 @@ final class ConnectionServiceTest extends TestCase
             'id_token_algorithms'    => ['RS256'],
             'trusted_audiences'      => [],
             'fetch_userinfo'         => false,
-            'metadata_refresh'       => false,
+            'metadata_refresh'       => true,
         ], $summary->settings);
         self::assertSame(
             ['email' => 'email', 'given_name' => 'given_name', 'family_name' => 'family_name', 'display_name' => 'name', 'groups' => 'groups', 'department' => 'dept'],

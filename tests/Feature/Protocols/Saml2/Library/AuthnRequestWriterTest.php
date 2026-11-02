@@ -326,6 +326,7 @@ final class AuthnRequestWriterTest extends TestCase
             'https://api.example.com/auth/sso/connections/c1/callback',
             'https://api.example.com/auth/sso/connections/c1/metadata',
             'https://api.example.com/auth/sso/connections/c1/metadata',
+            'https://api.example.com/auth/sso/connections/c1/jwks',
         );
 
         $issuedAt ??= CarbonImmutable::parse('2026-11-01T09:30:00Z');

@@ -30,10 +30,11 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * - `nbf` and `auth_time`: finite JSON numbers;
  * - `azp`, `nonce`, `at_hash` and `email`: strings;
  * - `acr` and `sid`: strings of 1 to 1024 bytes;
- * - `amr`: a JSON array of at most 32 strings of 1 to 255 bytes;
- * - `email_verified`: a boolean, so the string `true` is refused.
+ * - `amr`: a JSON array of at most 32 strings of 1 to 255 bytes.
  *
- * The rest of a token's claims are not judged.
+ * The rest of a token's claims are not judged, `email_verified` among them: any
+ * value but a JSON boolean is no evidence of anything (`EmailPairing`) and
+ * never refuses a token.
  *
  * The token's claims keep an integer too large for PHP's as its digits, so a
  * numeric date refuses it, and read a JSON object as a PHP array, so
@@ -100,16 +101,15 @@ final class ClaimTypes
     private static function areOptionalClaimsTyped(#[\SensitiveParameter] array $claims): bool
     {
         $rules = [
-            'nbf'            => self::isNumericDate(...),
-            'auth_time'      => self::isNumericDate(...),
-            'azp'            => is_string(...),
-            'nonce'          => is_string(...),
-            'at_hash'        => is_string(...),
-            'email'          => is_string(...),
-            'acr'            => static fn (#[\SensitiveParameter] mixed $value): bool => self::isContextValue($value),
-            'sid'            => static fn (#[\SensitiveParameter] mixed $value): bool => self::isContextValue($value),
-            'amr'            => static fn (#[\SensitiveParameter] mixed $value): bool => self::isMethods($value),
-            'email_verified' => is_bool(...),
+            'nbf'       => self::isNumericDate(...),
+            'auth_time' => self::isNumericDate(...),
+            'azp'       => is_string(...),
+            'nonce'     => is_string(...),
+            'at_hash'   => is_string(...),
+            'email'     => is_string(...),
+            'acr'       => static fn (#[\SensitiveParameter] mixed $value): bool => self::isContextValue($value),
+            'sid'       => static fn (#[\SensitiveParameter] mixed $value): bool => self::isContextValue($value),
+            'amr'       => static fn (#[\SensitiveParameter] mixed $value): bool => self::isMethods($value),
         ];
 
         foreach ($rules as $name => $rule) {

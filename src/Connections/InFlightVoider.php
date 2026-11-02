@@ -42,6 +42,12 @@ use SineMacula\Laravel\Sso\Models\HandoffCode;
  * fails to serialise (SQLSTATE `40001`) when it locks the connection, before it
  * voids anything, and never commits with the new request or code left unvoided.
  *
+ * A key rotation an unknown-`kid` refetch commits spares the one consumed
+ * request whose token asked (`$spared`), in the same statement that voids every
+ * other, so its bookkeeping is atomic with the `Protocols\TransitionReceipt`
+ * that request then carries; every issued code is voided regardless, and
+ * nothing else spares a request.
+ *
  * It raises the connection's trust version by one on the locked row, so a flow
  * that holds no request to void (an unsolicited SAML response, which captures
  * the version before it validates) and a metadata refresh (which captures it
@@ -78,14 +84,15 @@ readonly class InFlightVoider
      * Void the unfinished requests and unredeemed handoff codes of the locked
      * connection, raise its trust version, then void its open link
      * reservations. Called inside the transaction that changes the connection,
-     * with its row locked.
+     * with its row locked. The request named, if any, is left as it is.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  ?string  $spared
      * @return void
      *
      * @throws \LogicException
      */
-    public function voidFor(Connection $locked): void
+    public function voidFor(Connection $locked, ?string $spared = null): void
     {
         if (DB::connection(StorageConnection::name())->transactionLevel() === 0) {
             throw new \LogicException('In-flight flows are voided inside the transaction that changes their connection.');
@@ -93,7 +100,7 @@ readonly class InFlightVoider
 
         $now = $this->clock->now();
 
-        self::voided(AuthorizationRequest::query(), $locked, 'completed_at', $now);
+        self::voided($spared === null ? AuthorizationRequest::query() : AuthorizationRequest::query()->whereKeyNot($spared), $locked, 'completed_at', $now);
         self::voided(HandoffCode::query(), $locked, 'redeemed_at', $now);
 
         $locked->increment('trust_version');

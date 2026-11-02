@@ -4,17 +4,21 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Metadata;
 
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\JwksRefreshed;
 use SineMacula\Laravel\Sso\Events\JwksRefreshFailed;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Metadata\JwksRefetcher;
 use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -22,6 +26,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
+use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
@@ -44,6 +49,8 @@ use Tests\TestCase;
  * @copyright   2026 Sine Macula Limited
  *
  * @internal
+ *
+ * @phpstan-import-type JwksRefetch from \SineMacula\Laravel\Sso\Metadata\JwksRefetcher
  */
 #[CoversClass(JwksRefetcher::class)]
 final class JwksRefetcherTest extends TestCase
@@ -145,7 +152,7 @@ final class JwksRefetcherTest extends TestCase
         $answer = $this->refetch($connection);
         $row    = $this->row($connection);
 
-        self::assertSame(['outcome' => 'refreshed', 'reason' => null, 'fetch_status' => FetchStatus::FETCHED, 'jwks' => $stored], $answer);
+        self::assertSame(self::answerOf('refreshed', null, FetchStatus::FETCHED, $stored), $answer);
         self::assertSame([$stored, 1, '2026-11-01T09:30:05+00:00', self::COOLDOWN, null, 0], [
             $row->jwks,
             $row->jwks_version,
@@ -288,7 +295,7 @@ final class JwksRefetcherTest extends TestCase
         $answer = $this->refetch($connection);
         $row    = $this->row($connection);
 
-        self::assertSame(['outcome' => 'failed', 'reason' => $reason, 'fetch_status' => $status, 'jwks' => $stored], $answer);
+        self::assertSame(self::answerOf('failed', $reason, $status, $stored), $answer);
         self::assertSame([$stored, 0, null, self::COOLDOWN, null, 0], [
             $row->jwks,
             $row->jwks_version,
@@ -297,7 +304,7 @@ final class JwksRefetcherTest extends TestCase
             $row->jwks_claim_token,
             $row->trust_version,
         ]);
-        self::assertSame(['outcome' => 'cooling_down', 'reason' => null, 'fetch_status' => null, 'jwks' => $stored], $this->refetch($connection));
+        self::assertSame(self::answerOf('cooling_down', null, null, $stored), $this->refetch($connection));
         self::assertCount(1, $this->fetcher->requests());
     }
 
@@ -521,7 +528,7 @@ final class JwksRefetcherTest extends TestCase
         });
 
         self::assertSame(
-            ['outcome' => 'conflict', 'reason' => FailureReason::METADATA_CONFLICT, 'fetch_status' => FetchStatus::FETCHED, 'jwks' => null],
+            self::answerOf('conflict', FailureReason::METADATA_CONFLICT, FetchStatus::FETCHED, null, null),
             app(JwksRefetcher::class)->refetch($read, self::rs256()),
         );
     }
@@ -558,10 +565,304 @@ final class JwksRefetcherTest extends TestCase
 
         $answer = app(JwksRefetcher::class)->refetch($read, self::rs256());
 
-        self::assertSame(['outcome' => 'cooling_down', 'reason' => null, 'fetch_status' => null, 'jwks' => $this->row($connection)->jwks], $answer);
+        self::assertSame(self::answerOf('cooling_down', null, null, $this->row($connection)->jwks), $answer);
         self::assertNull($this->row($connection)->jwks_claim_token);
 
         $this->fetcher->assertNothingFetched();
+    }
+
+    /**
+     * Rows of `[seconds the fetch took, stale limit, outcome]`: around the
+     * stale limit counted from the moment the JWKS was validated.
+     *
+     * @return iterable<string, array{0: int, 1: int, 2: string}>
+     */
+    public static function provideCommits(): iterable
+    {
+        yield from [
+            'a second before the limit' => [86399, 86400, 'refreshed'],
+            'at the limit'              => [86400, 86400, 'failed'],
+            'a second over the limit'   => [86401, 86400, 'failed'],
+            'no limit, however long'    => [86401, 0, 'refreshed'],
+        ];
+    }
+
+    /**
+     * What was validated is checked against the stale limit at commit, as a
+     * scheduled refresh checks it: past it, nothing is replaced, nothing is
+     * reported as a success, and the cooldown stays spent.
+     *
+     * @param  int  $seconds
+     * @param  int  $limit
+     * @param  string  $outcome
+     * @return void
+     */
+    #[DataProvider('provideCommits')]
+    public function testTheStaleLimitIsCheckedAtCommit(int $seconds, int $limit, string $outcome): void
+    {
+        config()->set('sso.metadata.stale_limit_seconds', $limit);
+
+        $connection = $this->connection(self::stored([self::key()]));
+
+        $this->provider->publish(self::next());
+        $this->slowingCommitBy($seconds);
+        $this->startRecordingEvents();
+
+        $answer = $this->refetch($connection);
+        $row    = $this->row($connection);
+        $events = $this->recordedEvents();
+
+        self::assertSame($outcome, $answer['outcome']);
+        self::assertCount(1, $events);
+
+        if ($outcome === 'refreshed') {
+            self::assertInstanceOf(JwksRefreshed::class, $events[0]);
+            self::assertSame(1, $row->jwks_version);
+            self::assertSame(self::stored([self::key(), self::next()]), $row->jwks);
+
+            return;
+        }
+
+        self::assertInstanceOf(JwksRefreshFailed::class, $events[0]);
+        self::assertSame(FailureReason::METADATA_EXPIRED, $events[0]->reason);
+        self::assertSame(FailureReason::METADATA_EXPIRED, $answer['reason']);
+        self::assertSame(FetchStatus::FETCHED, $answer['fetch_status']);
+        self::assertSame(self::stored([self::key()]), $row->jwks);
+        self::assertSame(0, $row->jwks_version);
+        self::assertNull($row->jwks_fetched_at);
+        self::assertNull($row->jwks_claim_token);
+        self::assertNotNull($row->jwks_refetch_at);
+    }
+
+    /**
+     * Rows of `[removes a key]`: a stale fetch, whether it only adds a key or
+     * would remove one.
+     *
+     * @return iterable<string, array{0: bool}>
+     */
+    public static function provideStaleFetches(): iterable
+    {
+        yield 'adding a key' => [false];
+        yield 'removing a key' => [true];
+    }
+
+    /**
+     * A stale fetch replaces nothing, so one that would remove a key voids
+     * nothing and raises no trust version either: exactly one failure is
+     * reported, and no receipt is answered for the request that asked.
+     *
+     * @param  bool  $removes
+     * @return void
+     */
+    #[DataProvider('provideStaleFetches')]
+    public function testAStaleFetchVoidsNothing(bool $removes): void
+    {
+        config()->set('sso.metadata.stale_limit_seconds', 86400);
+
+        $connection = $this->connection(self::stored($removes ? [self::key(), self::next()] : [self::key()]));
+        $trigger    = $this->makeAuthorizationRequest($connection, ['consumed_at' => $this->clock->now()]);
+        $other      = $this->makeAuthorizationRequest($connection);
+
+        if ($removes) {
+            $this->provider->unpublish('rsa-2');
+        } else {
+            $this->provider->publish(self::next());
+        }
+
+        $this->slowingCommitBy(86400);
+        $this->startRecordingEvents();
+
+        $answer = $this->refetchFor($connection, $trigger->reference);
+        $events = $this->recordedEvents();
+
+        self::assertSame(['failed', FailureReason::METADATA_EXPIRED, null, 0], [$answer['outcome'], $answer['reason'], $answer['receipt'], $answer['trust_version']]);
+        self::assertSame(0, $this->row($connection)->trust_version);
+        self::assertNull($trigger->fresh()?->voided_at);
+        self::assertNull($other->fresh()?->voided_at);
+        self::assertCount(1, $events);
+        self::assertInstanceOf(JwksRefreshFailed::class, $events[0]);
+    }
+
+    /**
+     * A committed refetch resets the JWKS's freshness alone, never the
+     * discovery document's.
+     *
+     * @return void
+     */
+    public function testARefetchResetsTheJwksFreshnessAlone(): void
+    {
+        $fetched    = $this->clock->now()->subDays(10);
+        $connection = $this->makeConnection([
+            'jwks'                => self::stored([self::key()]),
+            'jwks_fetched_at'     => $fetched,
+            'metadata_fetched_at' => $fetched,
+            'settings'            => ['issuer' => self::ISSUER, 'jwks_uri' => self::ISSUER . '/jwks'],
+        ]);
+
+        $this->provider->publish(self::next());
+
+        self::assertSame('refreshed', $this->refetch($connection)['outcome']);
+
+        $row = $this->row($connection);
+
+        self::assertSame($this->clock->now()->toIso8601String(), $row->jwks_fetched_at?->toIso8601String());
+        self::assertSame($fetched->toIso8601String(), $row->metadata_fetched_at?->toIso8601String());
+    }
+
+    /**
+     * Each token the cooldown turns away is counted up to the cap, after which
+     * the row is not written at all; the next claim answers the count and
+     * clears it.
+     *
+     * @return void
+     */
+    public function testACooldownCountsWhatItTurnsAwayUpToTheCap(): void
+    {
+        $connection = $this->connection(self::stored([self::key()]));
+
+        $this->refetch($connection);
+
+        foreach ([1, 2, 3] as $count) {
+            self::assertSame(0, $this->refetch($connection)['suppressed']);
+            self::assertSame($count, $this->row($connection)->jwks_refetch_suppressed);
+        }
+
+        Connection::query()->whereKey($connection->id)->update(['jwks_refetch_suppressed' => JwksRefetcher::MAX_COUNTED_SUPPRESSED]);
+
+        $writes = 0;
+
+        DB::connection(StorageConnection::name())->listen(static function (QueryExecuted $query) use (&$writes): void {
+            $writes += (int) (str_contains($query->sql, 'jwks_refetch_suppressed') && str_starts_with($query->sql, 'update'));
+        });
+
+        $this->refetch($connection);
+
+        self::assertSame(JwksRefetcher::MAX_COUNTED_SUPPRESSED, $this->row($connection)->jwks_refetch_suppressed);
+
+        // The failed claim names the column in its SET, once; the count does
+        // not
+        self::assertSame(1, $writes);
+
+        $this->clock->advance(300);
+
+        self::assertSame(100, $this->refetch($connection)['suppressed']);
+        self::assertSame(0, $this->row($connection)->jwks_refetch_suppressed);
+    }
+
+    /**
+     * A key removed, asked for by a consumed request, spares that request alone
+     * and answers its receipt: the transition it made, exactly. Nothing else is
+     * spared.
+     *
+     * @return void
+     */
+    public function testARemovedKeySparesTheRequestThatAsked(): void
+    {
+        $connection = $this->connection(self::stored([self::key(), self::next()]));
+        $trigger    = $this->makeAuthorizationRequest($connection, ['consumed_at' => $this->clock->now()]);
+        $other      = $this->makeAuthorizationRequest($connection, ['consumed_at' => $this->clock->now()]);
+        $code       = $this->makeHandoffCode($connection);
+
+        $this->provider->unpublish('rsa-2');
+
+        $answer  = $this->refetchFor($connection, $trigger->reference);
+        $receipt = $answer['receipt'];
+
+        self::assertInstanceOf(TransitionReceipt::class, $receipt);
+        self::assertSame(
+            [$connection->id, $trigger->id, 0, 1, 1],
+            [$receipt->connectionId, $receipt->requestId, $receipt->fromTrustVersion, $receipt->toTrustVersion, $receipt->jwksVersion],
+        );
+        self::assertNull($receipt->keyThumbprint());
+        self::assertNull($receipt->algorithm);
+        self::assertSame(1, $answer['trust_version']);
+        self::assertNull($trigger->fresh()?->voided_at);
+        self::assertNotNull($other->fresh()?->voided_at);
+        self::assertNotNull($code->fresh()?->voided_at);
+    }
+
+    /**
+     * Rows of `[attributes, reference known, voided at after the rotation]`: a
+     * request no rotation spares, and what becomes of it.
+     *
+     * @return iterable<string, array{0: array<string, mixed>, 1: bool, 2: ?string}>
+     */
+    public static function provideUnsparedRequests(): iterable
+    {
+        $earlier = '2026-11-01T09:00:00+00:00';
+
+        yield from [
+            'not consumed'          => [['consumed_at' => null], true, self::NOW],
+            'finished'              => [['completed_at' => CarbonImmutable::parse($earlier)], true, null],
+            'already voided'        => [['voided_at' => CarbonImmutable::parse($earlier)], true, $earlier],
+            'of another trust'      => [['trust_version' => 7], true, self::NOW],
+            'of another connection' => [[], false, null],
+        ];
+    }
+
+    /**
+     * A request that is not exactly the consumed, unfinished, unvoided request
+     * of the locked trust version is never spared, so what voided it stands,
+     * its first moment kept; it gets no receipt, and the rotation voids what it
+     * would, leaving a finished request and another connection's untouched.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @param  bool  $own
+     * @param  ?string  $voidedAt
+     * @return void
+     */
+    #[DataProvider('provideUnsparedRequests')]
+    public function testARequestThatIsNotOpenIsNeverSpared(array $attributes, bool $own, ?string $voidedAt): void
+    {
+        $connection = $this->connection(self::stored([self::key(), self::next()]));
+        $owner      = $own ? $connection : $this->connection(null);
+        $request    = $this->makeAuthorizationRequest($owner, ['consumed_at' => $this->clock->now(), ...$attributes]);
+
+        $this->provider->unpublish('rsa-2');
+
+        $answer = $this->refetchFor($connection, $request->reference);
+
+        self::assertNull($answer['receipt']);
+        self::assertSame(1, $answer['trust_version']);
+        self::assertSame($voidedAt, $request->fresh()?->voided_at?->toIso8601String());
+    }
+
+    /**
+     * A key only added answers no receipt, whoever asked, and voids nothing.
+     *
+     * @return void
+     */
+    public function testAnAddedKeyAnswersNoReceipt(): void
+    {
+        $connection = $this->connection(self::stored([self::key()]));
+        $request    = $this->makeAuthorizationRequest($connection, ['consumed_at' => $this->clock->now()]);
+
+        $this->provider->publish(self::next());
+
+        $answer = $this->refetchFor($connection, $request->reference);
+
+        self::assertNull($answer['receipt']);
+        self::assertSame(0, $answer['trust_version']);
+        self::assertNull($request->fresh()?->voided_at);
+    }
+
+    /**
+     * A failed fetch answers no receipt, voids nothing and spends the cooldown.
+     *
+     * @return void
+     */
+    public function testAFailedFetchAnswersNoReceipt(): void
+    {
+        $connection = $this->connection(self::stored([self::key()]));
+        $request    = $this->makeAuthorizationRequest($connection, ['consumed_at' => $this->clock->now()]);
+
+        $this->provider->respond('jwks', FetchResult::failed());
+
+        $answer = $this->refetchFor($connection, $request->reference);
+
+        self::assertSame('failed', $answer['outcome']);
+        self::assertNull($answer['receipt']);
+        self::assertNull($request->fresh()?->voided_at);
     }
 
     /**
@@ -664,7 +965,7 @@ final class JwksRefetcherTest extends TestCase
         Connection::query()->whereKey($connection->id)->delete();
 
         self::assertSame(
-            ['outcome' => 'cooling_down', 'reason' => null, 'fetch_status' => null, 'jwks' => null],
+            self::answerOf('cooling_down', null, null, null, null),
             app(JwksRefetcher::class)->refetch($read, self::rs256()),
         );
     }
@@ -694,10 +995,90 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
+     * What a refetch answers.
+     *
+     * @param  string  $outcome
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @param  ?\SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus  $status
+     * @param  ?string  $jwks
+     * @param  ?int  $trustVersion
+     * @return array<string, mixed>
+     */
+    private static function answerOf(string $outcome, ?FailureReason $reason, ?FetchStatus $status, ?string $jwks, ?int $trustVersion = 0): array
+    {
+        return ['outcome' => $outcome, 'reason' => $reason, 'fetch_status' => $status, 'jwks' => $jwks, 'trust_version' => $trustVersion, 'suppressed' => 0, 'receipt' => null];
+    }
+
+    /**
+     * Bind a clock that moves on by the seconds given once the claim and the
+     * validated moment have each read it, so only the commit sees the time
+     * passed.
+     *
+     * @param  int  $seconds
+     * @return void
+     */
+    private function slowingCommitBy(int $seconds): void
+    {
+        $clock = $this->clock;
+
+        $this->app?->instance(Clock::class, new class ($clock, $seconds) implements Clock {
+            /** @var int How many times the clock has been read. */
+            private int $reads = 0;
+
+            /**
+             * Constructor.
+             *
+             * @param  \Tests\Fixtures\FixedClock  $clock
+             * @param  int  $seconds
+             */
+            public function __construct(
+
+                /** The clock read. */
+                private readonly FixedClock $clock,
+
+                /** How long the commit takes. */
+                private readonly int $seconds,
+            ) {}
+
+            /**
+             * The clock's now, moved on once the claim and the validated moment
+             * have each read it, so only the commit sees the time passed.
+             *
+             * @return \Carbon\CarbonImmutable
+             */
+            #[\Override]
+            public function now(): CarbonImmutable
+            {
+                $now = $this->clock->now();
+
+                if (++$this->reads === 2) {
+                    $this->clock->advance($this->seconds);
+                }
+
+                return $now;
+            }
+        });
+    }
+
+    /**
+     * A refetch of the connection as stored, asked for by the request named.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  string  $reference
+     * @return JwksRefetch
+     *
+     * @throws \Throwable
+     */
+    private function refetchFor(Connection $connection, string $reference): array
+    {
+        return app(JwksRefetcher::class)->refetch($this->row($connection), self::rs256(), RequestReference::fromString($reference));
+    }
+
+    /**
      * Refetch the connection as stored now.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @return array{outcome: string, reason: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason, fetch_status: ?\SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus, jwks: ?string}
+     * @return JwksRefetch
      */
     private function refetch(Connection $connection): array
     {

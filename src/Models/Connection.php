@@ -72,6 +72,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property ?\Carbon\CarbonImmutable $jwks_fetched_at
  * @property ?\Carbon\CarbonImmutable $jwks_refetch_at
  * @property ?string $jwks_claim_token
+ * @property int $jwks_refetch_suppressed
  * @property \Carbon\CarbonImmutable $created_at
  * @property \Carbon\CarbonImmutable $updated_at
  */
@@ -238,6 +239,7 @@ final class Connection extends SsoModel implements SsoConnection
             'jwks_version'              => 'integer',
             'jwks_fetched_at'           => UtcDateTime::class,
             'jwks_refetch_at'           => UtcDateTime::class,
+            'jwks_refetch_suppressed'   => 'integer',
             'created_at'                => UtcDateTime::class,
             'updated_at'                => UtcDateTime::class,
         ];

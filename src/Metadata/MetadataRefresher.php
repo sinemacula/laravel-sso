@@ -14,6 +14,8 @@ use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -32,20 +34,30 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * a queue whose workers are sized for it; with `--sync`, the command refreshes
  * them itself (`refreshDue()`).
  *
- * A connection refreshes while `sso.features.metadata_refresh` is on, its
- * protocol is available (`ProtocolManager::isAvailable()`, so a protocol
- * switched off fetches nothing and writes nothing) and has a source, and its
- * source finds it refreshes (`MetadataSource::refreshes()`: its own switch is
- * on and what it fetches is a URL the package may fetch). It is due while its
- * `metadata_refresh_at` is unset or not after now and no claim on it holds
- * (`metadata_claimed_until` unset or not after now); the due connections are
- * read on the write connection in chunks of `CHUNK_SIZE`, by keyset on their
- * id. A queued refresh reads its connection again and is `skipped` when it is
- * no longer due, refreshes or exists. An administrator's refresh skips the
- * backoff, never a claim another server holds, and counts against the
- * connection's metadata limit (`sso.rate_limits.metadata`) before anything is
- * claimed or fetched: past it, it is `rate_limited` with the seconds until the
- * window ends.
+ * The schedule refreshes a connection while `sso.features.metadata_refresh` is
+ * on, its protocol is available (`ProtocolManager::isAvailable()`, so a
+ * protocol switched off fetches nothing and writes nothing) and has a source,
+ * and its source finds it refreshes (`MetadataSource::refreshes()`: its own
+ * switch is on and what it fetches is a URL the package may fetch). It is due
+ * while its `metadata_refresh_at` is unset or not after now and no claim on it
+ * holds (`metadata_claimed_until` unset or not after now), expired or not, so
+ * the schedule recovers a connection past its stale limit; the due connections
+ * are read on the write connection in chunks of `CHUNK_SIZE`, by keyset on
+ * their id. A queued refresh reads its connection again and is `skipped` when
+ * it is no longer due, refreshes or exists.
+ *
+ * An administrator's refresh is what recovers a connection the schedule does
+ * not, so it depends on neither `sso.features.metadata_refresh` nor the
+ * connection's own switch, and works on one already expired: it needs only its
+ * protocol available and what it fetches to be a URL the package may fetch
+ * (`MetadataSource::isRefreshable()`), or it is `feature_disabled`, with
+ * nothing fetched. Where the schedule would not refresh the connection, its
+ * switch or the feature being off, the refresh changes what the schedule was
+ * told to leave alone, so `sso.connection.trust` is asked first, and `stale` is
+ * `freshness_required` (SSO-2.12). It skips the backoff, never a claim another
+ * server holds, and counts against the connection's metadata limit
+ * (`sso.rate_limits.metadata`) before anything is claimed or fetched: past it,
+ * it is `rate_limited` with the seconds until the window ends.
  *
  * Each refresh, outside any transaction, has its source:
  *
@@ -66,12 +78,13 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  *
  * Every entry refuses to run inside a transaction on the storage connection (a
  * `LogicException`), since a refresh fetches before it writes. A database error
- * propagates (SSO-11.4) and stops a scheduled run. It asks no freshness: the
- * refresh is a system job, which an administrator switched on, and an
- * administrator's refresh does no more than a scheduled one would, but always
- * names the administrator. It holds the lookup, the protocols, the sources, the
- * limiter, the clock and the logger, none of which keeps anything of one run
- * for the next (SSO-11.2); resolve it per run.
+ * propagates (SSO-11.4) and stops a scheduled run. A scheduled refresh asks no
+ * freshness, being a system job an administrator left on, and neither does an
+ * administrator's refresh of a connection the schedule would refresh too, which
+ * does no more than the schedule would, but always names the administrator. It
+ * holds the lookup, the protocols, the sources, the limiter, the freshness
+ * gate, the clock and the logger, none of which keeps anything of one run for
+ * the next (SSO-11.2); resolve it per run.
  *
  * @api
  *
@@ -93,8 +106,11 @@ final readonly class MetadataRefresher
      * @param  \SineMacula\Laravel\Sso\Protocols\ProtocolManager  $protocols
      * @param  \SineMacula\Laravel\Sso\Metadata\MetadataSources  $sources
      * @param  \SineMacula\Laravel\Sso\Contracts\AttemptLimiter  $limiter
+     * @param  \SineMacula\Laravel\Sso\Freshness\FreshnessGate  $freshness
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      * @param  \Psr\Log\LoggerInterface  $logger
+     *
+     * @SuppressWarnings("php:S107")
      */
     public function __construct(
 
@@ -109,6 +125,9 @@ final readonly class MetadataRefresher
 
         /** Limits how often an administrator refreshes a connection's metadata. */
         private AttemptLimiter $limiter,
+
+        /** Asks whether an administrator's authentication is fresh enough. */
+        private FreshnessGate $freshness,
 
         /** The clock every time is read from. */
         private Clock $clock,
@@ -166,9 +185,10 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * Refresh the tenant's connection now, whatever its backoff, for the
-     * administrator who asked, once it is counted against the connection's
-     * metadata limit.
+     * Refresh the tenant's connection now, for the administrator who asked,
+     * whatever its backoff, its switch or the schedule's, and whether it has
+     * expired or not, once a refresh the schedule would not make has asked for
+     * freshness and it is counted against the connection's metadata limit.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -177,6 +197,7 @@ final readonly class MetadataRefresher
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
      * @throws \Throwable
      */
     public function refreshNow(string $tenantId, string $connectionId, ActingIdentity $actor): RefreshResult
@@ -189,13 +210,39 @@ final readonly class MetadataRefresher
             return RefreshResult::refused(FailureReason::CONNECTION_NOT_FOUND);
         }
 
-        if (!Features::enabled(Feature::METADATA_REFRESH) || !$this->refreshes($connection)) {
-            return RefreshResult::refused(FailureReason::FEATURE_DISABLED, $connection->id);
+        $refusal = $this->refusalNow($connection);
+
+        if ($refusal !== null) {
+            return $refusal;
         }
 
         $attempt = $this->limiter->attempt(AttemptSubject::metadata($connection->id));
 
         return $attempt->retryAfter !== null ? RefreshResult::rateLimited($connection->id, $attempt->retryAfter) : $this->refresh($connection, $actor, true);
+    }
+
+    /**
+     * Why an administrator may not refresh the connection now, or `null` when
+     * they may: nothing to fetch or its protocol off, or a stale authentication
+     * where the schedule would not refresh it.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return ?\SineMacula\Laravel\Sso\Metadata\RefreshResult
+     *
+     * @throws \InvalidArgumentException
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     */
+    private function refusalNow(Connection $connection): ?RefreshResult
+    {
+        if (!$this->isRefreshable($connection)) {
+            return RefreshResult::refused(FailureReason::FEATURE_DISABLED, $connection->id);
+        }
+
+        if (Features::enabled(Feature::METADATA_REFRESH) && $this->refreshes($connection)) {
+            return null;
+        }
+
+        return $this->freshness->check(FreshnessOperation::CONNECTION_TRUST)->isFresh() ? null : RefreshResult::refused(FailureReason::FRESHNESS_REQUIRED, $connection->id);
     }
 
     /**
@@ -322,6 +369,21 @@ final readonly class MetadataRefresher
     private function refreshes(Connection $connection): bool
     {
         return $this->protocols->isAvailable($connection->protocol) && $this->sources->for($connection->protocol)?->refreshes($connection) === true;
+    }
+
+    /**
+     * Whether an administrator may refresh the connection: its protocol is
+     * available, and its protocol's source could fetch what it refreshes from,
+     * whatever its switch says.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return bool
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function isRefreshable(Connection $connection): bool
+    {
+        return $this->protocols->isAvailable($connection->protocol) && $this->sources->for($connection->protocol)?->isRefreshable($connection) === true;
     }
 
     /**

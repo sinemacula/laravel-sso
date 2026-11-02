@@ -4,8 +4,6 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Protocols\Oidc;
 
-use SineMacula\Laravel\Sso\Config\Enums\Feature;
-use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 use SineMacula\Laravel\Sso\Connections\SettingRules;
 use SineMacula\Laravel\Sso\Contracts\ProtocolSettings;
@@ -27,6 +25,13 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
  * - `client_id`: at most 255 bytes; `client_authentication`:
  *   `client_secret_basic` (the default), `client_secret_post` or
  *   `private_key_jwt`.
+ * - `client_assertion_algorithm`: the algorithm `private_key_jwt` client
+ *   assertions are signed with, `PS256`, `RS256` or `ES256`; none by default,
+ *   each key then signing with its own default (`ClientAssertionAlgorithm`). It
+ *   is pinned, never negotiated from a response or discovery, and apart from
+ *   the allow-list of `id_token_algorithms`. Whether it fits the connection's
+ *   keys is judged where they are read: an update
+ *   (`Connections\ConnectionService`) and a key added (`Keys\KeyService`).
  * - `scopes`: up to twenty RFC 6749 scope tokens, always including `openid` (by
  *   default `openid`, `email` and `profile`).
  * - `id_token_algorithms`: asymmetric signature algorithms only (`RS256` by
@@ -45,8 +50,9 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
  * - `fetch_userinfo`: whether the UserInfo endpoint is called (off by default);
  *   while it is on, `userinfo_endpoint` is required (SSO-7.5).
  * - `metadata_refresh`: whether the discovery document and the JWKS are
- *   refreshed on a schedule (off by default), which may be on only while
- *   `sso.features.metadata_refresh` is (`unsupported` otherwise, SSO-2.8).
+ *   refreshed on a schedule (on by default), while
+ *   `sso.features.metadata_refresh` is on. Off leaves the stale limit in force
+ *   and an administrator's refresh available (SSO-2.8).
  *
  * The client secret is a secret: the management helpers take it out of what is
  * given before the settings see it, so a `client_secret` among the settings is
@@ -61,6 +67,9 @@ final readonly class OidcSettings implements ProtocolSettings
 {
     /** @var list<string> How the client may authenticate at the token endpoint. */
     public const array CLIENT_AUTHENTICATIONS = ['client_secret_basic', 'client_secret_post', 'private_key_jwt'];
+
+    /** @var list<string> The algorithms a client assertion may be pinned to (RFC 7523). */
+    public const array CLIENT_ASSERTION_ALGORITHMS = [ClientAssertionAlgorithm::PS256, ClientAssertionAlgorithm::RS256, ClientAssertionAlgorithm::ES256];
 
     /** @var list<string> The ID token signature algorithms accepted: asymmetric only (SSO-7.3). */
     public const array ID_TOKEN_ALGORITHMS = ['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512'];
@@ -121,7 +130,7 @@ final readonly class OidcSettings implements ProtocolSettings
         'id_token_algorithms'   => ['RS256'],
         'trusted_audiences'     => [],
         'fetch_userinfo'        => false,
-        'metadata_refresh'      => false,
+        'metadata_refresh'      => true,
     ];
 
     /**
@@ -310,14 +319,14 @@ final readonly class OidcSettings implements ProtocolSettings
     private static function code(OidcSetting $setting, mixed $value): ?ViolationCode
     {
         return match ($setting) {
-            OidcSetting::ISSUER                                   => SettingRules::url($value, false),
-            OidcSetting::RETURNS_ISS, OidcSetting::FETCH_USERINFO => SettingRules::boolean($value),
-            OidcSetting::CLIENT_ID                                => SettingRules::text($value, self::MAX_CLIENT_ID_LENGTH),
-            OidcSetting::CLIENT_SECRET                            => ViolationCode::RESERVED,
-            OidcSetting::CLIENT_AUTHENTICATION                    => SettingRules::choice($value, self::CLIENT_AUTHENTICATIONS),
-            OidcSetting::MAX_AGE                                  => self::maxAge($value),
-            OidcSetting::METADATA_REFRESH                         => self::refreshSwitch($value),
-            default                                               => SettingRules::url($value),
+            OidcSetting::ISSUER                                                                  => SettingRules::url($value, false),
+            OidcSetting::RETURNS_ISS, OidcSetting::FETCH_USERINFO, OidcSetting::METADATA_REFRESH => SettingRules::boolean($value),
+            OidcSetting::CLIENT_ID                                                               => SettingRules::text($value, self::MAX_CLIENT_ID_LENGTH),
+            OidcSetting::CLIENT_SECRET                                                           => ViolationCode::RESERVED,
+            OidcSetting::CLIENT_AUTHENTICATION                                                   => SettingRules::choice($value, self::CLIENT_AUTHENTICATIONS),
+            OidcSetting::CLIENT_ASSERTION_ALGORITHM                                              => SettingRules::choice($value, self::CLIENT_ASSERTION_ALGORITHMS),
+            OidcSetting::MAX_AGE                                                                 => self::maxAge($value),
+            default                                                                              => SettingRules::url($value),
         };
     }
 
@@ -460,22 +469,5 @@ final readonly class OidcSettings implements ProtocolSettings
         }
 
         return $value < 0 || $value > self::MAX_MAX_AGE_SECONDS ? ViolationCode::NOT_ALLOWED : null;
-    }
-
-    /**
-     * The refresh switch: a boolean, on only while the refresh feature is.
-     *
-     * @param  mixed  $value
-     * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
-     */
-    private static function refreshSwitch(mixed $value): ?ViolationCode
-    {
-        $code = SettingRules::boolean($value);
-
-        if ($code !== null) {
-            return $code;
-        }
-
-        return $value === true && !Features::enabled(Feature::METADATA_REFRESH) ? ViolationCode::UNSUPPORTED : null;
     }
 }

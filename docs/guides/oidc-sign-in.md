@@ -105,8 +105,8 @@ $result = app(AuthorizationRequestService::class)->start(
 ```
 
 A provider that ignores `prompt` or `max_age` is caught when the flow completes: the ID token's `auth_time` must be no
-earlier than the request, within the clock skew. Reauthentication proves fresh authentication and nothing else; see
-[Starting a Flow](starting-a-flow.md#purposes).
+earlier than the request, within the clock skew, however long the callback then took. Reauthentication proves fresh
+authentication and nothing else; see [Starting a Flow](starting-a-flow.md#purposes).
 
 ## Failures
 
@@ -118,7 +118,7 @@ earlier than the request, within the clock skew. Reauthentication proves fresh a
 | `session_ineligible`     | A `reauthenticate` for an identity not signed in through the connection on the session  |
 
 A connection is incomplete without its settings, without its client secret, or for `private_key_jwt` without a current
-`client_assertion` key.
+`client_assertion` key that fits its [`client_assertion_algorithm`](oidc-connections.md#the-client-assertion-algorithm).
 
 Each refusal stores nothing and reports one `FlowFailed` event with the reason. A started flow reports
 `AuthorizationRequestStarted` once it commits, naming the request's public reference and never its `state`, `nonce` or

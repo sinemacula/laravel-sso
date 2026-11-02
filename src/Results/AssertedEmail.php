@@ -11,10 +11,11 @@ use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
  * from the one source they came from (SSO-7.7): the validated ID token or a
  * validated UserInfo response whose `sub` matched it, never one from each.
  *
- * `email_verified` is carried exactly as asserted: `true`, `false`, or `null`
- * when the source did not state it, which is unknown and never read as false.
- * It is informational: only a `LinkingEmail` lets a link be made by email
- * (SSO-8.8).
+ * `email_verified` is carried exactly as asserted when it is a JSON boolean:
+ * `true` or `false`. It is `null` when the source gave no boolean (absent,
+ * `null`, a string such as `"true"`, a number, an object or an array), which is
+ * unknown, never coerced and never read as false. It is informational: only a
+ * `LinkingEmail` lets a link be made by email (SSO-8.8).
  *
  * The email is 1 to 320 bytes and kept exactly as asserted, never trimmed or
  * normalised, and need not be well formed. It is a provider's value, so it is
@@ -52,7 +53,7 @@ final readonly class AssertedEmail implements \JsonSerializable
         #[\SensitiveParameter]
         string $email,
 
-        /** The source's `email_verified`, exactly as asserted; `null` when it stated none. */
+        /** The source's `email_verified`, when it is a JSON boolean; `null` when it stated none. */
         public ?bool $verified,
 
         /** The source of the email and of `email_verified`. */

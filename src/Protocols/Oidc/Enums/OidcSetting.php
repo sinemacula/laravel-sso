@@ -57,6 +57,11 @@ enum OidcSetting: string
     // `client_secret_basic`, `client_secret_post` or `private_key_jwt`
     case CLIENT_AUTHENTICATION = 'client_authentication';
 
+    // The algorithm `private_key_jwt` client assertions are signed with:
+    // `PS256` (the default for an RSA key) or `RS256`, `ES256` for a P-256 key;
+    // pinned, never negotiated, and apart from `id_token_algorithms`
+    case CLIENT_ASSERTION_ALGORITHM = 'client_assertion_algorithm';
+
     // The scopes requested, always including `openid`
     case SCOPES = 'scopes';
 
@@ -81,7 +86,7 @@ enum OidcSetting: string
     case FETCH_USERINFO = 'fetch_userinfo';
 
     // Whether the discovery document and the JWKS are refreshed on a schedule
-    // (SSO-2.8), while `sso.features.metadata_refresh` is on; off by default
+    // (SSO-2.8), while `sso.features.metadata_refresh` is on; on by default
     case METADATA_REFRESH = 'metadata_refresh';
 
     /**

@@ -41,11 +41,14 @@ return [
     | Features
     |---------------------------------------------------------------------------
     |
-    | Every feature is off until the application turns it on. A protocol
-    | (`saml2`, `oidc`) is the package in use: with neither on, nothing runs
-    | and nothing but these switches is checked. Every other feature needs a
-    | protocol on, and `encrypted_assertions` and `idp_initiated` need `saml2`.
-    | A feature that is on lets an application or a connection opt into it; it
+    | Every feature is off until the application turns it on, but for
+    | `metadata_refresh`, the scheduled refresh, which is on: it does nothing
+    | until a protocol is, and turning it off stops the schedule, never the
+    | stale limit. A protocol (`saml2`, `oidc`) is the package in use: with
+    | neither on, nothing runs and nothing but these switches is checked.
+    | `discovery`, `enforcement`, `domain_linking` and the rest need a protocol
+    | on, and `encrypted_assertions` and `idp_initiated` need `saml2`. A
+    | feature that is on lets an application or a connection opt into it; it
     | never opts in for them, and the security checks of a feature that is on
     | are always on, with no setting to turn them off.
     |
@@ -60,7 +63,7 @@ return [
         'discovery'            => env('SSO_DISCOVERY', false),
         'enforcement'          => env('SSO_ENFORCEMENT', false),
         'encrypted_assertions' => env('SSO_ENCRYPTED_ASSERTIONS', false),
-        'metadata_refresh'     => env('SSO_METADATA_REFRESH', false),
+        'metadata_refresh'     => env('SSO_METADATA_REFRESH', true),
         'idp_initiated'        => env('SSO_IDP_INITIATED', false),
         'domain_linking'       => env('SSO_DOMAIN_LINKING', false),
     ],
@@ -71,12 +74,14 @@ return [
     |---------------------------------------------------------------------------
     |
     | What the default endpoint resolver builds each connection's assertion
-    | consumer service, OIDC callback, metadata URL and service provider
-    | entity id from: the base URL (`https`, or `http` on 127.0.0.1 or [::1]
-    | for development; no query or fragment) and a path pattern holding
-    | `{connection}` once. Nothing is ever built from the request's host or
-    | headers. Required while a protocol is on; an application with another
-    | layout binds its own resolver.
+    | consumer service, OIDC callback, metadata URL, service provider entity
+    | id and public JWKS URL from: the base URL (`https`, or `http` on
+    | 127.0.0.1 or [::1] for development; no query or fragment) and a path
+    | pattern holding `{connection}` once. Nothing is ever built from the
+    | request's host or headers. Required while a protocol is on; an
+    | application with another layout binds its own resolver. The package adds
+    | no route: the application serves these URLs, the JWKS URL with the body
+    | `ServiceProviderDescriptions::publicKeys()` answers.
     |
     */
 
@@ -87,6 +92,7 @@ return [
             'assertion_consumer_service' => '/auth/sso/connections/{connection}/assertions',
             'callback'                   => '/auth/sso/connections/{connection}/callback',
             'metadata'                   => '/auth/sso/connections/{connection}/metadata',
+            'jwks'                       => '/auth/sso/connections/{connection}/jwks',
         ],
     ],
 
@@ -240,17 +246,23 @@ return [
     | large aggregate from the console or a queued job, never a web request.
     |
     | How the scheduled refresh runs of a SAML connection's metadata, and of an
-    | OIDC connection's discovery document and JWKS, for the connections that
-    | opt in while `features.metadata_refresh` is on. After a success the next
-    | refresh is due `refresh_interval_seconds` later (an hour to a week,
-    | default a day); after a failure it waits `backoff_initial_seconds` (a
-    | minute to an hour, default 5 minutes), doubling with each failure in a
-    | row up to `backoff_max_seconds` (5 minutes to a day, default 6 hours).
-    | What a refresh applied stops being used `stale_limit_seconds` after its
-    | last validated fetch (a day to a year, default 30 days, or 0 for no
-    | limit, which you must set explicitly), or at its metadata's
-    | `validUntil`, whichever comes first; an OIDC connection's discovery
-    | document and JWKS each count from their own last validated fetch.
+    | OIDC connection's discovery document and JWKS, while
+    | `features.metadata_refresh` is on: every OIDC connection and every SAML
+    | connection with a `metadata_url` refreshes unless its `metadata_refresh`
+    | setting is off. After a success the next refresh is due
+    | `refresh_interval_seconds` later (an hour to a week, default a day);
+    | after a failure it waits `backoff_initial_seconds` (a minute to an hour,
+    | default 5 minutes), doubling with each failure in a row up to
+    | `backoff_max_seconds` (5 minutes to a day, default 6 hours).
+    |
+    | Whatever was fetched and validated stops being used `stale_limit_seconds`
+    | after its own last validated fetch (a day to a year, default 30 days, or
+    | 0 for no limit, which you must set explicitly), or at its metadata's
+    | `validUntil`, whichever comes first, scheduled or not: turning the
+    | schedule off never means unlimited trust. An expired connection recovers
+    | through the schedule or an administrator's refresh, never by itself.
+    | Settings saved from a fetched import count from that fetch. Settings and
+    | keys saved by hand, with nothing fetched, have no deadline.
     | A server's claim on a refresh holds for `claim_seconds` (30 to 3600,
     | default 300), so racing servers refresh a connection once. Run the
     | refresh command more often than the initial backoff.

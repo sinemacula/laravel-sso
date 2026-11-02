@@ -7,7 +7,11 @@ namespace Tests\Performance;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Metadata\DiscoveryImport;
 use SineMacula\Laravel\Sso\Metadata\DiscoveryImporter;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
@@ -17,6 +21,7 @@ use SineMacula\Laravel\Sso\Metadata\OidcMetadataSource;
 use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
 use SineMacula\Laravel\Sso\Metadata\RefreshResult;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome;
@@ -24,10 +29,12 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\KeySelection;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
+use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\UsesConnections;
+use Tests\Concerns\UsesFlowTables;
 
 /**
  * Query budgets for an import, a refetch and a refresh of an OIDC connection
@@ -38,13 +45,17 @@ use Tests\Concerns\UsesConnections;
  * in one transaction, reads the connection locked and writes only what changed:
  *
  * - a key the stored JWKS holds: 1 read;
+ * - a token already disqualified on its unverified claims, whose `kid` the
+ *   stored JWKS does not hold: 1 read, nothing claimed or fetched;
  * - a refetch adding a key: 2 reads (the connection, then locked) and 2 writes
  *   (the claim, the keys);
  * - a refetch removing a key: 2 reads and 5 writes (the claim, the keys, the
- *   requests and the handoff codes voided, the trust version raised);
+ *   requests and the handoff codes voided, the trust version raised), and 3
+ *   reads when a consumed request asked, its row read with a lock;
  * - a failed refetch: 2 reads and 2 writes (the claim, the token cleared);
  * - a refetch the cooldown holds: 2 reads (the connection, what is stored now)
- *   and 1 write (the claim's update, which changes no row).
+ *   and 2 writes (the claim's update, which changes no row, and the count of
+ *   what it turned away), or 1 write once that count is at its cap.
  *
  * A refresh reads nothing for its snapshot, which its connection holds:
  *
@@ -61,7 +72,15 @@ use Tests\Concerns\UsesConnections;
  *   counter's two, the claim's update, which changes no row);
  * - a refresh now past the metadata limit: 2 reads (the connection, the full
  *   counter for its wait) and the counter's 3 writes, none of which changes a
- *   row.
+ *   row;
+ * - a stale administrator's refresh the schedule would not make: 1 read and no
+ *   write, nothing counted or claimed;
+ * - a scheduled refresh of keys alone adding a key: 2 reads and 2 writes;
+ * - a refresh now of keys alone removing a key: 2 reads and 7 writes (the
+ *   counter's two, the claim, the requests and handoff codes voided, the trust
+ *   version raised once, the refresh);
+ * - a document that fails, then the saved JWKS: as one that does not fail, the
+ *   fallback reading and writing nothing more.
  *
  * An import reads nothing naming no connection; naming one, it reads it once
  * and writes the counter's two.
@@ -77,7 +96,7 @@ use Tests\Concerns\UsesConnections;
 #[CoversClass(DiscoveryImporter::class)]
 final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
 {
-    use UsesConnections;
+    use UsesConnections, UsesFlowTables;
 
     /** @var string The tenant whose connection refreshes. */
     private const string TENANT = 'tenant-1';
@@ -131,6 +150,23 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
+     * A token already disqualified whose `kid` is unknown is one read and no
+     * write: nothing is claimed or fetched.
+     *
+     * @return void
+     */
+    public function testADisqualifiedTokenIsOneRead(): void
+    {
+        $connection = $this->oidc([self::key()]);
+        $select     = static fn (): KeySelection => app(ProviderKeys::class)->select($connection, self::token('rsa-2'), self::rs256(), null, static fn (): bool => true);
+        $selection  = $this->assertQueryBudget(1, 0, $select);
+
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $selection->outcome);
+
+        $this->fetcher->assertNothingFetched();
+    }
+
+    /**
      * A refetch adding a key is two reads and two writes.
      *
      * @return void
@@ -163,6 +199,24 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
+     * A refetch removing a key for the consumed request whose token asked adds
+     * the locking read of that request, and answers its receipt.
+     *
+     * @return void
+     */
+    public function testARefetchRemovingAKeyForARequestIsThreeReadsAndFiveWrites(): void
+    {
+        $connection = $this->oidc([self::next()]);
+        $request    = $this->makeAuthorizationRequest($connection, ['consumed_at' => $this->clock->now()]);
+        $consumed   = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString($request->reference), $this->clock->now());
+
+        $selection = $this->assertQueryBudget(3, 5, fn (): KeySelection => app(ProviderKeys::class)->select($connection, self::token('rsa-1'), self::rs256(), $consumed));
+
+        self::assertSame(KeySelectionOutcome::FOUND, $selection->outcome);
+        self::assertNotNull($selection->receipt);
+    }
+
+    /**
      * A failed refetch is two reads and two writes.
      *
      * @return void
@@ -177,14 +231,30 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refetch the cooldown holds is two reads and one write, and fetches
+     * A refetch the cooldown holds is two reads and two writes, and fetches
      * nothing.
      *
      * @return void
      */
-    public function testARefetchTheCooldownHoldsIsTwoReadsAndOneWrite(): void
+    public function testARefetchTheCooldownHoldsIsTwoReadsAndTwoWrites(): void
     {
         $connection = $this->oidc([self::key()], ['jwks_refetch_at' => $this->clock->now()->addMinute()]);
+
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->assertQueryBudget(2, 2, fn (): KeySelection => $this->selected($connection, 'rsa-2'))->outcome);
+
+        $this->fetcher->assertNothingFetched();
+    }
+
+    /**
+     * Once the count of what the cooldown turned away is at its cap, a token is
+     * two reads and the failed claim, which changes no row: the row is not
+     * written at all.
+     *
+     * @return void
+     */
+    public function testARefetchTheCooldownHoldsAtItsCountsCapIsTwoReadsAndOneWrite(): void
+    {
+        $connection = $this->oidc([self::key()], ['jwks_refetch_at' => $this->clock->now()->addMinute(), 'jwks_refetch_suppressed' => JwksRefetcher::MAX_COUNTED_SUPPRESSED]);
 
         self::assertSame(KeySelectionOutcome::UNKNOWN, $this->assertQueryBudget(2, 1, fn (): KeySelection => $this->selected($connection, 'rsa-2'))->outcome);
 
@@ -247,7 +317,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
      */
     public function testAFailedRefreshIsTwoReadsAndFourWrites(): void
     {
-        $connection = $this->oidc([self::key()]);
+        $connection = $this->oidc([self::key()], ['metadata_fetched_at' => $this->clock->now()->subDay()]);
 
         $this->provider->respond('discovery', FetchResult::failed());
 
@@ -295,6 +365,74 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
+     * A stale administrator's refresh the schedule would not make is the read
+     * of the connection alone: nothing is counted, claimed or fetched.
+     *
+     * @return void
+     */
+    public function testAStaleRefreshIsOneRead(): void
+    {
+        $connection = $this->oidc([self::key()], ['metadata_fetched_at' => $this->clock->now()->subDay()], ['metadata_refresh' => false]);
+
+        $this->app?->instance(Freshness::class, FakeFreshness::stale());
+
+        $result = $this->assertQueryBudget(1, 0, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
+
+        $this->fetcher->assertNothingFetched();
+    }
+
+    /**
+     * A scheduled refresh of keys alone adding a key is two reads and two
+     * writes.
+     *
+     * @return void
+     */
+    public function testAScheduledRefreshOfKeysAloneIsTwoReadsAndTwoWrites(): void
+    {
+        $this->oidc([self::key()], ['jwks_fetched_at' => $this->clock->now()], ['metadata_refresh' => false]);
+        $this->provider->publish(self::next());
+
+        $results = $this->assertQueryBudget(2, 2, fn (): array => $this->refresher()->refreshDue());
+
+        self::assertSame([RefreshOutcome::REFRESHED], array_map(static fn (RefreshResult $result): RefreshOutcome => $result->outcome, $results));
+    }
+
+    /**
+     * A refresh now of keys alone removing a key is two reads and seven writes,
+     * the trust version raised once.
+     *
+     * @return void
+     */
+    public function testARefreshOfKeysAloneRemovingAKeyIsTwoReadsAndSevenWrites(): void
+    {
+        $connection = $this->oidc([self::key(), self::next()], ['jwks_fetched_at' => $this->clock->now()], ['metadata_refresh' => false]);
+
+        $result = $this->assertQueryBudget(2, 7, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+
+        self::assertSame([RefreshOutcome::REFRESHED, ['jwks'], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
+        self::assertSame(1, $this->row($connection)->trust_version);
+    }
+
+    /**
+     * A document that fails, then the saved JWKS, costs what a refresh of keys
+     * alone does: the fallback reads and writes nothing more.
+     *
+     * @return void
+     */
+    public function testAFallbackToTheSavedKeysIsTwoReadsAndFourWrites(): void
+    {
+        $connection = $this->oidc([self::key()]);
+
+        $this->provider->respond('discovery', FetchResult::failed());
+
+        $result = $this->assertQueryBudget(2, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+
+        self::assertSame(RefreshOutcome::REFRESHED, $result->outcome);
+    }
+
+    /**
      * An import naming no connection touches no table.
      *
      * @return void
@@ -333,13 +471,14 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * A refreshing connection of the tenant storing the keys, with the
-     * attributes given.
+     * attributes and settings given.
      *
      * @param  list<\SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey>  $keys
      * @param  array<string, mixed>  $attributes
+     * @param  array<string, mixed>  $settings
      * @return \SineMacula\Laravel\Sso\Models\Connection
      */
-    private function oidc(array $keys, array $attributes = []): Connection
+    private function oidc(array $keys, array $attributes = [], array $settings = []): Connection
     {
         return $this->makeConnection([
             'jwks'     => self::stored($keys),
@@ -352,6 +491,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
                 'returns_iss'            => true,
                 'client_id'              => FakeOpenIdProvider::CLIENT_ID,
                 'metadata_refresh'       => true,
+                ...$settings,
             ])->toArray(),
             ...$attributes,
         ]);

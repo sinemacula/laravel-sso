@@ -86,6 +86,7 @@ final class ConnectionsMigrationTest extends TestCase
             'jwks_claim_token'          => true,
             'jwks_fetched_at'           => true,
             'jwks_refetch_at'           => true,
+            'jwks_refetch_suppressed'   => false,
             'jwks_version'              => false,
             'links_version'             => false,
             'metadata_claim_token'      => true,
@@ -158,6 +159,7 @@ final class ConnectionsMigrationTest extends TestCase
         self::assertSame([0, 0, 0], [(int) $row->trust_version, (int) $row->metadata_version, (int) $row->metadata_refresh_failures]);
         self::assertSame([null, null, null, null], [$row->metadata_fetched_at, $row->metadata_valid_until, $row->metadata_refresh_at, $row->metadata_claimed_until]);
         self::assertSame([null, 0, null, null, null], [$row->jwks, (int) $row->jwks_version, $row->jwks_fetched_at, $row->jwks_refetch_at, $row->jwks_claim_token]);
+        self::assertSame(0, (int) $row->jwks_refetch_suppressed);
         self::assertNull($row->secrets);
     }
 

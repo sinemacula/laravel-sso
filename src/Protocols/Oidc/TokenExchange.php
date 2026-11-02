@@ -37,7 +37,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\JoseAdapter;
  * - `private_key_jwt` carries a client assertion (RFC 7523) the connection's
  *   current `client_assertion` key signs afresh, by the adapter
  *   (`JoseAdapter::signClientAssertion()`), with the token endpoint exactly as
- *   its `aud`.
+ *   its `aud`, under the algorithm the connection pinned or the key's default.
  *
  * A connection holding no such secret or key has no credential (`null`), which
  * the completion refuses with `connection_unavailable`. A request that keeps no
@@ -230,7 +230,7 @@ final readonly class TokenExchange
         $pem      = $this->keys->privateKey($connectionId, $key->id);
 
         try {
-            $assertion = $this->jose->signClientAssertion($clientId, $options->tokenEndpoint(), $pem, $this->clock->now());
+            $assertion = $this->jose->signClientAssertion($clientId, $options->tokenEndpoint(), $pem, $this->clock->now(), $options->clientAssertionAlgorithm());
         } catch (RandomException) {
             throw self::noRandomness();
         }

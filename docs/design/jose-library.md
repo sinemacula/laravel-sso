@@ -178,9 +178,15 @@ The adapter, not the library, carries these rules:
   `ClockSkew::seconds()`. `exp` is refused at or after `exp + skew`, and the rest of SSO-7.4 applies, so the
   library's `exp` boundary never decides anything. The adapter keeps no clock, leeway, key or token in a property
   that outlives the call.
-- **Client assertions.** `JWSBuilder` signs them from the connection's stored private key (PS256 or ES256), with that
-  key's `kid` and `typ` `JWT`. Each assertion carries `iss` and `sub` equal to the client id, `aud` equal to the token
-  endpoint, a fresh `jti`, and an `exp` a short time after `iat`.
+- **Client assertions.** `JWSBuilder` signs them from the connection's stored private key, with that key's `kid` and
+  `typ` `JWT`, under the algorithm the connection's `client_assertion_algorithm` pins: for an RSA key `PS256` (the
+  default) or `RS256`, for a P-256 key `ES256` (the default and only one). The owner decided this on the design review:
+  `PS256` stays the default for its stronger padding, and `RS256` is an explicit opt-in for a provider that accepts
+  nothing else. The algorithm is pinned: it is never negotiated from a response or a discovery document, and an
+  assertion is never retried under another. It is apart from the ID token allow-list, which judges what the provider
+  signs. The assertion's header, the published JWK's `alg` and the relying party description always agree. Each
+  assertion carries `iss` and `sub` equal to the client id, `aud` equal to the token endpoint, a fresh `jti`, and an
+  `exp` a short time after `iat`.
 - **Tests.** The adapter's integration tests carry the hostile cases from this comparison as fixtures: `none`, HMAC
   with the public key, an `oct` key planted in the JWKS, a path, a SQL-like string or `"0"` as `kid`, a mismatched
   `alg`, ES512 with a P-256 key, a 1024-bit key, `crit`, and the `exp` boundary. Another test runs two verifications in
@@ -200,7 +206,8 @@ The adapter, not the library, carries these rules:
   OpenSSL, so a point off its curve is never admitted), `ProviderKeySet` (the JWKS caps, the duplicate admissible `kid`
   refusal, exact `kid` selection and the missing-`kid` rule, what a replacement adds and removes), `KeySelection`,
   `TimeClaims` (`exp`, `iat` and `nbf` against `Contracts\Clock` and `ClockSkew`, typed, at full precision) and
-  `ClientKey` (PS256 for an RSA key, ES256 for a P-256 key, the thumbprint as `kid`, the public JWK published).
+  `ClientKey` (`PS256` or `RS256` for an RSA key, `ES256` for a P-256 key, the thumbprint as `kid`, the public JWK
+  published).
 - Time and claim checks read `src/Contracts/Clock.php` and `src/Clock/ClockSkew.php`.
 - The JWKS is fetched through the package's fetcher (`src/Contracts/Fetcher.php`), never by the library.
 - The hostile tokens of this comparison are `src/Testing/Oidc/HostileIdTokens.php`, signed by hand with OpenSSL
@@ -224,5 +231,5 @@ Update this note when any of the following change:
 - The connection's allowed algorithms, or how a key is admitted from a JWKS.
 - How the key is selected by `kid`, or the refetch on an unknown `kid`.
 - Where time and claim checks are made, or the clock they read.
-- How client assertions are signed, or their claims.
+- How client assertions are signed, their algorithms, or their claims.
 - The PHP versions the package supports.

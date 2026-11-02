@@ -202,30 +202,29 @@ final class IdTokenValidatorTest extends TestCase
             'another key'          => [static fn (FakeIdToken $t): FakeIdToken => $t->signedWith(self::attacker()->withKid('rsa-1'), 'RS256'), $forged],
             'a tampered payload'   => [static fn (FakeIdToken $t): FakeIdToken => $t->with('sub', 'someone-else')->withSignatureOf((string) $t), $forged],
 
-            'iss missing'                 => [static fn (FakeIdToken $t): FakeIdToken => $t->without('iss'), $invalid],
-            'iss an array'                => [static fn (FakeIdToken $t): FakeIdToken => $t->with('iss', [self::ISSUER]), $invalid],
-            'sub missing'                 => [static fn (FakeIdToken $t): FakeIdToken => $t->without('sub'), $invalid],
-            'sub an integer'              => [static fn (FakeIdToken $t): FakeIdToken => $t->with('sub', 1), $invalid],
-            'sub empty'                   => [static fn (FakeIdToken $t): FakeIdToken => $t->with('sub', ''), $invalid],
-            'sub of 1025 bytes'           => [static fn (FakeIdToken $t): FakeIdToken => $t->with('sub', str_repeat('a', 1025)), $invalid],
-            'aud missing'                 => [static fn (FakeIdToken $t): FakeIdToken => $t->without('aud'), $invalid],
-            'aud an object'               => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', ['client' => self::CLIENT]), $invalid],
-            'aud an object of a list'     => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', (object) ['0' => self::CLIENT]), $invalid],
-            'aud a number'                => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', 1), $invalid],
-            'aud an empty list'           => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', []), $invalid],
-            'aud holding a number'        => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', [self::CLIENT, 1]), $invalid],
-            'aud repeated'                => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', [self::CLIENT, self::CLIENT]), $invalid],
-            'exp missing'                 => [static fn (FakeIdToken $t): FakeIdToken => $t->without('exp'), $invalid],
-            'exp a string'                => [static fn (FakeIdToken $t): FakeIdToken => $t->with('exp', (string) (self::now() + 300)), $invalid],
-            'iat missing'                 => [static fn (FakeIdToken $t): FakeIdToken => $t->without('iat'), $invalid],
-            'nbf a string'                => [static fn (FakeIdToken $t): FakeIdToken => $t->with('nbf', (string) self::now()), $invalid],
-            'azp an array'                => [static fn (FakeIdToken $t): FakeIdToken => $t->with('azp', [self::CLIENT]), $invalid],
-            'nonce an array'              => [static fn (FakeIdToken $t): FakeIdToken => $t->with('nonce', [self::NONCE]), $invalid],
-            'auth_time a string'          => [static fn (FakeIdToken $t): FakeIdToken => $t->with('auth_time', (string) self::now()), $invalid],
-            'at_hash an array'            => [static fn (FakeIdToken $t): FakeIdToken => $t->with('at_hash', ['x']), $invalid],
-            'email_verified true as text' => [static fn (FakeIdToken $t): FakeIdToken => $t->with('email_verified', 'true'), $invalid],
-            'amr a string'                => [static fn (FakeIdToken $t): FakeIdToken => $t->with('amr', 'pwd'), $invalid],
-            'amr of 33 entries'           => [static fn (FakeIdToken $t): FakeIdToken => $t->with('amr', array_fill(0, 33, 'pwd')), $invalid],
+            'iss missing'             => [static fn (FakeIdToken $t): FakeIdToken => $t->without('iss'), $invalid],
+            'iss an array'            => [static fn (FakeIdToken $t): FakeIdToken => $t->with('iss', [self::ISSUER]), $invalid],
+            'sub missing'             => [static fn (FakeIdToken $t): FakeIdToken => $t->without('sub'), $invalid],
+            'sub an integer'          => [static fn (FakeIdToken $t): FakeIdToken => $t->with('sub', 1), $invalid],
+            'sub empty'               => [static fn (FakeIdToken $t): FakeIdToken => $t->with('sub', ''), $invalid],
+            'sub of 1025 bytes'       => [static fn (FakeIdToken $t): FakeIdToken => $t->with('sub', str_repeat('a', 1025)), $invalid],
+            'aud missing'             => [static fn (FakeIdToken $t): FakeIdToken => $t->without('aud'), $invalid],
+            'aud an object'           => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', ['client' => self::CLIENT]), $invalid],
+            'aud an object of a list' => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', (object) ['0' => self::CLIENT]), $invalid],
+            'aud a number'            => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', 1), $invalid],
+            'aud an empty list'       => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', []), $invalid],
+            'aud holding a number'    => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', [self::CLIENT, 1]), $invalid],
+            'aud repeated'            => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', [self::CLIENT, self::CLIENT]), $invalid],
+            'exp missing'             => [static fn (FakeIdToken $t): FakeIdToken => $t->without('exp'), $invalid],
+            'exp a string'            => [static fn (FakeIdToken $t): FakeIdToken => $t->with('exp', (string) (self::now() + 300)), $invalid],
+            'iat missing'             => [static fn (FakeIdToken $t): FakeIdToken => $t->without('iat'), $invalid],
+            'nbf a string'            => [static fn (FakeIdToken $t): FakeIdToken => $t->with('nbf', (string) self::now()), $invalid],
+            'azp an array'            => [static fn (FakeIdToken $t): FakeIdToken => $t->with('azp', [self::CLIENT]), $invalid],
+            'nonce an array'          => [static fn (FakeIdToken $t): FakeIdToken => $t->with('nonce', [self::NONCE]), $invalid],
+            'auth_time a string'      => [static fn (FakeIdToken $t): FakeIdToken => $t->with('auth_time', (string) self::now()), $invalid],
+            'at_hash an array'        => [static fn (FakeIdToken $t): FakeIdToken => $t->with('at_hash', ['x']), $invalid],
+            'amr a string'            => [static fn (FakeIdToken $t): FakeIdToken => $t->with('amr', 'pwd'), $invalid],
+            'amr of 33 entries'       => [static fn (FakeIdToken $t): FakeIdToken => $t->with('amr', array_fill(0, 33, 'pwd')), $invalid],
 
             'iss another'          => [static fn (FakeIdToken $t): FakeIdToken => $t->with('iss', 'https://other.example.test'), $issuer],
             'iss a trailing slash' => [static fn (FakeIdToken $t): FakeIdToken => $t->with('iss', self::ISSUER . '/'), $issuer],
@@ -483,7 +482,9 @@ final class IdTokenValidatorTest extends TestCase
             'at the skew'                     => [-60, 0, null],
             'over the skew'                   => [-61, 0, $expired],
             'at the skew, started long ago'   => [-60, -120, null],
-            'over the skew, started long ago' => [-61, -120, $expired],
+            'fresh, the callback slow'        => [-120, -120, null],
+            'an hour on from a fresh start'   => [-3600, -3600, null],
+            'over the skew, started long ago' => [-181, -120, $expired],
             'absent'                          => [null, 0, FailureReason::ID_TOKEN_INVALID],
             'under the start and skew'        => [-40, 19, null],
             'at the start and skew'           => [-41, 19, null],
@@ -493,8 +494,9 @@ final class IdTokenValidatorTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` needs `auth_time`, asks `max_age` 0 whatever the
-     * connection's is, and is refused before its own start less the skew.
+     * A `reauthenticate` needs `auth_time` and is refused before its own start
+     * less the skew, whatever the connection's `max_age`, and however long ago
+     * that start was: it is never judged against when the callback runs.
      *
      * @param  ?int  $offset
      * @param  int  $started
@@ -525,6 +527,135 @@ final class IdTokenValidatorTest extends TestCase
         foreach ([Purpose::SIGN_IN, Purpose::LINK] as $purpose) {
             self::assertNull($this->validate($token, $this->consumed(purpose: $purpose))->reason, $purpose->value);
         }
+    }
+
+    /**
+     * Rows of `[auth_time offset, started offset, reason]`: a connection's
+     * `max_age` of 0, around the request's start.
+     *
+     * @return iterable<string, array{0: ?int, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideAfreshAuthentications(): iterable
+    {
+        $expired = FailureReason::AUTHENTICATION_EXPIRED;
+
+        yield from [
+            'fresh'                       => [0, 0, null],
+            'fresh, the callback slow'    => [-3600, -3600, null],
+            'at the start and skew, slow' => [-3660, -3600, null],
+            'before the start and skew'   => [-3661, -3600, $expired],
+            'absent'                      => [null, -3600, FailureReason::ID_TOKEN_INVALID],
+            'past now and the skew'       => [61, -3600, FailureReason::ASSERTION_EXPIRED],
+        ];
+    }
+
+    /**
+     * A connection's `max_age` of 0 is held to the request, whatever the flow,
+     * never to how long the callback took.
+     *
+     * @param  ?int  $offset
+     * @param  int  $started
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('provideAfreshAuthentications')]
+    public function testAMaxAgeOfZeroIsHeldToTheRequest(?int $offset, int $started, ?FailureReason $reason): void
+    {
+        $this->connection = $this->connectionWith(['max_age' => 0]);
+
+        $token    = $offset === null ? $this->honest()->without('auth_time') : $this->honest()->with('auth_time', self::now() + $offset);
+        $consumed = $this->consumed(startedAt: self::instant()->addSeconds($started));
+
+        self::assertSame($reason, $this->validate($token, $consumed)->reason);
+    }
+
+    /**
+     * A reauthentication under a connection's positive `max_age` is held to
+     * both: its start, and the configured age, which is measured from now.
+     *
+     * @return void
+     */
+    public function testAReauthenticationIsStillHeldToAConfiguredAge(): void
+    {
+        $this->connection = $this->connectionWith(['max_age' => 300]);
+
+        $consumed = $this->consumed(purpose: Purpose::REAUTHENTICATE, startedAt: self::instant()->subSeconds(3600));
+
+        self::assertNull($this->validate($this->honest()->with('auth_time', self::now() - 360), $consumed)->reason);
+        self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, $this->validate($this->honest()->with('auth_time', self::now() - 361), $consumed)->reason);
+    }
+
+    /**
+     * Rows of `[tailor]`: a token with an unknown `kid` already disqualified on
+     * its unverified claims.
+     *
+     * @return iterable<string, array{0: \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken}>
+     */
+    public static function provideDisqualifiedTokens(): iterable
+    {
+        yield from [
+            'another issuer'   => [static fn (FakeIdToken $t): FakeIdToken => $t->with('iss', 'https://other.example.test')],
+            'another audience' => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', 'another-client')],
+            'another nonce'    => [static fn (FakeIdToken $t): FakeIdToken => $t->with('nonce', 'another-nonce')],
+            'no nonce'         => [static fn (FakeIdToken $t): FakeIdToken => $t->without('nonce')],
+            'expired'          => [static fn (FakeIdToken $t): FakeIdToken => $t->with('exp', self::now() - 61)],
+            'too old'          => [static fn (FakeIdToken $t): FakeIdToken => $t->with('iat', self::now() - 361)],
+            'not yet valid'    => [static fn (FakeIdToken $t): FakeIdToken => $t->with('nbf', self::now() + 61)],
+            'exp a string'     => [static fn (FakeIdToken $t): FakeIdToken => $t->with('exp', (string) (self::now() + 300))],
+            'sub missing'      => [static fn (FakeIdToken $t): FakeIdToken => $t->without('sub')],
+            'aud a number'     => [static fn (FakeIdToken $t): FakeIdToken => $t->with('aud', 1)],
+            'amr a string'     => [static fn (FakeIdToken $t): FakeIdToken => $t->with('amr', 'pwd')],
+            'an at_hash wrong' => [static fn (FakeIdToken $t): FakeIdToken => $t->with('at_hash', 'wrong')],
+        ];
+    }
+
+    /**
+     * A token already disqualified on its unverified claims fetches nothing and
+     * leaves the shared cooldown unclaimed. Its answer is the one any token no
+     * held key verifies gets, so it says nothing of its claims.
+     *
+     * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken  $tailor
+     * @return void
+     */
+    #[DataProvider('provideDisqualifiedTokens')]
+    public function testADisqualifiedTokenSpendsNoCooldown(\Closure $tailor): void
+    {
+        $validation = $this->validate($tailor($this->honest()->withHeader('kid', 'unknown-1')));
+        $connection = $this->connection->refresh();
+
+        self::assertSame(FailureReason::SIGNATURE_INVALID, $validation->reason);
+        self::assertSame([], $this->jwksFetches());
+        self::assertNull($connection->jwks_refetch_at);
+        self::assertNull($connection->jwks_claim_token);
+        self::assertSame(0, $connection->jwks_refetch_suppressed);
+    }
+
+    /**
+     * A token that passes the prechecks on its unverified claims spends the
+     * cooldown, and still has to verify: nothing about its claims stands in for
+     * its signature, whatever key it names.
+     *
+     * @return void
+     */
+    public function testATokenPassingThePrechecksMustStillVerify(): void
+    {
+        $validation = $this->validate($this->honest()->signedWith(self::attacker()->withKid('unknown-1'), 'RS256'));
+
+        self::assertSame(FailureReason::SIGNATURE_INVALID, $validation->reason);
+        self::assertCount(1, $this->jwksFetches());
+        self::assertNotNull($this->connection->refresh()->jwks_refetch_at);
+    }
+
+    /**
+     * A token signed by a key the connection already holds is refused for its
+     * claims by name, as ever: the prechecks only ever stop a refetch.
+     *
+     * @return void
+     */
+    public function testThePrechecksNeverChangeTheAnswerForAKnownKey(): void
+    {
+        self::assertSame(FailureReason::ISSUER_MISMATCH, $this->validate($this->honest()->with('iss', 'https://other.example.test'))->reason);
+        self::assertSame([], $this->jwksFetches());
     }
 
     /**

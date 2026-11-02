@@ -8,41 +8,44 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Models\Connection;
-use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
 
 /**
- * Whether what a metadata refresh applied to a connection has stopped being
- * usable (SSO-2.8): settings from metadata whose `validUntil` has passed, or
- * whose last validated fetch is older than the stale limit, are not used, and
- * the connection fails with `metadata_expired` until a refresh succeeds.
+ * Whether what was fetched for a connection has stopped being usable (SSO-2.8):
+ * settings from metadata whose `validUntil` has passed, or whose last validated
+ * fetch is older than the stale limit, are not used, and the connection fails
+ * with `metadata_expired` until it recovers.
  *
- * Each resource counts from its own validated fetch, and the connection expires
- * at the earliest of them:
+ * Every validated fetched resource counts from its own validated fetch, and the
+ * connection expires at the earliest of them, whether or not its refresh is
+ * scheduled: turning the schedule off never means unlimited trust, only an
+ * explicit `stale_limit_seconds` of 0 does.
  *
- * - the document a refresh wrote (`metadata_fetched_at` set): the earlier of
- *   its `metadata_valid_until` (the earliest applicable `validUntil` the
- *   refresh found, an enclosing aggregate's included) and its last validated
- *   fetch (the moment the fetched document was validated, which the refresh
- *   stamps as `metadata_fetched_at`) plus
- *   `MetadataSettings::staleLimitSeconds()`, when there is a limit;
- * - an OIDC connection's JWKS, once a refresh has written the connection or
- *   while its `metadata_refresh` setting is on: its last validated fetch
- *   (`jwks_fetched_at`, which a refresh and an unknown-`kid` refetch both
- *   stamp) plus the same limit. So keys a refetch fetched for a connection
- *   whose refresh is on but has not yet succeeded, or has failed since an
- *   issuer change, age out too, and a connection whose JWKS is already over the
- *   limit when its refresh is switched on is refused until the first refresh
- *   succeeds.
+ * - The document a refresh wrote, or a fetched import's save
+ *   (`metadata_fetched_at` set): the earlier of its `metadata_valid_until` (the
+ *   earliest applicable `validUntil` found, an enclosing aggregate's included)
+ *   and its last validated fetch (the moment the fetched document was
+ *   validated, stamped as `metadata_fetched_at`) plus
+ *   `MetadataSettings::staleLimitSeconds()`, when there is a limit.
+ * - An OIDC connection's JWKS (`jwks_fetched_at` set, which a refresh and an
+ *   unknown-`kid` refetch both stamp): its last validated fetch plus the same
+ *   limit. A committed refetch resets this one alone, never the document's.
  *
- * A connection with neither, its settings entered by hand or imported once and
- * its refresh off, never expires, whatever an unknown-`kid` refetch stamped:
- * its keys have no refresh that could recover them, and a refetch happens only
- * for an unknown `kid`. A refresh applies the same rule when it commits
- * (`hasExpired()`), from the moment it validated the document, so what it
- * writes is never already expired. The rows are read as the caller holds them,
- * so a caller deciding a flow reads the connection from the write connection
- * first (SSO-11.3); a connection given only through its contract is read again
- * there, by its id.
+ * A connection with nothing fetched yet has no deadline: settings and keys
+ * saved by hand, metadata given as XML among them, are used as they stand until
+ * the first fetch of each resource stamps it. Settings saved from a fetched
+ * import count from that fetch, since `Connections\ImportSaver::save()` stamps
+ * what the proposal carries. An expired connection recovers through a scheduled
+ * refresh or an administrator's (`MetadataRefresher::refreshNow()`), which for
+ * a connection saved by hand with no document refreshes its keys alone from the
+ * saved `jwks_uri`, or through a fetched import saved again; never through a
+ * callback: the driver refuses it before any key is read, so a sign-in cannot
+ * fetch its way back.
+ *
+ * A refresh applies the same rule when it commits (`hasExpired()`), from the
+ * moment it validated the document, so what it writes is never already expired.
+ * The rows are read as the caller holds them, so a caller deciding a flow reads
+ * the connection from the write connection first (SSO-11.3); a connection given
+ * only through its contract is read again there, by its id.
  *
  * It holds the settings and the clock, neither of which keeps anything of one
  * request for the next (SSO-11.2).
@@ -68,7 +71,7 @@ final readonly class MetadataExpiry
     ) {}
 
     /**
-     * Whether what a refresh applied to the connection has expired by now.
+     * Whether what was fetched for the connection has expired by now.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return bool
@@ -83,8 +86,8 @@ final readonly class MetadataExpiry
     }
 
     /**
-     * When what the connection was refreshed with expires, or `null` when
-     * nothing does.
+     * When what was fetched for the connection expires, or `null` when nothing
+     * does.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return ?\Carbon\CarbonImmutable
@@ -99,10 +102,10 @@ final readonly class MetadataExpiry
             return null;
         }
 
-        $fetched  = $row->metadata_fetched_at;
-        $document = $fetched === null ? null : $this->expiryOf($row->metadata_valid_until, $fetched);
+        $document = $row->metadata_fetched_at === null ? null : $this->expiryOf($row->metadata_valid_until, $row->metadata_fetched_at);
+        $keys     = $row->jwks_fetched_at     === null ? null : $this->expiryOf(null, $row->jwks_fetched_at);
 
-        return self::earliest($document, $this->keysExpiry($row));
+        return self::earliest($document, $keys);
     }
 
     /**
@@ -138,23 +141,6 @@ final readonly class MetadataExpiry
         $expiry = $this->expiryOf($validUntil, $validatedAt);
 
         return $expiry !== null && $this->clock->now() >= $expiry;
-    }
-
-    /**
-     * When the connection's JWKS expires: the limit after its validated fetch,
-     * once a refresh has written the connection or while its refresh is on.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $row
-     * @return ?\Carbon\CarbonImmutable
-     *
-     * @throws \InvalidArgumentException
-     */
-    private function keysExpiry(Connection $row): ?CarbonImmutable
-    {
-        $fetched    = $row->jwks_fetched_at;
-        $refreshing = $row->metadata_fetched_at !== null || ($row->settings[OidcSetting::METADATA_REFRESH->value] ?? null) === true;
-
-        return $fetched !== null && $refreshing ? $this->expiryOf(null, $fetched) : null;
     }
 
     /**

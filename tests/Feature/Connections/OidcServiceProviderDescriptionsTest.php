@@ -6,6 +6,7 @@ namespace Tests\Feature\Connections;
 
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
@@ -304,7 +305,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
         $connection = $this->oidc('private_key_jwt');
         $current    = $this->addKey($connection);
         $next       = $this->addKey($connection);
-        $during     = self::decoded($this->descriptions()->describe(self::TENANT, $connection->id));
+        $during     = self::decoded($this->descriptions()->describeWithInlineKeys(self::TENANT, $connection->id));
 
         self::assertSame('private_key_jwt', $during['token_endpoint_auth_method']);
         self::assertSame('ES256', $during['token_endpoint_auth_signing_alg']);
@@ -312,7 +313,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
 
         app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $next->id);
 
-        self::assertSame([self::kidOf($next)], self::kidsOf(self::decoded($this->descriptions()->describe(self::TENANT, $connection->id))));
+        self::assertSame([self::kidOf($next)], self::kidsOf(self::decoded($this->descriptions()->describeWithInlineKeys(self::TENANT, $connection->id))));
     }
 
     /**
@@ -335,7 +336,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
             {
                 $url = 'https://own-layout.example/' . $connection->getConnectionId() . '/';
 
-                return new ConnectionEndpoints($url . 'acs', $url . 'oidc', $url . 'entity', $url . 'metadata');
+                return new ConnectionEndpoints($url . 'acs', $url . 'oidc', $url . 'entity', $url . 'metadata', $url . 'jwks');
             }
         });
 
@@ -370,6 +371,133 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
                 self::assertStringNotContainsString($value, $dump);
             }
         }
+    }
+
+    /**
+     * By default `private_key_jwt` names the public JWKS URL, and the helper's
+     * explicit export holds the keys instead, each for its own tenant alone.
+     *
+     * @return void
+     */
+    public function testNamesTheJwksUrlAndExportsTheKeysOnlyWhenAsked(): void
+    {
+        $connection = $this->withKey($this->oidc('private_key_jwt'));
+        $byUrl      = self::decoded($this->descriptions()->describe(self::TENANT, $connection->id));
+        $inline     = self::decoded($this->descriptions()->describeWithInlineKeys(self::TENANT, $connection->id));
+
+        self::assertSame('https://sp.example.test/auth/sso/connections/' . $connection->id . '/jwks', $byUrl['jwks_uri']);
+        self::assertArrayNotHasKey('jwks', $byUrl);
+        self::assertArrayHasKey('jwks', $inline);
+        self::assertArrayNotHasKey('jwks_uri', $inline);
+        self::assertEquals(
+            ServiceProviderDescription::unavailable(FailureReason::CONNECTION_UNAVAILABLE),
+            $this->descriptions()->describeWithInlineKeys('tenant-2', $connection->id),
+        );
+    }
+
+    /**
+     * The public keys are served by the connection's id alone, of any tenant,
+     * holding the current and next keys, with nothing of a secret.
+     *
+     * @return void
+     */
+    public function testServesThePublicKeysByTheConnectionsIdAlone(): void
+    {
+        $connection = $this->oidc('private_key_jwt', self::SECRET);
+        $current    = $this->addKey($connection);
+        $next       = $this->addKey($connection);
+
+        $this->startRecordingEvents();
+
+        $asked  = $this->freshness->asked();
+        $writes = $this->countWrites();
+        $keys   = $this->descriptions()->publicKeys($connection->id);
+
+        self::assertSame('application/jwk-set+json', $keys->contentType);
+        self::assertSame([self::kidOf($current), self::kidOf($next)], array_column(self::decoded($keys)['keys'], 'kid'));
+        self::assertStringNotContainsString(self::SECRET, (string) $keys->body);
+        self::assertSame($asked, $this->freshness->asked());
+        self::assertSame(0, $writes->count);
+        $this->assertNoEvents();
+    }
+
+    /**
+     * Rows of `[id]`: an id that names no connection, looked up or not.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideUnknownIds(): iterable
+    {
+        yield 'unknown' => [self::UNKNOWN];
+        yield 'empty' => [''];
+        yield 'longer than a ULID' => [str_repeat('a', 27)];
+    }
+
+    /**
+     * An id that names no connection is answered as one with nothing to serve.
+     *
+     * @param  string  $id
+     * @return void
+     */
+    #[DataProvider('provideUnknownIds')]
+    public function testThePublicKeysOfNoConnectionAreUnavailable(string $id): void
+    {
+        self::assertEquals(ServiceProviderDescription::unavailable(FailureReason::CONNECTION_UNAVAILABLE), $this->descriptions()->publicKeys($id));
+    }
+
+    /**
+     * An id of another case names no connection, whether the column's collation
+     * counts it as equal or not: both ways, nothing is served.
+     *
+     * @return void
+     */
+    public function testThePublicKeysOfAnIdOfAnotherCaseAreUnavailable(): void
+    {
+        $connection  = $this->withKey($this->oidc('private_key_jwt'));
+        $unavailable = ServiceProviderDescription::unavailable(FailureReason::CONNECTION_UNAVAILABLE);
+
+        self::assertEquals($unavailable, $this->descriptions()->publicKeys(strtoupper($connection->id)));
+
+        // Stand in for a collation such as MySQL's `_ci`: the statement matches
+        // the id asked for, but the row it hands back records another case.
+        Connection::retrieved(static function (Connection $found): void {
+            $found->setRawAttributes(['id' => strtoupper($found->id)] + $found->getAttributes(), true);
+        });
+
+        $statements = new \ArrayObject;
+
+        DB::listen(static function (QueryExecuted $query) use ($statements): void {
+            $statements->append($query->sql);
+        });
+
+        try {
+            self::assertEquals($unavailable, $this->descriptions()->publicKeys($connection->id));
+            self::assertCount(1, $statements, 'A row of another case must stop at its lookup, before any key is read.');
+        } finally {
+            Event::forget('eloquent.retrieved: ' . Connection::class);
+        }
+    }
+
+    /**
+     * A protocol with no such keys answers `connection_unavailable`, and a
+     * protocol switched off `protocol_unavailable`.
+     *
+     * @return void
+     */
+    public function testThePublicKeysDependOnTheProtocol(): void
+    {
+        config()->set('sso.features.saml2', true);
+
+        $saml = $this->makeConnection(['tenant_id' => self::TENANT, 'protocol' => 'saml2']);
+
+        self::assertEquals(ServiceProviderDescription::unavailable(FailureReason::CONNECTION_UNAVAILABLE), $this->descriptions()->publicKeys($saml->id));
+        self::assertEquals(ServiceProviderDescription::unavailable(FailureReason::CONNECTION_UNAVAILABLE), $this->descriptions()->describeWithInlineKeys(self::TENANT, $saml->id));
+
+        $connection = $this->withKey($this->oidc('private_key_jwt'));
+
+        config()->set('sso.features.oidc', false);
+
+        self::assertEquals(ServiceProviderDescription::unavailable(FailureReason::PROTOCOL_UNAVAILABLE), $this->descriptions()->publicKeys($connection->id));
     }
 
     /**

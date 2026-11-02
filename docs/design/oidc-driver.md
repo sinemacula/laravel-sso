@@ -19,26 +19,32 @@ relying party's description in `oidc-relying-party.md`.
 - Each call reads the connection's settings afresh into `OidcOptions` (every setting typed, defaults applied, no secret)
   and hands them to one collaborator:
   - `settings()`: `OidcSettings`, the validation of every OIDC setting: the issuer and endpoints, `returns_iss`, the
-    client id and authentication, the scopes, the ID token algorithm allow-list, the extra parameters,
+    client id and authentication, `client_assertion_algorithm` (`PS256`, `RS256` or `ES256`, none by default, each key
+    then signing with its own default), the scopes, the ID token algorithm allow-list, the extra parameters,
     `trusted_audiences` (at most ten, none by default), `max_age` (0 to a week, none by default), `fetch_userinfo`
-    (off by default, the UserInfo endpoint then required) and `metadata_refresh` (off by default, and on only while
-    `sso.features.metadata_refresh` is);
+    (off by default, the UserInfo endpoint then required) and `metadata_refresh` (on by default);
   - `isComplete()`: the settings are complete and the connection holds its client authentication's credential, a
-    client secret for `client_secret_basic` and `client_secret_post` (`Connections\ConnectionSecrets::isSet()`) or a
-    current `client_assertion` key for `private_key_jwt` (`Keys\KeyRing::current()`). An empty stored JWKS does not make
-    a connection incomplete: the first ID token's unknown `kid` refetches it;
+    client secret for `client_secret_basic` and `client_secret_post` (`Connections\ConnectionSecrets::isSet()`) or, for
+    `private_key_jwt`, a current `client_assertion` key (`Keys\KeyRing::current()`) that fits the pinned algorithm. An
+    empty stored JWKS does not make a connection incomplete: the first ID token's unknown `kid` refetches it;
   - `start()`: `AuthorizationRequests`, the authorisation code request (`oidc-requests.md`);
   - `correlate()`: `CallbackCorrelator`, which reads the callback's raw query and validates nothing
     (`oidc-callback.md`);
   - `complete()`: `CallbackCompletion`, which checks the callback's `iss` and its code or error, sends the token request
     and answers a `Protocols\Oidc\Tokens\TokenResponse`, then asks `IdTokenValidator` for an `IdTokenValidation` and
     `ClaimsAssembler` for the `Protocols\Completion` (`oidc-callback.md`, `oidc-id-tokens.md`, `oidc-claims.md`);
-  - `describe()`: `RelyingPartyDescription` (`oidc-relying-party.md`).
-- `start()` and `complete()` are refused with `metadata_expired`, before their collaborator is asked, while what a
-  refresh applied to the connection has expired (`Metadata\MetadataExpiry`): the discovery document from its last
-  validated fetch (`metadata_fetched_at`) and the JWKS from its own (`jwks_fetched_at`), each plus the stale limit:
-  the document once a refresh has written it, and the JWKS once a refresh has written the connection or while its
-  `metadata_refresh` setting is on. The completion checks expiry again on the locked connection (`completion.md`).
+  - `describe()`, `describeWithInlineKeys()` and `publicKeys()`: `RelyingPartyDescription` (`oidc-relying-party.md`).
+- A connection's own key and its `client_assertion_algorithm` always fit: `ConnectionService` refuses a change of the
+  setting that its current or next key cannot sign under, and `KeyService` a key that does not fit the setting, each
+  under the connection's lock (`Keys\ClientAssertionKeys`). Changing the setting is a trust change like any other: it
+  voids what is in flight and raises the trust version.
+- `start()` and `complete()` are refused with `metadata_expired`, before their collaborator is asked, while anything
+  fetched for the connection has expired (`Metadata\MetadataExpiry`): the discovery document from its last validated
+  fetch (`metadata_fetched_at`) and the JWKS from its own (`jwks_fetched_at`), each plus the stale limit, whether or not
+  its refresh is scheduled. Turning the schedule off never means unlimited trust; only an explicit limit of `0` does. A
+  connection with nothing fetched yet, its keys and endpoints saved by hand, has no deadline. The completion checks
+  expiry again on the locked connection (`completion.md`). An expired connection recovers through a scheduled refresh or
+  an administrator's (`metadata-refresh.md`), never through a callback.
 - The values the collaborators hand each other carry provider tokens and claims (SSO-7.6), so each holds them in a
   `\SensitiveParameterValue`, shows none of them in a dump or in JSON, and refuses to be serialised or unserialised:
   `TokenResponse` (the ID token and the access token, never a refresh token), `ValidatedIdToken` (the issuer, the
@@ -71,6 +77,19 @@ relying party's description in `oidc-relying-party.md`.
   any JWKS refetch and the UserInfo request among it); then one transaction in the global lock order that refuses a
   connection no longer usable or a request voided or no longer of the locked trust version, and resolves the link,
   judges enforcement and issues the handoff code.
+- A key rotation the callback's own unknown-`kid` refetch finds lets that one sign-in finish. When the refetch commits a
+  change that is only of the JWKS and that removes a key, it raises the trust version and voids every other request and
+  every issued handoff code as any trust change does, and answers a `Protocols\TransitionReceipt` naming the connection,
+  the old and new trust versions, the JWKS version it wrote and the consumed request whose token asked. The voiding and
+  the receipt are one transaction: that request alone is spared, by a locking read that finds it consumed, unfinished,
+  unvoided and of the locked trust version, so a request something else voided is never restored. The receipt lives
+  only in that completion's memory, is never stored and refuses to be serialised. The flow carries it on only once the
+  whole token has passed every check under the new keys, and UserInfo when fetched. At the final locks
+  (`Metadata\TransitionReceipts`) the request goes on only across that exact transition: both trust versions and the
+  JWKS version as named, the verifying key still admitted for the algorithm it verified under, and the metadata fresh
+  (`metadata_expired` otherwise). Anything independent since (a second trust change, a distrust, a disable, a delete, a
+  further write of the keys) refuses it, and a later trust version is never simply adopted. A key added alone voids
+  nothing and needs no receipt.
 - A completion and a start each refuse to run inside a transaction already open on the storage connection
   (`StorageConnection::assertNoTransaction()`), so the token request and every other provider call is never made
   inside one.
@@ -89,9 +108,11 @@ relying party's description in `oidc-relying-party.md`.
 
 ## Failure / Edge Cases
 
-- A connection whose discovery document or JWKS a refresh validated longer ago than the stale limit: every start and
-  completion is `metadata_expired` until a refresh succeeds. A refetch cannot recover it: the driver refuses before the
-  keys are ever read, and a refetch is only for an unknown `kid`.
+- A connection whose discovery document or JWKS was validated longer ago than the stale limit: every start and
+  completion is `metadata_expired` until a scheduled or administrator's refresh succeeds, with its schedule off too. A
+  callback cannot recover it: the driver refuses before the keys are ever read, so no refetch is reached.
+- A callback's refetch that removes a key while another change lands before the final locks: its token verifies, and
+  the completion is refused `connection_unavailable` with no code.
 - A database error, a misconfiguration and an exception a collaborator throws propagate (SSO-11.4).
 
 ## Implementation Anchors
@@ -101,6 +122,8 @@ relying party's description in `oidc-relying-party.md`.
 - `src/Protocols/Oidc/AuthorizationRequests.php`, `CallbackCorrelator.php`, `CallbackCompletion.php`,
   `IdTokenValidator.php`, `ClaimsAssembler.php`, `RelyingPartyDescription.php`.
 - `src/Protocols/Oidc/Tokens/TokenResponse.php`, `ValidatedIdToken.php`, `IdTokenValidation.php`.
+- `src/Protocols/Oidc/ClientAssertionAlgorithm.php`, `src/Keys/ClientAssertionKeys.php`.
+- `src/Protocols/TransitionReceipt.php`, `src/Metadata/TransitionReceipts.php`, `src/Metadata/JwksRefetcher.php`.
 - `src/Protocols/Oidc/Jose/` (the adapter), `src/Metadata/ProviderKeys.php`, `src/Metadata/OidcMetadataSource.php`.
 - `src/Events/JwksRefreshed.php`, `JwksRefreshFailed.php`, `src/Administration/JwksEvents.php`.
 - `database/migrations/2026_11_01_000000_create_sso_connections_table.php` (the JWKS columns).
@@ -111,7 +134,13 @@ relying party's description in `oidc-relying-party.md`.
 - `tests/Feature/Protocols/Oidc/OidcDriverTest.php`: the driver from the container, completeness by client
   authentication, expiry of the discovery document and the JWKS, and each call reaching its collaborator.
 - `tests/Feature/Protocols/Oidc/OidcSettingsTest.php`, `OidcLimitsTest.php`, `tests/Unit/Protocols/Oidc/`.
-- `tests/Feature/Metadata/ProviderKeysTest.php`, `MetadataSourcesTest.php`, `MetadataExpiryTest.php`.
+- `tests/Feature/Metadata/ProviderKeysTest.php`, `MetadataSourcesTest.php`, `MetadataExpiryTest.php`,
+  `TransitionReceiptsTest.php`.
+- `tests/Feature/Completion/OidcKeyRotationCompletionTest.php`,
+  `tests/Integration/Completion/OidcKeyRotationRaceTest.php`: the same-step rotation, every other flow voided, and what
+  refuses the trigger.
+- `tests/Feature/Connections/ClientAssertionAlgorithmTest.php`: a key and an algorithm that do not fit, refused
+  whichever changes.
 - `tests/Unit/Testing/FakeOpenIdProviderTest.php`, `tests/Unit/Testing/Oidc/`.
 
 ## Change Triggers

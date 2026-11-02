@@ -365,6 +365,63 @@ final class ClaimsAssemblerTest extends TestCase
     }
 
     /**
+     * Rows of `[flag]`: values of `email_verified` that are not a JSON boolean,
+     * Cognito's strings among them.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function provideNonBooleanFlags(): iterable
+    {
+        yield 'the string true' => ['true'];
+        yield 'the string false' => ['false'];
+        yield 'one' => [1];
+        yield 'zero' => [0];
+        yield 'null' => [null];
+        yield 'an object' => [['value' => true]];
+        yield 'a list' => [[true]];
+    }
+
+    /**
+     * An ID token's flag that is not a JSON boolean gives no evidence and does
+     * not refuse the sign-in; UserInfo's flag never stands in when the token
+     * has the email.
+     *
+     * @param  mixed  $flag
+     * @return void
+     */
+    #[DataProvider('provideNonBooleanFlags')]
+    public function testAnIdTokensNonBooleanFlagIsUnknown(mixed $flag): void
+    {
+        $idToken = ['email' => 'token@example.test', 'email_verified' => $flag];
+        $alone   = $this->verifiedClaims($this->assembleWithoutUserInfo($idToken));
+        $vouched = self::userInfo(['sub' => self::SUBJECT, 'email' => 'token@example.test', 'email_verified' => true]);
+        $beside  = $this->verifiedClaims($this->assembleWithUserInfo($idToken, $vouched));
+
+        foreach ([$alone, $beside] as $claims) {
+            self::assertSame(['email' => 'token@example.test', 'verified' => null, 'source' => 'id_token'], $claims->assertedEmail?->toArray());
+            self::assertNull($claims->linkingEmail);
+        }
+    }
+
+    /**
+     * UserInfo's flag that is not a JSON boolean gives no evidence and does not
+     * refuse the sign-in, though UserInfo stays mandatory; the ID token's flag
+     * never stands in when UserInfo has the email.
+     *
+     * @param  mixed  $flag
+     * @return void
+     */
+    #[DataProvider('provideNonBooleanFlags')]
+    public function testUserInfosNonBooleanFlagIsUnknown(mixed $flag): void
+    {
+        $answer = self::userInfo(['sub' => self::SUBJECT, 'email' => 'userinfo@example.test', 'email_verified' => $flag]);
+        $claims = $this->verifiedClaims($this->assembleWithUserInfo(['email_verified' => true], $answer));
+
+        self::assertSame(['email' => 'userinfo@example.test', 'verified' => null, 'source' => 'userinfo'], $claims->assertedEmail?->toArray());
+        self::assertNull($claims->linkingEmail);
+    }
+
+    /**
      * Rows of `[auth_time, stored]`: the instants, at full precision.
      *
      * @return iterable<string, array{0: float|int, 1: string}>
@@ -485,8 +542,6 @@ final class ClaimsAssemblerTest extends TestCase
         yield 'an email of the wrong type' => [['email' => 1]];
         yield 'an empty email' => [['email' => '']];
         yield 'an email too long' => [['email' => str_repeat('e', 321)]];
-        yield 'email_verified a string' => [['email' => 'a@example.test', 'email_verified' => 'true']];
-        yield 'email_verified a string with no email' => [['email_verified' => 'true']];
     }
 
     /**
@@ -563,7 +618,6 @@ final class ClaimsAssemblerTest extends TestCase
         yield 'not an object' => [FetchResult::fetched(200, [], '[]'), FailureReason::USERINFO_INVALID];
         yield 'another subject' => [FetchResult::fetched(200, [], '{"sub":"another-subject"}'), FailureReason::USERINFO_INVALID];
         yield 'no subject' => [FetchResult::fetched(200, [], '{"email":"a@example.test"}'), FailureReason::USERINFO_INVALID];
-        yield 'a string flag' => [FetchResult::fetched(200, [], '{"sub":" The Subject 1 ","email_verified":"true"}'), FailureReason::USERINFO_INVALID];
     }
 
     /**

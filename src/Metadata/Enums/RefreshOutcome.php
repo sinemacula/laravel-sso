@@ -40,7 +40,8 @@ enum RefreshOutcome: string
     // server since it was listed, or no longer due, so it did not run
     case SKIPPED = 'skipped';
 
-    // An administrator's refresh named no such connection, or one whose
-    // metadata does not refresh
+    // An administrator's refresh named no such connection, one whose protocol
+    // is off or that has no URL to fetch, or came with a stale authentication
+    // for a connection the schedule would not refresh
     case REFUSED = 'refused';
 }

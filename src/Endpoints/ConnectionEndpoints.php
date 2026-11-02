@@ -10,7 +10,7 @@ use SineMacula\Laravel\Sso\Endpoints\Enums\Endpoint;
 /**
  * A connection's endpoints (SSO-5.5), as `Contracts\EndpointResolver` answers
  * them: its SAML assertion consumer service, its OIDC callback, its service
- * provider entity id and its metadata URL.
+ * provider entity id, its metadata URL and its public JWKS URL.
  *
  * Each must be an absolute `https` URL, or `http` on `127.0.0.1` or `[::1]` for
  * development, with no user information, fragment or wildcard
@@ -33,6 +33,7 @@ final readonly class ConnectionEndpoints implements \JsonSerializable
      * @param  string  $callback
      * @param  string  $entityId
      * @param  string  $metadata
+     * @param  string  $jwks
      *
      * @throws \InvalidArgumentException
      */
@@ -49,11 +50,15 @@ final readonly class ConnectionEndpoints implements \JsonSerializable
 
         /** The URL the service provider metadata is published at. */
         public string $metadata,
+
+        /** The URL an OIDC connection's public client assertion keys are served at, its `jwks_uri`. */
+        public string $jwks,
     ) {
         UrlSetting::web('endpoints.assertion_consumer_service', $assertionConsumerService);
         UrlSetting::web('endpoints.callback', $callback);
         UrlSetting::web('endpoints.entity_id', $entityId);
         UrlSetting::web('endpoints.metadata', $metadata);
+        UrlSetting::web('endpoints.jwks', $jwks);
     }
 
     /**
@@ -68,6 +73,7 @@ final readonly class ConnectionEndpoints implements \JsonSerializable
             Endpoint::ASSERTION_CONSUMER_SERVICE => $this->assertionConsumerService,
             Endpoint::CALLBACK                   => $this->callback,
             Endpoint::METADATA                   => $this->metadata,
+            Endpoint::JWKS                       => $this->jwks,
         };
     }
 
@@ -75,7 +81,7 @@ final readonly class ConnectionEndpoints implements \JsonSerializable
      * The endpoints with snake_case keys, as an administrator registers them at
      * the identity provider.
      *
-     * @return array{assertion_consumer_service: string, callback: string, entity_id: string, metadata: string}
+     * @return array{assertion_consumer_service: string, callback: string, entity_id: string, metadata: string, jwks: string}
      */
     #[\Override]
     public function jsonSerialize(): array
@@ -85,6 +91,7 @@ final readonly class ConnectionEndpoints implements \JsonSerializable
             'callback'                   => $this->callback,
             'entity_id'                  => $this->entityId,
             'metadata'                   => $this->metadata,
+            'jwks'                       => $this->jwks,
         ];
     }
 }

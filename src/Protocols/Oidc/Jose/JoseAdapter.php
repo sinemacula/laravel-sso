@@ -45,10 +45,13 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
  * `signClientAssertion()` signs RFC 7523 §3's claims with the connection's
  * current key: `iss` and `sub` the client id, `aud` the token endpoint exactly,
  * a fresh 256-bit `jti`, `iat` now and `exp` `ASSERTION_LIFETIME_SECONDS`
- * later, under the header `alg` (the key's, `PS256` or `ES256`), `kid` (its
- * thumbprint) and `typ` `JWT`. Anything the library throws while it signs is
- * answered with a package exception that carries nothing of the library's: no
- * previous exception and no frame holding the private JWK.
+ * later, under the header `alg` (the algorithm the connection pinned, or the
+ * key's default: `PS256` or `RS256` for an RSA key, `ES256` for a P-256 key,
+ * `ClientKey`), `kid` (its thumbprint) and `typ` `JWT`. The algorithm is never
+ * negotiated and an assertion is never retried under another. Anything the
+ * library throws while it signs is answered with a package exception that
+ * carries nothing of the library's: no previous exception and no frame holding
+ * the private JWK.
  *
  * Nothing it builds outlives the call: it keeps no verifier, key, clock or
  * token in a property (SSO-11.2), and the library declares no static state.
@@ -109,22 +112,24 @@ final readonly class JoseAdapter
 
     /**
      * A client assertion for the client at the token endpoint, signed now with
-     * the PEM private key given.
+     * the PEM private key given, under the algorithm the connection pinned or,
+     * with none, the key's default.
      *
      * @param  string  $clientId
      * @param  string  $tokenEndpoint
      * @param  \SineMacula\Laravel\Sso\Secrets\Secret  $privateKeyPem
      * @param  \Carbon\CarbonImmutable  $now
+     * @param  ?string  $algorithm
      * @return \SineMacula\Laravel\Sso\Secrets\Secret
      *
      * @throws \InvalidArgumentException
      * @throws \Random\RandomException
      */
-    public function signClientAssertion(string $clientId, string $tokenEndpoint, Secret $privateKeyPem, CarbonImmutable $now): Secret
+    public function signClientAssertion(string $clientId, string $tokenEndpoint, Secret $privateKeyPem, CarbonImmutable $now, ?string $algorithm = null): Secret
     {
         self::assertNamed($clientId, $tokenEndpoint);
 
-        $key      = ClientKey::fromPrivateKey($privateKeyPem);
+        $key      = ClientKey::fromPrivateKey($privateKeyPem, $algorithm);
         $issuedAt = $now->getTimestamp();
         $claims   = [
             'iss' => $clientId,

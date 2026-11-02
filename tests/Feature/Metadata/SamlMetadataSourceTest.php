@@ -113,7 +113,8 @@ final class SamlMetadataSourceTest extends TestCase
             'its switch on and an https URL' => [[], [], true],
             'its switch off'                 => [[], ['metadata_refresh' => false], false],
             'its switch not true'            => [[], ['metadata_refresh' => 'true'], false],
-            'no switch'                      => [[], ['metadata_refresh' => null], false],
+            'no switch and an https URL'     => [[], ['metadata_refresh' => null], true],
+            'no switch and no URL'           => [[], ['metadata_refresh' => null, 'metadata_url' => null], false],
             'an http URL'                    => [[], ['metadata_url' => 'http://idp.example.test/metadata.xml'], false],
             'no URL'                         => [[], ['metadata_url' => null], false],
             'a URL not a string'             => [[], ['metadata_url' => 1], false],
@@ -122,8 +123,9 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * A connection refreshes while it is SAML, its switch is on and its URL is
-     * one the package may fetch.
+     * The schedule refreshes a connection that is SAML with a URL the package
+     * may fetch, unless its switch says otherwise; left unset, it follows the
+     * URL.
      *
      * @param  array<string, mixed>  $attributes
      * @param  array<string, mixed>  $settings
@@ -135,6 +137,21 @@ final class SamlMetadataSourceTest extends TestCase
     {
         self::assertSame('saml2', $this->source()->protocol());
         self::assertSame($refreshes, $this->source()->refreshes($this->saml($settings, $attributes)));
+    }
+
+    /**
+     * What an administrator may refresh depends only on the protocol and the
+     * URL, never the switch.
+     *
+     * @return void
+     */
+    public function testWhichConnectionsAreRefreshable(): void
+    {
+        self::assertTrue($this->source()->isRefreshable($this->saml(['metadata_refresh' => false])));
+        self::assertTrue($this->source()->isRefreshable($this->saml(['metadata_refresh' => null])));
+        self::assertFalse($this->source()->isRefreshable($this->saml(['metadata_url' => null])));
+        self::assertFalse($this->source()->isRefreshable($this->saml(['metadata_url' => 'http://idp.example.test/metadata.xml'])));
+        self::assertFalse($this->source()->isRefreshable($this->saml([], ['protocol' => 'oidc'])));
     }
 
     /**

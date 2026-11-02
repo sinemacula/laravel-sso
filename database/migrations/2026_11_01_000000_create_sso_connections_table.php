@@ -102,16 +102,20 @@ return new class extends Migration {
             // is needed: the public keys the package admitted, as a JSON list
             // of their public members; the version every write of it raises, so
             // a refetch and a refresh compare and set; when it was last
-            // validated, from which it expires once a refresh has written the
-            // connection; until when no unknown-kid refetch may start (the
-            // cooldown, claimed before the fetch and kept whether it succeeds
-            // or not); and the random token the refetch's claim was made with,
-            // which its write must match.
+            // validated, from which it expires; until when no unknown-kid
+            // refetch may start (the cooldown, claimed before the fetch and
+            // kept whether it succeeds or not); the random token the refetch's
+            // claim was made with, which its write must match; and how many
+            // unknown-kid tokens the cooldown has turned away since the last
+            // claim, counted up to a small cap so a flood writes this row only
+            // a bounded number of times per cooldown, and reported once by the
+            // next claim.
             $blueprint->longText('jwks')->nullable();
             $blueprint->unsignedBigInteger('jwks_version')->default(0);
             $blueprint->dateTime('jwks_fetched_at', 0)->nullable();
             $blueprint->dateTime('jwks_refetch_at', 0)->nullable();
             $blueprint->char('jwks_claim_token', 32)->nullable();
+            $blueprint->unsignedInteger('jwks_refetch_suppressed')->default(0);
 
             // Whole seconds in UTC, from the package's clock.
             $blueprint->dateTime('created_at', 0);

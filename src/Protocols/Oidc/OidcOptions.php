@@ -137,6 +137,19 @@ final readonly class OidcOptions
     }
 
     /**
+     * The algorithm client assertions are pinned to, or `null` when none is, so
+     * each key signs with its own default.
+     *
+     * @return ?string
+     */
+    public function clientAssertionAlgorithm(): ?string
+    {
+        $algorithm = $this->settings[OidcSetting::CLIENT_ASSERTION_ALGORITHM->value] ?? null;
+
+        return is_string($algorithm) ? $algorithm : null;
+    }
+
+    /**
      * Whether the connection says its provider returns the RFC 9207 `iss`.
      *
      * @return bool

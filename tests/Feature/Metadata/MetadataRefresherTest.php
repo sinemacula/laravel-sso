@@ -13,6 +13,7 @@ use Random\RandomException;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
@@ -20,10 +21,12 @@ use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\ImportResult;
+use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
 use SineMacula\Laravel\Sso\Metadata\MetadataImporter;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Metadata\RefreshClaims;
@@ -38,6 +41,7 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
+use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use Tests\Concerns\CapturesLogs;
@@ -911,6 +915,157 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
+     * Rows of `[feature, switch]`: where the schedule would not refresh the
+     * connection.
+     *
+     * @return iterable<string, array{0: bool, 1: ?bool}>
+     */
+    public static function provideUnscheduled(): iterable
+    {
+        yield from [
+            'the feature off'               => [false, true],
+            'the switch off'                => [true, false],
+            'both off'                      => [false, false],
+            'the switch unset, feature off' => [false, null],
+        ];
+    }
+
+    /**
+     * An administrator with a fresh authentication depends on neither the
+     * feature nor the connection's switch, recovering what the schedule does
+     * not touch, and is asked once, for the connection's trust.
+     *
+     * @param  bool  $feature
+     * @param  ?bool  $switch
+     * @return void
+     */
+    #[DataProvider('provideUnscheduled')]
+    public function testARefreshNowWorksWithTheScheduleOff(bool $feature, ?bool $switch): void
+    {
+        $connection = $this->saml(['metadata_refresh' => $switch]);
+        $freshness  = FakeFreshness::fresh();
+
+        $this->app?->instance(Freshness::class, $freshness);
+
+        config()->set('sso.features.metadata_refresh', $feature);
+
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+        self::assertSame([FreshnessOperation::CONNECTION_TRUST], array_column($freshness->asked(), 'operation'));
+    }
+
+    /**
+     * A stale administrator cannot make a refresh the schedule would not: it is
+     * refused before it is counted, claimed or fetched, so a certificate the
+     * connection holds stays and the limit is not spent.
+     *
+     * @param  bool  $feature
+     * @param  ?bool  $switch
+     * @return void
+     */
+    #[DataProvider('provideUnscheduled')]
+    public function testAStaleAdministratorCannotRefreshWhatTheScheduleWouldNot(bool $feature, ?bool $switch): void
+    {
+        config()->set('sso.rate_limits.metadata.per_connection', ['max' => 1, 'decay_seconds' => 3600]);
+
+        $connection = $this->saml(['metadata_refresh' => $switch]);
+
+        $this->app?->instance(Freshness::class, FakeFreshness::stale());
+
+        config()->set('sso.features.metadata_refresh', $feature);
+
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $row    = $this->row($connection);
+
+        self::assertSame([RefreshOutcome::REFUSED, FailureReason::FRESHNESS_REQUIRED, $connection->id], [$result->outcome, $result->reason, $result->connectionId]);
+        self::assertSame([0, null, null], [$row->metadata_version, $row->metadata_claimed_until, $row->metadata_claim_token]);
+
+        $this->fetcher->assertNothingFetched();
+        $this->assertNoEvents();
+
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+    }
+
+    /**
+     * Where the schedule would refresh the connection anyway, an
+     * administrator's refresh writes no more than it would, so no freshness is
+     * asked and a stale one is no refusal.
+     *
+     * @return void
+     */
+    public function testARefreshTheScheduleWouldMakeAsksNoFreshness(): void
+    {
+        $connection = $this->saml(['metadata_refresh' => null]);
+        $freshness  = FakeFreshness::stale();
+
+        $this->app?->instance(Freshness::class, $freshness);
+
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+        self::assertSame([], $freshness->asked());
+    }
+
+    /**
+     * Nothing to fetch, or the protocol off, is refused before freshness is
+     * asked.
+     *
+     * @return void
+     */
+    public function testARefreshThatCouldNotRunAsksNoFreshness(): void
+    {
+        $connection = $this->saml(['metadata_refresh' => false, 'metadata_url' => null]);
+        $freshness  = FakeFreshness::stale();
+
+        $this->app?->instance(Freshness::class, $freshness);
+
+        self::assertSame(FailureReason::FEATURE_DISABLED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->reason);
+        self::assertSame([], $freshness->asked());
+    }
+
+    /**
+     * An administrator's refresh recovers a connection whose stale limit has
+     * passed, and it is usable again at once.
+     *
+     * @return void
+     */
+    public function testARefreshNowRecoversAnExpiredConnection(): void
+    {
+        $connection = $this->saml(['metadata_refresh' => false], ['metadata_fetched_at' => $this->clock->now()->subDays(31)]);
+        $expiry     = app(MetadataExpiry::class);
+
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
+        self::assertTrue($expiry->isExpired($connection));
+
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+        self::assertFalse($expiry->isExpired($connection->refresh()));
+    }
+
+    /**
+     * The schedule leaves a connection whose switch is off, and with the
+     * feature off leaves every one, though each still expires and an
+     * administrator can still refresh it; a connection whose switch is unset
+     * refreshes exactly while it has a URL.
+     *
+     * @return void
+     */
+    public function testTheScheduleFollowsTheSwitchAndTheFeature(): void
+    {
+        $unset = $this->saml(['metadata_refresh' => null]);
+        $off   = $this->saml(['metadata_refresh' => false]);
+        $noUrl = $this->saml(['metadata_refresh' => null, 'metadata_url' => null]);
+
+        self::assertSame([$unset->id], array_values(array_intersect([$unset->id, $off->id, $noUrl->id], $this->refresher()->dueConnectionIds())));
+
+        config()->set('sso.features.metadata_refresh', false);
+
+        self::assertSame([], $this->refresher()->dueConnectionIds());
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($unset->id)->outcome);
+
+        $this->fetcher->assertNothingFetched();
+    }
+
+    /**
      * Rows of `[kind, reason]`: a refresh now that is refused before anything
      * runs.
      *
@@ -921,15 +1076,16 @@ final class MetadataRefresherTest extends TestCase
         yield from [
             'an unknown connection'      => ['unknown', FailureReason::CONNECTION_NOT_FOUND],
             'another tenants connection' => ['other-tenant', FailureReason::CONNECTION_NOT_FOUND],
-            'the feature off'            => ['feature-off', FailureReason::FEATURE_DISABLED],
-            'the switch off'             => ['switch-off', FailureReason::FEATURE_DISABLED],
+            'no metadata URL'            => ['no-url', FailureReason::FEATURE_DISABLED],
+            'the protocol off'           => ['protocol-off', FailureReason::FEATURE_DISABLED],
             'an OIDC connection'         => ['oidc', FailureReason::FEATURE_DISABLED],
         ];
     }
 
     /**
-     * A refresh now of no such connection, or of one whose metadata does not
-     * refresh, is refused with nothing fetched, written or reported.
+     * A refresh now of no such connection, or of one whose protocol is off or
+     * that has nothing to fetch, is refused with nothing fetched, written or
+     * reported.
      *
      * @param  string  $kind
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -940,12 +1096,12 @@ final class MetadataRefresherTest extends TestCase
     {
         $connection = match ($kind) {
             'other-tenant' => $this->saml([], ['tenant_id' => 'tenant-2']),
-            'switch-off'   => $this->saml(['metadata_refresh' => false]),
+            'no-url'       => $this->saml(['metadata_refresh' => false, 'metadata_url' => null]),
             'oidc'         => $this->saml([], ['protocol' => 'oidc']),
             default        => $this->saml(),
         };
 
-        config()->set('sso.features.metadata_refresh', $kind !== 'feature-off');
+        config()->set('sso.features.saml2', $kind !== 'protocol-off');
 
         $id     = $kind === 'unknown' ? '01jbunknownconnection00000' : $connection->id;
         $result = $this->refresher()->refreshNow(self::TENANT, $id, self::actor());

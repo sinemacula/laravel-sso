@@ -306,7 +306,7 @@ final class MetadataWriterTest extends TestCase
      */
     private static function endpoints(string $entityId = self::ENTITY_ID): ConnectionEndpoints
     {
-        return new ConnectionEndpoints(self::ACS, 'https://sp.example.test/oidc/callback', $entityId, self::ENTITY_ID);
+        return new ConnectionEndpoints(self::ACS, 'https://sp.example.test/oidc/callback', $entityId, self::ENTITY_ID, 'https://sp.example.test/oidc/jwks');
     }
 
     /**

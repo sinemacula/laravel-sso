@@ -404,10 +404,13 @@ final class UserInfoReaderTest extends TestCase
         yield 'a list for an email' => ['"email":["a@example.test"]', FailureReason::USERINFO_INVALID];
         yield 'email_verified true' => ['"email_verified":true', null];
         yield 'email_verified false' => ['"email_verified":false', null];
-        yield 'the string true' => ['"email_verified":"true"', FailureReason::USERINFO_INVALID];
-        yield 'the string false' => ['"email_verified":"false"', FailureReason::USERINFO_INVALID];
-        yield 'one' => ['"email_verified":1', FailureReason::USERINFO_INVALID];
-        yield 'a null flag' => ['"email_verified":null', FailureReason::USERINFO_INVALID];
+        yield 'the string true' => ['"email_verified":"true"', null];
+        yield 'the string false' => ['"email_verified":"false"', null];
+        yield 'one' => ['"email_verified":1', null];
+        yield 'zero' => ['"email_verified":0', null];
+        yield 'a null flag' => ['"email_verified":null', null];
+        yield 'an object flag' => ['"email_verified":{"a":true}', null];
+        yield 'a list flag' => ['"email_verified":[true]', null];
         yield 'a name' => ['"name":"Person"', null];
         yield 'an empty name' => ['"name":""', null];
         yield 'a numeric name' => ['"name":1', FailureReason::USERINFO_INVALID];

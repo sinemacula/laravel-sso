@@ -28,8 +28,13 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
   | 9    | `IdTokens\AuthenticationTimeRules`: `auth_time`                                                  | `assertion_expired`, `id_token_invalid`, `authentication_expired` |
   | 10   | `IdTokens\AccessTokenHash`: `at_hash`, when present                                              | `at_hash_mismatch`                                                |
 
-- A claim is judged only once the signature has verified with a key the connection holds. A token that is not the
-  provider's therefore learns nothing from which reason it gets, and no claim of a forged token is ever read.
+- A claim decides a refusal only once the signature has verified with a key the connection holds. A token that is not
+  the provider's therefore learns nothing from which reason it gets.
+- Before an unknown-`kid` refetch, and only then, steps 4 to 10 run on the token's unverified claims, for rejection
+  alone: a token that would be refused anyway (another issuer, audience or nonce, out of its time window, a claim of the
+  wrong type) fetches nothing and leaves the shared cooldown unclaimed, so it cannot spend the window a good token
+  needs. It is answered `signature_invalid`, as any token no held key verifies is. Unverified claims never establish
+  identity or choose a URL to fetch, and every step runs again after the signature.
 - The validator reads the clock once per call and the skew (`Clock\ClockSkew`) and the limits (`OidcLimits`) on each
   call. It keeps nothing between calls (SSO-11.2), and its collaborators keep nothing either. It runs outside any
   transaction, since step 2 may fetch; only the refetch's own claim and write touch a row.
@@ -49,7 +54,8 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
 - `ProviderKeys::select()` answers found, unknown or refused. Only found goes on. Unknown (no stored key has the token's
   `kid`, or no `kid` and no key fits, after the single refetch inside it) and refused (an algorithm off the list, a key
   of another type or curve, a `kid` absent among two keys that fit) are both `signature_invalid`, so a refusal does not
-  say which keys the connection holds.
+  say which keys the connection holds. A connection gone, or a trust change found by a failed claim of the cooldown or a
+  lost compare and set, is `overtaken`, which is `connection_unavailable`.
 - The JWKS refetch is the consumer side of `oidc-discovery.md`: a token that names an unknown `kid` claims the cooldown
   before anything is fetched, so unknown `kid`s within the cooldown fetch nothing. An unknown supplied `kid` never falls
   back to a key without one. A refused token never fetches.
@@ -60,8 +66,9 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
   normalised; `aud` a non-empty string, or a non-empty JSON array of non-empty strings with no two the same; `exp` and
   `iat` JSON numbers.
 - When present, a `null` being present: `nbf` and `auth_time` JSON numbers; `azp`, `nonce`, `at_hash` and `email`
-  strings; `acr` and `sid` strings of 1 to 1024 bytes; `amr` a JSON array of at most 32 strings of 1 to 255 bytes;
-  `email_verified` a boolean, so the string `"true"` is refused. Nothing else is judged.
+  strings; `acr` and `sid` strings of 1 to 1024 bytes; `amr` a JSON array of at most 32 strings of 1 to 255 bytes.
+  Nothing else is judged: an `email_verified` that is not a JSON boolean refuses nothing and gives no evidence
+  (`oidc-claims.md`).
 - A JSON object is never read as a list. `Jose\StrictJson::decodeObject()` decodes objects to PHP arrays, so
   `{"0":"client"}` and `["client"]` are the same array by then; `ClaimTypes::refusal()` reads the verified payload again
   as JSON wrote it (`decodeAsWritten()`) to tell them apart for `aud` and `amr`.
@@ -87,24 +94,26 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
 - Every time is the package's own check against `Contracts\Clock`, compared at full precision
   (`TimeClaims::numericDate()` and `instant()`). The library's time checks never run. With skew `s`, at `now`:
 
-  | Claim       | Refused when                                      | Reason                   |
-  |-------------|---------------------------------------------------|--------------------------|
-  | `exp`       | `now >= exp + s`                                  | `assertion_expired`      |
-  | `iat`       | `iat > now + s`, or `now - iat > max age + s`     | `assertion_expired`      |
-  | `nbf`       | `nbf > now + s`                                   | `assertion_expired`      |
-  | `auth_time` | `auth_time > now + s`                             | `assertion_expired`      |
-  | `auth_time` | absent when `max_age` was asked for               | `id_token_invalid`       |
-  | `auth_time` | `now - auth_time > max_age + s`                   | `authentication_expired` |
-  | `auth_time` | `reauthenticate` and `auth_time < started at - s` | `authentication_expired` |
+  | Claim       | Refused when                                                  | Reason                   |
+  |-------------|---------------------------------------------------------------|--------------------------|
+  | `exp`       | `now >= exp + s`                                              | `assertion_expired`      |
+  | `iat`       | `iat > now + s`, or `now - iat > max age + s`                 | `assertion_expired`      |
+  | `nbf`       | `nbf > now + s`                                               | `assertion_expired`      |
+  | `auth_time` | `auth_time > now + s`                                         | `assertion_expired`      |
+  | `auth_time` | absent when `max_age` or a `reauthenticate` asked             | `id_token_invalid`       |
+  | `auth_time` | a positive `max_age`, `now - auth_time > max_age + s`         | `authentication_expired` |
+  | `auth_time` | `max_age` 0 or `reauthenticate`, `auth_time < started at - s` | `authentication_expired` |
 
 - `auth_time` is never inferred from `iat`: a token that has only `iat` has no authentication time.
-- `max_age` is the connection's, or 0 for a `reauthenticate` whatever the connection's is, as the authorisation request
-  asked (`oidc-requests.md`). A connection with none leaves an old `auth_time` alone. The maximum age of `iat` is
+- Reauthentication is judged relative to the request, never the callback. A `reauthenticate` sends `max_age=0` upstream
+  whatever the connection's is (`oidc-requests.md`), and a connection's own `max_age` of 0 sends the same. Locally that
+  means an authentication made for this request: `auth_time` not before the request started less the skew, and not past
+  now plus the skew, however long the person then took to come back and however slowly the callback is processed. A
+  `max_age` of 0 is never a callback-age check.
+- A connection's positive `max_age` is the configured authentication age, measured from now, and applies to a
+  `reauthenticate` too. A connection with none leaves an old `auth_time` alone. The maximum age of `iat` is
   `sso.oidc.id_token_max_age_seconds`.
-- A request's start is kept to the whole second, so a `reauthenticate` compares `auth_time` with the start as stored.
-- On a clock that does not move, `max_age` 0 already refuses whatever the start rule would, since the start less the
-  skew is never later than now less the skew. The start rule is the defence against a clock that moved back, or servers
-  whose clocks differ, between the start and the callback: there it is the only refuser.
+- A request's start is kept to the whole second, so `auth_time` is compared with the start as stored.
 
 ### Nonce and `at_hash` (steps 8 and 10)
 
@@ -121,14 +130,17 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
   not decide whether the connection is still trusted: the completion does, under its locks (`completion.md`), where a
   request voided or of another trust version is `connection_unavailable`.
 - A key added by the refetch changes no trust, so a rotation that adds a key verifies its own callback. A key removed or
-  replaced voids what is in flight, the callback that asked included: its token verifies and the completion is refused
-  `connection_unavailable`. That is deliberate: the removal may be the response to a compromise.
+  replaced voids what is in flight, but spares the callback that asked, whose token verified under the keys the rotation
+  left: that one sign-in may finish across exactly that transition (`oidc-driver.md`). Every other flow and every issued
+  handoff stays voided, since the removal may be the response to a compromise, and any independent change before the
+  final locks refuses the sign-in.
 - A trust change while the token or UserInfo request is in flight refuses the completion `connection_unavailable`. A
   trust change while the refetch's own JWKS request is in flight makes that refetch lose its compare and set: it writes
   nothing and reports `metadata_conflict`, so the fetched key is never used, and `Metadata\ProviderKeys` answers
-  `overtaken` when no stored key is the token's, which is `connection_unavailable` too, before the locks. A refetch that
-  lost to a change that is not one of trust stays `signature_invalid`. The request is voided and no handoff is issued
-  whichever answers.
+  `overtaken` when no stored key is the token's, as it does when a failed claim of the cooldown finds the connection
+  gone or its trust version raised, which is `connection_unavailable` too, before the locks. A refetch that lost to a
+  change that is not one of trust stays `signature_invalid`. The request is voided and no handoff is issued whichever
+  answers.
 
 ## Success Path
 
@@ -142,11 +154,16 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
 
 - An unknown `kid` whose refetch failed or is cooling down: `signature_invalid`, reported after `JwksRefreshFailed` for
   a refetch that failed, and alone within the cooldown.
+- An unknown `kid` on a token already disqualified by its claims: `signature_invalid`, with nothing fetched and the
+  cooldown unclaimed.
+- A slow callback, the person authenticating for this request and taking minutes to come back: it passes, whatever its
+  `max_age` of 0 says, as long as the token's own `exp` and `iat` do.
 - A token over the cap: `id_token_invalid`, before anything else of it is read.
 - A `sub` that fits the token but not the result cannot happen: step 4 holds it to `VerifiedResult::MAX_SUBJECT_LENGTH`.
 - An `auth_time` the result cannot store (negative, or past the year 9999): `ClaimsAssembler` refuses it
   `id_token_invalid` once this validation has passed (`oidc-claims.md`).
-- `email_verified` as the string `"true"`, which some providers send: `id_token_invalid`, as it is from UserInfo.
+- `email_verified` as the string `"true"`, which some providers send: the token passes and the flag gives no evidence
+  (`oidc-claims.md`).
 - A misconfigured allow-list or limit, and a database error, propagate as server errors.
 
 ## Implementation Anchors

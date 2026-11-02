@@ -39,6 +39,9 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * its token released, and the next refresh due after the refresh interval,
  * never after the `validUntil`; `refreshed()` then reports `MetadataRefreshed`
  * with the settings the source changed and whether its trust changed.
+ * `keysSucceeded()` is the same for a refresh of keys alone, which fetched no
+ * document, so `metadata_fetched_at` and `metadata_valid_until` stay as they
+ * were.
  *
  * Every event is dispatched after the transaction commits (SSO-10.5). A
  * database error propagates (SSO-11.4). It holds the reporter, the settings and
@@ -146,13 +149,31 @@ final readonly class RefreshWriter
     {
         $locked->forceFill([
             ...$attributes,
-            'metadata_version'          => $locked->metadata_version + 1,
-            'metadata_fetched_at'       => $validatedAt,
-            'metadata_valid_until'      => $validUntil,
-            'metadata_refresh_at'       => $this->nextRefreshAt($this->clock->now(), $validUntil),
-            'metadata_refresh_failures' => 0,
-            'metadata_claimed_until'    => null,
-            'metadata_claim_token'      => null,
+            ...self::bookkeeping($locked),
+            'metadata_fetched_at'  => $validatedAt,
+            'metadata_valid_until' => $validUntil,
+            'metadata_refresh_at'  => $this->nextRefreshAt($this->clock->now(), $validUntil),
+        ])->save();
+    }
+
+    /**
+     * Write the source's attributes and the bookkeeping of a refresh that
+     * fetched keys alone, in one save: the metadata version raised, the
+     * failures reset, the claim released and the next refresh due, leaving when
+     * the document was last validated, and until when, as they were.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  array<string, mixed>  $attributes
+     * @return void
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function keysSucceeded(Connection $locked, array $attributes): void
+    {
+        $locked->forceFill([
+            ...$attributes,
+            ...self::bookkeeping($locked),
+            'metadata_refresh_at' => $this->nextRefreshAt($this->clock->now(), $locked->metadata_valid_until),
         ])->save();
     }
 
@@ -211,6 +232,23 @@ final readonly class RefreshWriter
         $next = $now->addSeconds($this->settings->refreshIntervalSeconds());
 
         return $validUntil === null ? $next : $next->min($validUntil);
+    }
+
+    /**
+     * What every successful refresh writes whatever it fetched: the metadata
+     * version raised, the failures reset and the claim released.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @return array<string, mixed>
+     */
+    private static function bookkeeping(Connection $locked): array
+    {
+        return [
+            'metadata_version'          => $locked->metadata_version + 1,
+            'metadata_refresh_failures' => 0,
+            'metadata_claimed_until'    => null,
+            'metadata_claim_token'      => null,
+        ];
     }
 
     /**

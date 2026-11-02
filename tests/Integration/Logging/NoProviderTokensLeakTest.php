@@ -454,9 +454,16 @@ final class NoProviderTokensLeakTest extends TestCase
      */
     public function testARefusalUnderTheLockKeepsNothing(): void
     {
-        $connection = $this->connection();
+        $connection = $this->connection(['fetch_userinfo' => true, 'userinfo_endpoint' => $this->provider->endpoint('userinfo')]);
 
         $this->provider->unpublish('rsa-1')->publish(self::next())->signWith(self::next());
+        $this->provider->respond('userinfo', static function (FetchRequest $request) use ($connection): FetchResult {
+            unset($request);
+
+            Connection::query()->whereKey($connection->id)->increment('trust_version');
+
+            return FakeTokenEndpoint::json(200, ['sub' => FakeOpenIdProvider::SUBJECT]);
+        });
 
         $grant  = $this->granted($connection);
         $result = $this->receiveCallback($connection, $grant);
@@ -464,6 +471,30 @@ final class NoProviderTokensLeakTest extends TestCase
         self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $result->reason);
 
         $this->assertNothingKept($result, $this->needles($grant));
+    }
+
+    /**
+     * A flow that finished across the key rotation its own token triggered
+     * keeps nothing either: the receipt it carried reaches no event, log or
+     * result.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testAFlowFinishedAcrossItsOwnRotationKeepsNothing(): void
+    {
+        $connection = $this->connection();
+
+        $this->provider->unpublish('rsa-1')->publish(self::next())->signWith(self::next());
+
+        $grant  = $this->granted($connection);
+        $result = $this->receiveCallback($connection, $grant);
+
+        self::assertTrue($result->isCompleted());
+
+        $this->assertNothingKept($result, $this->needles($grant));
+        $this->assertNothingLoggedContains((string) self::next()->kid);
     }
 
     /**

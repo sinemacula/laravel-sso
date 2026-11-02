@@ -13,7 +13,11 @@ application calls to serve it. Serving it at a URL is the application's: the pac
 - The public entry is `Connections\ServiceProviderDescriptions::describe(tenantId, connectionId)`, which answers a
   `Protocols\ServiceProviderDescription`: a document and its content type, or why the connection cannot be described.
   It is generic: it finds the connection and asks its protocol's driver (`ProtocolDriver::describe()`) through the
-  `ProtocolManager`, so the OIDC driver's description needs no change to the helper.
+  `ProtocolManager`, so the OIDC driver's description needs no change to the helper. Beside it,
+  `describeWithInlineKeys(tenantId, connectionId)` is an OIDC connection's description with its public keys in the
+  document, and `publicKeys(connectionId)` the body of its public JWKS URL, by the connection's id alone, of any tenant,
+  since the provider that fetches the URL names none; each is `connection_unavailable` for any other protocol
+  (`oidc-relying-party.md`). The package adds no route for any of them.
 - A connection the tenant does not have, unknown or another tenant's, is `connection_unavailable`, the same answer for
   both, so the helper never reveals that another tenant's connection exists. The tenant is matched exactly
   (`ConnectionFinder`), whatever the column's collation.

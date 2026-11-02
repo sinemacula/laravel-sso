@@ -37,6 +37,10 @@ A key's use says what it is for:
 | `KeyUse::SP_ENCRYPTION`    | `saml2`  | RSA           | Decrypts the assertions encrypted for it     |
 | `KeyUse::CLIENT_ASSERTION` | `oidc`   | RSA, EC       | Signs the `private_key_jwt` client assertion |
 
+A client assertion key must fit the connection's
+[`client_assertion_algorithm`](oidc-connections.md#the-client-assertion-algorithm) when it pins one: one that does not
+is refused (`key_type`, `not_allowed`), before it is generated.
+
 Each key moves through three states: `next` (published, not yet used), `current` (signing, and for encryption,
 published and decrypting) and `retiring` (replaced, still decrypting until the overlap ends). A rotation without
 downtime takes four steps.

@@ -62,12 +62,14 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   aggregate is imported from the console or a queued job, never a web request. A proposal that would not be valid
   settings (a single sign-on URL that is not `https`, an entity id that is neither a URL nor a URN) is
   `metadata_invalid`.
-- A connection refreshes only while `sso.features.metadata_refresh` is on, its protocol is available
-  (`ProtocolManager::isAvailable()`, so a protocol switched off fetches and writes nothing) and its protocol's
-  `Metadata\MetadataSource` says it does, a protocol with no source never refreshing. For a SAML connection that is its
-  `metadata_refresh` setting on and its `metadata_url` a valid `https` URL: the URL the administrator saved is the only
-  one ever fetched. The OIDC source is recorded in `oidc-discovery.md`. The due connections are those of the protocols
-  with a source, read on the write connection, whose `metadata_refresh_at` is unset or not after now and whose
+- The schedule refreshes a connection only while `sso.features.metadata_refresh` (on by default) is on, its protocol is
+  available (`ProtocolManager::isAvailable()`, so a protocol switched off fetches and writes nothing) and its protocol's
+  `Metadata\MetadataSource` says it does (`refreshes()`), a protocol with no source never refreshing. For a SAML
+  connection that is a `metadata_url` that is a valid `https` URL, unless its `metadata_refresh` setting is off: left
+  unset, the setting follows the URL, so adding or removing the URL needs no other change. The URL the administrator
+  saved is the only one ever fetched. The OIDC source is recorded in `oidc-discovery.md`; there the setting defaults to
+  on. A connection past its stale limit is still due, so the schedule recovers it. The due connections are those of the
+  protocols with a source, read on the write connection, whose `metadata_refresh_at` is unset or not after now and whose
   `metadata_claimed_until` is unset or not after now, in chunks of 100 by keyset on the id, that refresh.
   `sso:metadata:refresh` lists their ids (`dueConnectionIds()`) and queues one `Metadata\RefreshConnectionMetadata` job
   per connection, carrying the id alone, on `sso.metadata.queue.connection` and `.name`, allowed `.timeout_seconds` (30
@@ -76,11 +78,15 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   `.tries` (default 1, failing on a timeout rather than being released past its claim); the job calls `refreshQueued()`,
   which reads the connection again and is `skipped` when it is gone, no longer refreshes or is no longer due. `--sync`
   refreshes them in the command instead (`refreshDue()`). `refreshNow()` refreshes the tenant's connection whatever its
-  backoff (`connection_not_found` for another tenant's, `feature_disabled` for one that does not refresh), for the
-  `ActingIdentity` it requires, after counting the attempt against `AttemptSubject::metadata()` (the import's limit,
-  `sso.rate_limits.metadata`): past it, `rate_limited` with `retryAfter`, before anything is claimed or fetched. It asks
-  no freshness. Every entry refuses to run inside a transaction on the storage connection
-  (`StorageConnection::assertNoTransaction()`).
+  backoff, its `metadata_refresh` setting or `sso.features.metadata_refresh`, and whether it has expired or not, so it
+  recovers a connection the schedule does not: it asks only `MetadataSource::isRefreshable()`, that what it fetches is a
+  URL the package may fetch, and that its protocol is available (`connection_not_found` for another tenant's,
+  `feature_disabled` for a protocol switched off or nothing to fetch, with nothing fetched), for the `ActingIdentity` it
+  requires. Where the schedule would not refresh the connection (its setting or the feature off) it first asks
+  `sso.connection.trust` freshness, and `stale` is `freshness_required`. It then counts the attempt against
+  `AttemptSubject::metadata()` (the import's limit, `sso.rate_limits.metadata`): past it, `rate_limited` with
+  `retryAfter`, before anything is claimed or fetched. Every entry refuses to run inside a transaction on the storage
+  connection (`StorageConnection::assertNoTransaction()`).
 - The machinery is protocol-agnostic. `Metadata\MetadataRefresher` lists the due connections of every protocol that
   has a source (`Metadata\MetadataSources`: `SamlMetadataSource` for `saml2`, `OidcMetadataSource` for `oidc`; a
   protocol an application registered has none and never refreshes), asks the connection's source whether it refreshes,
@@ -138,20 +144,28 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   claim and its token released; the last good settings are kept. `MetadataRefreshFailed` carries the reason,
   the failures and the next attempt; the refresher logs the reason and the fetch's status alone, through the sanitising
   logger, never the URL, the response or the metadata.
-- What a refresh applied expires (`Metadata\MetadataExpiry`, which the driver checks before every start, completion and
-  re-initiation, and the completion and the re-initiation check again on the locked connection, failing with
-  `metadata_expired`) at the earlier of `metadata_valid_until` (the earliest `validUntil` of the entity and every
-  aggregate around it) and `metadata_fetched_at` (the validated fetch) plus `sso.metadata.stale_limit_seconds` (30
-  days by default; `0`, set explicitly, for no limit): the same rule the refresh applied at commit. An OIDC
-  connection's JWKS counts from its own fetch too, once a refresh has written the connection or while its
-  `metadata_refresh` setting is on (`oidc-discovery.md`). The expired last good settings stay stored, for diagnosis,
-  until a refresh succeeds.
+- Expiry does not depend on scheduling. Every validated fetched resource expires (`Metadata\MetadataExpiry`, which the
+  driver checks before every start, completion and re-initiation, and the completion and the re-initiation check again
+  on the locked connection, failing with `metadata_expired`), counted from its own validated fetch: the document at the
+  earlier of `metadata_valid_until` (the earliest `validUntil` of the entity and every aggregate around it) and
+  `metadata_fetched_at` plus `sso.metadata.stale_limit_seconds` (30 days by default; `0`, set explicitly, for no limit),
+  the same rule the refresh applied at commit; an OIDC connection's JWKS from `jwks_fetched_at` plus the same limit
+  (`oidc-discovery.md`). Turning the schedule off never means unlimited trust. An import is a validated fetch: saving
+  what one proposes through `Connections\ImportSaver::save()` stamps `metadata_fetched_at` and `metadata_valid_until`
+  from the proposal (`ProposedSettings::fetch()`), so its stale limit and `validUntil` apply from that fetch whether or
+  not a refresh ever runs. A connection with nothing fetched yet, its settings and keys saved by hand, metadata given as
+  XML among them, has no deadline: nothing it holds came from a fetch that could go stale, and the first fetch of each
+  resource starts its clock. The expired last good settings stay stored, for diagnosis, until a scheduled or
+  administrator's refresh succeeds. A callback never recovers a connection: the driver refuses it before anything is
+  fetched.
 - Events (`Administration\MetadataEvents`) are built through the one context projection, with the acting identity of
   the administrator who asked or none for a scheduled run, and dispatched after the transaction commits, never on a
   rollback. None holds a certificate, a URL or any value of the metadata.
-- A refresh asks no freshness: it is a system job that the administrator switched on, with freshness, by saving
-  `metadata_refresh` and `metadata_url`, and an administrator's refresh does no more than the schedule would; it is
-  rate limited and names the administrator instead.
+- A scheduled refresh asks no freshness: it is a system job an administrator set up, with freshness, by saving the
+  `metadata_url` or issuer and leaving `metadata_refresh` on. An administrator's refresh asks none where the schedule
+  would refresh the connection too, since it writes no more than the schedule would; it is rate limited and names the
+  administrator instead. Where the schedule would not, the same refresh would replace what an administrator told the
+  schedule to leave alone, so it asks `sso.connection.trust` (SSO-2.12).
 - Large federation metadata is supported once the cap allows it: the aggregate's signature is verified whole with the
   anchor and exactly one entity with the pinned id chosen. The whole document is held in memory, parsed and its
   signature checked in one piece (the library rebuilds the signed aggregate twice to verify it), so memory runs to
@@ -166,8 +180,8 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
 ## Success Path
 
 1. An administrator imports the provider's metadata URL with `importUrl()`, reviews the proposal, and saves the settings
-   with `ConnectionService::update()` and each certificate with `KeyService::trustCertificate()`; optionally a metadata
-   signing anchor with `trustCertificate(..., KeyUse::METADATA_SIGNING)`, then `metadata_url` and `metadata_refresh`.
+   with `ImportSaver::save()` and each certificate with `KeyService::trustCertificate()`; optionally a metadata
+   signing anchor with `trustCertificate(..., KeyUse::METADATA_SIGNING)`, then `metadata_url`.
 2. Every 5 minutes the scheduler runs `sso:metadata:refresh` on every server, which queues a job per due connection.
    Each due connection is claimed by one job.
 3. The claimed refresh fetches the saved URL, verifies the metadata with the anchors, and finds the provider has
@@ -208,7 +222,8 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
 
 - `src/Protocols/Saml2/Library/MetadataReader.php`, `SignedDescriptor.php`, `HardenedParser.php`,
   `src/Protocols/Saml2/Messages/IdpMetadata.php`.
-- `src/Metadata/MetadataImporter.php`, `ProposedSettings.php`, `ImportResult.php`.
+- `src/Metadata/MetadataImporter.php`, `ProposedSettings.php`, `ImportResult.php`, `ValidatedFetch.php`,
+  `src/Connections/ImportSaver.php`.
 - `src/Metadata/MetadataRefresher.php`, `MetadataSource.php`, `MetadataSources.php`, `SamlMetadataSource.php`,
   `OidcMetadataSource.php`, `FetchedMetadata.php`, `RefreshWriter.php`, `MetadataApplier.php`, `RefreshClaims.php`,
   `RefreshClaim.php`, `RefreshConnectionMetadata.php`, `RefreshResult.php`, `Enums/RefreshOutcome.php`,
@@ -223,6 +238,7 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
 - `tests/Feature/Protocols/Saml2/Library/MetadataReaderTest.php` (the cap at, under and over it; a signed aggregate of
   several MiB; an unrelated member the schema or the library refuses; the chosen entity validated with its
   aggregate's namespaces).
+- `tests/Feature/Connections/ImportSaverTest.php` (a fetched import counts from its fetch; XML does not).
 - `tests/Feature/Fetching/GuzzleFetcherTest.php` and `tests/Unit/Fetching/FetchRequestTest.php` (a request's own cap).
 - `tests/Feature/Metadata/MetadataImporterTest.php`, `MetadataRefresherTest.php`, `MetadataApplierTest.php`,
   `MetadataEventSequenceTest.php`, `MetadataExpiryTest.php`, `MetadataSettingsTest.php`, `MetadataSourcesTest.php`,

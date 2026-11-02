@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Metadata;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
@@ -12,8 +13,10 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
@@ -38,6 +41,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
+use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
@@ -155,6 +159,10 @@ final class OidcMetadataSourceTest extends TestCase
      */
     public static function provideRefreshingConnections(): iterable
     {
+        $at   = CarbonImmutable::parse(self::NOW);
+        $keys = ['jwks_fetched_at' => $at];
+        $off  = ['metadata_refresh' => false];
+
         yield from [
             'its switch on and a valid issuer' => [[], [], true],
             'its switch off'                   => [[], ['metadata_refresh' => false], false],
@@ -165,6 +173,12 @@ final class OidcMetadataSourceTest extends TestCase
             'no issuer'                        => [[], ['issuer' => null], false],
             'an issuer not a string'           => [[], ['issuer' => 1], false],
             'a SAML connection'                => [['protocol' => 'saml2'], [], false],
+            'off, keys fetched, no document'   => [$keys, $off, true],
+            'off, no keys fetched yet'         => [[], $off, false],
+            'off, keys fetched, a document'    => [[...$keys, 'metadata_fetched_at' => $at], $off, false],
+            'off, keys fetched, no JWKS URL'   => [$keys, [...$off, 'jwks_uri' => null], false],
+            'off, keys fetched, bad JWKS URL'  => [$keys, [...$off, 'jwks_uri' => 'http://op.example.test/jwks'], false],
+            'off, keys fetched, bad issuer'    => [$keys, [...$off, 'issuer' => 'http://op.example.test'], false],
         ];
     }
 
@@ -694,7 +708,7 @@ final class OidcMetadataSourceTest extends TestCase
     {
         $this->provider->respond($endpoint, $response);
 
-        $connection = $this->oidc([], ['jwks' => self::stored([self::next()])]);
+        $connection = $this->oidc([], ['jwks' => self::stored([self::next()]), 'metadata_fetched_at' => $this->clock->now()->subDay()]);
         $result     = $this->refreshDue();
         $row        = $this->row($connection);
 
@@ -794,16 +808,283 @@ final class OidcMetadataSourceTest extends TestCase
         $claimed    = $this->oidc([], ['metadata_claimed_until' => $this->clock->now()->addMinute()]);
         $off        = $this->oidc(['metadata_refresh' => false]);
 
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
         self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor)->outcome);
         self::assertSame(RefreshOutcome::IN_PROGRESS, $this->refresher()->refreshNow(self::TENANT, $claimed->id, $actor)->outcome);
         self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->refresher()->refreshNow('tenant-2', $connection->id, $actor)->reason);
-        self::assertSame(FailureReason::FEATURE_DISABLED, $this->refresher()->refreshNow(self::TENANT, $off->id, $actor)->reason);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $off->id, $actor)->outcome);
 
         $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor);
 
         $limited = $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor);
 
         self::assertSame([RefreshOutcome::RATE_LIMITED, 1800], [$limited->outcome, $limited->retryAfter]);
+    }
+
+    /**
+     * A stale administrator cannot refresh a connection whose switch is off:
+     * its document or keys stay as they were, nothing is fetched, and the same
+     * caller on a connection the schedule refreshes is no refusal.
+     *
+     * @return void
+     */
+    public function testAStaleAdministratorCannotOverwriteASwitchedOffConnection(): void
+    {
+        $actor = new ActingIdentity('App\Models\User', '42');
+        $moved = ['token_endpoint' => self::MOVED];
+        $off   = $this->oidc(['metadata_refresh' => false, ...$moved], ['metadata_fetched_at' => $this->clock->now()->subDay()]);
+        $on    = $this->oidc($moved);
+
+        $this->app?->instance(Freshness::class, FakeFreshness::stale());
+
+        $refused = $this->refresher()->refreshNow(self::TENANT, $off->id, $actor);
+
+        self::assertSame([RefreshOutcome::REFUSED, FailureReason::FRESHNESS_REQUIRED, $off->id], [$refused->outcome, $refused->reason, $refused->connectionId]);
+        self::assertSame(self::MOVED, $this->row($off)->settings['token_endpoint']);
+        self::assertSame(0, $this->row($off)->trust_version);
+
+        $this->fetcher->assertNothingFetched();
+
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $on->id, $actor)->outcome);
+        self::assertSame(self::ISSUER . '/token', $this->row($on)->settings['token_endpoint']);
+    }
+
+    /**
+     * With its switch off and no document ever fetched, a connection whose
+     * endpoints were saved by hand refreshes its keys alone: nothing asks for
+     * the document, an endpoint saved by hand stays, the keys are stamped and
+     * when the document was validated stays unset.
+     *
+     * @return void
+     */
+    public function testAConnectionSavedByHandRefreshesItsKeysAlone(): void
+    {
+        $this->provider->publish(self::next());
+
+        $stored     = ['jwks' => self::stored([self::key()]), 'jwks_fetched_at' => $this->clock->now()->subDays(29)];
+        $connection = $this->oidc(['metadata_refresh' => false, 'token_endpoint' => self::MOVED], $stored);
+
+        $result = $this->refreshDue();
+        $row    = $this->row($connection);
+
+        self::assertSame([RefreshOutcome::REFRESHED, [OidcMetadataSource::KEYS], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
+        self::assertSame(1, $result->metadataVersion);
+        self::assertSame(self::MOVED, $row->settings['token_endpoint']);
+        self::assertSame(self::stored([self::key(), self::next()]), $row->jwks);
+        self::assertSame([1, 0, self::NOW], [$row->jwks_version, $row->trust_version, $row->jwks_fetched_at?->toIso8601String()]);
+        self::assertSame([null, null, self::TOMORROW], [$row->metadata_fetched_at, $row->metadata_valid_until, $row->metadata_refresh_at?->toIso8601String()]);
+        self::assertSame([1, 0], [$row->metadata_version, $row->metadata_refresh_failures]);
+        self::assertSame([null, null], [$row->metadata_claimed_until, $row->metadata_claim_token]);
+        self::assertSame([FetchPurpose::JWKS], array_map(static fn (FetchRequest $request): FetchPurpose => $request->purpose, $this->fetcher->requests()));
+    }
+
+    /**
+     * Rows of `[switch]`: a connection saved by hand at a provider that serves
+     * no discovery document.
+     *
+     * @return iterable<string, array{0: bool}>
+     */
+    public static function provideNoDocumentSwitches(): iterable
+    {
+        yield 'its switch off' => [false];
+        yield 'its switch on' => [true];
+    }
+
+    /**
+     * An expired connection saved by hand, at a provider with no discovery
+     * document, recovers by an administrator's refresh, its endpoints
+     * unchanged: with its switch on the document's failure falls back to the
+     * saved JWKS.
+     *
+     * @param  bool  $switch
+     * @return void
+     */
+    #[DataProvider('provideNoDocumentSwitches')]
+    public function testAnExpiredConnectionWithNoDiscoveryDocumentRecovers(bool $switch): void
+    {
+        $this->provider->respond('discovery', FetchResult::fetched(404, [], ''));
+
+        $stored     = ['jwks' => self::stored([self::key()]), 'jwks_fetched_at' => $this->clock->now()->subDays(30)];
+        $connection = $this->oidc(['metadata_refresh' => $switch, 'token_endpoint' => self::MOVED], $stored);
+        $expiry     = app(MetadataExpiry::class);
+
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
+        self::assertTrue($expiry->isExpired($this->row($connection)));
+
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, new ActingIdentity('App\Models\User', '42'));
+        $row    = $this->row($connection);
+
+        self::assertSame([RefreshOutcome::REFRESHED, [], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
+        self::assertFalse($expiry->isExpired($row));
+        self::assertSame(self::MOVED, $row->settings['token_endpoint']);
+        self::assertNull($row->metadata_fetched_at);
+        self::assertSame(self::NOW, $row->jwks_fetched_at?->toIso8601String());
+        self::assertCount($switch ? 2 : 1, $this->fetcher->requests());
+    }
+
+    /**
+     * A connection that has never validated a document, with its switch on,
+     * still follows the document when one is served: what it does save by hand
+     * is what the document replaces.
+     *
+     * @return void
+     */
+    public function testAServedDocumentStillOverwritesWithTheSwitchOn(): void
+    {
+        $connection = $this->oidc(['token_endpoint' => self::MOVED]);
+        $result     = $this->refreshDue();
+        $row        = $this->row($connection);
+
+        self::assertSame([RefreshOutcome::REFRESHED, ['token_endpoint', OidcMetadataSource::KEYS], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
+        self::assertSame(self::ISSUER . '/token', $row->settings['token_endpoint']);
+        self::assertSame(self::NOW, $row->metadata_fetched_at?->toIso8601String());
+    }
+
+    /**
+     * A connection a document was validated for does not fall back: its
+     * document must come back, or it would expire however fresh its keys are.
+     *
+     * @return void
+     */
+    public function testAConnectionWithAFetchedDocumentDoesNotFallBack(): void
+    {
+        $this->provider->respond('discovery', FetchResult::fetched(404, [], ''));
+
+        $connection = $this->oidc([], ['metadata_fetched_at' => $this->clock->now()->subDay()]);
+        $result     = $this->refreshDue();
+
+        self::assertSame([RefreshOutcome::FAILED, FailureReason::FETCH_FAILED], [$result->outcome, $result->reason]);
+        self::assertNull($this->row($connection)->jwks_fetched_at);
+        self::assertSame([FetchPurpose::DISCOVERY], array_map(static fn (FetchRequest $request): FetchPurpose => $request->purpose, $this->fetcher->requests()));
+    }
+
+    /**
+     * Both failing is the document's failure, recorded and backed off, the last
+     * good keys kept; the switch off, there is only the JWKS's.
+     *
+     * @return void
+     */
+    public function testAFallbackThatFailsIsTheDocumentsFailure(): void
+    {
+        $this->provider->respond('discovery', FetchResult::fetched(200, [], '[]'));
+        $this->provider->respond('jwks', FetchResult::failed());
+
+        $on  = $this->oidc([], ['jwks' => self::stored([self::key()])]);
+        $off = $this->oidc(['metadata_refresh' => false], ['jwks' => self::stored([self::key()]), 'jwks_fetched_at' => $this->clock->now()]);
+
+        $first  = $this->refresher()->refreshQueued($on->id);
+        $second = $this->refresher()->refreshQueued($off->id);
+
+        self::assertSame([RefreshOutcome::FAILED, FailureReason::DISCOVERY_INVALID, 1], [$first->outcome, $first->reason, $first->failures]);
+        self::assertSame([RefreshOutcome::FAILED, FailureReason::FETCH_FAILED, 1], [$second->outcome, $second->reason, $second->failures]);
+        self::assertSame([0, self::stored([self::key()]), null], [$this->row($on)->jwks_version, $this->row($on)->jwks, $this->row($on)->jwks_fetched_at]);
+        self::assertSame(self::BACKOFF, $this->row($off)->metadata_refresh_at?->toIso8601String());
+    }
+
+    /**
+     * A refresh of keys alone that removes one voids what is in flight and
+     * raises the trust version once, under the same rules as a whole refresh.
+     *
+     * @return void
+     */
+    public function testAKeysAloneRefreshThatRemovesAKeyVoids(): void
+    {
+        $connection = $this->oidc(['metadata_refresh' => false], ['jwks' => self::stored([self::key(), self::next()]), 'jwks_fetched_at' => $this->clock->now()]);
+        $request    = $this->makeAuthorizationRequest($connection);
+        $result     = $this->refreshDue();
+
+        self::assertSame([RefreshOutcome::REFRESHED, [OidcMetadataSource::KEYS], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
+        self::assertSame(1, $this->row($connection)->trust_version);
+        self::assertSame(self::stored([self::key()]), $this->row($connection)->jwks);
+        self::assertSame(self::NOW, $request->fresh()?->voided_at?->toIso8601String());
+    }
+
+    /**
+     * A refresh of keys alone that changes nothing names nothing, voids nothing
+     * and still renews the keys.
+     *
+     * @return void
+     */
+    public function testAKeysAloneRefreshThatChangesNothingRenewsThem(): void
+    {
+        $connection = $this->oidc(['metadata_refresh' => false], ['jwks' => self::stored([self::key()]), 'jwks_fetched_at' => $this->clock->now()->subDay()]);
+        $request    = $this->makeAuthorizationRequest($connection);
+        $result     = $this->refreshDue();
+
+        self::assertSame([RefreshOutcome::REFRESHED, [], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
+        self::assertSame(self::NOW, $this->row($connection)->jwks_fetched_at?->toIso8601String());
+        self::assertNull($request->fresh()?->voided_at);
+    }
+
+    /**
+     * Rows of `[seconds the commit takes, limit, refreshed]`: a refresh of keys
+     * alone is judged at commit, by the moment they were validated.
+     *
+     * @return iterable<string, array{0: int, 1: int, 2: bool}>
+     */
+    public static function provideKeysAloneStaleLimits(): iterable
+    {
+        yield 'a second under' => [86399, 86400, true];
+        yield 'at the limit' => [86400, 86400, false];
+        yield 'no limit' => [90 * 86400, 0, true];
+    }
+
+    /**
+     * A refresh of keys alone whose stale limit has passed by commit writes
+     * nothing but the failure, the last good keys kept.
+     *
+     * @param  int  $seconds
+     * @param  int  $limit
+     * @param  bool  $refreshed
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    #[DataProvider('provideKeysAloneStaleLimits')]
+    public function testAKeysAloneRefreshIsCheckedAtCommit(int $seconds, int $limit, bool $refreshed): void
+    {
+        config()->set('sso.metadata.stale_limit_seconds', $limit);
+
+        $connection = $this->oidc(['metadata_refresh' => false], ['jwks' => self::stored([self::next()]), 'jwks_fetched_at' => $this->clock->now()]);
+        $claim      = $this->source()->claim($this->row($connection));
+
+        self::assertNotNull($claim);
+
+        $fetched = $this->source()->fetch($claim);
+
+        $this->clock->advance($seconds);
+
+        $result = $this->source()->write($claim, $fetched, null);
+        $row    = $this->row($connection);
+
+        self::assertSame($refreshed ? [RefreshOutcome::REFRESHED, null] : [RefreshOutcome::FAILED, FailureReason::METADATA_EXPIRED], [$result->outcome, $result->reason]);
+        self::assertSame($refreshed ? [1, 1, 0] : [0, 0, 1], [$row->jwks_version, $row->trust_version, $row->metadata_refresh_failures]);
+        self::assertSame(self::stored([$refreshed ? self::key() : self::next()]), $row->jwks);
+    }
+
+    /**
+     * A change of the saved JWKS URL while a refresh of keys alone fetched is a
+     * conflict: nothing is written for a URL no longer saved.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAKeysAloneRefreshLosesToAMovedUrl(): void
+    {
+        $connection = $this->oidc(['metadata_refresh' => false], ['jwks' => self::stored([self::next()]), 'jwks_fetched_at' => $this->clock->now()]);
+        $claim      = $this->source()->claim($this->row($connection));
+
+        self::assertNotNull($claim);
+
+        $fetched = $this->source()->fetch($claim);
+
+        Connection::query()->whereKey($connection->id)->update(['settings' => self::settings(['metadata_refresh' => false, 'jwks_uri' => self::MOVED])]);
+
+        self::assertSame(RefreshOutcome::CONFLICT, $this->source()->write($claim, $fetched, null)->outcome);
+        self::assertSame([0, self::stored([self::next()])], [$this->row($connection)->jwks_version, $this->row($connection)->jwks]);
     }
 
     /**

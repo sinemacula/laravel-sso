@@ -85,6 +85,12 @@ final class ClaimTypesTest extends TestCase
             'email empty'                   => [['email' => '']],
             'email_verified true'           => [['email_verified' => true]],
             'email_verified false'          => [['email_verified' => false]],
+            'email_verified the string'     => [['email_verified' => 'true']],
+            'email_verified the string no'  => [['email_verified' => 'false']],
+            'email_verified one'            => [['email_verified' => 1]],
+            'email_verified null'           => [['email_verified' => null]],
+            'email_verified an object'      => [['email_verified' => ['a' => true]]],
+            'email_verified a list'         => [['email_verified' => [true]]],
             'a claim the package ignores'   => [['groups' => ['a', 1, null]]],
             'a null the package ignores'    => [['locale' => null]],
         ];
@@ -157,8 +163,6 @@ final class ClaimTypesTest extends TestCase
             'a number'         => 1,
             'null'             => null,
         ]);
-
-        yield from self::rows('email_verified', ['the string true' => 'true', 'the string false' => 'false', 'one' => 1, 'zero' => 0, 'null' => null]);
     }
 
     /**

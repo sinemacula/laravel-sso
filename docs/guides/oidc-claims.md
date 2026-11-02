@@ -41,10 +41,9 @@ A signed or encrypted answer (`application/jwt`) is not supported, so ask your p
 
 `sub` is compared byte for byte: whitespace, case and Unicode form all count, and a number is not a string.
 
-The package reads `email` (a string of at most 320 bytes), `email_verified` (`true` or `false`), and `name`,
-`given_name` and `family_name` (strings). One of these with any other type refuses the answer, `null` included, since a
-provider should leave out a claim it has no value for. A provider that sends `email_verified` as the string `"true"` is
-refused. No other claim is judged.
+The package types `email` (a string of at most 320 bytes) and `name`, `given_name` and `family_name` (strings). One of
+these with any other type refuses the answer, `null` included, since a provider should leave out a claim it has no value
+for. `email_verified` never refuses it: see below. No other claim is judged.
 
 On a `provider_error` the package logs a notice, `sso.oidc.userinfo_error`, with the connection's id, the request's
 `request_reference` and the bearer token error code: `invalid_request`, `invalid_token` or `insufficient_scope`, or
@@ -70,8 +69,11 @@ An email and its `email_verified` are a pair from one source, never one from eac
 2. otherwise UserInfo, when it was fetched and carries `email`;
 3. otherwise there is none.
 
-`email_verified` is read from that same source, so UserInfo's flag never vouches for the ID token's email. When the
-source does not state it, it stays unknown, which is not the same as false.
+`email_verified` is read from that same source, so UserInfo's flag never vouches for the ID token's email. Only JSON
+`true` is evidence of verification, and JSON `false` stays false. Anything else is no evidence at all and does not
+refuse the sign-in: nothing is coerced, so a provider that sends the string `"true"` or `"false"`, as some do, a number,
+an object or `null` gets an unknown flag. When the source does not state it, it stays unknown too, which is not the same
+as false.
 
 | The ID token says              | UserInfo says                | `assertedEmail`                       |
 |--------------------------------|------------------------------|---------------------------------------|

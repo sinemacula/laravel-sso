@@ -75,7 +75,8 @@ final class OidcOptionsTest extends TestCase
         self::assertSame(['client_secret_basic', false], [$options->clientAuthentication(), $options->returnsIss()]);
         self::assertSame([['openid', 'email', 'profile'], ['RS256']], [$options->scopes(), $options->algorithms()->names]);
         self::assertSame([[], [], null], [$options->extraParameters(), $options->trustedAudiences(), $options->maxAge()]);
-        self::assertSame([false, false, null], [$options->fetchesUserInfo(), $options->refreshes(), $options->userInfoEndpoint()]);
+        self::assertSame([false, true, null], [$options->fetchesUserInfo(), $options->refreshes(), $options->userInfoEndpoint()]);
+        self::assertNull($options->clientAssertionAlgorithm());
     }
 
     /**

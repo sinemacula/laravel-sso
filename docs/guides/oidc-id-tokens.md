@@ -57,8 +57,9 @@ client.
 ## `max_age`
 
 Set `max_age` when a sign-in must follow a recent authentication at the provider. It is sent on every authorisation
-request, in seconds from 0 to a week, and the ID token must then carry `auth_time`, no older than `max_age` plus the
-clock skew.
+request, in seconds from 0 to a week, and the ID token must then carry `auth_time`. A positive `max_age` is an age: no
+older than it plus the clock skew when the callback runs. A `max_age` of 0 asks the provider to authenticate afresh, and
+is held to the request instead.
 
 ```php
 'settings' => [
@@ -70,9 +71,11 @@ clock skew.
 Some providers only send `auth_time` when asked, and `max_age` asks. A provider that ignores it has its sign-ins refused
 with `id_token_invalid`, which fails closed: check your provider's documentation before turning it on.
 
-A `reauthenticate` always asks for `max_age` 0 and `prompt=login`, whatever the connection's `max_age`. Its `auth_time`
-must be within the clock skew of now and no earlier than when the flow started, less the skew, so a person who took
-longer than the skew between signing in at the provider and the callback arriving has to start again.
+A `reauthenticate` always asks for `max_age` 0 and `prompt=login`, whatever the connection's `max_age`. Its `auth_time`,
+like that of any `max_age` of 0, must be no earlier than when the flow started, less the skew, and not past now plus the
+skew. It is judged relative to the request, never to the callback: a person who authenticated for this request and took
+minutes to come back still passes, as long as the token's own `exp` and `iat` do. A positive `max_age` on the connection
+still applies to a `reauthenticate`, measured from now.
 
 ## Times and the clock skew
 
@@ -87,22 +90,23 @@ Each failure is redirected to your application's redirect URI with its code and 
 request stays consumed, so the person starts again. Checks run in a fixed order and the first failure answers, so a
 token with two problems reports the earlier: fixing it may reveal the next.
 
-| Failure code             | What it means                                                                                         | What to check                                                                                     |
-|--------------------------|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
-| `id_token_invalid`       | Not a compact signed token, over the size cap, or a claim of the wrong type or missing                | Encrypted ID tokens are not supported. A provider sending `email_verified` as a string is refused |
-| `id_token_invalid`       | `auth_time` missing while `max_age` was asked for                                                     | Whether your provider returns `auth_time`; remove `max_age` if it cannot                          |
-| `signature_invalid`      | The algorithm is off the allow-list, no stored key is the token's, or the signature does not verify   | `id_token_algorithms`; the JWKS URL; `JwksRefreshFailed` events for a failed refetch              |
-| `issuer_mismatch`        | `iss` is not exactly the connection's issuer                                                          | A trailing slash or a different path in `issuer`; `iss` is compared byte for byte                 |
-| `audience_mismatch`      | `aud` lacks the `client_id`, holds an untrusted audience, has several with no `azp`, or `azp` differs | `client_id`, `trusted_audiences`, and whether the provider sends `azp`                            |
-| `assertion_expired`      | `exp` has passed, `iat` is too old or in the future, `nbf` or `auth_time` is in the future            | The clocks on your servers and the provider's; a token held too long before the callback          |
-| `nonce_mismatch`         | `nonce` is missing or is not the one this flow sent                                                   | A provider that drops `nonce`; a callback replayed from another flow                              |
-| `authentication_expired` | `auth_time` is older than `max_age`, or earlier than a `reauthenticate` started                       | A provider's session reused without a new sign-in; whether it honours `prompt=login`              |
-| `at_hash_mismatch`       | `at_hash` is not the hash of the access token                                                         | A token endpoint returning an access token from another exchange                                  |
-| `connection_unavailable` | The connection changed while the sign-in was in progress, whether or not the token passed             | A disable, a trust change, or a key your provider removed; the person starts again                |
+| Failure code             | What it means                                                                                                          | What to check                                                                            |
+|--------------------------|------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `id_token_invalid`       | Not a compact signed token, over the size cap, or a claim of the wrong type or missing                                 | Encrypted ID tokens are not supported                                                    |
+| `id_token_invalid`       | `auth_time` missing while `max_age` or a `reauthenticate` asked for it                                                 | Whether your provider returns `auth_time`; remove `max_age` if it cannot                 |
+| `signature_invalid`      | The algorithm is off the allow-list, no stored key is the token's, or the signature does not verify                    | `id_token_algorithms`; the JWKS URL; `JwksRefreshFailed` events for a failed refetch     |
+| `issuer_mismatch`        | `iss` is not exactly the connection's issuer                                                                           | A trailing slash or a different path in `issuer`; `iss` is compared byte for byte        |
+| `audience_mismatch`      | `aud` lacks the `client_id`, holds an untrusted audience, has several with no `azp`, or `azp` differs                  | `client_id`, `trusted_audiences`, and whether the provider sends `azp`                   |
+| `assertion_expired`      | `exp` has passed, `iat` is too old or in the future, `nbf` or `auth_time` is in the future                             | The clocks on your servers and the provider's; a token held too long before the callback |
+| `nonce_mismatch`         | `nonce` is missing or is not the one this flow sent                                                                    | A provider that drops `nonce`; a callback replayed from another flow                     |
+| `authentication_expired` | `auth_time` is older than a positive `max_age`, or earlier than the request for a `max_age` of 0 or a `reauthenticate` | A provider's session reused without a new sign-in; whether it honours `prompt=login`     |
+| `at_hash_mismatch`       | `at_hash` is not the hash of the access token                                                                          | A token endpoint returning an access token from another exchange                         |
+| `connection_unavailable` | The connection changed while the sign-in was in progress, whether or not the token passed                              | A disable, a trust change, or another sign-in's key rotation; the person starts again    |
 
-A key your provider removed or replaced voids the flows in flight, the sign-in that noticed it included, so one person
-sees `connection_unavailable` during a rotation that removes a key straight away. Providers that publish the new key
-well before retiring the old one cause none of this.
+A key your provider removed or replaced voids every other flow in flight and every handoff code not yet redeemed, and
+those people see `connection_unavailable` and start again. The one sign-in whose token found the rotation may finish,
+unless something else changes before its final locks. Providers that publish the new key well before retiring the old
+one cause none of this.
 
 The provider's tokens are never logged, put in an event, stored or shown, and neither is a provider's error description.
 When you need the detail of a failure, read the provider's own logs by the time and the client id, and search your logs

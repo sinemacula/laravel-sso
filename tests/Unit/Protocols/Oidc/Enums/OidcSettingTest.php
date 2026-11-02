@@ -31,7 +31,7 @@ final class OidcSettingTest extends TestCase
     {
         self::assertSame([
             'issuer', 'authorization_endpoint', 'token_endpoint', 'jwks_uri', 'userinfo_endpoint', 'returns_iss',
-            'client_id', 'client_secret', 'client_authentication', 'scopes', 'id_token_algorithms', 'extra_parameters',
+            'client_id', 'client_secret', 'client_authentication', 'client_assertion_algorithm', 'scopes', 'id_token_algorithms', 'extra_parameters',
             'trusted_audiences', 'max_age', 'fetch_userinfo', 'metadata_refresh',
         ], array_column(OidcSetting::cases(), 'value'));
     }

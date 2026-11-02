@@ -38,9 +38,10 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken;
  * - so is a `2xx` whose body `Jose\StrictJson` does not read as an object, so a
  *   repeated member is refused; whose `sub` is not a string exactly equal, byte
  *   for byte, to the ID token's; or with a claim the package reads of another
- *   type: `email` and `email_verified` by `EmailPairing::fits()`, and `name`,
- *   `given_name` and `family_name` strings. A number too large for an integer
- *   is never one of these strings (`StrictJson::decodeMembers()`).
+ *   type: `email` by `EmailPairing::fits()`, and `name`, `given_name` and
+ *   `family_name` strings. A number too large for an integer is never one of
+ *   these strings (`StrictJson::decodeMembers()`). An `email_verified` that is
+ *   not a JSON boolean refuses nothing: it is no evidence (`EmailPairing`).
  *
  * `claims()` answers the members of an answer not refused. The body is never
  * logged, and nothing here logs. It holds its collaborators, none of which

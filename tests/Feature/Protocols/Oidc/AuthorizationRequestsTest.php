@@ -173,7 +173,7 @@ final class AuthorizationRequestsTest extends TestCase
             {
                 $url = 'https://own-layout.example/' . $connection->getConnectionId() . '/';
 
-                return new ConnectionEndpoints($url . 'acs', $url . 'oidc?x=y', $url . 'entity', $url . 'metadata');
+                return new ConnectionEndpoints($url . 'acs', $url . 'oidc?x=y', $url . 'entity', $url . 'metadata', $url . 'jwks');
             }
         });
 

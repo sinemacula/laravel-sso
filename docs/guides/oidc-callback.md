@@ -111,10 +111,12 @@ The connection signs an RFC 7523 client assertion for each token request with it
 1. Turn on `client_authentication` `private_key_jwt`, then add a key with
    `KeyService::addNext($tenantId, $connectionId, KeyUse::CLIENT_ASSERTION)` and make it current with `makeCurrent()`
    (see [Keys](keys.md)).
-2. Register the connection's public JWKS at the provider.
+2. Register the connection's public JWKS URL at the provider, serving its body from your application, or upload its
+   keys where the provider requires that (see [Service provider metadata](service-provider-metadata.md)).
 3. Give the provider's token endpoint as the audience it expects. The assertion's `aud` is the connection's
    `token_endpoint` setting, exactly as you saved it, with `iss` and `sub` the client id, a `jti` used once and a
-   lifetime of 60 seconds, signed `PS256` for an RSA key and `ES256` for an elliptic curve key.
+   lifetime of 60 seconds, signed `PS256` for an RSA key and `ES256` for an elliptic curve key, or the
+   [`client_assertion_algorithm`](oidc-connections.md#the-client-assertion-algorithm) you pinned.
 
 ## Limits
 

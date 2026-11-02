@@ -18,8 +18,12 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * ownership token; `RefreshWriter` writes under the connection's lock, compares
  * and sets, backs off and reports. A source supplies what differs:
  *
- * - `refreshes()`: whether the connection's own switch is on and what it
- *   fetches is a URL the package may fetch;
+ * - `refreshes()`: whether the schedule refreshes the connection: its own
+ *   switch is on, or the source would otherwise leave what it fetched to
+ *   expire, and what it fetches is a URL the package may fetch;
+ * - `isRefreshable()`: whether what it fetches is a URL the package may fetch,
+ *   whatever the switch and whatever has expired, which is what an
+ *   administrator's refresh asks, so it can recover a connection;
  * - `claim()`: the snapshot of the connection's trust the refresh is judged
  *   against, read after the connection and before the claim, and the claim
  *   itself through `RefreshClaims`;
@@ -48,13 +52,24 @@ abstract readonly class MetadataSource
     abstract public function protocol(): string;
 
     /**
-     * Whether the connection refreshes: its switch is on and what the refresh
-     * fetches is a URL the package may fetch.
+     * Whether the schedule refreshes the connection: the source's own rule on
+     * its switch holds and what the refresh fetches is a URL the package may
+     * fetch.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
      */
     abstract public function refreshes(Connection $connection): bool;
+
+    /**
+     * Whether the connection can be refreshed at all: it is the source's
+     * protocol and what the refresh fetches is a URL the package may fetch,
+     * whatever its switch says or what has expired.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return bool
+     */
+    abstract public function isRefreshable(Connection $connection): bool;
 
     /**
      * Snapshot the connection's trust, as it was read, and claim its refresh;

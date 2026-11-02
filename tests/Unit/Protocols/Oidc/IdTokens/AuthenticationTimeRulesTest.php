@@ -117,20 +117,16 @@ final class AuthenticationTimeRulesTest extends TestCase
         $expired = FailureReason::AUTHENTICATION_EXPIRED;
 
         yield from [
-            'under max_age and skew'       => [self::NOW - 359, 300, 60, null],
-            'at max_age and skew'          => [self::NOW - 360, 300, 60, null],
-            'over max_age and skew'        => [self::NOW - 361, 300, 60, $expired],
-            'just over max_age and skew'   => [self::NOW - 360.00001, 300, 60, $expired],
-            'at max_age, no skew'          => [self::NOW - 300, 300, 0, null],
-            'over max_age, no skew'        => [self::NOW - 301, 300, 0, $expired],
-            'just over max_age, no skew'   => [self::NOW - 300.00001, 300, 0, $expired],
-            'max_age 0, now'               => [self::NOW, 0, 60, null],
-            'max_age 0, under the skew'    => [self::NOW - 59, 0, 60, null],
-            'max_age 0, at the skew'       => [self::NOW - 60, 0, 60, null],
-            'max_age 0, over the skew'     => [self::NOW - 61, 0, 60, $expired],
-            'max_age 0, now, no skew'      => [self::NOW, 0, 0, null],
-            'max_age 0, a second, no skew' => [self::NOW - 1, 0, 0, $expired],
-            'in the future, within skew'   => [self::NOW + 10, 0, 60, null],
+            'under max_age and skew'          => [self::NOW - 359, 300, 60, null],
+            'at max_age and skew'             => [self::NOW - 360, 300, 60, null],
+            'over max_age and skew'           => [self::NOW - 361, 300, 60, $expired],
+            'just over max_age and skew'      => [self::NOW - 360.00001, 300, 60, $expired],
+            'at max_age, no skew'             => [self::NOW - 300, 300, 0, null],
+            'over max_age, no skew'           => [self::NOW - 301, 300, 0, $expired],
+            'just over max_age, no skew'      => [self::NOW - 300.00001, 300, 0, $expired],
+            'max_age 1, at it and the skew'   => [self::NOW - 61, 1, 60, null],
+            'max_age 1, over it and the skew' => [self::NOW - 62, 1, 60, $expired],
+            'in the future, within skew'      => [self::NOW + 10, 300, 60, null],
         ];
     }
 
@@ -148,6 +144,75 @@ final class AuthenticationTimeRulesTest extends TestCase
     public function testATimeOlderThanMaxAgeIsExpired(float|int $time, int $maxAge, int $skew, ?FailureReason $reason): void
     {
         self::assertSame($reason, AuthenticationTimeRules::refusal(['auth_time' => $time], self::at(self::NOW), $skew, $maxAge));
+    }
+
+    /**
+     * Rows of `[auth_time, start, skew, reason]`: a `max_age` of 0 with the
+     * request's start given, as the validator asks it. An authentication made
+     * for the request passes however long ago the request started, so a slow
+     * callback is never refused; one before it is, the skew allowed.
+     *
+     * @return iterable<string, array{0: float|int, 1: int, 2: int, 3: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideAfreshTimes(): iterable
+    {
+        $expired = FailureReason::AUTHENTICATION_EXPIRED;
+        $slow    = self::NOW - 3600;
+
+        yield from [
+            'fresh, callback now'                => [self::NOW, self::NOW, 60, null],
+            'fresh, an hour before the callback' => [$slow, $slow, 60, null],
+            'a second after the start, no skew'  => [$slow + 1, $slow, 0, null],
+            'at the start and skew, slow'        => [$slow - 60, $slow, 60, null],
+            'over the start and skew, slow'      => [$slow - 61, $slow, 60, $expired],
+            'at the start, no skew, slow'        => [$slow, $slow, 0, null],
+            'just before the start, no skew'     => [$slow - 0.00001, $slow, 0, $expired],
+            'before a start that is now'         => [self::NOW - 61, self::NOW, 60, $expired],
+            'in the future, within the skew'     => [self::NOW + 60, $slow, 60, null],
+        ];
+    }
+
+    /**
+     * A `max_age` of 0 is judged against the request's start, never against how
+     * long the callback took: it is no callback-age check.
+     *
+     * @param  float|int  $time
+     * @param  int  $start
+     * @param  int  $skew
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('provideAfreshTimes')]
+    public function testAMaxAgeOfZeroIsHeldToTheRequestNotTheCallback(float|int $time, int $start, int $skew, ?FailureReason $reason): void
+    {
+        self::assertSame($reason, AuthenticationTimeRules::refusal(['auth_time' => $time], self::at(self::NOW), $skew, 0, self::at($start)));
+    }
+
+    /**
+     * A `max_age` of 0 alone sets no age, however old the `auth_time`, and
+     * still needs one to be there; the future-time bound still holds.
+     *
+     * @return void
+     */
+    public function testAMaxAgeOfZeroAloneIsNoAgeCheck(): void
+    {
+        $now = self::at(self::NOW);
+
+        self::assertNull(AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 100000], $now, self::SKEW, 0));
+        self::assertSame(FailureReason::ID_TOKEN_INVALID, AuthenticationTimeRules::refusal([], $now, self::SKEW, 0));
+        self::assertSame(FailureReason::ASSERTION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => self::NOW + 61], $now, self::SKEW, 0));
+    }
+
+    /**
+     * With a moment to follow, an `auth_time` is required even with no
+     * `max_age`.
+     *
+     * @return void
+     */
+    public function testAMomentToFollowRequiresATime(): void
+    {
+        self::assertSame(FailureReason::ID_TOKEN_INVALID, AuthenticationTimeRules::refusal([], self::at(self::NOW), self::SKEW, null, self::at(self::NOW)));
+        self::assertSame(FailureReason::ID_TOKEN_INVALID, AuthenticationTimeRules::refusal(['iat' => self::NOW], self::at(self::NOW), self::SKEW, null, self::at(self::NOW)));
     }
 
     /**
@@ -214,7 +279,8 @@ final class AuthenticationTimeRulesTest extends TestCase
         self::assertSame(FailureReason::ASSERTION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => self::NOW + 61], $now, self::SKEW, 0, $start));
         self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 61], $now, self::SKEW, 0, $start));
         self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 61], $now, self::SKEW, 1000, $start));
-        self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 61], $now, self::SKEW, 0, self::at(self::NOW - 1000)));
+        self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 62], $now, self::SKEW, 1, self::at(self::NOW - 1000)));
+        self::assertNull(AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 61], $now, self::SKEW, 0, self::at(self::NOW - 1000)));
         self::assertNull(AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 60], $now, self::SKEW, 0, $start));
     }
 
@@ -229,8 +295,8 @@ final class AuthenticationTimeRulesTest extends TestCase
 
         self::assertNull(AuthenticationTimeRules::refusal(['auth_time' => self::NOW + 60.5], $now, self::SKEW, null));
         self::assertSame(FailureReason::ASSERTION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => self::NOW + 60.6], $now, self::SKEW, null));
-        self::assertNull(AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 59.5], $now, self::SKEW, 0));
-        self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 59.6], $now, self::SKEW, 0));
+        self::assertNull(AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 60.5], $now, self::SKEW, 1));
+        self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 60.6], $now, self::SKEW, 1));
         self::assertNull(AuthenticationTimeRules::refusal(['auth_time' => self::NOW - 59.5], $now, self::SKEW, null, self::at(self::NOW + 0.5)));
         $claims = ['auth_time' => self::NOW - 59.6];
 
@@ -246,8 +312,8 @@ final class AuthenticationTimeRulesTest extends TestCase
     {
         $now = self::at(self::NOW);
 
-        self::assertNull(AuthenticationTimeRules::refusal(['auth_time' => self::NOW, 'iat' => 1], $now, self::SKEW, 0));
-        self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => 1, 'iat' => self::NOW], $now, self::SKEW, 0));
+        self::assertNull(AuthenticationTimeRules::refusal(['auth_time' => self::NOW, 'iat' => 1], $now, self::SKEW, 1));
+        self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, AuthenticationTimeRules::refusal(['auth_time' => 1, 'iat' => self::NOW], $now, self::SKEW, 1));
     }
 
     /**

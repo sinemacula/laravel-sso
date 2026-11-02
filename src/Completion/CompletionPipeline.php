@@ -29,9 +29,11 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
+use SineMacula\Laravel\Sso\Metadata\TransitionReceipts;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
+use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 
 /**
  * Runs a completion's steps in `Enums\CompletionStep`'s fixed order (SSO-5.6,
@@ -54,7 +56,9 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  *    refused with `connection_unavailable` when the connection is gone or no
  *    longer usable (`Protocols\ProtocolManager::isUsable()`), when the request
  *    is gone, a change to its connection voided it since it was consumed or the
- *    trust version it was started with is no longer the locked connection's, or
+ *    trust version it was started with is no longer the locked connection's
+ *    (unless the response's own key refetch made exactly that change, and its
+ *    `Protocols\TransitionReceipt` says so: `Metadata\TransitionReceipts`), or
  *    when the inheritance contract, asked again, no longer names the tenant
  *    whose rule is locked; it is refused with `metadata_expired` when what a
  *    metadata refresh applied to the locked connection has expired by now
@@ -163,7 +167,7 @@ final readonly class CompletionPipeline
         /** Answers an unsolicited response the correlation step handed over. */
         private UnsolicitedReinitiation $reinitiation,
 
-        /** Whether the locked connection's refreshed metadata has expired. */
+        /** Whether what was fetched for the locked connection has expired. */
         private MetadataExpiry $metadata,
     ) {}
 
@@ -322,7 +326,7 @@ final readonly class CompletionPipeline
     /**
      * Refuse a connection gone or no longer usable, a request gone or voided,
      * since consumption, and an enforcing tenant that moved since its rule was
-     * locked, then a connection whose refreshed metadata has expired; run the
+     * locked, then a connection whose fetched metadata has expired; run the
      * locked steps otherwise, on the rows as locked, with the policy the locked
      * rule gives.
      *
@@ -336,7 +340,7 @@ final readonly class CompletionPipeline
      */
     private function locked(CompletionState $state, ?Connection $connection, ?AuthorizationRequest $request, ?LockedEnforcement $enforcement): StageOutcome
     {
-        if (!$this->isGoingOn($connection, $request, $enforcement)) {
+        if (!$this->isGoingOn($connection, $request, $enforcement, $state->transitionReceipt)) {
             return StageOutcome::refuse($state, FailureReason::CONNECTION_UNAVAILABLE);
         }
 
@@ -354,23 +358,43 @@ final readonly class CompletionPipeline
     /**
      * Whether the completion may go on under its locks: the connection still
      * there and usable, the request still there, not voided and of the
-     * connection's trust version, and the locked rule, if any, still the
-     * enforcing tenant's.
+     * connection's trust version, or across exactly the transition the receipt
+     * names, and the locked rule, if any, still the enforcing tenant's.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  ?\SineMacula\Laravel\Sso\Enforcement\LockedEnforcement  $enforcement
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
      * @return bool
      *
      * @phpstan-assert-if-true !null $connection
      * @phpstan-assert-if-true !null $request
      */
-    private function isGoingOn(?Connection $connection, ?AuthorizationRequest $request, ?LockedEnforcement $enforcement): bool
+    private function isGoingOn(?Connection $connection, ?AuthorizationRequest $request, ?LockedEnforcement $enforcement, ?TransitionReceipt $receipt): bool
     {
         $usable = $connection !== null && $this->protocols->isUsable($connection);
-        $live   = $request    !== null && $request->voided_at === null && $request->trust_version === $connection?->trust_version;
+        $live   = $connection !== null && $request !== null && self::isLive($connection, $request, $receipt);
 
         return $usable && $live && ($enforcement?->isCurrent() ?? true);
+    }
+
+    /**
+     * Whether the locked request is not voided and is of the locked
+     * connection's trust version, or crosses exactly the transition the receipt
+     * names.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
+     * @return bool
+     */
+    private static function isLive(Connection $connection, AuthorizationRequest $request, ?TransitionReceipt $receipt): bool
+    {
+        if ($request->voided_at !== null) {
+            return false;
+        }
+
+        return $request->trust_version === $connection->trust_version || TransitionReceipts::permits($receipt, $connection, $request);
     }
 
     /**

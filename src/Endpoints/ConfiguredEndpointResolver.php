@@ -60,6 +60,6 @@ final readonly class ConfiguredEndpointResolver implements EndpointResolver
         $build    = static fn (Endpoint $endpoint): string => $base . str_replace(EndpointSettings::PLACEHOLDER, rawurlencode($id), $settings->pattern($endpoint));
         $metadata = $build(Endpoint::METADATA);
 
-        return new ConnectionEndpoints($build(Endpoint::ASSERTION_CONSUMER_SERVICE), $build(Endpoint::CALLBACK), $metadata, $metadata);
+        return new ConnectionEndpoints($build(Endpoint::ASSERTION_CONSUMER_SERVICE), $build(Endpoint::CALLBACK), $metadata, $metadata, $build(Endpoint::JWKS));
     }
 }

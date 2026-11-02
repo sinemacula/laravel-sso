@@ -37,8 +37,9 @@ final class FeatureTest extends TestCase
     }
 
     /**
-     * The protocols need nothing; the SAML-only features need `saml2`; every
-     * other feature needs either protocol.
+     * The protocols and the scheduled refresh, which is on by default and idle
+     * without a protocol, need nothing; the SAML-only features need `saml2`;
+     * every other feature needs either protocol.
      *
      * @return void
      */
@@ -56,10 +57,22 @@ final class FeatureTest extends TestCase
             'discovery'            => ['saml2', 'oidc'],
             'enforcement'          => ['saml2', 'oidc'],
             'encrypted_assertions' => ['saml2'],
-            'metadata_refresh'     => ['saml2', 'oidc'],
+            'metadata_refresh'     => [],
             'idp_initiated'        => ['saml2'],
             'domain_linking'       => ['saml2', 'oidc'],
         ], $needs);
+    }
+
+    /**
+     * Only the scheduled refresh is on when its switch is not set.
+     *
+     * @return void
+     */
+    public function testOnlyTheScheduledRefreshIsOnByDefault(): void
+    {
+        $on = array_filter(Feature::cases(), static fn (Feature $feature): bool => $feature->isOnByDefault());
+
+        self::assertSame([Feature::METADATA_REFRESH], array_values($on));
     }
 
     /**

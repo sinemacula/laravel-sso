@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\JwksRefreshed;
 use SineMacula\Laravel\Sso\Events\JwksRefreshFailed;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
+use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -267,19 +268,55 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A key removed at the provider: the refetch voids its own flow, so the
-     * token verifies and the completion is refused under the lock, with
-     * `ResultVerified` before its one `FlowFailed`.
+     * A key removed at the provider: the refetch voids what else is in flight
+     * and spares its own flow, which finishes, with `ResultVerified` before its
+     * `HandoffIssued`.
      *
      * @return void
      *
      * @throws \Random\RandomException
      */
-    public function testARefetchThatRemovesAKeyRefusesUnderTheLock(): void
+    public function testARefetchThatRemovesAKeyFinishesItsOwnFlow(): void
     {
         $connection = $this->connection();
 
         $this->provider->unpublish('rsa-1')->publish(self::next())->signWith(self::next());
+
+        $grant = $this->granted($connection);
+
+        self::assertTrue($this->receiveCallback($connection, $grant)->isCompleted());
+
+        $this->assertEventSequence([JwksRefreshed::class, ResultVerified::class, HandoffIssued::class]);
+
+        [$refreshed, $verified] = $this->recordedEvents();
+
+        self::assertInstanceOf(JwksRefreshed::class, $refreshed);
+        self::assertSame([1, 1, true], [$refreshed->keysAdded, $refreshed->keysRemoved, $refreshed->trustChanged]);
+        self::assertSame($this->flowContext($connection), $verified->context()->toArray());
+        $this->assertNoFailure();
+    }
+
+    /**
+     * A key removed at the provider and a further trust change before the
+     * locks: the token verifies and the completion is refused under the lock,
+     * with `ResultVerified` before its one `FlowFailed`.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testAFurtherTrustChangeAfterTheRefetchRefusesUnderTheLock(): void
+    {
+        $connection = $this->connection(['fetch_userinfo' => true, 'userinfo_endpoint' => $this->provider->endpoint('userinfo')]);
+
+        $this->provider->unpublish('rsa-1')->publish(self::next())->signWith(self::next());
+        $this->provider->respond('userinfo', static function (FetchRequest $request) use ($connection): FetchResult {
+            unset($request);
+
+            Connection::query()->whereKey($connection->id)->increment('trust_version');
+
+            return FakeTokenEndpoint::json(200, ['sub' => FakeOpenIdProvider::SUBJECT]);
+        });
 
         $grant = $this->granted($connection);
 
@@ -290,7 +327,6 @@ final class OidcCompletionEventSequenceTest extends TestCase
         [$refreshed, $verified, $failed] = $this->recordedEvents();
 
         self::assertInstanceOf(JwksRefreshed::class, $refreshed);
-        self::assertSame([1, 1, true], [$refreshed->keysAdded, $refreshed->keysRemoved, $refreshed->trustChanged]);
         self::assertSame($this->flowContext($connection), $verified->context()->toArray());
         self::assertSame($this->flowContext($connection), $failed->context()->toArray());
         self::assertSame($failed, $this->assertExactlyOneFailure(Flow::CALLBACK, FailureReason::CONNECTION_UNAVAILABLE));

@@ -525,7 +525,7 @@ final class RelyingPartyDescriptionTest extends TestCase
             {
                 $url = 'https://own-layout.example/' . $connection->getConnectionId() . '/';
 
-                return new ConnectionEndpoints($url . 'acs', $url . 'oidc?x=y', $url . 'entity', $url . 'metadata');
+                return new ConnectionEndpoints($url . 'acs', $url . 'oidc?x=y', $url . 'entity', $url . 'metadata', $url . 'jwks');
             }
         });
 
@@ -639,25 +639,310 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * A method stored past the settings' validation is answered as stored, with
-     * no keys, since a connection never completes by it; one JSON cannot hold
-     * throws rather than publishing a partial document.
+     * Rows of `[method]`: a client authentication stored past the settings'
+     * validation, which the package does not support.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function provideUnsupportedMethods(): iterable
+    {
+        yield 'another RFC 8705 method' => ['tls_client_auth'];
+        yield 'none' => ['none'];
+        yield 'of another case' => ['CLIENT_SECRET_BASIC'];
+        yield 'empty' => [''];
+        yield 'bytes JSON cannot hold' => ["\xB1"];
+        yield 'a number' => [1];
+    }
+
+    /**
+     * A method the package does not support is refused in every document, so
+     * nothing registers a client that could never authenticate.
+     *
+     * @param  mixed  $method
+     * @return void
+     */
+    #[DataProvider('provideUnsupportedMethods')]
+    public function testAnUnsupportedMethodIsRefused(mixed $method): void
+    {
+        $connection  = new IdentifiedConnection('01jbstoredmethod0000000000', settings: ['client_authentication' => $method]);
+        $unavailable = ServiceProviderDescription::unavailable(FailureReason::SETTINGS_INVALID);
+
+        self::assertEquals($unavailable, self::driver()->describe($connection));
+        self::assertEquals($unavailable, self::driver()->describeWithInlineKeys($connection));
+        self::assertEquals($unavailable, self::driver()->publicKeys($connection));
+    }
+
+    /**
+     * `private_key_jwt` names the public JWKS URL by default, with the signing
+     * algorithm and no keys, exactly.
      *
      * @return void
      */
-    public function testAMethodStoredPastValidationIsAnsweredAsStored(): void
+    public function testNamesThePublicJwksUrlByDefault(): void
     {
-        $connection = new IdentifiedConnection('01jbstoredmethod0000000000', settings: ['client_authentication' => 'tls_client_auth']);
+        $connection = $this->connection('private_key_jwt');
 
+        $this->storeKey($connection, self::rsaPem(), KeyType::RSA, KeyState::CURRENT);
+
+        $description = self::driver()->describe($connection);
+
+        self::assertSame('application/json', $description->contentType);
         self::assertSame(
-            '{"redirect_uris":["https://sp.example.test/auth/sso/connections/01jbstoredmethod0000000000/callback"],"response_types":["code"],'
-            . '"grant_types":["authorization_code"],"token_endpoint_auth_method":"tls_client_auth"}',
-            $this->describe($connection)->body,
+            '{"redirect_uris":["https://sp.example.test/auth/sso/connections/' . $connection->id . '/callback"],"response_types":["code"],'
+            . '"grant_types":["authorization_code"],"token_endpoint_auth_method":"private_key_jwt",'
+            . '"token_endpoint_auth_signing_alg":"PS256","jwks_uri":"https://sp.example.test/auth/sso/connections/' . $connection->id . '/jwks"}',
+            $description->body,
         );
+    }
 
-        $this->expectException(\JsonException::class);
+    /**
+     * Neither document holds both a `jwks_uri` and a `jwks`.
+     *
+     * @return void
+     */
+    public function testNeverNamesBothInOneDocument(): void
+    {
+        $connection = $this->connection('private_key_jwt');
 
-        $this->describe(new IdentifiedConnection('01jbstoredmethod0000000000', settings: ['client_authentication' => "\xB1"]));
+        $this->addKey($connection, KeyType::EC);
+
+        $byUrl  = self::decoded(self::driver()->describe($connection));
+        $inline = self::decoded(self::driver()->describeWithInlineKeys($connection));
+
+        self::assertArrayHasKey('jwks_uri', $byUrl);
+        self::assertArrayNotHasKey('jwks', $byUrl);
+        self::assertArrayHasKey('jwks', $inline);
+        self::assertArrayNotHasKey('jwks_uri', $inline);
+    }
+
+    /**
+     * A client secret method names neither a key nor a URL for one.
+     *
+     * @return void
+     */
+    public function testAClientSecretMethodNamesNoJwksUrl(): void
+    {
+        $metadata = self::decoded(self::driver()->describe($this->connection('client_secret_post')));
+
+        self::assertArrayNotHasKey('jwks_uri', $metadata);
+        self::assertArrayNotHasKey('jwks', $metadata);
+    }
+
+    /**
+     * The URL named is the bound resolver's.
+     *
+     * @return void
+     */
+    public function testTheJwksUrlIsTheEndpointResolvers(): void
+    {
+        $connection = $this->connection('private_key_jwt');
+
+        $this->addKey($connection, KeyType::EC);
+
+        config()->set('sso.endpoints.paths.jwks', '/oidc/{connection}/keys.json');
+
+        self::assertSame('https://sp.example.test/oidc/' . $connection->id . '/keys.json', self::decoded(self::driver()->describe($connection))['jwks_uri']);
+    }
+
+    /**
+     * The public JWKS holds the current key then the next, exactly, as its own
+     * media type, and holds no private member.
+     *
+     * @return void
+     */
+    public function testThePublicKeysHoldTheCurrentThenTheNext(): void
+    {
+        $connection = $this->connection('private_key_jwt');
+
+        $this->storeKey($connection, self::rsaPem(), KeyType::RSA, KeyState::CURRENT);
+        $this->storeKey($connection, self::ecPem(), KeyType::EC, KeyState::NEXT);
+
+        $keys = self::driver()->publicKeys($connection);
+
+        self::assertSame('application/jwk-set+json', $keys->contentType);
+        self::assertSame('{"keys":[' . self::rsaJwk() . ',' . self::ecJwk() . ']}', $keys->body);
+    }
+
+    /**
+     * The public JWKS follows a rotation by the key service, which is what a
+     * `jwks_uri` relies on: the current key alone; the current and the next, in
+     * that order; once the next is made current, it alone, the replaced key
+     * retiring and gone; and it stays gone once retired.
+     *
+     * @return void
+     */
+    public function testThePublicKeysFollowARotation(): void
+    {
+        $connection = $this->connection('private_key_jwt');
+        $first      = $this->addKey($connection, KeyType::EC);
+        $kids       = fn (): array => self::kidsOf(['jwks' => self::decoded(self::driver()->publicKeys($connection))]);
+
+        self::assertSame([self::kidOf($first)], $kids());
+
+        $second = $this->addKey($connection, KeyType::EC);
+
+        self::assertSame([self::kidOf($first), self::kidOf($second)], $kids());
+
+        $promoted = app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $second->id);
+
+        self::assertSame(KeyState::RETIRING, $promoted->previous?->state);
+        self::assertSame([self::kidOf($second)], $kids());
+
+        self::assertTrue(app(KeyService::class)->retire(self::TENANT, $connection->id, $first->id)->isSucceeded());
+
+        self::assertSame([self::kidOf($second)], $kids());
+    }
+
+    /**
+     * The public JWKS of a connection with nothing to serve is unavailable: no
+     * key yet, or a client secret method.
+     *
+     * @return void
+     */
+    public function testThePublicKeysAreUnavailableWithNothingToServe(): void
+    {
+        $unavailable = ServiceProviderDescription::unavailable(FailureReason::CONNECTION_UNAVAILABLE);
+
+        self::assertEquals($unavailable, self::driver()->publicKeys($this->connection('private_key_jwt')));
+        self::assertEquals($unavailable, self::driver()->publicKeys($this->connection('client_secret_basic', self::SECRET)));
+    }
+
+    /**
+     * Rows of `[algorithm, type, signing algorithm]`: a pinned algorithm that
+     * fits its key: the assertion's header, the JWK's `alg` and the description
+     * agree, under the same `kid`.
+     *
+     * @return iterable<string, array{0: ?string, 1: \SineMacula\Laravel\Sso\Keys\Enums\KeyType, 2: string}>
+     */
+    public static function provideFittingAlgorithms(): iterable
+    {
+        yield 'RSA, none pinned' => [null, KeyType::RSA, 'PS256'];
+        yield 'RSA, PS256' => ['PS256', KeyType::RSA, 'PS256'];
+        yield 'RSA, RS256' => ['RS256', KeyType::RSA, 'RS256'];
+        yield 'P-256, none pinned' => [null, KeyType::EC, 'ES256'];
+        yield 'P-256, ES256' => ['ES256', KeyType::EC, 'ES256'];
+    }
+
+    /**
+     * The header, the published `alg` and the description all follow the pinned
+     * algorithm, the `kid` not moving, and the provider verifies the assertion.
+     *
+     * @param  ?string  $pinned
+     * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
+     * @param  string  $algorithm
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    #[DataProvider('provideFittingAlgorithms')]
+    public function testThePinnedAlgorithmIsUsedEverywhere(?string $pinned, KeyType $type, string $algorithm): void
+    {
+        $provider   = $this->provider();
+        $connection = $this->providerConnection($provider);
+        $key        = $this->addKey($connection, $type);
+
+        $connection->forceFill(['settings' => [...$connection->settings, 'client_assertion_algorithm' => $pinned]])->save();
+
+        $metadata = self::decoded(self::driver()->describe($connection));
+        $inline   = self::jwksOf(self::decoded(self::driver()->describeWithInlineKeys($connection)))[0];
+        $public   = json_decode((string) self::driver()->publicKeys($connection)->body, true, 512, JSON_THROW_ON_ERROR);
+        $options  = OidcOptions::of($connection);
+        $sent     = app(TokenExchange::class)->credentials($connection, $options);
+
+        self::assertNotNull($sent);
+        self::assertIsArray($public);
+
+        $header = json_decode(JwsSigner::decode(explode('.', $sent->secret())[0]), true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertIsArray($header);
+        self::assertSame($algorithm, $metadata['token_endpoint_auth_signing_alg']);
+        self::assertSame($algorithm, $inline['alg']);
+        self::assertSame($algorithm, $public['keys'][0]['alg'] ?? null);
+        self::assertSame($algorithm, $header['alg']);
+        self::assertSame(ClientKey::publicJwk((string) $key->key->publicKey)['kid'], $header['kid']);
+        self::assertSame($inline['kid'], $header['kid']);
+
+        $provider->register(self::CLIENT_ID, 'private_key_jwt', null, self::pemOf($inline));
+
+        self::assertSame(200, $this->exchange($provider, $connection));
+    }
+
+    /**
+     * Rows of `[pinned, type]`: a pinned algorithm a key cannot sign under, or
+     * that the package does not sign with.
+     *
+     * @return iterable<string, array{0: string, 1: \SineMacula\Laravel\Sso\Keys\Enums\KeyType}>
+     */
+    public static function provideUnfittingAlgorithms(): iterable
+    {
+        yield 'RS256 and a P-256 key' => ['RS256', KeyType::EC];
+        yield 'PS256 and a P-256 key' => ['PS256', KeyType::EC];
+        yield 'ES256 and an RSA key' => ['ES256', KeyType::RSA];
+        yield 'ES384 and a P-256 key' => ['ES384', KeyType::EC];
+        yield 'RS384 and an RSA key' => ['RS384', KeyType::RSA];
+    }
+
+    /**
+     * An algorithm stored past validation that its key cannot sign under, or
+     * the package does not sign with, is `settings_invalid` in every document,
+     * and the connection is not complete.
+     *
+     * @param  string  $pinned
+     * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
+     * @return void
+     */
+    #[DataProvider('provideUnfittingAlgorithms')]
+    public function testAnAlgorithmThatDoesNotFitIsRefused(string $pinned, KeyType $type): void
+    {
+        $connection = $this->connection('private_key_jwt');
+
+        $this->addKey($connection, $type);
+
+        $connection->forceFill(['settings' => [...$connection->settings, 'client_assertion_algorithm' => $pinned]])->save();
+
+        $invalid = ServiceProviderDescription::unavailable(FailureReason::SETTINGS_INVALID);
+
+        self::assertEquals($invalid, self::driver()->describe($connection));
+        self::assertEquals($invalid, self::driver()->describeWithInlineKeys($connection));
+        self::assertEquals($invalid, self::driver()->publicKeys($connection));
+        self::assertFalse(self::driver()->isComplete($connection));
+    }
+
+    /**
+     * A next key that does not fit is refused as a current one is.
+     *
+     * @return void
+     */
+    public function testANextKeyThatDoesNotFitIsRefused(): void
+    {
+        $connection = $this->connection('private_key_jwt');
+
+        $this->storeKey($connection, self::rsaPem(), KeyType::RSA, KeyState::CURRENT);
+        $this->storeKey($connection, self::ecPem(), KeyType::EC, KeyState::NEXT);
+
+        $connection->forceFill(['settings' => [...$connection->settings, 'client_assertion_algorithm' => 'RS256']])->save();
+
+        self::assertEquals(ServiceProviderDescription::unavailable(FailureReason::SETTINGS_INVALID), self::driver()->describe($connection));
+    }
+
+    /**
+     * What a connection holds is validated short of requiring it complete: a
+     * valid method and key with none of the provider's settings is described,
+     * so it can be registered before it is enabled.
+     *
+     * @return void
+     */
+    public function testRegisteringBeforeEnablingStillWorks(): void
+    {
+        $connection = $this->connection('private_key_jwt');
+
+        $this->addKey($connection, KeyType::EC);
+
+        $connection->forceFill(['enabled' => false, 'settings' => ['client_authentication' => 'private_key_jwt', 'client_assertion_algorithm' => 'ES256']])->save();
+
+        self::assertTrue(self::driver()->describe($connection)->isAvailable());
+        self::assertTrue(self::driver()->publicKeys($connection)->isAvailable());
+        self::assertFalse(self::driver()->isComplete($connection));
     }
 
     /**
@@ -769,14 +1054,29 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * What the description shows for the connection, through its driver.
+     * What the description shows for the connection with its keys in the
+     * document, through its driver.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription
      */
     private function describe(SsoConnection $connection): ServiceProviderDescription
     {
-        return app(ProtocolManager::class)->protocol(OidcDriver::NAME)->describe($connection);
+        return self::driver()->describeWithInlineKeys($connection);
+    }
+
+    /**
+     * The OIDC driver.
+     *
+     * @return \SineMacula\Laravel\Sso\Protocols\Oidc\OidcDriver
+     */
+    private static function driver(): OidcDriver
+    {
+        $driver = app(ProtocolManager::class)->protocol(OidcDriver::NAME);
+
+        self::assertInstanceOf(OidcDriver::class, $driver);
+
+        return $driver;
     }
 
     /**

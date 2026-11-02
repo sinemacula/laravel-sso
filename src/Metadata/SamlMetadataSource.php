@@ -24,9 +24,10 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
  * What a SAML connection refreshes (SSO-2.8, SSO-11.12): its identity
  * provider's metadata, from the `metadata_url` the administrator saved.
  *
- * - It refreshes while its `metadata_refresh` setting is on and its
- *   `metadata_url` is a valid `https` URL: the URL the administrator saved is
- *   the only one ever fetched.
+ * - The schedule refreshes it when its `metadata_url` is a valid `https` URL,
+ *   unless its `metadata_refresh` setting is off: the URL the administrator
+ *   saved is the only one ever fetched. An administrator may refresh it
+ *   whatever the setting says.
  * - Its snapshot is the connection's metadata signing anchors and identity
  *   provider signing certificates, read after the connection itself: the sorted
  *   fingerprints of both sets (`RefreshClaim::trustedOf()`), with the anchors'
@@ -103,8 +104,9 @@ final readonly class SamlMetadataSource extends MetadataSource
     }
 
     /**
-     * Whether the connection's metadata refreshes: a SAML connection with
-     * `metadata_refresh` on and an `https` `metadata_url`.
+     * Whether the schedule refreshes the connection's metadata: a SAML
+     * connection with an `https` `metadata_url` and `metadata_refresh` not
+     * switched off.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
@@ -112,9 +114,20 @@ final readonly class SamlMetadataSource extends MetadataSource
     #[\Override]
     public function refreshes(Connection $connection): bool
     {
-        $switchedOn = $connection->protocol === Saml2Driver::NAME && ($connection->settings[Saml2Setting::METADATA_REFRESH->value] ?? null) === true;
+        return ($connection->settings[Saml2Setting::METADATA_REFRESH->value] ?? true) === true && $this->isRefreshable($connection);
+    }
 
-        return $switchedOn && SettingRules::url($connection->settings[Saml2Setting::METADATA_URL->value] ?? null) === null;
+    /**
+     * Whether the connection's metadata can be refreshed: a SAML connection
+     * with an `https` `metadata_url`.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return bool
+     */
+    #[\Override]
+    public function isRefreshable(Connection $connection): bool
+    {
+        return $connection->protocol === Saml2Driver::NAME && SettingRules::url($connection->settings[Saml2Setting::METADATA_URL->value] ?? null) === null;
     }
 
     /**

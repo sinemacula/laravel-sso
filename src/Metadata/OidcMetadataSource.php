@@ -25,8 +25,20 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions;
  * from its pinned issuer, and its JWKS, through the shared refresh machinery
  * (`MetadataSource`).
  *
- * - It refreshes while its `metadata_refresh` setting is on and its `issuer` is
- *   a valid issuer: the only URL derived is the issuer's discovery document.
+ * - The schedule refreshes it while its `metadata_refresh` setting is on and
+ *   its `issuer` is a valid issuer: the only URL derived is the issuer's
+ *   discovery document. An administrator may refresh it whatever the setting
+ *   says.
+ * - A connection no document was ever validated for (`metadata_fetched_at`
+ *   unset), with a valid `jwks_uri` saved, may hold endpoints saved by hand and
+ *   a provider with no discovery document. With its setting off it refreshes
+ *   its keys alone, from the saved `jwks_uri`, leaving the endpoints and
+ *   `metadata_fetched_at` untouched; the schedule does so once a fetch has
+ *   stamped `jwks_fetched_at`, so that those keys never expire unattended. With
+ *   the setting on, it tries the document first and, when that fails for any
+ *   reason but `issuer_mismatch`, refreshes its keys alone instead; both
+ *   failing is the document's failure. The saved URL is the one an
+ *   unknown-`kid` refetch fetches, so this trusts nothing new.
  * - Its snapshot is its JWKS version and the settings a refresh depends on or
  *   may change, in a fixed order; it is read again from the locked row.
  * - It fetches as an import does (`DiscoveryImporter::fetch()`), pinned to the
@@ -36,13 +48,13 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions;
  *   from what is stored is contained: the refresh is `settings_invalid`, and
  *   the exception is logged by its class alone, so a run goes on to the next
  *   connection.
- * - It writes through `RefreshWriter`. Under the lock, a document with an
- *   endpoint that would not be a valid setting, or with no `userinfo_endpoint`
- *   while `fetch_userinfo` is on, is `discovery_invalid`, and a document or
- *   JWKS whose stale limit has passed by commit
- *   (`MetadataExpiry::hasExpired()`, each from its own validated moment) is
- *   `metadata_expired`; each records a failure and keeps the last good settings
- *   and keys.
+ * - It writes through `RefreshWriter`, compared and judged alike whatever it
+ *   fetched. Under the lock, a document with an endpoint that would not be a
+ *   valid setting, or with no `userinfo_endpoint` while `fetch_userinfo` is on,
+ *   is `discovery_invalid`, and a document or JWKS whose stale limit has passed
+ *   by commit (`MetadataExpiry::hasExpired()`, each from its own validated
+ *   moment) is `metadata_expired`; each records a failure and keeps the last
+ *   good settings and keys.
  * - It may change only `authorization_endpoint`, `token_endpoint`, `jwks_uri`,
  *   `userinfo_endpoint` (set or changed, never removed) and `returns_iss`
  *   (false to true only), and replaces the JWKS exactly, never as a union.
@@ -135,8 +147,9 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * Whether the connection refreshes: an OIDC connection with
-     * `metadata_refresh` on and a valid issuer.
+     * Whether the schedule refreshes the connection: an OIDC connection with a
+     * valid issuer and either `metadata_refresh` on, or fetched keys from a URL
+     * saved by hand, with no document, which would otherwise expire unattended.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
@@ -144,9 +157,22 @@ final readonly class OidcMetadataSource extends MetadataSource
     #[\Override]
     public function refreshes(Connection $connection): bool
     {
-        $switchedOn = $connection->protocol === OidcDriver::NAME && ($connection->settings[OidcSetting::METADATA_REFRESH->value] ?? null) === true;
+        $unattended = $connection->jwks_fetched_at !== null && self::savedKeysUri($connection) !== null;
 
-        return $switchedOn && SettingRules::url($connection->settings[OidcSetting::ISSUER->value] ?? null, false) === null;
+        return (self::isSwitchedOn($connection) || $unattended) && $this->isRefreshable($connection);
+    }
+
+    /**
+     * Whether the connection can be refreshed: an OIDC connection with a valid
+     * issuer.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return bool
+     */
+    #[\Override]
+    public function isRefreshable(Connection $connection): bool
+    {
+        return $connection->protocol === OidcDriver::NAME && SettingRules::url($connection->settings[OidcSetting::ISSUER->value] ?? null, false) === null;
     }
 
     /**
@@ -166,8 +192,9 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * Fetch the saved issuer's discovery document, then the JWKS it names under
-     * the connection's own allow-list, noting each moment it validated.
+     * Fetch the saved issuer's discovery document, then the JWKS it names, or
+     * only the saved JWKS for a connection that fetches no document, under the
+     * connection's own allow-list, noting each moment it validated.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @return \SineMacula\Laravel\Sso\Metadata\FetchedMetadata
@@ -185,7 +212,9 @@ final readonly class OidcMetadataSource extends MetadataSource
             return FetchedMetadata::refused(FailureReason::SETTINGS_INVALID, FetchStatus::REFUSED);
         }
 
-        return $this->importer->fetch($issuer, $allowed);
+        $saved = self::savedKeysUri($connection);
+
+        return $saved !== null && !self::isSwitchedOn($connection) ? $this->importer->fetchKeys($saved, $allowed) : $this->discovered($issuer, $saved, $allowed);
     }
 
     /**
@@ -207,6 +236,10 @@ final readonly class OidcMetadataSource extends MetadataSource
 
             $metadata = $fetched->document();
 
+            if ($metadata instanceof ProviderKeySet && $fetched->validatedAt !== null) {
+                return $this->writtenKeys($locked, $metadata, $fetched->validatedAt, $actor);
+            }
+
             if (!$metadata instanceof OidcMetadata || $fetched->validatedAt === null) {
                 return $this->writer->failed($locked, $fetched->reason ?? FailureReason::DISCOVERY_INVALID, $actor);
             }
@@ -215,6 +248,32 @@ final readonly class OidcMetadataSource extends MetadataSource
 
             return $refusal === null ? $this->written($locked, $metadata, $fetched->validatedAt, $actor) : $this->writer->failed($locked, $refusal, $actor);
         }, $actor);
+    }
+
+    /**
+     * The discovery document and the JWKS it names; when that fails and a saved
+     * JWKS URL was given, what that URL gives instead, or the first failure. A
+     * document naming another issuer is never passed over: something answers
+     * there that should not, and an administrator must look.
+     *
+     * @param  string  $issuer
+     * @param  ?string  $saved
+     * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
+     * @return \SineMacula\Laravel\Sso\Metadata\FetchedMetadata
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function discovered(string $issuer, ?string $saved, AlgorithmAllowList $allowed): FetchedMetadata
+    {
+        $fetched = $this->importer->fetch($issuer, $allowed);
+
+        if ($fetched->isRead() || $saved === null || $fetched->reason === FailureReason::ISSUER_MISMATCH) {
+            return $fetched;
+        }
+
+        $keys = $this->importer->fetchKeys($saved, $allowed);
+
+        return $keys->isRead() ? $keys : $fetched;
     }
 
     /**
@@ -300,6 +359,43 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
+     * Replace the keys exactly from a fetch of the saved JWKS alone, unless
+     * they were validated at a moment whose stale limit has passed by now: a
+     * key removed voids what is in flight, and neither an endpoint nor when the
+     * document was last validated is touched.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet  $keys
+     * @param  \Carbon\CarbonImmutable  $validatedAt
+     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    private function writtenKeys(Connection $locked, ProviderKeySet $keys, CarbonImmutable $validatedAt, ?ActingIdentity $actor): RefreshResult
+    {
+        if ($this->expiry->hasExpired(null, $validatedAt)) {
+            return $this->writer->failed($locked, FailureReason::METADATA_EXPIRED, $actor);
+        }
+
+        $changes = $keys->changesFrom(ProviderKeySet::fromStored($locked->jwks, OidcOptions::of($locked)->algorithms()));
+        $removed = $changes['removed'] > 0;
+
+        if ($removed) {
+            $this->voider->voidFor($locked);
+        }
+
+        $this->writer->keysSucceeded($locked, [
+            'jwks'            => $keys->toStored(),
+            'jwks_version'    => $locked->jwks_version + 1,
+            'jwks_fetched_at' => $validatedAt,
+        ]);
+
+        return $this->writer->refreshed($locked, $changes['added'] > 0 || $removed ? [self::KEYS] : [], $removed, $actor);
+    }
+
+    /**
      * The snapshot of the connection's trust: its JWKS version and the settings
      * a refresh depends on or may change, in a fixed order whatever order they
      * were read in.
@@ -316,6 +412,31 @@ final readonly class OidcMetadataSource extends MetadataSource
         }
 
         return ['jwks_version' => $connection->jwks_version, 'settings' => $settings];
+    }
+
+    /**
+     * Whether the connection's `metadata_refresh` setting is on.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return bool
+     */
+    private static function isSwitchedOn(Connection $connection): bool
+    {
+        return ($connection->settings[OidcSetting::METADATA_REFRESH->value] ?? null) === true;
+    }
+
+    /**
+     * The saved `jwks_uri` of a connection no document was ever validated for,
+     * when it is a URL the package may fetch; `null` otherwise.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return ?string
+     */
+    private static function savedKeysUri(Connection $connection): ?string
+    {
+        $uri = $connection->settings[OidcSetting::JWKS_URI->value] ?? null;
+
+        return $connection->metadata_fetched_at === null && is_string($uri) && SettingRules::url($uri, false) === null ? $uri : null;
     }
 
     /**

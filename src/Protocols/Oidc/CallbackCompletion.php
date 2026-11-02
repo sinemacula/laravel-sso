@@ -33,7 +33,10 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse;
  *    `response_invalid`; `error` alone is `provider_error`;
  * 4. the token request (`TokenExchange`, one attempt), with no credential being
  *    `connection_unavailable`, and its answer (`TokenResponseReader`);
- * 5. the ID token's validation, and the claims assembled from it.
+ * 5. the ID token's validation, and the claims assembled from it; the verified
+ *    completion carries the `Protocols\TransitionReceipt` of a key rotation the
+ *    token's own refetch made, which only the validation of the whole token
+ *    under the keys it left, and UserInfo when fetched, hands on.
  *
  * The code alone of a provider's error is logged, through the sanitising
  * logger, under `sso.oidc.callback_error` or `sso.oidc.token_error` and only
@@ -233,7 +236,7 @@ final readonly class CallbackCompletion
             return Completion::refused($validation->reason);
         }
 
-        return $this->claims->assemble($connection, $options, $validation->token, $tokens, $consumed);
+        return $this->claims->assemble($connection, $options, $validation->token, $tokens, $consumed)->withReceipt($validation->receipt);
     }
 
     /**

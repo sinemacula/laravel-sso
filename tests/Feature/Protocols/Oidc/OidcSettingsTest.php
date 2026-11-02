@@ -53,7 +53,7 @@ final class OidcSettingsTest extends TestCase
             'id_token_algorithms'   => ['RS256'],
             'trusted_audiences'     => [],
             'fetch_userinfo'        => false,
-            'metadata_refresh'      => false,
+            'metadata_refresh'      => true,
         ], $settings->toArray());
 
         self::assertSame([], $settings->violations());
@@ -86,7 +86,7 @@ final class OidcSettingsTest extends TestCase
             'extra_parameters'      => ['prompt' => 'login'],
             'trusted_audiences'     => [],
             'fetch_userinfo'        => false,
-            'metadata_refresh'      => false,
+            'metadata_refresh'      => true,
         ], $stored);
     }
 
@@ -125,21 +125,44 @@ final class OidcSettingsTest extends TestCase
     }
 
     /**
-     * The refresh may be switched on only while the refresh feature is on.
+     * The refresh switch is a plain boolean: it is inert while the feature is
+     * off, never refused, so turning the schedule off leaves every connection
+     * able to change.
      *
      * @return void
      */
-    public function testTheRefreshIsSwitchedOnOnlyWithItsFeature(): void
+    public function testTheRefreshSwitchIsABooleanWhateverTheFeatureSays(): void
     {
-        config()->set('sso.features.metadata_refresh', false);
+        foreach ([false, true] as $feature) {
+            config()->set('sso.features.metadata_refresh', $feature);
 
-        self::assertSame([['metadata_refresh', 'unsupported']], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => true])));
-        self::assertSame([], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => false])));
+            self::assertSame([], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => true])));
+            self::assertSame([], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => false])));
+            self::assertSame([['metadata_refresh', 'invalid_type']], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => 1])));
+        }
+    }
 
-        config()->set('sso.features.metadata_refresh', true);
+    /**
+     * A client assertion algorithm is one the package signs with, compared
+     * exactly; none is stored unless it is given, so each key keeps its
+     * default.
+     *
+     * @return void
+     */
+    public function testTheClientAssertionAlgorithmIsOneThePackageSignsWith(): void
+    {
+        foreach (['PS256', 'RS256', 'ES256'] as $algorithm) {
+            $settings = OidcSettings::fromArray(['client_assertion_algorithm' => $algorithm]);
 
-        self::assertSame([], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => true])));
-        self::assertSame([['metadata_refresh', 'invalid_type']], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => 1])));
+            self::assertSame([], self::violationsOf($settings));
+            self::assertSame($algorithm, $settings->toArray()['client_assertion_algorithm']);
+        }
+
+        self::assertSame([['client_assertion_algorithm', 'not_allowed']], self::violationsOf(OidcSettings::fromArray(['client_assertion_algorithm' => 'ES384'])));
+        self::assertSame([['client_assertion_algorithm', 'not_allowed']], self::violationsOf(OidcSettings::fromArray(['client_assertion_algorithm' => 'none'])));
+        self::assertSame([['client_assertion_algorithm', 'not_allowed']], self::violationsOf(OidcSettings::fromArray(['client_assertion_algorithm' => 'rs256'])));
+        self::assertSame([['client_assertion_algorithm', 'invalid_type']], self::violationsOf(OidcSettings::fromArray(['client_assertion_algorithm' => 1])));
+        self::assertArrayNotHasKey('client_assertion_algorithm', OidcSettings::fromArray([])->toArray());
     }
 
     /**

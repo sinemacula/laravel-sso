@@ -15,14 +15,15 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
  * The validated ID token is the source when it carries `email`, even when
  * UserInfo has its own; otherwise a validated UserInfo response is, when it was
  * fetched and carries `email`; otherwise there is no pair. `email_verified` is
- * read from that source alone and carried exactly as asserted: `true`, `false`,
- * or `null` when that source does not state it, so another source's flag never
- * vouches for an email.
+ * read from that source alone, so another source's flag never vouches for an
+ * email: JSON `true` and JSON `false` are carried as asserted, and anything
+ * else (absent, `null`, a string such as `"true"`, a number, an object or an
+ * array) is `null`, no evidence either way. Nothing is coerced, and such a
+ * value does not refuse the sign-in.
  *
- * `fits()` is the rule on the two claims' types, which the UserInfo reader and
- * the claims' assembly apply before anything is paired: `email` a string of 1
- * to 320 bytes and `email_verified` a strict boolean, when each is present. The
- * string `true` is not a boolean. A member present as `null` is not missing, so
+ * `fits()` is the rule on the `email` claim's type, which the UserInfo reader
+ * and the claims' assembly apply before anything is paired: a string of 1 to
+ * 320 bytes, when it is present. A member present as `null` is not missing, so
  * it does not fit.
  *
  * `linkingEmail()` is the only way an asserted email becomes a linking email:
@@ -49,15 +50,15 @@ final class EmailPairing
     private function __construct() {}
 
     /**
-     * Whether the claims' `email` and `email_verified`, each when present, have
-     * the type and size the package reads them with.
+     * Whether the claims' `email`, when present, has the type and size the
+     * package reads it with. Their `email_verified` never refuses them.
      *
      * @param  array<array-key, mixed>  $claims
      * @return bool
      */
     public static function fits(#[\SensitiveParameter] array $claims): bool
     {
-        return self::isEmail($claims) && self::isVerifiedFlag($claims);
+        return self::isEmail($claims);
     }
 
     /**
@@ -113,11 +114,13 @@ final class EmailPairing
     private static function pair(#[\SensitiveParameter] array $claims, LinkingEmailSource $source): AssertedEmail
     {
         if (!self::fits($claims)) {
-            throw new \LogicException('An email and its email_verified are typed before they are paired.');
+            throw new \LogicException('An email is typed before it is paired.');
         }
 
-        /** @var array{email: string, email_verified?: bool} $claims */
-        return new AssertedEmail($claims[self::EMAIL], $claims[self::EMAIL_VERIFIED] ?? null, $source);
+        $verified = $claims[self::EMAIL_VERIFIED] ?? null;
+
+        /** @var array{email: string} $claims */
+        return new AssertedEmail($claims[self::EMAIL], is_bool($verified) ? $verified : null, $source);
     }
 
     /**
@@ -135,16 +138,5 @@ final class EmailPairing
         $email = $claims[self::EMAIL];
 
         return is_string($email) && $email !== '' && strlen($email) <= AssertedEmail::MAX_EMAIL_LENGTH;
-    }
-
-    /**
-     * Whether `email_verified` is absent, or a strict boolean.
-     *
-     * @param  array<array-key, mixed>  $claims
-     * @return bool
-     */
-    private static function isVerifiedFlag(#[\SensitiveParameter] array $claims): bool
-    {
-        return !array_key_exists(self::EMAIL_VERIFIED, $claims) || is_bool($claims[self::EMAIL_VERIFIED]);
     }
 }

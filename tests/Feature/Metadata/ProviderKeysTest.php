@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Metadata;
 
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -124,15 +125,15 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A connection that is gone holds no key and has nothing to refetch.
+     * A connection that is gone is overtaken, and has nothing to refetch.
      *
      * @return void
      */
-    public function testAConnectionThatIsGoneHoldsNoKey(): void
+    public function testAConnectionThatIsGoneIsOvertaken(): void
     {
         $gone = new IdentifiedConnection('01jbgoneconnection00000000');
 
-        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($gone, self::token('rsa-1'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::OVERTAKEN, $this->keys()->select($gone, self::token('rsa-1'), self::rs256())->outcome);
         self::assertSame([], $this->capturedLogRecords());
 
         $this->fetcher->assertNothingFetched();
@@ -406,14 +407,172 @@ final class ProviderKeysTest extends TestCase
      *
      * @return void
      */
-    public function testACooldownIsLoggedAndWhatIsStoredSelected(): void
+    public function testACooldownLogsNothingAndWhatIsStoredIsSelected(): void
     {
-        $connection = $this->connection(self::stored([self::key()]), ['jwks_refetch_at' => app(Clock::class)->now()->addSecond()]);
+        $connection = $this->connection(self::stored([self::key()]), ['jwks_refetch_at' => $this->clock()->now()->addSecond()]);
 
         self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256())->outcome);
-        self::assertSame([['info', 'sso.oidc.jwks_refetch_cooling_down', ['reason' => null, 'fetch_status' => null]]], $this->logged());
+        self::assertSame([], $this->logged());
 
         $this->fetcher->assertNothingFetched();
+    }
+
+    /**
+     * Every token the cooldown turns away is counted and none is logged; the
+     * next claim, one per window whichever server wins it, writes its fetch's
+     * own line, then one summary line with the count alone, and starts counting
+     * again.
+     *
+     * @return void
+     */
+    public function testACooldownIsSummarizedOncePerWindowByTheNextClaim(): void
+    {
+        $clock      = $this->clock();
+        $connection = $this->connection(self::stored([self::key()]));
+
+        $this->provider->publish(self::next());
+
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('other-0'), self::rs256())->outcome);
+        self::assertSame(['sso.oidc.jwks_refetch_refreshed'], array_column($this->logged(), 1));
+
+        foreach (['other-1', 'other-2', 'other-3'] as $kid) {
+            self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token($kid), self::rs256())->outcome);
+        }
+
+        self::assertCount(1, $this->logged());
+        self::assertSame(3, $connection->refresh()->jwks_refetch_suppressed);
+        self::assertCount(1, $this->fetcher->requests());
+
+        $clock->advance(300);
+
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('other-4'), self::rs256())->outcome);
+        self::assertSame([
+            ['info', 'sso.oidc.jwks_refetch_refreshed', ['reason' => null, 'fetch_status' => 'fetched']],
+            ['info', 'sso.oidc.jwks_refetch_suppressed', ['suppressed' => 3, 'at_most' => 100]],
+        ], array_slice($this->logged(), 1));
+        self::assertSame(0, $connection->refresh()->jwks_refetch_suppressed);
+        self::assertCount(2, $this->fetcher->requests());
+    }
+
+    /**
+     * A window that turned nothing away writes no summary, and a summary never
+     * holds a `kid`, a token or anything of the provider's.
+     *
+     * @return void
+     */
+    public function testASummaryHoldsTheCountAloneAndOnlyWhenThereIsOne(): void
+    {
+        $connection = $this->connection(self::stored([self::key()]), ['jwks_refetch_suppressed' => 7]);
+
+        $this->keys()->select($connection, self::token('secret-kid-value'), self::rs256());
+
+        $logged = json_encode($this->logged(), JSON_THROW_ON_ERROR);
+
+        self::assertStringNotContainsString('secret-kid-value', $logged);
+        self::assertStringNotContainsString(self::ISSUER, $logged);
+        self::assertSame(['suppressed' => 7, 'at_most' => 100], $this->logged()[1][2]);
+
+        $this->clock()->advance(300);
+
+        $this->keys()->select($connection, self::token('secret-kid-value'), self::rs256());
+
+        self::assertSame(['sso.oidc.jwks_refetch_refreshed', 'sso.oidc.jwks_refetch_suppressed', 'sso.oidc.jwks_refetch_refreshed'], array_column($this->logged(), 1));
+    }
+
+    /**
+     * Rows of `[change, delete, outcome]`: what happens after the connection
+     * was read, its claim of the cooldown then failing.
+     *
+     * @return iterable<string, array{0: array<string, mixed>, 1: bool, 2: \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome}>
+     */
+    public static function provideLostClaims(): iterable
+    {
+        yield from [
+            'the trust version raised'      => [['trust_version' => 1], false, KeySelectionOutcome::OVERTAKEN],
+            'the connection deleted'        => [[], true, KeySelectionOutcome::OVERTAKEN],
+            'nothing but a cooldown'        => [[], false, KeySelectionOutcome::UNKNOWN],
+            'a change that is not of trust' => [['jwks_version' => 5], false, KeySelectionOutcome::UNKNOWN],
+        ];
+    }
+
+    /**
+     * A failed claim that finds a trust change or a deletion is `overtaken`, as
+     * a lost compare and set is, so the completion answers
+     * `connection_unavailable`, with nothing fetched and nothing logged.
+     *
+     * @param  array<string, mixed>  $change
+     * @param  bool  $delete
+     * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome  $outcome
+     * @return void
+     */
+    #[DataProvider('provideLostClaims')]
+    public function testAFailedClaimFindingATrustChangeIsOvertaken(array $change, bool $delete, KeySelectionOutcome $outcome): void
+    {
+        $connection = $this->connection(self::stored([self::key()]), ['jwks_refetch_at' => $this->clock()->now()->addSecond()]);
+
+        $this->afterTheRowIsRead(static function () use ($connection, $change, $delete): void {
+
+            if ($delete) {
+                Connection::query()->whereKey($connection->id)->delete();
+
+                return;
+            }
+
+            Connection::query()->whereKey($connection->id)->update(['updated_at' => $connection->updated_at, ...$change]);
+        });
+
+        self::assertSame($outcome, $this->keys()->select($connection, self::token('rsa-2'), self::rs256())->outcome);
+        self::assertSame([], $this->logged());
+
+        $this->fetcher->assertNothingFetched();
+    }
+
+    /**
+     * A key stored by the time a failed claim reads it is found, a winner's
+     * among them, even across a trust change: the completion's locks judge
+     * that.
+     *
+     * @return void
+     */
+    public function testAFailedClaimStillFindsAWinnersKey(): void
+    {
+        $connection = $this->connection(self::stored([self::key()]), ['jwks_refetch_at' => $this->clock()->now()->addSecond()]);
+
+        $this->afterTheRowIsRead(static function () use ($connection): void {
+            Connection::query()->whereKey($connection->id)->update(['trust_version' => 9, 'jwks' => self::stored([self::key(), self::next()])]);
+        });
+
+        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($connection, self::token('rsa-2'), self::rs256())->outcome);
+    }
+
+    /**
+     * A token the caller says is disqualified stays unknown with nothing
+     * claimed or fetched; the question is never asked of a key the JWKS holds
+     * or a selection already refused.
+     *
+     * @return void
+     */
+    public function testADisqualifiedTokenClaimsNothing(): void
+    {
+        $connection = $this->connection(self::stored([self::key()]));
+        $asked      = 0;
+        $no         = static function () use (&$asked): bool {
+            $asked++;
+
+            return true;
+        };
+
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), null, $no)->outcome);
+        self::assertSame(1, $asked);
+        self::assertNull($connection->refresh()->jwks_refetch_at);
+
+        $this->fetcher->assertNothingFetched();
+
+        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($connection, self::token('rsa-1'), self::rs256(), null, $no)->outcome);
+        $psOnly = AlgorithmAllowList::of(['PS256']);
+
+        self::assertSame(KeySelectionOutcome::REFUSED, $this->keys()->select($connection, self::token('rsa-2'), $psOnly, null, $no)->outcome);
+        self::assertSame(1, $asked);
     }
 
     /**
@@ -483,11 +642,95 @@ final class ProviderKeysTest extends TestCase
         $connection = $this->makeConnection(['protocol' => $protocol, 'jwks_version' => 3]);
 
         $reset = [
-            ...($keys ? ['jwks' => null, 'jwks_version' => 4, 'jwks_fetched_at' => null, 'jwks_refetch_at' => null, 'jwks_claim_token' => null] : []),
+            ...($keys ? [
+                'jwks'                    => null,
+                'jwks_version'            => 4,
+                'jwks_fetched_at'         => null,
+                'jwks_refetch_at'         => null,
+                'jwks_claim_token'        => null,
+                'jwks_refetch_suppressed' => 0,
+            ] : []),
             ...($metadata ? ['metadata_fetched_at' => null, 'metadata_valid_until' => null, 'metadata_refresh_at' => null] : []),
         ];
 
-        self::assertSame($reset, ProviderKeys::resetFor($connection, $changed));
+        self::assertSame($reset, ProviderKeys::resetFor($connection, $changed, ['metadata_refresh' => true]));
+    }
+
+    /**
+     * Rows of `[changed, stored switch, cleared]`: an endpoint changed with the
+     * refresh off takes it over by hand, and clears when a document was last
+     * validated; the switch turned off alone, or an endpoint changed with it
+     * on, clears nothing, so turning it off never means unlimited trust.
+     *
+     * @return iterable<string, array{0: list<string>, 1: mixed, 2: bool}>
+     */
+    public static function provideHandSavedEndpoints(): iterable
+    {
+        yield from [
+            'the token endpoint, off'         => [['token_endpoint'], false, true],
+            'the authorization endpoint, off' => [['authorization_endpoint'], false, true],
+            'the UserInfo endpoint, off'      => [['userinfo_endpoint'], false, true],
+            'no switch'                       => [['token_endpoint'], null, true],
+            'the token endpoint, on'          => [['token_endpoint'], true, false],
+            'the switch alone'                => [['metadata_refresh'], false, false],
+            'the scopes, off'                 => [['scopes'], false, false],
+        ];
+    }
+
+    /**
+     * Saving an endpoint by hand with the refresh off clears the document's
+     * dates alone.
+     *
+     * @param  list<string>  $changed
+     * @param  mixed  $switch
+     * @param  bool  $cleared
+     * @return void
+     */
+    #[DataProvider('provideHandSavedEndpoints')]
+    public function testAnEndpointSavedByHandClearsTheDocumentsDates(array $changed, mixed $switch, bool $cleared): void
+    {
+        $connection = $this->makeConnection(['jwks_version' => 3]);
+
+        $expected = $cleared ? ['metadata_fetched_at' => null, 'metadata_valid_until' => null] : [];
+
+        self::assertSame($expected, ProviderKeys::resetFor($connection, $changed, ['metadata_refresh' => $switch]));
+    }
+
+    /**
+     * Run the change once, as soon as the selection's first read of a row of
+     * the connections table is answered.
+     *
+     * @param  \Closure(): void  $change
+     * @return void
+     */
+    private function afterTheRowIsRead(\Closure $change): void
+    {
+        $ran = false;
+
+        DB::connection(StorageConnection::name())->listen(static function (QueryExecuted $query) use ($change, &$ran): void {
+
+            if ($ran || !str_starts_with($query->sql, 'select') || !str_contains($query->sql, 'sso_connections')) {
+                return;
+            }
+
+            $ran = true;
+
+            $change();
+        });
+    }
+
+    /**
+     * The fixed clock the test bound.
+     *
+     * @return \Tests\Fixtures\FixedClock
+     */
+    private function clock(): FixedClock
+    {
+        $clock = app(Clock::class);
+
+        self::assertInstanceOf(FixedClock::class, $clock);
+
+        return $clock;
     }
 
     /**

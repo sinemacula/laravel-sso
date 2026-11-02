@@ -2,8 +2,8 @@
 
 An OpenID provider describes itself in a discovery document at a well-known URL under its issuer: where to send people
 to sign in, where to exchange the code, where its keys are, and what it supports. The package can fill a connection in
-from that document, keep the endpoints and keys up to date on a schedule when you switch it on, and refetch the keys
-when an ID token names one it does not hold yet. See [Managing connections](managing-connections.md#oidc-settings) for
+from that document, keep the endpoints and keys up to date on a schedule, and refetch the keys when an ID token names
+one it does not hold yet. See [Managing connections](managing-connections.md#oidc-settings) for
 every setting and [OIDC sign-in](oidc-sign-in.md) for the flow itself.
 
 ## Import
@@ -73,19 +73,21 @@ Show the administrator what the proposal would save, and in particular:
 
 ## Save with freshness
 
-Saving is an ordinary update, and every setting in the proposal is a trust change, so it asks the freshness contract as
-`sso.connection.trust`:
+Saving is an update, and every setting in the proposal is a trust change, so it asks the freshness contract as
+`sso.connection.trust`. `ImportSaver::save()` makes the update `ConnectionService::update()` would and stamps the fetch
+the proposal carries, so the [stale limit](#the-30-day-stale-limit) counts from it even with the schedule off:
 
 ```php
-use SineMacula\Laravel\Sso\Connections\ConnectionService;
+use SineMacula\Laravel\Sso\Connections\ImportSaver;
 
-app(ConnectionService::class)->update($tenant->id, $connection->id, [
+app(ImportSaver::class)->save($tenant->id, $connection->id, [
     'settings' => [...$proposed->settings(), 'client_id' => $clientId, 'client_secret' => $secret],
-], $actor);
+], $proposed->fetch(), $actor);
 ```
 
-The keys are not saved with it. The first ID token's unknown `kid` fetches them, so a connection with no stored keys is
-complete, and enabling it needs nothing more.
+Saving a new import of the same settings renews the connection, on the record, as `ConnectionUpdated` naming
+`metadata_fetched_at`, and voids nothing. The keys are not saved with it. The first ID token's unknown `kid` fetches
+them, so a connection with no stored keys is complete, and enabling it needs nothing more.
 
 Changing `issuer` or `jwks_uri` later clears the stored keys and their cooldown in the same transaction, so keys fetched
 for another issuer or URL are never used, and the next ID token fetches from the new URL at once. Changing `issuer` also
@@ -106,27 +108,45 @@ supports; the import never chooses for you.
 See [The OIDC callback](oidc-callback.md#private_key_jwt) for rotating a `private_key_jwt` key, and [OIDC
 sign-in](oidc-sign-in.md) for what makes a connection complete.
 
+### The client assertion algorithm
+
+`private_key_jwt` signs each client assertion under one algorithm, which you may pin with
+`client_assertion_algorithm`. It says nothing about what the provider signs its ID tokens with: that is
+`id_token_algorithms`.
+
+| Key   | `client_assertion_algorithm` | Notes                                               |
+|-------|------------------------------|-----------------------------------------------------|
+| RSA   | `PS256`                      | The default. Prefer it where the provider takes it  |
+| RSA   | `RS256`                      | An opt-in, for a provider that accepts nothing else |
+| P-256 | `ES256`                      | The default, and its only one                       |
+
+Providers differ, and not all of them accept `PS256` for client assertions. Before relying on it, read the discovery
+document's `token_endpoint_auth_signing_alg_values_supported` and the provider's own documentation, and if `PS256` is
+not offered, either set `RS256` or use a P-256 key. The package does not work this out for you: the algorithm is pinned,
+never negotiated from a response or the discovery document, and an assertion refused for its algorithm is never retried
+under another. The sign-in fails with `provider_error`, and the code logged says why.
+
+An algorithm and a key must fit. Setting one your current or next key cannot sign under is refused as `unsupported`, and
+adding a key that does not fit the setting is refused as `key_type` `not_allowed`. Change the key first, or remove the
+setting, then set the other. Changing the setting is a trust change: it needs fresh authentication and voids the flows
+in flight. The description and the public JWKS follow it, and a provider holding a registered `alg` needs it updated.
+
 ## Scheduled refresh
 
-Refreshing is off unless you switch it on, for the application and then per connection:
+Every OIDC connection refreshes on the schedule by default. Set its `metadata_refresh` to `false` to opt it out, or
+`SSO_METADATA_REFRESH=false` to stop the schedule for the whole application. With `sso.features.oidc` off nothing
+refreshes and nothing fetches.
 
-```dotenv
-SSO_METADATA_REFRESH=true
-```
-
-```php
-app(ConnectionService::class)->update(
-    $tenant->id,
-    $connection->id,
-    ['settings' => ['metadata_refresh' => true]],
-    $actor,
-);
-```
-
-Run `sso:metadata:refresh` from the scheduler and a queue worker for the queue it sends to, exactly as for [SAML
-metadata](saml-metadata.md#refreshing-on-a-schedule): the command, the queue, the backoff (5 minutes doubling to 6
-hours) and the daily cadence are shared. `refreshNow()` refreshes a connection for an administrator, skipping the
-backoff but never another server's claim, rate limited by `sso.rate_limits.metadata`.
+**You must run the command**, or nothing refreshes and the connection's fetched settings and keys expire after 30 days.
+Run `sso:metadata:refresh` from the scheduler, every 5 minutes or more often, and a queue worker for the queue it sends
+to, exactly as for [SAML metadata](saml-metadata.md#refreshing-on-a-schedule): the command, the queue, the backoff (5
+minutes doubling to 6 hours) and the daily cadence are shared. `refreshNow()` refreshes a connection for an
+administrator, skipping the backoff but never another server's claim, rate limited by `sso.rate_limits.metadata`. It
+works with the schedule off, with the connection's `metadata_refresh` off and on a connection that has already expired,
+so it is how you recover one the schedule does not touch. Where the schedule would not refresh the connection it asks
+the freshness contract as `sso.connection.trust` first, since it replaces what you told the schedule to leave alone;
+`freshness_required` then refuses it with nothing counted or fetched. Where the schedule would refresh it too, it asks
+no freshness.
 
 A refresh reads only the saved issuer's document, so a document naming another issuer is refused and a refresh never
 moves the issuer. It may change only:
@@ -144,20 +164,40 @@ connection's trust version, once. Each change is reported: `ConnectionUpdated` f
 A failed refresh keeps the last good settings and keys. A connection that fetches UserInfo needs the endpoint: a
 document without one fails the refresh with `discovery_invalid` rather than losing it.
 
+### Connections with no discovery document
+
+A connection whose endpoints you entered by hand, with no document ever validated for it, refreshes its keys alone from
+the saved `jwks_uri`, leaving the endpoints untouched:
+
+- with `metadata_refresh` off, that is all it ever fetches: on the schedule once its keys have been fetched, so they do
+  not expire unattended, and through `refreshNow()` at any time;
+- with `metadata_refresh` on, the document is tried first. A provider that serves one overwrites what you entered, which
+  is what leaving it on means. A provider that serves none, or a bad one, falls back to the saved `jwks_uri`. A document
+  naming another issuer never does: it fails the refresh with `issuer_mismatch`, for you to look at.
+
+Saving an endpoint with `metadata_refresh` off also clears when a document was last validated, so a connection that used
+to follow a document can move to this. Turning `metadata_refresh` off alone clears nothing: what was fetched still
+expires, and `refreshNow()` fetches the document again to recover it.
+
 ### The 30-day stale limit
 
-What a refresh wrote stops being used once it is too old. The discovery document and the JWKS are counted separately,
-each **from its own last validated fetch**, not from when the refresh committed: a refresh stamps both, and an
-unknown-`kid` refetch stamps the JWKS alone. Past `sso.metadata.stale_limit_seconds` (30 days by default) every start
-and completion through the connection is `metadata_expired` until a refresh succeeds. The expired values stay stored,
-for diagnosis.
+What was fetched stops being used once it is too old. The discovery document and the JWKS are counted separately, each
+**from its own last validated fetch**, not from when the refresh committed: a refresh stamps both, and an unknown-`kid`
+refetch stamps the JWKS alone, never the document. Past `sso.metadata.stale_limit_seconds` (30 days by default) every
+start and completion through the connection is `metadata_expired` until a refresh succeeds. The expired values stay
+stored, for diagnosis.
 
-A connection with `metadata_refresh` off that no refresh has written never expires, since its settings were entered or
-imported by hand: nothing has promised they stay current. With `metadata_refresh` on, the JWKS counts as soon as it has
-been fetched, even if no refresh has succeeded yet, so switching the refresh on for a connection whose keys are already
-over the limit refuses its flows until the first refresh succeeds. Setting the limit to `0` turns it off, which you must
-do explicitly and which we do not recommend: a provider that stops publishing a compromised key would then go unnoticed
-by a connection whose refresh has been failing for months.
+This does not depend on the schedule: turning it off never means unlimited trust. An expired connection recovers through
+the schedule or `refreshNow()`, never by itself: its callbacks are refused before anything is fetched, so a sign-in
+cannot fetch its way back.
+
+A connection with nothing fetched yet has no deadline: endpoints and keys you saved by hand, with no refresh and no
+refetch, came from no fetch that could go stale. A document [saved from an import](#save-with-freshness) counts from
+that import. The first fetch of each resource starts its clock, so a connection whose keys an unknown-`kid` refetch once
+fetched, with its refresh off, has those keys renewed by [the schedule](#connections-with-no-discovery-document), and
+expires 30 days after the last renewal if the schedule is not running. Setting the limit to `0` turns it off, which you
+must do explicitly and which we do not recommend: a provider that stops publishing a compromised key would then go
+unnoticed by a connection whose refresh has been failing for months.
 
 ## The refetch cooldown
 
@@ -168,7 +208,10 @@ its keys without you doing anything. At most one such fetch happens per connecti
 The cooldown is claimed atomically **before** the fetch, and a failed fetch consumes it too. That is deliberate. Anyone
 can send a callback with a token naming a random `kid`, before its signature has been checked, so without the cooldown a
 flood of them would turn your servers into a load generator against the provider, and a slow provider into a queue of
-stuck requests. With it, a hundred unknown `kid`s make one fetch, however many servers they arrive at.
+stuck requests. With it, a hundred unknown `kid`s make one fetch, however many servers they arrive at. A token that
+would be refused anyway (another issuer, audience or nonce, out of its time window, a claim of the wrong type) fetches
+nothing and leaves the cooldown unclaimed, so it cannot spend the window a good token needs; its claims are read for
+rejection alone, before its signature, and it is answered `signature_invalid`.
 
 What that means in practice:
 
@@ -178,23 +221,30 @@ What that means in practice:
 - A token whose algorithm is refused (`none`, an HMAC, one off the allow-list) never fetches. Nor does a token with no
   `kid` when two keys could verify it: that is refused, not unknown.
 - A `kid` the refetch did not bring stays unknown. It never falls back to another key.
-- Keys the refetch adds void nothing. Keys it removes or replaces void the flows in flight and raise the trust version,
-  including the sign-in that asked, so that person starts again.
+- Keys the refetch adds void nothing. Keys it removes or replaces void the flows in flight and every unredeemed handoff
+  code, and raise the trust version. The one sign-in whose token asked may still finish, once its token has passed every
+  check under the new keys, unless something else changes before it takes its final locks (another trust change, a
+  disable, a delete, a further write of the keys): then it is refused `connection_unavailable`, and that person starts
+  again. Everyone else in the middle of signing in starts again.
+- A refetch's success stamps the JWKS alone: it never makes the discovery document any fresher.
 
-Each refetch reports `JwksRefreshed` or `JwksRefreshFailed` (see [Events](events.md)) and is logged by its outcome, its
-reason and the fetch's status alone.
+Each fetch reports `JwksRefreshed` or `JwksRefreshFailed` (see [Events](events.md)) and is logged by its outcome, its
+reason and the fetch's status alone. A token the cooldown turns away logs nothing of its own: they are counted, up to
+100, and the next fetch logs `sso.oidc.jwks_refetch_suppressed` once, with the count alone, so a flood cannot fill your
+logs. A count of 100 means at least that many.
 
 ## Risks
 
 - **The document is trusted once saved.** Discovery proves the document came from the issuer's host over verified TLS,
   and nothing more. A compromised issuer host can point a refresh at new endpoints. If that is outside what you accept,
-  leave `metadata_refresh` off and enter the endpoints by hand: refetches then only ever touch the keys, from the saved
-  `jwks_uri`.
+  turn `metadata_refresh` off and enter the endpoints by hand: fetches then only ever touch the keys, from the saved
+  `jwks_uri`, and they expire 30 days after their own fetch unless a refresh of
+  [keys alone](#connections-with-no-discovery-document) renews them, on the schedule or an administrator's.
 - **A refresh can move the JWKS and the token endpoint.** It voids what is in flight and reports `ConnectionUpdated`
   naming them. Alert on that event, since an endpoint move is rare and worth a look.
 - **Sign-ins fail when the document does.** A provider serving a bad document does not change anything stored, but after
   30 days of failures sign-ins stop. Watch `MetadataRefreshFailed` well before then.
 - **A key rotation voids flows.** A provider dropping or replacing a key voids what is in flight through the connection.
-  People in the middle of signing in start again; nothing else is lost.
+  People in the middle of signing in start again, but for the one whose token found the rotation; nothing else is lost.
 - **A narrow allow-list can refuse a good key.** A provider moving to an algorithm off the list keeps working only until
   it stops signing with the old one. The refresh never widens the list for you.

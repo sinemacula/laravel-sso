@@ -9,7 +9,8 @@ use SineMacula\Laravel\Sso\Endpoints\ConnectionEndpoints;
 /**
  * Endpoint resolver contract (SSO-5.5): the URLs the package publishes and
  * checks for a connection, its SAML assertion consumer service, its OIDC
- * callback, its service provider entity id and its metadata URL.
+ * callback, its service provider entity id, its metadata URL and its public
+ * JWKS URL. The package adds no route: the application serves each of them.
  *
  * They are built from configuration and the connection alone, never from the
  * request's host or headers, so a forged `Host` or `X-Forwarded-*` header can

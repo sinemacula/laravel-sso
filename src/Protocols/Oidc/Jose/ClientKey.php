@@ -8,17 +8,23 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
  * One of a connection's own `private_key_jwt` keys (SSO-2.4, SSO-2.7, RFC
- * 7523) as a JWK: the algorithm the package signs client assertions with, which
- * the key's type pins (`PS256` for an RSA key of at least 2048 bits, `ES256`
- * for an elliptic curve key on P-256), its `kid`, which is the RFC 7638
- * thumbprint of its public half and so stays the same for as long as the key
- * does, and its public JWK, which the identity provider registers (SSO-5.9).
+ * 7523) as a JWK: the algorithm the package signs client assertions with, its
+ * `kid`, which is the RFC 7638 thumbprint of its public half and so stays the
+ * same for as long as the key does, and its public JWK, which the identity
+ * provider registers (SSO-5.9).
+ *
+ * The algorithm is the connection's pinned one, given by the caller, or the
+ * key's default: an RSA key of at least 2048 bits signs with `PS256`, or
+ * `RS256` when pinned to it, and an elliptic curve key on P-256 signs with
+ * `ES256` alone. The assertion's header and the published JWK's `alg` are both
+ * that algorithm, and the `kid` does not depend on it.
  *
  * `fromPrivateKey()` reads the private half, for the call that signs, and holds
  * it in a `\SensitiveParameterValue` that no dump shows; the object refuses to
  * be serialised. `publicJwk()` reads a public key alone, and its `kid` is the
- * one the private half signs under. Any other key is a misconfiguration (an
- * `InvalidArgumentException`): the package generates only these.
+ * one the private half signs under. Any other key, or a pinned algorithm the
+ * key cannot sign with, is a misconfiguration (an `InvalidArgumentException`):
+ * the package generates only these keys and refuses such a setting.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,14 +33,20 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
  */
 final readonly class ClientKey
 {
-    /** @var string The algorithm an RSA key signs with. */
+    /** @var string The algorithm an RSA key signs with unless it is pinned to another. */
     public const string RSA_ALGORITHM = 'PS256';
+
+    /** @var string The other algorithm an RSA key may be pinned to. */
+    public const string RSA_ALTERNATIVE_ALGORITHM = 'RS256';
 
     /** @var string The algorithm a P-256 key signs with. */
     public const string EC_ALGORITHM = 'ES256';
 
     /** @var string The refusal of any other key. */
     private const string UNSUPPORTED = 'A client assertion key is an RSA key of at least 2048 bits or an elliptic curve key on P-256.';
+
+    /** @var string The refusal of a pinned algorithm the key cannot sign with. */
+    private const string INCOMPATIBLE = 'A client assertion algorithm must fit its key: PS256 or RS256 for an RSA key, ES256 for a P-256 key.';
 
     /** @var array<string, string> The RSA members of a private JWK, by the name OpenSSL gives each. */
     private const array RSA_PRIVATE = ['d' => 'd', 'p' => 'p', 'q' => 'q', 'dmp1' => 'dp', 'dmq1' => 'dq', 'iqmp' => 'qi'];
@@ -51,7 +63,7 @@ final readonly class ClientKey
      */
     private function __construct(
 
-        /** The algorithm the key signs with: `PS256` or `ES256`. */
+        /** The algorithm the key signs with: `PS256`, `RS256` or `ES256`. */
         public string $algorithm,
 
         /** The public JWK, with its `kid`, `use` and `alg`. */
@@ -107,14 +119,16 @@ final readonly class ClientKey
     }
 
     /**
-     * The key whose PEM private half is given.
+     * The key whose PEM private half is given, signing with the algorithm it is
+     * pinned to, or its default.
      *
      * @param  \SineMacula\Laravel\Sso\Secrets\Secret  $privateKeyPem
+     * @param  ?string  $algorithm
      * @return self
      *
      * @throws \InvalidArgumentException
      */
-    public static function fromPrivateKey(Secret $privateKeyPem): self
+    public static function fromPrivateKey(Secret $privateKeyPem, ?string $algorithm = null): self
     {
         $key     = openssl_pkey_get_private($privateKeyPem->reveal());
         $details = $key === false ? null : openssl_pkey_get_details($key);
@@ -123,21 +137,22 @@ final readonly class ClientKey
             throw new \InvalidArgumentException(self::UNSUPPORTED);
         }
 
-        [$algorithm, $public] = self::publicOf($details);
+        [$signing, $public] = self::publicOf($details, $algorithm);
 
-        return new self($algorithm, $public, self::privateOf($details));
+        return new self($signing, $public, self::privateOf($details));
     }
 
     /**
      * The public JWK of the PEM public key, under the `kid` its private half
-     * signs with.
+     * signs with and the `alg` it is pinned to, or its default.
      *
      * @param  string  $publicKeyPem
+     * @param  ?string  $algorithm
      * @return array<string, string>
      *
      * @throws \InvalidArgumentException
      */
-    public static function publicJwk(string $publicKeyPem): array
+    public static function publicJwk(string $publicKeyPem, ?string $algorithm = null): array
     {
         $key     = openssl_pkey_get_public($publicKeyPem);
         $details = $key === false ? null : openssl_pkey_get_details($key);
@@ -146,7 +161,7 @@ final readonly class ClientKey
             throw new \InvalidArgumentException(self::UNSUPPORTED);
         }
 
-        return self::publicOf($details)[1];
+        return self::publicOf($details, $algorithm)[1];
     }
 
     /**
@@ -171,24 +186,32 @@ final readonly class ClientKey
     }
 
     /**
-     * The algorithm and the public JWK of the key OpenSSL describes.
+     * The algorithm and the public JWK of the key OpenSSL describes, pinned to
+     * the algorithm given, or its default.
      *
      * @param  array<array-key, mixed>  $details
+     * @param  ?string  $pinned
      * @return array{0: string, 1: array<string, string>}
      *
      * @throws \InvalidArgumentException
      */
-    private static function publicOf(#[\SensitiveParameter] array $details): array
+    private static function publicOf(#[\SensitiveParameter] array $details, ?string $pinned): array
     {
         $rsa = $details['rsa'] ?? null;
         $ec  = $details['ec']  ?? null;
         $big = ($details['bits'] ?? null) >= ProviderKey::MIN_RSA_BITS;
 
-        [$algorithm, $required] = match (true) {
-            is_array($rsa) && $big                                         => [self::RSA_ALGORITHM, self::rsaPublic($rsa)],
-            is_array($ec)  && ($ec['curve_name'] ?? null) === 'prime256v1' => [self::EC_ALGORITHM, self::ecPublic($ec)],
+        [$allowed, $required] = match (true) {
+            is_array($rsa) && $big                                         => [[self::RSA_ALGORITHM, self::RSA_ALTERNATIVE_ALGORITHM], self::rsaPublic($rsa)],
+            is_array($ec)  && ($ec['curve_name'] ?? null) === 'prime256v1' => [[self::EC_ALGORITHM], self::ecPublic($ec)],
             default                                                        => throw new \InvalidArgumentException(self::UNSUPPORTED),
         };
+
+        $algorithm = $pinned ?? $allowed[0];
+
+        if (!in_array($algorithm, $allowed, true)) {
+            throw new \InvalidArgumentException(self::INCOMPATIBLE);
+        }
 
         $kid = Base64Url::encode(hash('sha256', (string) json_encode($required, JSON_UNESCAPED_SLASHES), true));
 

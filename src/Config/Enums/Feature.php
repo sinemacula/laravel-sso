@@ -5,13 +5,15 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Config\Enums;
 
 /**
- * A feature the application switches on in `sso.features`, each off until it
- * does (SSO-12.2). The value is the switch's key under `sso.features`.
+ * A feature the application switches in `sso.features`, each off until it does
+ * (SSO-12.2), but for the scheduled refresh, which is on until it turns it off
+ * (`isOnByDefault()`). The value is the switch's key under `sso.features`.
  *
  * A protocol is the package in use: with neither on, nothing else can run, and
  * the boot check has nothing to check but the switches. Every other feature
- * needs a protocol, and those that exist only in SAML need `saml2`; turning one
- * on enables what an application or a connection may then opt into, never the
+ * needs a protocol, and those that exist only in SAML need `saml2`, but for the
+ * scheduled refresh, which simply has nothing to do without one; turning one on
+ * enables what an application or a connection may then opt into, never the
  * opt-in itself.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -36,7 +38,8 @@ enum Feature: string
     case ENCRYPTED_ASSERTIONS = 'encrypted_assertions';
 
     // Scheduled refresh of a connection's metadata or discovery document
-    // (SSO-2.8)
+    // (SSO-2.8); off stops the schedule, never the stale limit or an
+    // administrator's refresh
     case METADATA_REFRESH = 'metadata_refresh';
 
     // Re-initiation of an unsolicited SAML response (SSO-5.8)
@@ -67,8 +70,21 @@ enum Feature: string
     }
 
     /**
+     * Whether the feature is on when its switch is not set: only the scheduled
+     * refresh, so a fetched resource goes on being refreshed before its stale
+     * limit (SSO-2.8).
+     *
+     * @return bool
+     */
+    public function isOnByDefault(): bool
+    {
+        return $this === self::METADATA_REFRESH;
+    }
+
+    /**
      * The protocols of which at least one must be on for the feature to run:
-     * none for a protocol, `saml2` for a feature only SAML has, and either
+     * none for a protocol or the scheduled refresh, which is on by default and
+     * idle without one, `saml2` for a feature only SAML has, and either
      * protocol for every other.
      *
      * @return list<self>
@@ -76,7 +92,7 @@ enum Feature: string
     public function needs(): array
     {
         return match ($this) {
-            self::SAML2, self::OIDC                         => [],
+            self::SAML2, self::OIDC, self::METADATA_REFRESH => [],
             self::ENCRYPTED_ASSERTIONS, self::IDP_INITIATED => [self::SAML2],
             default                                         => [self::SAML2, self::OIDC],
         };
