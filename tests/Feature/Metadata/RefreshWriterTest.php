@@ -42,7 +42,7 @@ final class RefreshWriterTest extends TestCase
     use RecordsEventSequences, UsesConnections;
 
     /** @var string The token the connection's claim was written with. */
-    private const string TOKEN = 'the-claims-token';
+    private const string TOKEN = '0123456789abcdef0123456789abcdef';
 
     /** @var array<string, mixed> The snapshot of the connection's trust. */
     private const array TRUSTED = ['first' => 1, 'second' => 2];
