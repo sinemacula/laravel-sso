@@ -10,8 +10,9 @@ every response to, and the limits it applies. Setting a connection up step by st
 
 Give the identity provider the connection's service provider entity id and its assertion consumer service URL, both
 built from `sso.endpoints` and never from a request. Every response must be posted (HTTP-POST binding) to exactly that
-URL: its `Destination`, and the `Recipient` of its bearer confirmation, are compared with it byte for byte, and every
-`AudienceRestriction` in the assertion must name the entity id.
+URL: its `Destination`, which must be present whether or not the response is signed, and the `Recipient` of its bearer
+confirmation, are compared with it byte for byte, and every `AudienceRestriction` in the assertion must name the entity
+id. An identity provider that leaves `Destination` out is refused with `recipient_mismatch`.
 
 ## The connection's settings
 

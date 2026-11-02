@@ -12,10 +12,11 @@ Sheet).
 
 ## Invariants
 
-- There is one fetcher: `Contracts\Fetcher::fetch(FetchRequest): FetchResult`. A request is built only through the
-  named constructor of its purpose (`metadata`, `discovery`, `jwks`, `token`, `userInfo`), which pairs it with the only
-  credential that purpose may carry. The default is `Fetching\GuzzleFetcher`, bound with `scopedIf`, so nothing of one
-  request or job outlives it under Octane or a queue worker (SSO-11.2).
+- There is one fetcher: `Contracts\Fetcher::fetch(FetchRequest): FetchResult`. A request is built only through the named
+  constructor of its purpose (`metadata`, `discovery`, `jwks`, `token`, `userInfo`), which pairs it with the only
+  credential that purpose may carry; `metadata($url, $maxBytes)` may also carry a size cap of its own, at least a byte,
+  which the fetcher holds that response to in place of `max_response_bytes`. The default is `Fetching\GuzzleFetcher`,
+  bound with `scopedIf`, so nothing of one request or job outlives it under Octane or a queue worker (SSO-11.2).
 - Every URL, the request's own and each redirect's, is checked the same way before anything is resolved or sent:
   - the scheme, compared without regard to case, is `https`; anything else is refused (`scheme`);
   - it carries no userinfo (`user@`, `user:pass@`, an empty `@`), so `https://idp.example.com@169.254.169.254/` cannot
@@ -83,8 +84,11 @@ Sheet).
   before the request is sent (`FetchDeadline::transferTimeouts()`, one read of the clock, `null` under a millisecond),
   so time passing between the checks cannot hand cURL a cap of `0`, which it reads as none. A lookup or hop that leaves
   less than a millisecond at any of these fails the fetch (`timeout`), never sends and is never `fetched`, and a
-  transfer that fails once the deadline has passed fails as `timeout` too. The response may be at most
-  `max_response_bytes` (1024 to 10485760, default 1048576): a declared `Content-Length` over it aborts the transfer
+  transfer that fails once the deadline has passed fails as `timeout` too. The response may be at most the request's
+  own cap when it carries one (`FetchRequest::$maxBytes`: only a metadata request does, `sso.metadata.max_bytes`, so a
+  federation aggregate may be far larger than any other response without raising every other request's cap), and
+  `max_response_bytes` (1024 to 10485760, default 1048576) otherwise: a declared `Content-Length` over it aborts the
+  transfer
   from `on_headers`; the body is written into a `Fetching\CappedSink`, which refuses the write that would pass the
   cap, so cURL aborts the transfer there with a write error on Guzzle 7 and 8 alike; and the body is read back no
   further than a byte past the cap and measured again. The `progress` callback also aborts once the bytes received

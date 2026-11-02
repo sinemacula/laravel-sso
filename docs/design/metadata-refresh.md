@@ -15,9 +15,20 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
   the SAML library is called (`saml-adapter.md`). It answers a `Protocols\Saml2\Messages\IdpMetadata`, read
   or refused with a `FailureReason` and the rule's name; the values it holds are in a `\SensitiveParameterValue`,
   redacted from dumps and JSON, and it refuses to be serialised.
-- The document is capped at `sso.fetcher.max_response_bytes` (read through `Fetching\FetcherSettings`), whether it was
-  given as XML or fetched, and parsed by the hardened parser against the SAML 2.0 metadata schema: no document type, no
-  entity, no network, no `ID` repeated. Anything else is `metadata_invalid`.
+- The document is capped at `sso.metadata.max_bytes` (`Metadata\MetadataSettings::maxBytes()`: 64 KiB to a hard
+  ceiling of 256 MiB, default 1 MiB, checked at boot while SAML is on), whether it was given as XML or fetched, in place
+  of the fetcher's `max_response_bytes`, which every other request keeps. A fetch carries the cap as its own
+  (`FetchRequest::metadata($url, $maxBytes)`), and the fetcher stops reading once the response passes it
+  (`fetch_failed`); a document over it is never parsed (`metadata_invalid`, `too_large`). The document is parsed by
+  the hardened parser: no document type, no entity, no network, no `ID` repeated anywhere in it. Anything else is
+  `metadata_invalid`. libxml's default limits bound one text node, name or attribute, never the document, so an
+  aggregate of tens of MiB parses without `LIBXML_PARSEHUGE`, which stays off.
+- Only the chosen entity is held to the SAML 2.0 metadata schema (`HardenedParser::validateElement()`, the entity copied
+  into a document of its own with every namespace in scope where it stood; `metadata_invalid`, `schema`). No other
+  member of an aggregate is validated, and none, the chosen entity included, is modelled by the library's
+  `EntityDescriptor`, whose stricter rules (a URL with a scheme, a logo by `http`, `https` or `data`, an ASCII email
+  address) judge values the reader never reads. A federation member with a value the schema or the library refuses
+  never refuses the aggregate for every other connection pinned to it.
 - The root is an `EntityDescriptor` or an `EntitiesDescriptor`. The entity is chosen by the pinned entity id alone,
   compared exactly: exactly one `EntityDescriptor` anywhere in the document carries it (none is
   `metadata_entity_not_found`, two `metadata_invalid`, wherever the second hides), and it is the root or a child of an
@@ -27,7 +38,8 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
 - With an anchor set (the connection's `metadata_signing` certificates, `Keys\KeyRing::trustedCertificates()`), the
   entity must be covered by a signature, its own or an enclosing `EntitiesDescriptor`'s, and every signature on that
   path must verify with an anchor through `PinnedVerifier`, each signed element copied into a document of its own first
-  (`saml-library.md`, condition 3), with the same `SignedInfo` policy as a response. Unsigned metadata, metadata signed
+  (`saml-library.md`, condition 3) and verified as a `Protocols\Saml2\Library\SignedDescriptor`, which models the
+  signature and the `ID` alone, with the same `SignedInfo` policy as a response. Unsigned metadata, metadata signed
   by a key no anchor holds, or a signature that does not cover the entity is `metadata_signature_invalid`. Without
   anchors no signature is read.
 - The expiry of metadata is the earliest `validUntil` of the entity and every descriptor enclosing it; `cacheDuration`
@@ -44,34 +56,52 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
   `sso.features.saml2` is off every import is `protocol_unavailable`, before any lookup, read or fetch. A connection
   named must be the tenant's SAML connection (otherwise `connection_not_found`); its anchors then apply. `importUrl()`
   counts the attempt against `AttemptSubject::metadata()` when a connection is named, before it fetches through the
-  fetcher as a `metadata` request (SSO-2.9). A proposal that would not be valid settings (a single sign-on URL that is
-  not `https`, an entity id that is neither a URL nor a URN) is `metadata_invalid`.
+  fetcher as a `metadata` request held to the metadata cap (SSO-2.9). It fetches while it is called, so a large
+  aggregate is imported from the console or a queued job, never a web request. A proposal that would not be valid
+  settings (a single sign-on URL that is not `https`, an entity id that is neither a URL nor a URN) is
+  `metadata_invalid`.
 - A connection refreshes only while `sso.features.metadata_refresh` is on, it is a SAML connection, its
   `metadata_refresh` setting is on and its `metadata_url` is a valid `https` URL: the URL the administrator saved is the
-  only one ever fetched. `refreshDue()` reads, on the write connection, the SAML connections whose
+  only one ever fetched. The due connections are the SAML connections, read on the write connection, whose
   `metadata_refresh_at` is unset or not after now and whose `metadata_claimed_until` is unset or not after now, in
-  chunks of 100 by keyset on the id, and refreshes those that refresh. `refreshNow()` refreshes the tenant's connection
-  whatever its backoff (`connection_not_found` for another tenant's, `feature_disabled` for one that does not refresh).
-  Both refuse to run inside a transaction on the storage connection (`StorageConnection::assertNoTransaction()`).
-- Each refresh reads the connection, then its anchors: that is the snapshot (metadata version, trust version, anchor
-  fingerprints). It then claims the connection with one conditional update outside any transaction:
-  `metadata_claimed_until = now + claim_seconds` where the id matches, no claim holds and the metadata version is the
-  one read. No row updated is `skipped` (scheduled) or `in_progress` (`metadata_refresh_in_progress`, an
-  administrator's), and nothing else happens: an administrator's refresh skips the backoff, never a claim.
-- Outside any transaction, the claimed refresh fetches the saved URL and reads it with the pinned `idp_entity_id`, the
-  anchors of the snapshot and the current binding. Only then does it write, in one transaction on the storage
-  connection (`Metadata\MetadataApplier`), whose first statement locks the connection's row; the lock order is the
-  connection alone. Every read that decides the write is a locking read: the connection, the anchors' fingerprints and
-  the trusted certificates.
-- Compare and set: the locked connection must have the snapshot's metadata version and trust version, and the anchors
-  read under the lock must be the snapshot's. Otherwise the refresh is `conflict` (`metadata_conflict`) and writes
-  nothing, not even its claim, which expires; `MetadataRefreshFailed` reports it with the failures and next attempt as
-  the winner left them. Every trust change (a certificate removed, an anchor added or removed, the entity id, the
-  endpoints, the metadata URL or switch, a disable) raises the trust version under the same lock, so a refresh based on
-  the configuration before it never writes over it.
+  chunks of 100 by keyset on the id, that refresh. `sso:metadata:refresh` lists their ids (`dueConnectionIds()`) and
+  queues one `Metadata\RefreshConnectionMetadata` job per connection, carrying the id alone, on
+  `sso.metadata.queue.connection` and `.name`, allowed `.timeout_seconds` (30 to 3600, default 60, never more than
+  `claim_seconds`, and less than the queue connection's `retry_after` where it sets one, checked at boot, so a refresh
+  still running is never reserved by a second worker and recorded as failed) and `.tries` (default 1, failing on a
+  timeout rather than being released past its claim); the job calls `refreshQueued()`, which reads the connection again
+  and is `skipped` when it is gone, no longer refreshes or is no longer due. `--sync` refreshes them in the command
+  instead (`refreshDue()`). `refreshNow()` refreshes the tenant's connection whatever its backoff
+  (`connection_not_found` for another tenant's, `feature_disabled` for one that does not refresh), for the
+  `ActingIdentity` it requires, after counting the attempt against `AttemptSubject::metadata()` (the import's limit,
+  `sso.rate_limits.metadata`): past it, `rate_limited` with `retryAfter`, before anything is claimed or fetched. It asks
+  no freshness. Every entry refuses to run inside a transaction on the storage connection
+  (`StorageConnection::assertNoTransaction()`).
+- Each refresh reads the connection, then its anchors and its identity provider signing certificates: that is the
+  snapshot (metadata version, trust version, the fingerprints of both sets, `Metadata\RefreshClaim`, taken by
+  `Metadata\RefreshClaims`). It then claims the connection with one conditional update outside any transaction:
+  `metadata_claimed_until = now + claim_seconds` and `metadata_claim_token` a fresh random 128-bit token where the id
+  matches, no claim holds and the metadata version is the one read. No row updated is `skipped` (scheduled or queued) or
+  `in_progress` (`metadata_refresh_in_progress`, an administrator's), and nothing else happens: an administrator's
+  refresh skips the backoff, never a claim.
+- Outside any transaction, the claimed refresh fetches the saved URL held to the metadata cap and reads it with the
+  pinned `idp_entity_id`, the anchors of the snapshot and the current binding, and notes the moment the reader
+  validated it. Only then does it write, in one transaction on the storage connection (`Metadata\MetadataApplier`),
+  whose first statement locks the connection's row; the lock order is the connection alone. Every read that decides
+  the write is a locking read: the connection, the certificates' and anchors' fingerprints (one statement), and the
+  trusted certificates the replacement reads.
+- Compare and set, for a success and a failure alike: the locked connection must still hold the claim's token, have the
+  snapshot's metadata version and trust version, and the certificates and anchors read under the lock must be exactly
+  the snapshot's. Otherwise the refresh is `conflict` (`metadata_conflict`) and writes nothing, not even its claim;
+  `MetadataRefreshFailed` reports it with the failures and next attempt as the winner left them. A refresh whose claim
+  expired while it fetched and was taken over writes nothing, so two refreshes never both write. Every trust change (a
+  certificate removed, an anchor added or removed, the entity id, the endpoints, the metadata URL or switch, a disable)
+  raises the trust version under the same lock; a certificate added by an administrator raises none, by design, so the
+  certificate set itself is compared, and a refresh based on the configuration before an addition never removes it.
 - Under the lock, metadata of an entity other than the locked `idp_entity_id`, or whose endpoint would not be a valid
-  setting, is refused `metadata_invalid`, and metadata whose `validUntil` has passed by the clock read at commit is
-  refused `metadata_expired`. Either records a failure.
+  setting, is refused `metadata_invalid`, and metadata that has expired by the clock read at commit is refused
+  `metadata_expired`: its expiry is the earlier of its `validUntil` and the moment it was validated plus the stale
+  limit (`MetadataExpiry::hasExpired()`). Either records a failure.
 - A refresh changes only the identity provider signing certificates and the single sign-on endpoint (`sso_url`,
   `sso_binding`); never the entity id, the subject settings, the mapping or enforcement. The certificates are replaced
   exactly, never as a union (`Keys\KeyService::replaceTrustedCertificatesLocked()`): one no longer published is
@@ -82,34 +112,48 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
   was, so a provider publishing its next key never voids its own flows. Any removal, replacement or endpoint change
   voids the requests and handoff codes in flight through the connection and raises the trust version, once
   (`Connections\InFlightVoider::voidFor()`); an endpoint change is reported `ConnectionUpdated` naming the settings.
-- A successful refresh raises `metadata_version`, sets `metadata_fetched_at` to now, `metadata_valid_until` to the
-  metadata's `validUntil`, `metadata_refresh_at` to now plus `refresh_interval_seconds` (never after the `validUntil`),
-  resets `metadata_refresh_failures` and releases the claim; `MetadataRefreshed` names the settings changed (`sso_url`,
-  `sso_binding`, in that order, then `idp_signing_certificates`), none when nothing did, with the metadata version and
-  whether the trust changed.
+- A successful refresh raises `metadata_version`, sets `metadata_fetched_at` to the moment the fetched document was
+  validated (carried from the read into the commit, never the clock at commit), `metadata_valid_until` to the metadata's
+  `validUntil`, `metadata_refresh_at` to now plus `refresh_interval_seconds` (never after the `validUntil`), resets
+  `metadata_refresh_failures` and releases the claim and its token; `MetadataRefreshed` names the settings changed
+  (`sso_url`, `sso_binding`, in that order, then `idp_signing_certificates`), none when nothing did, with the metadata
+  version and whether the trust changed.
 - A failed refresh (a fetch refused or failed, a response not `2xx`, metadata refused, or a refusal under the lock)
-  writes, under the lock and while no other refresh has written: `metadata_refresh_failures` plus one,
-  `metadata_refresh_at` at now plus `MetadataSettings::backoffSeconds()` for that many (5 minutes, doubling, at most 6
-  hours by default), the claim released; the last good settings are kept. `MetadataRefreshFailed` carries the reason,
+  writes, under the lock and the same compare and set: `metadata_refresh_failures` plus one, `metadata_refresh_at` at
+  now plus `MetadataSettings::backoffSeconds()` for that many (5 minutes, doubling, at most 6 hours by default), the
+  claim and its token released; the last good settings are kept. `MetadataRefreshFailed` carries the reason,
   the failures and the next attempt; the refresher logs the reason and the fetch's status alone, through the sanitising
   logger, never the URL, the response or the metadata.
 - What a refresh applied expires (`Metadata\MetadataExpiry`, which the driver checks before every start, completion and
   re-initiation, and the completion and the re-initiation check again on the locked connection, failing with
-  `metadata_expired`) at the earlier of `metadata_valid_until` and `metadata_fetched_at` plus
-  `sso.metadata.stale_limit_seconds` (30 days by default; `0`, set explicitly, for no limit). The expired last good
-  settings stay stored, for diagnosis, until a refresh succeeds.
+  `metadata_expired`) at the earlier of `metadata_valid_until` (the earliest `validUntil` of the entity and every
+  aggregate around it) and `metadata_fetched_at` (the validated fetch) plus `sso.metadata.stale_limit_seconds` (30
+  days by default; `0`, set explicitly, for no limit): the same rule the refresh applied at commit. The expired last
+  good settings stay stored, for diagnosis, until a refresh succeeds.
 - Events (`Administration\MetadataEvents`) are built through the one context projection, with the acting identity of
   the administrator who asked or none for a scheduled run, and dispatched after the transaction commits, never on a
   rollback. None holds a certificate, a URL or any value of the metadata.
 - A refresh asks no freshness: it is a system job that the administrator switched on, with freshness, by saving
-  `metadata_refresh` and `metadata_url`, and an administrator's refresh does no more than the schedule would.
+  `metadata_refresh` and `metadata_url`, and an administrator's refresh does no more than the schedule would; it is
+  rate limited and names the administrator instead.
+- Large federation metadata is supported once the cap allows it: the aggregate's signature is verified whole with the
+  anchor and exactly one entity with the pinned id chosen. The whole document is held in memory, parsed and its
+  signature checked in one piece (the library rebuilds the signed aggregate twice to verify it), so memory runs to
+  several times the file's size and processing to seconds for tens of MiB. The refresh runs on the queue the
+  deployment sizes for it (the worker's memory limit and timeout, the job's `timeout_seconds`, `claim_seconds` at
+  least as long, the queue connection's `retry_after` longer still). The download itself is bounded by the fetcher's
+  `timeout_seconds` (`SSO_FETCHER_TIMEOUT_SECONDS`, 10 by default, at most 60), which every outbound request shares:
+  raising it raises the deadline of every token, UserInfo, discovery and JWKS request too. A file of 64 MiB needs a
+  sustained 54 Mbit/s to arrive in the default 10 seconds, and 9 Mbit/s in 60. A per-entity URL (MDQ) is preferred
+  wherever the federation offers one, and is the only way when the aggregate cannot download within 60 seconds.
 
 ## Success Path
 
 1. An administrator imports the provider's metadata URL with `importUrl()`, reviews the proposal, and saves the settings
    with `ConnectionService::update()` and each certificate with `KeyService::trustCertificate()`; optionally a metadata
    signing anchor with `trustCertificate(..., KeyUse::METADATA_SIGNING)`, then `metadata_url` and `metadata_refresh`.
-2. Every 5 minutes the scheduler runs `sso:metadata:refresh` on every server. Each due connection is claimed by one.
+2. Every 5 minutes the scheduler runs `sso:metadata:refresh` on every server, which queues a job per due connection.
+   Each due connection is claimed by one job.
 3. The claimed refresh fetches the saved URL, verifies the metadata with the anchors, and finds the provider has
    published its next signing certificate beside the current one.
 4. Under the lock, nothing changed meanwhile: the new certificate is trusted, nothing is voided, the trust version is
@@ -121,35 +165,53 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
 
 - Two servers refresh the same connection: one claims it and fetches; the other is `skipped`, or `in_progress` for an
   administrator. A claim left by a server that died expires after `claim_seconds`.
+- A refresh outlives its claim (a slow fetch of a large aggregate), and another server claims the connection: the
+  first refresh's token no longer matches, so it writes nothing, success or failure, and the second refresh stands.
 - An administrator distrusts a certificate or changes an anchor while a refresh is fetching: the trust version moved,
-  the refresh is `conflict` and the administrator's change stands.
+  the refresh is `conflict` and the administrator's change stands. One who adds a certificate raises no trust version,
+  but the certificate set moved: the refresh is `conflict` and never removes it.
+- An administrator's refresh now past the metadata limit is `rate_limited`, with nothing claimed or fetched.
+- A queued job that waited while another server refreshed the connection finds it no longer due and is `skipped`.
 - A refresh removes a certificate while a completion through the connection is between validation and its lock: the
   request is voided under the refresh's lock, and the completion is refused `connection_unavailable` under its own.
 - A provider whose metadata names another entity id is refused `metadata_entity_not_found` by the reader; an entity id
   changed under the lock is `metadata_invalid`. The entity id never changes through a refresh.
 - The metadata server is down for a day: failures back off 300, 600, 1200, ... seconds up to 21600, the last good
   settings serve sign-ins until they expire, and the first success resets the backoff.
-- Aggregate metadata larger than `sso.fetcher.max_response_bytes` is refused (`fetch_failed` when fetched); the
-  application raises the cap, or points the connection at a per-entity URL.
+- A federation member other than the pinned entity holds a value the schema or the library's model refuses (a relative
+  `mdui:Logo`, an `OrganizationURL` with no scheme, an unknown `contactType`): it is never validated or modelled, the
+  aggregate's signature verifies over its bytes, and the pinned entity is read.
+- Aggregate metadata larger than `sso.metadata.max_bytes` is refused (`fetch_failed` when fetched, the transfer stopped
+  at the cap; `metadata_invalid` given as XML); the application raises the cap and sizes its queue, or points the
+  connection at a per-entity URL.
+- Metadata validated the stale limit or longer before the refresh commits (a refresh stalled for longer than it) is
+  refused `metadata_expired` at commit, though its `validUntil` is far off.
 - A database error propagates (SSO-11.4) and stops a scheduled run; the command reports the exception's class alone.
 
 ## Implementation Anchors
 
-- `src/Protocols/Saml2/Library/MetadataReader.php`, `src/Protocols/Saml2/Messages/IdpMetadata.php`.
+- `src/Protocols/Saml2/Library/MetadataReader.php`, `SignedDescriptor.php`, `HardenedParser.php`,
+  `src/Protocols/Saml2/Messages/IdpMetadata.php`.
 - `src/Metadata/MetadataImporter.php`, `ProposedSettings.php`, `ImportResult.php`.
-- `src/Metadata/MetadataRefresher.php`, `MetadataApplier.php`, `RefreshResult.php`, `Enums/RefreshOutcome.php`,
-  `MetadataSettings.php`, `MetadataExpiry.php`, `MetadataCheck.php`.
+- `src/Metadata/MetadataRefresher.php`, `MetadataApplier.php`, `RefreshClaims.php`, `RefreshClaim.php`,
+  `RefreshConnectionMetadata.php`, `RefreshResult.php`, `Enums/RefreshOutcome.php`, `MetadataSettings.php`,
+  `MetadataExpiry.php`, `MetadataCheck.php`.
+- `src/Fetching/FetchRequest.php` (the per-call cap), `src/Fetching/GuzzleFetcher.php`.
 - `src/Keys/KeyService.php` (`replaceTrustedCertificatesLocked()`), `src/Connections/InFlightVoider.php`.
 - `src/Administration/MetadataEvents.php`, `src/Events/MetadataRefreshed.php`, `MetadataRefreshFailed.php`.
 - `src/Console/RefreshMetadataCommand.php`.
 
 ## Authoritative Tests
 
-- `tests/Feature/Protocols/Saml2/Library/MetadataReaderTest.php`.
+- `tests/Feature/Protocols/Saml2/Library/MetadataReaderTest.php` (the cap at, under and over it; a signed aggregate of
+  several MiB; an unrelated member the schema or the library refuses; the chosen entity validated with its
+  aggregate's namespaces).
+- `tests/Feature/Fetching/GuzzleFetcherTest.php` and `tests/Unit/Fetching/FetchRequestTest.php` (a request's own cap).
 - `tests/Feature/Metadata/MetadataImporterTest.php`, `MetadataRefresherTest.php`, `MetadataApplierTest.php`,
   `MetadataEventSequenceTest.php`, `MetadataExpiryTest.php`, `MetadataSettingsTest.php`.
 - `tests/Feature/Keys/KeyServiceTest.php` (the replacement), `tests/Feature/Console/RefreshMetadataCommandTest.php`.
-- `tests/Integration/Metadata/ConcurrentMetadataRefreshTest.php` (MySQL and PostgreSQL),
+- `tests/Integration/Metadata/ConcurrentMetadataRefreshTest.php` (MySQL and PostgreSQL: an addition, a distrust and an
+  anchor while a refresh fetched; a claim taken over),
   `tests/Integration/Metadata/MetadataEventsAfterCommitTest.php`.
 - `tests/Performance/MetadataRefreshQueryBudgetTest.php`.
 
@@ -159,4 +221,5 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
   must verify, the expiry, the bindings or the certificates.
 - A change to which connections are due, the claim and its conditions, or the snapshot the compare-and-set compares.
 - A change to what a refresh may write, to when it voids and raises the trust version, or to its events.
-- A change to the backoff, the refresh interval, the stale limit or the command's output.
+- A change to the backoff, the refresh interval, the stale limit, the size cap, the queue or the command's output.
+- libxml or the SAML library limiting a document's size, which would need `LIBXML_PARSEHUGE` behind the cap.

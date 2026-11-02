@@ -4,7 +4,9 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Metadata;
 
+use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -130,6 +132,49 @@ final class MetadataExpiryTest extends TestCase
 
         self::assertSame('2026-11-02T09:30:00+00:00', $this->expiry()->expiresAt($dated)?->toIso8601String());
         self::assertNull($this->expiry()->expiresAt($this->saml(['metadata_fetched_at' => $now])));
+    }
+
+    /**
+     * Rows of `[validated, valid until, stale limit, expiry, expired]`: when a
+     * fetched document was validated, its `validUntil`, the stale limit, when
+     * it expires and whether it has by now.
+     *
+     * @return iterable<string, array{0: string, 1: ?string, 2: int, 3: ?string, 4: bool}>
+     */
+    public static function provideValidatedDocuments(): iterable
+    {
+        yield from [
+            'validated now'                      => ['2026-11-01T09:30:00Z', null, 2592000, '2026-12-01T09:30:00+00:00', false],
+            'validated a limit less a second'    => ['2026-10-02T09:30:01Z', null, 2592000, '2026-11-01T09:30:01+00:00', false],
+            'validated exactly a limit ago'      => ['2026-10-02T09:30:00Z', null, 2592000, '2026-11-01T09:30:00+00:00', true],
+            'a valid until earlier, passed'      => ['2026-11-01T09:30:00Z', '2026-11-01T09:30:00Z', 2592000, '2026-11-01T09:30:00+00:00', true],
+            'a valid until a second off'         => ['2026-11-01T09:30:00Z', '2026-11-01T09:30:01Z', 2592000, '2026-11-01T09:30:01+00:00', false],
+            'the stale limit before valid until' => ['2026-10-02T09:30:00Z', '2027-01-01T00:00:00Z', 2592000, '2026-11-01T09:30:00+00:00', true],
+            'no limit and no valid until'        => ['2025-01-01T00:00:00Z', null, 0, null, false],
+        ];
+    }
+
+    /**
+     * The expiry of a fetched document, as a refresh judges it at commit, is
+     * the earlier of its `validUntil` and the moment it was validated plus the
+     * stale limit, and it has expired from that instant on.
+     *
+     * @param  string  $validated
+     * @param  ?string  $validUntil
+     * @param  int  $limit
+     * @param  ?string  $expiry
+     * @param  bool  $expired
+     * @return void
+     */
+    #[DataProvider('provideValidatedDocuments')]
+    public function testADocumentExpiresFromItsValidation(string $validated, ?string $validUntil, int $limit, ?string $expiry, bool $expired): void
+    {
+        config()->set('sso.metadata.stale_limit_seconds', $limit);
+
+        $until = $validUntil === null ? null : CarbonImmutable::parse($validUntil);
+        $at    = CarbonImmutable::parse($validated);
+
+        self::assertSame([$expiry, $expired], [$this->expiry()->expiryOf($until, $at)?->toIso8601String(), $this->expiry()->hasExpired($until, $at)]);
     }
 
     /**

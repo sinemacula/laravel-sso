@@ -28,10 +28,13 @@ use Tests\TestCase;
  * anywhere but its own refused; with anchors, a signature of its own or of its
  * aggregate required and every signature on its path verified, one by another
  * key or tampered with refused; the earliest `validUntil` of the path as the
- * expiry; a document type, an entity or a document over the fetcher's cap
- * refused; only RSA certificates, once each, by use; the HTTP-Redirect and
- * HTTP-POST services, the connection's binding preferred; and the read value
- * redacted.
+ * expiry; a document type, an entity or a document over the metadata cap
+ * refused; a signed aggregate of several MiB verified whole; a member other
+ * than the pinned entity never validated or modelled, so one the schema or the
+ * library refuses never refuses the aggregate, while the pinned entity is
+ * validated with its aggregate's namespaces; only RSA certificates, once each,
+ * by use; the HTTP-Redirect and HTTP-POST services, the connection's binding
+ * preferred; and the read value redacted.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,6 +53,9 @@ final class MetadataReaderTest extends TestCase
 
     /** @var string The HTTP-POST single sign-on URL the metadata names besides. */
     private const string POST_URL = 'https://idp.example.test/saml/post';
+
+    /** @var string Where an entity's own role descriptor goes in the content given it. */
+    private const string ROLE = '{role}';
 
     /** @var ?\SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider The provider, made once. */
     private static ?FakeSamlIdentityProvider $idp = null;
@@ -150,8 +156,8 @@ final class MetadataReaderTest extends TestCase
 
     /**
      * An entity named twice is refused, wherever the second is: beside the
-     * first with an id of its own, or with the same `ID`, which the schema
-     * refuses.
+     * first with an id of its own, or with the same `ID`, which the unique
+     * identifier check refuses before an entity is chosen.
      *
      * @return void
      */
@@ -162,12 +168,13 @@ final class MetadataReaderTest extends TestCase
         $twice     = str_replace('</md:EntitiesDescriptor>', $second . '</md:EntitiesDescriptor>', $aggregate);
 
         self::assertRefused(FailureReason::METADATA_INVALID, 'duplicate_entity', $this->read($twice));
-        self::assertRefused(FailureReason::METADATA_INVALID, 'schema', $this->read(self::metadata()->with(['aggregate' => [self::ENTITY_ID]])->toXml()));
+        self::assertRefused(FailureReason::METADATA_INVALID, 'duplicate_id', $this->read(self::metadata()->with(['aggregate' => [self::ENTITY_ID]])->toXml()));
     }
 
     /**
      * Rows of `[xml, anchored, reason, detail]`: an entity wrapped where no
-     * entity may be, and a signature where no signature may be.
+     * entity may be, extensions included, and a signature where no signature
+     * may be.
      *
      * @return iterable<string, array{0: \Closure(): string, 1: bool, 2: \SineMacula\Laravel\Sso\Events\Enums\FailureReason, 3: string}>
      */
@@ -193,7 +200,7 @@ final class MetadataReaderTest extends TestCase
                 ),
                 false,
                 FailureReason::METADATA_INVALID,
-                'schema',
+                'entity_location',
             ],
             'a signature in the role descriptor' => [
                 static fn (): string => str_replace('<md:KeyDescriptor', self::roleSignature() . '<md:KeyDescriptor', self::metadata()->toXml()),
@@ -463,22 +470,136 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * The document is held to the fetcher's cap: one byte over it is refused,
-     * at it is read.
+     * Rows of `[cap, read]`: a cap one over, at and one under the document's
+     * length, and whether the document is read.
+     *
+     * @return iterable<string, array{0: int, 1: bool}>
+     */
+    public static function provideCaps(): iterable
+    {
+        yield from [
+            'the document one under the cap' => [70001, true],
+            'the document at the cap'        => [70000, true],
+            'the document one over the cap'  => [69999, false],
+        ];
+    }
+
+    /**
+     * The document is held to the metadata cap, never the fetcher's, before it
+     * is parsed: one byte over it is refused, at it or under it is read.
+     *
+     * @param  int  $cap
+     * @param  bool  $read
+     * @return void
+     */
+    #[DataProvider('provideCaps')]
+    public function testTheDocumentIsHeldToTheMetadataCap(int $cap, bool $read): void
+    {
+        $xml = str_pad(self::metadata()->toXml(), 70000, "\n");
+
+        config()->set('sso.metadata.max_bytes', $cap);
+        config()->set('sso.fetcher.max_response_bytes', 1024);
+
+        $metadata = $this->read($xml);
+
+        self::assertSame(70000, strlen($xml));
+        self::assertSame([$read, $read ? null : 'too_large'], [$metadata->isRead(), $metadata->detail]);
+    }
+
+    /**
+     * An aggregate of several MiB, its whole signed by the anchor, is read once
+     * the metadata cap allows it: the aggregate's signature is verified and
+     * exactly the entity pinned is chosen from among more than a thousand; a
+     * byte over the cap, it is refused before it is parsed.
      *
      * @return void
      */
-    public function testTheDocumentIsHeldToTheFetchersCap(): void
+    public function testALargeSignedAggregateIsVerifiedWholeAndItsEntityChosen(): void
     {
-        $xml = self::metadata()->with(['name_id_formats' => array_fill(0, 20, FakeSamlResponse::PERSISTENT)])->toXml();
+        $others  = array_map(static fn (int $index): string => "https://idp{$index}.example.test/saml", range(1, 1400));
+        $xml     = self::metadata()->with(['aggregate' => $others, 'sign' => 'aggregate', 'aggregate_valid_until' => CarbonImmutable::parse('2026-11-08T00:00:00Z')])->toXml();
+        $size    = strlen($xml);
+        $anchors = [self::idp()->certificate()];
 
-        config()->set('sso.fetcher.max_response_bytes', strlen($xml) - 1);
+        config()->set('sso.metadata.max_bytes', $size);
 
-        self::assertRefused(FailureReason::METADATA_INVALID, 'too_large', $this->read($xml));
+        $chosen = $this->read($xml, anchors: $anchors);
 
-        config()->set('sso.fetcher.max_response_bytes', strlen($xml));
+        self::assertGreaterThan(2 * 1048576, $size);
+        self::assertSame(
+            [true, self::ENTITY_ID, FakeSamlIdentityProvider::SSO_URL, '2026-11-08T00:00:00+00:00'],
+            [$chosen->isRead(), $chosen->entityId(), $chosen->ssoUrl(), $chosen->validUntil()?->toIso8601String()],
+        );
 
-        self::assertTrue($this->read($xml)->isRead());
+        config()->set('sso.metadata.max_bytes', $size - 1);
+
+        self::assertRefused(FailureReason::METADATA_INVALID, 'too_large', $this->read($xml, anchors: $anchors));
+    }
+
+    /**
+     * Rows of `[member, pinned read]`: what a member of an aggregate may hold
+     * that the library's model refuses, or the metadata schema too, and whether
+     * the pinned entity holding it is still read.
+     *
+     * @return iterable<string, array{0: string, 1: bool}>
+     */
+    public static function provideUnrelatedMembers(): iterable
+    {
+        yield from [
+            'a relative logo'                => ['<md:Extensions>' . self::logo('/logo.png') . '</md:Extensions>' . self::ROLE, true],
+            'a scheme-less organization URL' => [self::ROLE . str_replace('https://example.test', 'www.example.edu', self::organization(false)), true],
+            'an unknown contact type'        => [self::ROLE . self::contact('nobody'), false],
+        ];
+    }
+
+    /**
+     * A signed aggregate is read for its pinned entity even when an unrelated
+     * member holds what the library's model or the metadata schema refuses: the
+     * aggregate's signature is verified over its bytes, no member is modelled,
+     * and only the chosen entity is held to the schema, so the same value in
+     * the pinned entity is refused only when the schema refuses it.
+     *
+     * @param  string  $member
+     * @param  bool  $pinnedRead
+     * @return void
+     */
+    #[DataProvider('provideUnrelatedMembers')]
+    public function testAnUnrelatedMemberNeverRefusesTheAggregate(string $member, bool $pinnedRead): void
+    {
+        $anchors   = [self::idp()->certificate()];
+        $aggregate = self::metadata()->with(['aggregate' => [self::OTHER]])->toXml();
+        $unrelated = self::withMember($aggregate, self::OTHER, $member);
+        $pinned    = self::withMember($aggregate, self::ENTITY_ID, $member);
+
+        self::assertSame(self::ENTITY_ID, $this->read(self::signedRoot($unrelated, self::idp()->signer()), anchors: $anchors)->entityId());
+        self::assertSame(self::ENTITY_ID, $this->read($unrelated)->entityId());
+        self::assertSame(
+            [$pinnedRead, $pinnedRead ? null : 'schema'],
+            [$this->read(self::signedRoot($pinned, self::idp()->signer()), anchors: $anchors)->isRead(), $this->read($pinned)->detail],
+        );
+    }
+
+    /**
+     * An unrelated member the schema refuses never refuses the aggregate, and
+     * the pinned entity is validated with the namespaces its aggregate
+     * declares, so a prefix an attribute value names still resolves.
+     *
+     * @return void
+     */
+    public function testOnlyThePinnedEntityIsSchemaValidated(): void
+    {
+        $anchors    = [self::idp()->certificate()];
+        $aggregate  = self::metadata()->with(['aggregate' => [self::OTHER]])->toXml();
+        $invalid    = str_replace('entityID="' . self::OTHER . '"', 'validUntil="tomorrow" entityID="' . self::OTHER . '"', $aggregate);
+        $namespaces = 'xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ';
+        $declared   = str_replace('<md:EntitiesDescriptor ', '<md:EntitiesDescriptor ' . $namespaces, $aggregate);
+        $typed      = self::withMember($declared, self::ENTITY_ID, '<md:Extensions>' . self::entityAttribute('xs:string') . '</md:Extensions>' . self::ROLE);
+        $undefined  = self::withMember($declared, self::ENTITY_ID, '<md:Extensions>' . self::entityAttribute('xs:nothing') . '</md:Extensions>' . self::ROLE);
+
+        self::assertSame(self::ENTITY_ID, $this->read(self::signedRoot($invalid, self::idp()->signer()), anchors: $anchors)->entityId());
+        self::assertRefused(FailureReason::METADATA_INVALID, 'schema', $this->read($invalid, self::OTHER));
+        self::assertSame(self::ENTITY_ID, $this->read(self::signedRoot($typed, self::idp()->signer()), anchors: $anchors)->entityId());
+        self::assertRefused(FailureReason::METADATA_INVALID, 'schema', $this->read($undefined));
     }
 
     /**
@@ -766,13 +887,80 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * Valid metadata that is neither an entity nor an aggregate.
+     * The XML with the entity's content replaced by the content given, its own
+     * `IDPSSODescriptor` put where the content names its role.
      *
+     * @param  string  $xml
+     * @param  string  $entityId
+     * @param  string  $member
      * @return string
      */
-    private static function organization(): string
+    private static function withMember(string $xml, string $entityId, string $member): string
     {
-        return '<md:Organization xmlns:md="' . FakeSamlMetadata::NS_MD . '">'
+        $start = strpos($xml, 'entityID="' . $entityId . '"');
+
+        self::assertIsInt($start);
+
+        $role = strpos($xml, '<md:IDPSSODescriptor', $start);
+        $end  = strpos($xml, '</md:EntityDescriptor>', $start);
+
+        self::assertIsInt($role);
+        self::assertIsInt($end);
+
+        $descriptor = substr($xml, $role, $end - $role);
+        $content    = str_replace(self::ROLE, $descriptor, $member);
+
+        return substr($xml, 0, $role) . $content . substr($xml, $end);
+    }
+
+    /**
+     * A `ContactPerson` of the type.
+     *
+     * @param  string  $type
+     * @return string
+     */
+    private static function contact(string $type): string
+    {
+        return '<md:ContactPerson contactType="' . $type . '"><md:EmailAddress>mailto:it@example.edu</md:EmailAddress></md:ContactPerson>';
+    }
+
+    /**
+     * An `mdui:Logo` of the location, in its `UIInfo`.
+     *
+     * @param  string  $location
+     * @return string
+     */
+    private static function logo(string $location): string
+    {
+        return '<mdui:UIInfo xmlns:mdui="urn:oasis:names:tc:SAML:metadata:ui"><mdui:Logo height="16" width="16">' . $location . '</mdui:Logo></mdui:UIInfo>';
+    }
+
+    /**
+     * An `mdattr:EntityAttributes` whose one value has the `xsi:type`, its
+     * prefixes declared only by the aggregate.
+     *
+     * @param  string  $type
+     * @return string
+     */
+    private static function entityAttribute(string $type): string
+    {
+        return '<mdattr:EntityAttributes xmlns:mdattr="urn:oasis:names:tc:SAML:metadata:attribute">'
+            . '<saml:Attribute xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" Name="urn:example:category"'
+            . ' NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">'
+            . '<saml:AttributeValue xsi:type="' . $type . '">https://refeds.org/category/research-and-scholarship</saml:AttributeValue>'
+            . '</saml:Attribute></mdattr:EntityAttributes>';
+    }
+
+    /**
+     * Valid metadata that is neither an entity nor an aggregate, or the same
+     * organisation as a child of an entity.
+     *
+     * @param  bool  $root
+     * @return string
+     */
+    private static function organization(bool $root = true): string
+    {
+        return '<md:Organization' . ($root ? ' xmlns:md="' . FakeSamlMetadata::NS_MD . '"' : '') . '>'
             . '<md:OrganizationName xml:lang="en">Example</md:OrganizationName>'
             . '<md:OrganizationDisplayName xml:lang="en">Example</md:OrganizationDisplayName>'
             . '<md:OrganizationURL xml:lang="en">https://example.test</md:OrganizationURL>'

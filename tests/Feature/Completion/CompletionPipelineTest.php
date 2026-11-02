@@ -375,6 +375,64 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
+     * A request whose connection's trust version was raised after it started,
+     * by a change that voided nothing it could see, is refused with
+     * `connection_unavailable` at its consumption, before the driver validates
+     * anything or calls the provider: no validation runs and no code is issued.
+     *
+     * @return void
+     */
+    public function testARequestOfAnOlderTrustVersionIsRefusedBeforeValidation(): void
+    {
+        $request = $this->request();
+
+        Connection::query()->whereKey($this->connection->id)->increment('trust_version');
+
+        $this->spyOnEveryStep();
+
+        $validated = false;
+
+        $this->driver->onComplete = static function () use (&$validated): void {
+            $validated = true;
+        };
+
+        $result = $this->completeAtCallback();
+
+        self::assertSame(['failed', 'connection_unavailable', 'https://app.example.com/sso', self::REFERENCE], self::summary($result));
+        self::assertSame(['correlation', 'consumption'], $this->stepsRan());
+        self::assertFalse($validated);
+        self::assertSame([], $this->issuer->grants());
+        self::assertNotNull($this->reread($request)->completed_at);
+    }
+
+    /**
+     * A trust version raised while the response was validated, without the
+     * request being voided, is refused under the lock with
+     * `connection_unavailable`, with no locked stage run and no code issued.
+     *
+     * @return void
+     */
+    public function testATrustVersionRaisedAfterConsumptionIsRefusedUnderTheLock(): void
+    {
+        $request    = $this->request();
+        $connection = $this->connection;
+
+        $this->spyOnEveryStep();
+
+        $this->driver->onComplete = static function () use ($connection): void {
+            Connection::query()->whereKey($connection->id)->increment('trust_version');
+        };
+
+        $result = $this->completeAtCallback();
+
+        self::assertSame(['failed', 'connection_unavailable', 'https://app.example.com/sso', self::REFERENCE], self::summary($result));
+        self::assertSame(['correlation', 'consumption', 'validation'], $this->stepsRan());
+        self::assertSame([], $this->issuer->grants());
+        self::assertNull($this->reread($request)->voided_at);
+        self::assertNotNull($this->reread($request)->completed_at);
+    }
+
+    /**
      * A connection disabled while the response was validated is refused under
      * the lock with `connection_unavailable`, and issues nothing.
      *

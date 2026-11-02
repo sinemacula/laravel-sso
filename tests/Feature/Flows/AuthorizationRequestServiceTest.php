@@ -189,6 +189,7 @@ final class AuthorizationRequestServiceTest extends TestCase
             'nonce_digest'      => hash('sha256', $nonce),
             'saml_request_id'   => null,
             'handoff_challenge' => $result->verifier->challenge()->value,
+            'trust_version'     => 0,
             'identity_type'     => null,
             'identity_id'       => null,
             'session_id'        => null,
@@ -689,13 +690,15 @@ final class AuthorizationRequestServiceTest extends TestCase
         yield 'its settings changed' => [static fn (Connection $connection): bool => $connection->forceFill(['settings' => ['issuer' => 'https://other.example.com']])->save()];
         yield 'its secrets changed' => [static fn (Connection $connection): bool => $connection->forceFill(['secrets' => '{"api_secret":"ciphertext"}'])->save()];
         yield 'deleted' => [static fn (Connection $connection): ?bool => $connection->delete()];
+        yield 'its trust version raised' => [static fn (Connection $connection): int => Connection::query()->whereKey($connection->id)->increment('trust_version')];
     }
 
     /**
-     * A connection disabled, changed in its settings or its secrets, or deleted
-     * while the driver started is unavailable once the start locks it: nothing
-     * is stored, and the answer is the refusal, or the fallback where discovery
-     * is offered.
+     * A connection disabled, changed in its settings or its secrets, deleted,
+     * or whose trust version was raised (a certificate removed, which voided
+     * only the requests already stored) while the driver started is unavailable
+     * once the start locks it: nothing is stored, and the answer is the
+     * refusal, or the fallback where discovery is offered.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\Connection): mixed  $change
      * @return void
@@ -728,6 +731,21 @@ final class AuthorizationRequestServiceTest extends TestCase
         self::assertSame(['type' => 'redirect', 'url' => self::FALLBACK], $fallback->navigation?->jsonSerialize());
         self::assertCount(2, $this->driver->starts());
         self::assertSame(0, AuthorizationRequest::query()->count());
+    }
+
+    /**
+     * The request keeps the connection's trust version as the start read it,
+     * whatever it is, and an additive change that raises nothing while the
+     * driver starts leaves the start to store it.
+     *
+     * @return void
+     */
+    public function testTheRequestKeepsTheTrustVersionTheStartRead(): void
+    {
+        Connection::query()->whereKey($this->connection->id)->update(['trust_version' => 3]);
+
+        self::assertTrue($this->startFlow()->isStarted());
+        self::assertSame(3, self::onlyRequest()->trust_version);
     }
 
     /**
@@ -1021,6 +1039,7 @@ final class AuthorizationRequestServiceTest extends TestCase
             'nonce_digest'      => $row->nonce_digest,
             'saml_request_id'   => $row->saml_request_id,
             'handoff_challenge' => $row->handoff_challenge,
+            'trust_version'     => $row->trust_version,
             'identity_type'     => $row->identity_type,
             'identity_id'       => $row->identity_id,
             'session_id'        => $row->session_id,

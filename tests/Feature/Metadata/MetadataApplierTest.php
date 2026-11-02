@@ -13,9 +13,11 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Keys\KeyRing;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\MetadataApplier;
 use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
+use SineMacula\Laravel\Sso\Metadata\RefreshClaim;
 use SineMacula\Laravel\Sso\Metadata\RefreshResult;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
@@ -34,12 +36,15 @@ use Tests\TestCase;
  * voiding nothing and leaving the trust version alone; a removal, a replacement
  * or an endpoint change voiding the flows in flight and raising the trust
  * version once; the entity id, subject settings and mapping never written; the
- * refresh's version, fetch, expiry and next refresh written, the failures reset
- * and the claim released; another entity, an endpoint that is not a valid
- * setting, metadata expired at commit and too many certificates refused as
- * failures; a change of the versions or the anchors made while the refresh
- * fetched refused as a conflict that writes nothing; and the backoff of
- * failures in a row.
+ * refresh's version, the moment the document was validated as its fetch, its
+ * expiry and next refresh written, the failures reset and the claim and its
+ * token released; another entity, an endpoint that is not a valid setting,
+ * metadata expired at commit (by its `validUntil` or by the stale limit
+ * counted from its validation) and too many certificates refused as failures;
+ * a change of the versions, the anchors or the trusted certificates (an
+ * addition included) made while the refresh fetched, or the claim taken over,
+ * refused as a conflict that writes nothing, success or failure; and the
+ * backoff of failures in a row.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,6 +55,7 @@ use Tests\TestCase;
  */
 #[CoversClass(MetadataApplier::class)]
 #[CoversClass(RefreshResult::class)]
+#[CoversClass(RefreshClaim::class)]
 final class MetadataApplierTest extends TestCase
 {
     use RecordsEventSequences, UsesConnections, UsesFlowTables;
@@ -273,8 +279,8 @@ final class MetadataApplierTest extends TestCase
 
     /**
      * A refresh raises the metadata version, records the fetch and the expiry,
-     * resets the failures, releases the claim, and is next due after the
-     * interval or at the expiry, whichever comes first.
+     * resets the failures, releases the claim and its token, and is next due
+     * after the interval or at the expiry, whichever comes first.
      *
      * @param  ?string  $validUntil
      * @param  string  $next
@@ -294,7 +300,7 @@ final class MetadataApplierTest extends TestCase
         $row = $this->row();
 
         self::assertSame(
-            [5, '2026-11-01T09:30:00+00:00', $validUntil, $next, 0, null],
+            [5, '2026-11-01T09:30:00+00:00', $validUntil, $next, 0, null, null],
             [
                 $row->metadata_version,
                 $row->metadata_fetched_at?->toIso8601String(),
@@ -302,6 +308,7 @@ final class MetadataApplierTest extends TestCase
                 $row->metadata_refresh_at?->toIso8601String(),
                 $row->metadata_refresh_failures,
                 $row->metadata_claimed_until,
+                $row->metadata_claim_token,
             ],
         );
     }
@@ -371,13 +378,14 @@ final class MetadataApplierTest extends TestCase
             [$result->outcome, $result->reason, $result->failures, $result->nextAttemptAt?->toIso8601String()],
         );
         self::assertSame([self::fingerprint(0)], $this->trusted());
-        self::assertSame([self::sortedByKey($before), 0, 0, 1, '2026-11-01T09:35:00+00:00', null], [
+        self::assertSame([self::sortedByKey($before), 0, 0, 1, '2026-11-01T09:35:00+00:00', null, null], [
             self::sortedByKey($row->settings),
             $row->metadata_version,
             $row->trust_version,
             $row->metadata_refresh_failures,
             $row->metadata_refresh_at?->toIso8601String(),
             $row->metadata_claimed_until,
+            $row->metadata_claim_token,
         ]);
     }
 
@@ -395,6 +403,82 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
+     * The fetch recorded is the moment the document was validated, carried into
+     * the commit, never the clock read at commit.
+     *
+     * @return void
+     */
+    public function testTheFetchRecordedIsWhenTheDocumentWasValidated(): void
+    {
+        $validated = CarbonImmutable::parse('2026-11-01T09:20:00Z');
+
+        self::assertTrue($this->applier()->apply($this->claim(), self::metadata([0]), $validated)->isRefreshed());
+        self::assertSame(['2026-11-01T09:20:00+00:00', '2026-12-01T09:20:00+00:00'], [
+            $this->row()->metadata_fetched_at?->toIso8601String(),
+            app(MetadataExpiry::class)->expiresAt($this->row())?->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Rows of `[validated, stale limit, outcome]`: when the document was
+     * validated, the stale limit, and how the commit ends.
+     *
+     * @return iterable<string, array{0: string, 1: int, 2: \SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome}>
+     */
+    public static function provideStaleCommits(): iterable
+    {
+        yield from [
+            'validated a limit and a second ago' => ['2026-10-02T09:29:59Z', 2592000, RefreshOutcome::FAILED],
+            'validated exactly a limit ago'      => ['2026-10-02T09:30:00Z', 2592000, RefreshOutcome::FAILED],
+            'validated a second within a limit'  => ['2026-10-02T09:30:01Z', 2592000, RefreshOutcome::REFRESHED],
+            'validated long ago with no limit'   => ['2025-11-01T09:30:00Z', 0, RefreshOutcome::REFRESHED],
+        ];
+    }
+
+    /**
+     * At commit, metadata validated the stale limit or longer ago has expired
+     * and records a failure, `metadata_expired`, even with no `validUntil`;
+     * within the limit, or with no limit, it is applied.
+     *
+     * @param  string  $validated
+     * @param  int  $limit
+     * @param  \SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome  $outcome
+     * @return void
+     */
+    #[DataProvider('provideStaleCommits')]
+    public function testTheStaleLimitCountsFromTheValidationAtCommit(string $validated, int $limit, RefreshOutcome $outcome): void
+    {
+        config()->set('sso.metadata.stale_limit_seconds', $limit);
+
+        $result = $this->applier()->apply($this->claim(), self::metadata([0]), CarbonImmutable::parse($validated));
+
+        self::assertSame([$outcome, $outcome === RefreshOutcome::FAILED ? FailureReason::METADATA_EXPIRED : null], [$result->outcome, $result->reason]);
+        self::assertSame($outcome === RefreshOutcome::FAILED ? 0 : 1, $this->row()->metadata_version);
+    }
+
+    /**
+     * The earlier of an enclosing `validUntil` and the stale limit decides the
+     * expiry at commit: a `validUntil` a second after the commit is applied
+     * though the stale limit is far off, and the stale limit passing first
+     * refuses metadata whose `validUntil` is far off.
+     *
+     * @return void
+     */
+    public function testTheEarlierOfTheValidUntilAndTheStaleLimitDecidesAtCommit(): void
+    {
+        $farOff = ['valid_until' => CarbonImmutable::parse('2027-01-01T00:00:00Z')];
+
+        self::assertSame(
+            RefreshOutcome::FAILED,
+            $this->applier()->apply($this->claim(), self::metadata([0], $farOff), CarbonImmutable::parse('2026-10-02T09:30:00Z'))->outcome,
+        );
+        self::assertSame(
+            RefreshOutcome::REFRESHED,
+            $this->applier()->apply($this->claim(), self::metadata([0], ['valid_until' => CarbonImmutable::parse('2026-11-01T09:30:01Z')]), $this->clock->now())->outcome,
+        );
+    }
+
+    /**
      * Rows of `[change]`: a change made while the refresh fetched.
      *
      * @return iterable<string, array{0: string}>
@@ -402,17 +486,23 @@ final class MetadataApplierTest extends TestCase
     public static function provideConflicts(): iterable
     {
         yield from [
-            'another refresh wrote' => ['metadata_version'],
-            'the trust changed'     => ['trust_version'],
-            'an anchor added'       => ['anchor_added'],
-            'an anchor removed'     => ['anchor_removed'],
+            'another refresh wrote'         => ['metadata_version'],
+            'the trust changed'             => ['trust_version'],
+            'an anchor added'               => ['anchor_added'],
+            'an anchor removed'             => ['anchor_removed'],
+            'a certificate added'           => ['certificate_added'],
+            'a certificate removed'         => ['certificate_removed'],
+            'the claim taken over'          => ['claim_taken_over'],
+            'the claim released by another' => ['claim_released'],
         ];
     }
 
     /**
-     * A change of the metadata version, the trust version or the anchors made
-     * while the refresh fetched refuses it as a conflict that writes nothing,
-     * reported with the connection as the change left it.
+     * A change of the metadata version, the trust version, the anchors or the
+     * trusted certificates (an administrator's addition included) made while
+     * the refresh fetched, or its claim taken over or released, refuses it as a
+     * conflict that writes nothing, success or failure alike, reported with the
+     * connection as the change left it.
      *
      * @param  string  $change
      * @return void
@@ -420,41 +510,59 @@ final class MetadataApplierTest extends TestCase
     #[DataProvider('provideConflicts')]
     public function testAChangeMadeWhileFetchingIsAConflictThatWritesNothing(string $change): void
     {
-        $anchor = Certificates::distinct(8);
-
         $this->connection->forceFill(['metadata_refresh_failures' => 2, 'metadata_refresh_at' => $this->clock->now()->addMinutes(10)])->save();
 
         if ($change === 'anchor_removed') {
-            $this->trust($anchor, KeyUse::METADATA_SIGNING);
+            $this->trust(Certificates::distinct(8), KeyUse::METADATA_SIGNING);
         }
 
-        $claimed = $this->row();
-        $anchors = $change === 'anchor_removed' ? [self::fingerprintOf($anchor)] : [];
+        $claim = $this->claim();
 
-        if ($change === 'anchor_added') {
-            $this->trust($anchor, KeyUse::METADATA_SIGNING);
-        } elseif ($change === 'anchor_removed') {
-            ConnectionKey::query()->where('use', KeyUse::METADATA_SIGNING->value)->delete();
-        } else {
-            $this->connection->forceFill([$change => 7])->save();
+        $this->change($change);
+
+        $before   = $this->row()->getAttributes();
+        $trusted  = $this->trusted();
+        $attempts = [
+            fn (): RefreshResult => $this->applier()->apply($claim, self::metadata([1], ['sso_url' => self::MOVED_URL]), $this->clock->now()),
+            fn (): RefreshResult => $this->applier()->fail($claim, FailureReason::FETCH_FAILED),
+        ];
+
+        foreach ($attempts as $attempt) {
+
+            $this->startRecordingEvents();
+
+            $result = $attempt();
+
+            self::assertSame([RefreshOutcome::CONFLICT, FailureReason::METADATA_CONFLICT, []], [$result->outcome, $result->reason, $result->changedSettings]);
+            self::assertSame($before, $this->row()->getAttributes());
+            self::assertSame($trusted, $this->trusted());
+
+            $this->assertEventSequence([MetadataRefreshFailed::class]);
+
+            $failed = $this->recordedEvents()[0];
+
+            self::assertInstanceOf(MetadataRefreshFailed::class, $failed);
+            self::assertSame([FailureReason::METADATA_CONFLICT, 2, '2026-11-01T09:40:00+00:00'], [$failed->reason, $failed->failures, $failed->nextAttemptAt?->toIso8601String()]);
         }
+    }
 
-        $before = $this->row()->getAttributes();
+    /**
+     * An administrator's certificate added while the refresh fetched survives
+     * the refresh, which would have replaced it: the refresh writes nothing.
+     *
+     * @return void
+     */
+    public function testARefreshNeverRemovesACertificateAddedWhileItFetched(): void
+    {
+        $claim = $this->claim();
 
-        $this->startRecordingEvents();
+        $this->trust(Certificates::distinct(9));
 
-        $result = $this->applier()->apply($claimed, $anchors, self::metadata([1], ['sso_url' => self::MOVED_URL]));
+        $result = $this->applier()->apply($claim, self::metadata([0, 1]), $this->clock->now());
 
-        self::assertSame([RefreshOutcome::CONFLICT, FailureReason::METADATA_CONFLICT, []], [$result->outcome, $result->reason, $result->changedSettings]);
-        self::assertSame($before, $this->row()->getAttributes());
-        self::assertSame([self::fingerprint(0)], $this->trusted());
-
-        $this->assertEventSequence([MetadataRefreshFailed::class]);
-
-        $failed = $this->recordedEvents()[0];
-
-        self::assertInstanceOf(MetadataRefreshFailed::class, $failed);
-        self::assertSame([FailureReason::METADATA_CONFLICT, 2, '2026-11-01T09:40:00+00:00'], [$failed->reason, $failed->failures, $failed->nextAttemptAt?->toIso8601String()]);
+        self::assertSame(RefreshOutcome::CONFLICT, $result->outcome);
+        self::assertSame(self::sortedFingerprints([0, 9]), $this->trusted());
+        self::assertSame([0, 0], [$this->row()->metadata_version, $this->row()->trust_version]);
     }
 
     /**
@@ -465,13 +573,13 @@ final class MetadataApplierTest extends TestCase
      */
     public function testAConnectionDeletedWhileFetchingIsAConflict(): void
     {
-        $claimed = $this->row();
+        $claim = $this->claim();
 
         ConnectionKey::query()->delete();
         Connection::query()->delete();
 
-        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->apply($claimed, [], self::metadata([0]))->outcome);
-        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->fail($claimed, FailureReason::FETCH_FAILED)->outcome);
+        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->apply($claim, self::metadata([0]), $this->clock->now())->outcome);
+        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->fail($claim, FailureReason::FETCH_FAILED)->outcome);
 
         $this->assertNoEvents();
     }
@@ -484,12 +592,11 @@ final class MetadataApplierTest extends TestCase
      */
     public function testFailuresInARowBackOffAndASuccessResetsThem(): void
     {
-        $claimed = $this->row();
-        $waits   = [];
+        $waits = [];
 
         foreach (range(1, 9) as $failure) {
 
-            $result  = $this->applier()->fail($claimed, FailureReason::FETCH_FAILED);
+            $result  = $this->applier()->fail($this->claim(), FailureReason::FETCH_FAILED);
             $waits[] = [$result->failures, (int) $this->clock->now()->diffInSeconds($result->nextAttemptAt)];
 
             self::assertSame(
@@ -499,7 +606,7 @@ final class MetadataApplierTest extends TestCase
         }
 
         self::assertSame([[1, 300], [2, 600], [3, 1200], [4, 2400], [5, 4800], [6, 9600], [7, 19200], [8, 21600], [9, 21600]], $waits);
-        self::assertTrue($this->applier()->apply($this->row(), [], self::metadata([0]))->isRefreshed());
+        self::assertTrue($this->apply(self::metadata([0]))->isRefreshed());
         self::assertSame(0, $this->row()->metadata_refresh_failures);
     }
 
@@ -511,14 +618,33 @@ final class MetadataApplierTest extends TestCase
      */
     public function testAFailureIsNotRecordedOverAnotherRefresh(): void
     {
-        $claimed = $this->row();
+        $claim = $this->claim();
 
         $this->connection->forceFill(['metadata_version' => 1])->save();
 
-        $result = $this->applier()->fail($claimed, FailureReason::FETCH_FAILED, new ActingIdentity('App\Models\User', '42'));
+        $result = $this->applier()->fail($claim, FailureReason::FETCH_FAILED, new ActingIdentity('App\Models\User', '42'));
 
         self::assertSame([RefreshOutcome::CONFLICT, FailureReason::METADATA_CONFLICT], [$result->outcome, $result->reason]);
         self::assertSame([0, null], [$this->row()->metadata_refresh_failures, $this->row()->metadata_refresh_at]);
+    }
+
+    /**
+     * A refresh whose claim expired and was taken over by another writes
+     * nothing, success or failure, and leaves the new owner's claim; the new
+     * owner's write goes through.
+     *
+     * @return void
+     */
+    public function testARefreshWhoseClaimWasTakenOverWritesNothing(): void
+    {
+        $stale = $this->claim();
+        $owner = $this->claim();
+
+        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->fail($stale, FailureReason::FETCH_FAILED)->outcome);
+        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->apply($stale, self::metadata([1]), $this->clock->now())->outcome);
+        self::assertSame([$owner->token, 0, 0], [$this->row()->metadata_claim_token, $this->row()->metadata_version, $this->row()->metadata_refresh_failures]);
+        self::assertTrue($this->applier()->apply($owner, self::metadata([1]), $this->clock->now())->isRefreshed());
+        self::assertSame([null, 1], [$this->row()->metadata_claim_token, $this->row()->metadata_version]);
     }
 
     /**
@@ -550,7 +676,7 @@ final class MetadataApplierTest extends TestCase
     {
         $failed = RefreshResult::failed('c1', FailureReason::FETCH_FAILED, 2, CarbonImmutable::parse('2026-11-01T11:00:00+01:00'));
 
-        self::assertSame([
+        self::assertSame(self::sortedByKey([
             'outcome'          => 'failed',
             'connection_id'    => 'c1',
             'reason'           => 'fetch_failed',
@@ -559,8 +685,9 @@ final class MetadataApplierTest extends TestCase
             'trust_changed'    => false,
             'failures'         => 2,
             'next_attempt_at'  => '2026-11-01T10:00:00+00:00',
-        ], $failed->jsonSerialize());
-        self::assertSame([
+            'retry_after'      => null,
+        ]), self::sortedByKey($failed->jsonSerialize()));
+        self::assertSame(self::sortedByKey([
             'outcome'          => 'refreshed',
             'connection_id'    => 'c1',
             'reason'           => null,
@@ -569,7 +696,15 @@ final class MetadataApplierTest extends TestCase
             'trust_changed'    => true,
             'failures'         => null,
             'next_attempt_at'  => null,
-        ], RefreshResult::refreshed('c1', ['sso_url'], 3, true)->jsonSerialize());
+            'retry_after'      => null,
+        ]), self::sortedByKey(RefreshResult::refreshed('c1', ['sso_url'], 3, true)->jsonSerialize()));
+
+        $limited = RefreshResult::rateLimited('c1', 42);
+
+        self::assertSame(
+            ['rate_limited', 'c1', 'rate_limited', 42, 42],
+            [$limited->outcome->value, $limited->connectionId, $limited->reason?->value, $limited->retryAfter, $limited->jsonSerialize()['retry_after']],
+        );
         self::assertSame(
             [['in_progress', 'metadata_refresh_in_progress'], ['skipped', null], ['refused', 'connection_not_found'], ['conflict', 'metadata_conflict']],
             array_map(
@@ -581,14 +716,55 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * Apply the metadata to the connection as it is now, with no anchor.
+     * Claim the connection as it is now and apply the metadata, validated now.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      */
     private function apply(IdpMetadata $metadata): RefreshResult
     {
-        return $this->applier()->apply($this->row(), [], $metadata);
+        return $this->applier()->apply($this->claim(), $metadata, $this->clock->now());
+    }
+
+    /**
+     * Claim the connection as it is now, as the refresher does: a fresh token
+     * written, and the connection, its trusted certificates and its anchors as
+     * they are, the snapshot.
+     *
+     * @return \SineMacula\Laravel\Sso\Metadata\RefreshClaim
+     */
+    private function claim(): RefreshClaim
+    {
+        $row     = $this->row();
+        $keys    = app(KeyRing::class);
+        $trusted = RefreshClaim::trustedOf($keys->trustedCertificates($row->id), $keys->trustedCertificates($row->id, KeyUse::METADATA_SIGNING));
+        $token   = hash('md5', uniqid('claim', true));
+
+        Connection::query()->whereKey($row->id)->update(['metadata_claim_token' => $token]);
+
+        return new RefreshClaim($row, $token, $trusted);
+    }
+
+    /**
+     * Make the change, as another server or an administrator would while the
+     * refresh fetched.
+     *
+     * @param  string  $change
+     * @return void
+     */
+    private function change(string $change): void
+    {
+        $query = Connection::query()->whereKey($this->connection->id);
+
+        match ($change) {
+            'anchor_added'        => $this->trust(Certificates::distinct(8), KeyUse::METADATA_SIGNING),
+            'anchor_removed'      => ConnectionKey::query()->where('use', KeyUse::METADATA_SIGNING->value)->delete(),
+            'certificate_added'   => $this->trust(Certificates::distinct(9)),
+            'certificate_removed' => ConnectionKey::query()->where('use', KeyUse::IDP_SIGNING->value)->delete(),
+            'claim_taken_over'    => $query->update(['metadata_claim_token' => str_repeat('b', 32)]),
+            'claim_released'      => $query->update(['metadata_claim_token' => null]),
+            default               => $query->update([$change => 7]),
+        };
     }
 
     /**

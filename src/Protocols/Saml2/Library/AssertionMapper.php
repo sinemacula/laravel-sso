@@ -45,7 +45,7 @@ final readonly class AssertionMapper
     private const string NS_SAML = 'urn:oasis:names:tc:SAML:2.0:assertion';
 
     /** @var list<string> The assertion's children that are not another kind of statement. */
-    private const array ASSERTION_PARTS = ['Issuer', 'Signature', 'Subject', 'Conditions', 'Advice', 'AuthnStatement', 'AttributeStatement'];
+    private const array ASSERTION_PARTS = ['Issuer', 'Subject', 'Conditions', 'Advice', 'AuthnStatement', 'AttributeStatement'];
 
     /** @var list<string> The conditions the package models. */
     private const array MODELLED_CONDITIONS = ['AudienceRestriction', 'OneTimeUse', 'ProxyRestriction'];
@@ -129,14 +129,14 @@ final readonly class AssertionMapper
             default                               => IdentifierKind::NONE,
         };
 
-        $nameId = $identifier instanceof NameIDType ? self::nameId($identifier) : null;
+        $nameId        = $identifier instanceof NameIDType ? self::nameId($identifier) : null;
+        $confirmations = [];
 
-        $confirmations = array_map(
-            static fn (LibrarySubjectConfirmation $confirmation): SubjectConfirmation => self::confirmation($confirmation),
-            $subject->getSubjectConfirmation(),
-        );
+        foreach ($subject->getSubjectConfirmation() as $confirmation) {
+            $confirmations[] = self::confirmation($confirmation);
+        }
 
-        return new SamlSubject($kind, $nameId, array_values($confirmations));
+        return new SamlSubject($kind, $nameId, $confirmations);
     }
 
     /**
@@ -179,7 +179,8 @@ final readonly class AssertionMapper
             return null;
         }
 
-        $element    = self::children($assertion, 'Conditions')[0] ?? null;
+        // The library read its conditions from this same element
+        $element    = self::children($assertion, 'Conditions')[0];
         $restricted = [];
 
         foreach ($conditions->getAudienceRestriction() as $restriction) {
@@ -190,9 +191,9 @@ final readonly class AssertionMapper
             self::optionalInstant($conditions->getNotBefore()?->toDateTime()),
             self::optionalInstant($conditions->getNotOnOrAfter()?->toDateTime()),
             $restricted,
-            $element === null ? 0 : count(self::children($element, 'OneTimeUse')),
-            $element === null ? 0 : count(self::children($element, 'ProxyRestriction')),
-            $element === null ? [] : self::otherChildren($element, self::MODELLED_CONDITIONS),
+            count(self::children($element, 'OneTimeUse')),
+            count(self::children($element, 'ProxyRestriction')),
+            self::otherChildren($element, self::MODELLED_CONDITIONS),
         );
     }
 
@@ -237,17 +238,18 @@ final readonly class AssertionMapper
      */
     private static function attribute(Attribute $attribute): SamlAttribute
     {
-        $values = array_map(static function ($value): ?string {
-            $content = $value->getValue();
+        $values = [];
 
-            return $content instanceof ValueTypeInterface ? $content->getRawValue() : null;
-        }, $attribute->getAttributeValues());
+        foreach ($attribute->getAttributeValues() as $value) {
+            $content  = $value->getValue();
+            $values[] = $content instanceof ValueTypeInterface ? $content->getRawValue() : null;
+        }
 
         return new SamlAttribute(
             $attribute->getName()->getRawValue(),
             $attribute->getNameFormat()?->getRawValue(),
             $attribute->getFriendlyName()?->getRawValue(),
-            array_values($values),
+            $values,
         );
     }
 
@@ -322,8 +324,10 @@ final readonly class AssertionMapper
     }
 
     /**
-     * Whether the element is one of the parts named: a SAML element of the
-     * name, or the assertion's own `ds:Signature`.
+     * Whether the element is one of the parts named, a SAML element of the
+     * name. The assertion's own `ds:Signature` never reaches here: the element
+     * is parsed from the bytes that signature digested, which its enveloped
+     * transform removed it from, and the schema allows it no other.
      *
      * @param  \DOMElement  $element
      * @param  list<string>  $parts
@@ -331,9 +335,6 @@ final readonly class AssertionMapper
      */
     private static function isPart(\DOMElement $element, array $parts): bool
     {
-        $isSaml      = $element->namespaceURI === self::NS_SAML                        && in_array($element->localName, $parts, true);
-        $isSignature = $element->namespaceURI === 'http://www.w3.org/2000/09/xmldsig#' && $element->localName === 'Signature';
-
-        return $isSaml || ($isSignature && in_array('Signature', $parts, true));
+        return $element->namespaceURI === self::NS_SAML && in_array($element->localName, $parts, true);
     }
 }

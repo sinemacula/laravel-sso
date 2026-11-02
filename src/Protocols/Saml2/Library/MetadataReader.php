@@ -5,13 +5,11 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Saml2\Library;
 
 use Carbon\CarbonImmutable;
-use SimpleSAML\SAML2\XML\md\EntitiesDescriptor;
-use SimpleSAML\SAML2\XML\md\EntityDescriptor;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
-use SineMacula\Laravel\Sso\Fetching\FetcherSettings;
 use SineMacula\Laravel\Sso\Keys\CertificateInspector;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
+use SineMacula\Laravel\Sso\Metadata\MetadataSettings;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
 
@@ -21,9 +19,13 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
  * reader of metadata, for an import and for a refresh alike, and the only class
  * besides the response adapter's that calls the SAML library.
  *
- * 1. The document is capped at `sso.fetcher.max_response_bytes`, the cap of
- *    every fetched response, and parsed hardened against the metadata schema,
- *    with no `ID` repeated (`HardenedParser`).
+ * 1. The document is capped at `sso.metadata.max_bytes` before it is parsed,
+ *    the cap a metadata fetch is held to too, and parsed hardened with no `ID`
+ *    repeated anywhere in it (`HardenedParser`). libxml's default limits bound
+ *    a single text node, name or attribute, never the document's size, so an
+ *    aggregate of tens of MiB parses without `LIBXML_PARSEHUGE`, which stays
+ *    off: no value in metadata comes near those limits, and the cap bounds the
+ *    document.
  * 2. Its root is an `EntityDescriptor` or an `EntitiesDescriptor`. Exactly one
  *    `EntityDescriptor` anywhere in it has the pinned entity id, compared
  *    exactly: none is `metadata_entity_not_found`, more than one, wherever it
@@ -31,16 +33,23 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
  *    `EntitiesDescriptor` that is itself the root or such a child, checked by
  *    walking its ancestors, so an entity wrapped anywhere else is refused.
  * 3. Within the chosen entity, the only signature allowed is its own, a child
- *    of the entity; one anywhere else in it is refused.
+ *    of the entity; one anywhere else in it is refused. The chosen entity, and
+ *    only it, must be valid against the metadata schema (`schema`): the other
+ *    members of an aggregate are never validated, so a member a federation
+ *    lists with a value the schema refuses never refuses the rest.
  * 4. With an anchor set (the connection's metadata signing certificates), the
  *    entity must be covered by a signature, its own or an enclosing
  *    `EntitiesDescriptor`'s, and every signature on that path must verify with
  *    an anchor through `PinnedVerifier`, each signed element copied into a
- *    document of its own first, as the library needs (`saml-library.md`). No
+ *    document of its own first, as the library needs (`saml-library.md`), and
+ *    verified as a `SignedDescriptor`, which models the signature alone. No
  *    signature, or one that does not verify, is `metadata_signature_invalid`.
  *    The entity is then read from the element parsed from the bytes the
  *    innermost signature on its path digested, never from the document given.
- *    Without anchors, signatures are not read.
+ *    Without anchors, signatures are not read. No member is modelled by the
+ *    library's `EntityDescriptor`, the chosen one included: its stricter rules
+ *    (a URL with a scheme, an ASCII email address, a `validUntil` in UTC) judge
+ *    values the reader never reads, and the schema has judged the entity.
  * 5. Its expiry is the earliest `validUntil` of the entity and every descriptor
  *    enclosing it (`cacheDuration` is ignored); one not after the clock's now
  *    is `metadata_expired`.
@@ -57,7 +66,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
  * which the verified signatures cover, so a comment or a processing instruction
  * cannot change one. The answer is an `IdpMetadata`, read or refused with the
  * rule's name; the reader never logs or keeps the document. It holds the
- * parser, the verifier, the certificate inspector, the fetcher's settings and
+ * parser, the verifier, the certificate inspector, the metadata settings and
  * the clock, none of which keeps anything between calls (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -94,12 +103,12 @@ final readonly class MetadataReader
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Library\HardenedParser  $parser
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Library\PinnedVerifier  $verifier
      * @param  \SineMacula\Laravel\Sso\Keys\CertificateInspector  $inspector
-     * @param  \SineMacula\Laravel\Sso\Fetching\FetcherSettings  $fetcher
+     * @param  \SineMacula\Laravel\Sso\Metadata\MetadataSettings  $settings
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      */
     public function __construct(
 
-        /** Caps, parses and schema-validates the document. */
+        /** Caps and parses the document, and schema-validates the entity. */
         private HardenedParser $parser,
 
         /** Verifies each signature with the anchors. */
@@ -108,12 +117,25 @@ final readonly class MetadataReader
         /** Reads and judges each certificate. */
         private CertificateInspector $inspector,
 
-        /** The cap on a fetched response, which the document is held to. */
-        private FetcherSettings $fetcher,
+        /** The cap the document is held to. */
+        private MetadataSettings $settings,
 
         /** The clock the expiry is judged against. */
         private Clock $clock,
     ) {}
+
+    /**
+     * The most bytes a metadata document may hold, which a fetch of one is held
+     * to as well.
+     *
+     * @return int
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function maxBytes(): int
+    {
+        return $this->settings->maxBytes();
+    }
 
     /**
      * The metadata of the pinned entity, every signature on its path verified
@@ -129,12 +151,14 @@ final readonly class MetadataReader
      */
     public function read(#[\SensitiveParameter] string $xml, string $entityId, array $anchors = [], ?string $binding = null): IdpMetadata
     {
-        $maxBytes = $this->fetcher->maxResponseBytes();
+        $maxBytes = $this->maxBytes();
 
         try {
-            $document = $this->parser->parse($xml, MessageKind::METADATA, $maxBytes, FailureReason::METADATA_INVALID);
+            $document = $this->parser->loadUnique($xml, $maxBytes, FailureReason::METADATA_INVALID);
             $entity   = self::entity($document, $entityId);
             $path     = self::path($entity);
+
+            $this->parser->validateElement($entity, MessageKind::METADATA, FailureReason::METADATA_INVALID);
 
             if ($anchors !== []) {
                 $path = $this->verifiedPath($path, $anchors);
@@ -285,15 +309,15 @@ final readonly class MetadataReader
 
     /**
      * The signed descriptor copied into a document of its own, so the library
-     * digests the descriptor rather than the document that held it, as the
-     * library's descriptor.
+     * digests the descriptor rather than the document that held it, as a
+     * descriptor that models its signature alone.
      *
      * @param  \DOMElement  $element
-     * @return \SimpleSAML\SAML2\XML\md\EntitiesDescriptor|\SimpleSAML\SAML2\XML\md\EntityDescriptor
+     * @return \SineMacula\Laravel\Sso\Protocols\Saml2\Library\SignedDescriptor
      *
      * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
      */
-    private static function reRooted(\DOMElement $element): EntitiesDescriptor|EntityDescriptor
+    private static function reRooted(\DOMElement $element): SignedDescriptor
     {
         try {
             $document = new \DOMDocument('1.0', 'UTF-8');
@@ -305,7 +329,7 @@ final readonly class MetadataReader
 
             $document->appendChild($copy);
 
-            return $element->localName === 'EntityDescriptor' ? EntityDescriptor::fromXML($copy) : EntitiesDescriptor::fromXML($copy);
+            return SignedDescriptor::fromXML($copy);
         } catch (\Throwable) {
             throw new ReadFailure(FailureReason::METADATA_INVALID, 'structure');
         }

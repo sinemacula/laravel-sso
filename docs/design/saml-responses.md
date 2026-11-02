@@ -64,8 +64,9 @@ verified elements.
 - An unsuccessful status: its `Issuer` (when present) and `Destination` are held to the same rules, and its
   `InResponseTo` must be the consumed request's, before it is `provider_error`.
 - `issuer_mismatch`: the response's `Issuer` (when present) or the assertion's is not the connection's entity id.
-- `recipient_mismatch`: the `Destination` is not the assertion consumer service, or is absent from a signed response;
-  or no bearer confirmation names the service as its `Recipient`.
+- `recipient_mismatch`: the `Destination` is absent, or is not exactly the assertion consumer service, whether or not
+  the response is signed (an unsigned response's `Destination` is not authenticated, but its absence is never taken
+  as a pass); or no bearer confirmation names the service as its `Recipient`.
 - `encryption_required`: a plain assertion where the connection requires encryption.
 - `signature_invalid`: the connection wants assertions signed (the default) and the assertion carries no signature of
   its own.

@@ -32,8 +32,12 @@ enum RefreshOutcome: string
     // connection, so it did not run
     case IN_PROGRESS = 'in_progress';
 
+    // An administrator's refresh found the connection's metadata limit full, so
+    // it did not run
+    case RATE_LIMITED = 'rate_limited';
+
     // A scheduled refresh found the connection claimed or refreshed by another
-    // server since it was listed, so it did not run
+    // server since it was listed, or no longer due, so it did not run
     case SKIPPED = 'skipped';
 
     // An administrator's refresh named no such connection, or one whose

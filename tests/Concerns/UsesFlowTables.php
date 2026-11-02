@@ -67,8 +67,8 @@ trait UsesFlowTables
     /**
      * Make and save an authorisation request through the connection: a
      * `sign_in` for `web`, with a random reference and state digest, a fixed
-     * challenge, expiring ten minutes after the clock's now, unless the
-     * attributes given say otherwise.
+     * challenge, the connection's trust version as stored now, expiring ten
+     * minutes after the clock's now, unless the attributes given say otherwise.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array<string, mixed>  $attributes
@@ -85,6 +85,7 @@ trait UsesFlowTables
             'application'       => 'web',
             'connection_id'     => $connection->id,
             'handoff_challenge' => str_repeat('c', 43),
+            'trust_version'     => (int) Connection::query()->whereKey($connection->id)->value('trust_version'),
             'expires_at'        => self::flowNow()->addMinutes(10),
         ])->save();
 

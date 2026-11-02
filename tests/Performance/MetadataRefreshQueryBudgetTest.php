@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Performance;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
@@ -25,25 +26,35 @@ use Tests\Fixtures\Keys\Certificates;
 /**
  * Query budgets for a metadata refresh (SSO-2.8, SSO-11.12). Before it fetches,
  * a refresh reads the connection (an administrator's by its id, the schedule's
- * in the due listing) and its anchors, and claims it with one conditional
- * update; after, in one transaction, it reads the connection locked, its
- * anchors and its trusted certificates locked, and writes only what changed:
+ * in the due listing), counts an administrator's refresh against the
+ * connection's metadata limit (the counter's conditional update and its
+ * insert-unless-exists, two writes on a fresh window), reads its anchors and
+ * its trusted certificates (the claim's snapshot), and claims it with one
+ * conditional update that writes the claim's token; after, in one transaction,
+ * it reads the connection locked and its certificates and anchors locked in one
+ * statement, compares them with the snapshot, and writes only what changed:
  *
- * - a refresh now that adds a certificate: 6 reads (the connection and the
- *   anchors; the connection, the anchors and the certificates locked; the
- *   fingerprints judged before the insert) and 3 writes (the claim, the
- *   insert, the connection's refresh);
- * - a refresh now that removes a certificate and moves the endpoint: 5 reads
- *   and 6 writes (the claim, the delete, the requests and the handoff codes
- *   voided, the trust version raised once, the connection's settings and
- *   refresh in one update);
- * - a scheduled refresh of one connection that changes nothing: 5 reads (the
- *   listing, the anchors, then the three locked reads) and 2 writes (the
- *   claim, the refresh);
- * - a failed refresh: 3 reads (the connection, the anchors, the connection
- *   locked) and 2 writes (the claim, the failure);
- * - a refresh now whose claim another server holds: 2 reads and the claim's
- *   update, which changes no row.
+ * - a refresh now that adds a certificate: 7 reads (the connection, the anchors
+ *   and the certificates; the connection and the snapshot's fingerprints
+ *   locked; the certificates locked to replace them; the fingerprints judged
+ *   before the insert) and 5 writes (the counter's two, the claim, the insert,
+ *   the connection's refresh);
+ * - a refresh now that removes a certificate and moves the endpoint: 6 reads
+ *   and 8 writes (the counter's two, the claim, the delete, the requests and
+ *   the handoff codes voided, the trust version raised once, the connection's
+ *   settings and refresh in one update);
+ * - a scheduled refresh of one connection that changes nothing: 6 reads (the
+ *   listing, the anchors, the certificates, then the three locked reads) and 2
+ *   writes (the claim, the refresh), the schedule counting nothing;
+ * - a failed refresh: 5 reads (the connection, the anchors, the certificates,
+ *   the connection and the fingerprints locked) and 4 writes (the counter's
+ *   two, the claim, the failure);
+ * - a refresh now whose claim another server holds: 3 reads, the counter's two
+ *   writes and the claim's update, which changes no row;
+ * - a refresh now past the metadata limit: 2 reads (the connection, then the
+ *   full counter for its wait) and the counter's 3 writes (its conditional
+ *   update, its insert-unless-exists and the update tried again), none of which
+ *   changes a row; nothing is claimed or fetched.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -87,83 +98,104 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now that adds a certificate is six reads and three writes.
+     * A refresh now that adds a certificate is seven reads and five writes.
      *
      * @return void
      */
-    public function testARefreshAddingACertificateIsSixReadsAndThreeWrites(): void
+    public function testARefreshAddingACertificateIsSevenReadsAndFiveWrites(): void
     {
         $connection = $this->saml([self::idp()->certificate()]);
 
         $this->serve(self::idp()->metadata()->with(['signing_certificates' => [self::idp()->certificate(), Certificates::distinct(0)]]));
 
-        $result = $this->assertQueryBudget(6, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id));
+        $result = $this->assertQueryBudget(7, 5, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['idp_signing_certificates'], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
     }
 
     /**
-     * A refresh now that removes a certificate and moves the endpoint is five
-     * reads and six writes, the trust version raised once.
+     * A refresh now that removes a certificate and moves the endpoint is six
+     * reads and eight writes, the trust version raised once.
      *
      * @return void
      */
-    public function testARefreshRemovingACertificateAndMovingTheEndpointIsFiveReadsAndSixWrites(): void
+    public function testARefreshRemovingACertificateAndMovingTheEndpointIsSixReadsAndEightWrites(): void
     {
         $connection = $this->saml([self::idp()->certificate(), Certificates::distinct(0)]);
 
         $this->serve(self::idp()->metadata('https://login.example.test/saml/sso'));
 
-        $result = $this->assertQueryBudget(5, 6, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id));
+        $result = $this->assertQueryBudget(6, 8, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['sso_url', 'idp_signing_certificates'], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
     }
 
     /**
-     * A scheduled refresh of one connection that changes nothing is five reads
+     * A scheduled refresh of one connection that changes nothing is six reads
      * and two writes.
      *
      * @return void
      */
-    public function testAScheduledRefreshChangingNothingIsFiveReadsAndTwoWrites(): void
+    public function testAScheduledRefreshChangingNothingIsSixReadsAndTwoWrites(): void
     {
         $this->saml([self::idp()->certificate()]);
         $this->serve(self::idp()->metadata());
 
-        $results = $this->assertQueryBudget(5, 2, fn (): array => $this->refresher()->refreshDue());
+        $results = $this->assertQueryBudget(6, 2, fn (): array => $this->refresher()->refreshDue());
 
         self::assertSame([RefreshOutcome::REFRESHED], array_map(static fn (RefreshResult $result): RefreshOutcome => $result->outcome, $results));
     }
 
     /**
-     * A failed refresh is three reads and two writes.
+     * A failed refresh is five reads and four writes.
      *
      * @return void
      */
-    public function testAFailedRefreshIsThreeReadsAndTwoWrites(): void
+    public function testAFailedRefreshIsFiveReadsAndFourWrites(): void
     {
         $connection = $this->saml([self::idp()->certificate()]);
 
         $this->fetcher->respond(self::URL, FetchResult::failed());
 
-        $result = $this->assertQueryBudget(3, 2, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id));
+        $result = $this->assertQueryBudget(5, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
 
         self::assertSame(RefreshOutcome::FAILED, $result->outcome);
     }
 
     /**
-     * A refresh now whose claim another server holds is two reads and the
-     * claim's update, and fetches nothing.
+     * A refresh now whose claim another server holds is three reads, the
+     * counter's two writes and the claim's update, and fetches nothing.
      *
      * @return void
      */
-    public function testARefreshWhoseClaimIsHeldIsTwoReadsAndTheClaim(): void
+    public function testARefreshWhoseClaimIsHeldIsThreeReadsAndThreeWrites(): void
     {
         $connection = $this->saml([self::idp()->certificate()], ['metadata_claimed_until' => $this->clock->now()->addMinute()]);
 
-        $result = $this->assertQueryBudget(2, 1, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id));
+        $result = $this->assertQueryBudget(3, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
 
         self::assertSame(RefreshOutcome::IN_PROGRESS, $result->outcome);
+
+        $this->fetcher->assertNothingFetched();
+    }
+
+    /**
+     * A refresh now past the metadata limit is two reads and the counter's
+     * three writes, and claims and fetches nothing.
+     *
+     * @return void
+     */
+    public function testARateLimitedRefreshIsTwoReadsAndThreeWrites(): void
+    {
+        config()->set('sso.rate_limits.metadata.per_connection', ['max' => 1, 'decay_seconds' => 3600]);
+
+        $connection = $this->saml([self::idp()->certificate()], ['metadata_claimed_until' => $this->clock->now()->addMinute()]);
+
+        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+
+        $result = $this->assertQueryBudget(2, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+
+        self::assertSame(RefreshOutcome::RATE_LIMITED, $result->outcome);
 
         $this->fetcher->assertNothingFetched();
     }
@@ -235,5 +267,15 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     private static function idp(): FakeSamlIdentityProvider
     {
         return self::$idp ??= new FakeSamlIdentityProvider;
+    }
+
+    /**
+     * The administrator who asks for a refresh now.
+     *
+     * @return \SineMacula\Laravel\Sso\Administration\ActingIdentity
+     */
+    private static function actor(): ActingIdentity
+    {
+        return new ActingIdentity('App\Models\User', '42');
     }
 }

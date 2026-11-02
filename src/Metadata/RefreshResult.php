@@ -19,6 +19,8 @@ use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
  *   voiding the flows in flight through it.
  * - `failed`: the reason, how many refreshes have failed in a row, and when the
  *   next is due.
+ * - `rate_limited` (`rate_limited`): an administrator's refresh past the
+ *   connection's metadata limit, with the seconds until the window ends.
  * - `conflict` (`metadata_conflict`), `in_progress`
  *   (`metadata_refresh_in_progress`), `skipped`, and `refused`
  *   (`connection_not_found` or `feature_disabled`), with nothing else.
@@ -43,6 +45,7 @@ final readonly class RefreshResult implements \JsonSerializable
      * @param  bool  $trustChanged
      * @param  ?int  $failures
      * @param  ?\Carbon\CarbonImmutable  $nextAttemptAt
+     * @param  ?int  $retryAfter
      *
      * @SuppressWarnings("php:S107")
      */
@@ -71,6 +74,9 @@ final readonly class RefreshResult implements \JsonSerializable
 
         /** When the next refresh is due, in UTC, for a failed one. */
         public ?CarbonImmutable $nextAttemptAt = null,
+
+        /** The seconds until another refresh may be asked for, for a rate limited one. */
+        public ?int $retryAfter = null,
     ) {}
 
     /**
@@ -111,6 +117,19 @@ final readonly class RefreshResult implements \JsonSerializable
     public static function conflict(string $connectionId): self
     {
         return new self(RefreshOutcome::CONFLICT, $connectionId, FailureReason::METADATA_CONFLICT);
+    }
+
+    /**
+     * An administrator's refresh past the connection's metadata limit, which
+     * ran nothing.
+     *
+     * @param  string  $connectionId
+     * @param  int  $retryAfter
+     * @return self
+     */
+    public static function rateLimited(string $connectionId, int $retryAfter): self
+    {
+        return new self(RefreshOutcome::RATE_LIMITED, $connectionId, FailureReason::RATE_LIMITED, retryAfter: $retryAfter);
     }
 
     /**
@@ -174,6 +193,7 @@ final readonly class RefreshResult implements \JsonSerializable
             'trust_changed'    => $this->trustChanged,
             'failures'         => $this->failures,
             'next_attempt_at'  => $this->nextAttemptAt?->utc()->toIso8601String(),
+            'retry_after'      => $this->retryAfter,
         ];
     }
 }

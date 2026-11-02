@@ -5,7 +5,10 @@ declare(strict_types = 1);
 namespace Tests\Feature\Protocols\Saml2\Library;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use SimpleSAML\SAML2\Compat\AbstractContainer;
 use SimpleSAML\SAML2\Compat\ContainerSingleton;
+use SimpleSAML\SAML2\Compat\MockContainer;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\HardenedParser;
@@ -15,10 +18,11 @@ use Tests\TestCase;
 
 /**
  * Tests of the SAML adapter's own parts (SSO-6.1, SSO-11.2): the library's
- * container, set once and refusing every service the package never uses; the
- * schema of each kind of document, by absolute path; the entity loader that
- * holds schema validation to the library's own files; and a refusal that names
- * only its rule.
+ * container, set once by the package, kept, a container set by anything else
+ * refused, and refusing every service the package never uses; the schema of
+ * each kind of document, by absolute path; the entity loader that holds schema
+ * validation to the library's own files; and a refusal that names only its
+ * rule.
  *
  * The library is named here only to observe its container; the package's code
  * names it only inside the adapter.
@@ -35,20 +39,84 @@ use Tests\TestCase;
 final class LibraryInternalsTest extends TestCase
 {
     /**
-     * The container is set once and kept: setting it again keeps the one set,
-     * whoever set it.
+     * In a process where no container is set yet, the package sets its own,
+     * once, and keeps it: ensuring it again, as every request of a long-running
+     * process does, keeps the same instance.
      *
      * @return void
      */
+    #[RunInSeparateProcess]
     public function testTheContainerIsSetOnceAndKept(): void
     {
+        self::assertFalse((new \ReflectionProperty(ContainerSingleton::class, 'container'))->isInitialized());
+
         LibraryContainer::ensure();
 
         $set = ContainerSingleton::getInstance();
 
         LibraryContainer::ensure();
+        LibraryContainer::ensure();
 
+        self::assertInstanceOf(LibraryContainer::class, $set);
         self::assertSame($set, ContainerSingleton::getInstance());
+    }
+
+    /**
+     * A container something else set is refused, naming the problem, and left
+     * as it is; the package's own set before is kept.
+     *
+     * @return void
+     */
+    public function testAContainerSomethingElseSetIsRefused(): void
+    {
+        $foreign  = new MockContainer;
+        $previous = self::setContainer($foreign);
+
+        try {
+            LibraryContainer::ensure();
+            self::fail('A container something else set was used.');
+        } catch (\LogicException $exception) {
+            self::assertSame(
+                'The SAML library\'s process-wide container is already set to [' . MockContainer::class . '], not the package\'s own: '
+                . 'the package runs SAML only through the container it sets itself.',
+                $exception->getMessage(),
+            );
+            self::assertSame($foreign, ContainerSingleton::getInstance());
+        } finally {
+            ContainerSingleton::setContainer($previous);
+        }
+
+        $own = new LibraryContainer;
+
+        self::setContainer($own);
+
+        try {
+            LibraryContainer::ensure();
+
+            self::assertSame($own, ContainerSingleton::getInstance());
+        } finally {
+            ContainerSingleton::setContainer($previous);
+        }
+    }
+
+    /**
+     * A parse refuses to run through a container something else set.
+     *
+     * @return void
+     */
+    public function testAParseRefusesAContainerSomethingElseSet(): void
+    {
+        $previous = self::setContainer(new MockContainer);
+
+        try {
+            (new HardenedParser)->load('<x/>', 4);
+            self::fail('A parse ran through a container something else set.');
+        } catch (\Throwable $exception) {
+            self::assertInstanceOf(\LogicException::class, $exception);
+            self::assertStringContainsString('not the package\'s own', $exception->getMessage());
+        } finally {
+            ContainerSingleton::setContainer($previous);
+        }
     }
 
     /**
@@ -164,5 +232,23 @@ final class LibraryInternalsTest extends TestCase
 
         self::assertSame('<x/>', $parser->decode(base64_encode('<x/>'), 8));
         self::assertSame('x', $parser->load('<x/>', 4)->documentElement?->localName);
+    }
+
+    /**
+     * Set the library's container, and answer the package's own that was set
+     * before, set first when none was, to restore afterwards.
+     *
+     * @param  \SimpleSAML\SAML2\Compat\AbstractContainer  $container
+     * @return \SimpleSAML\SAML2\Compat\AbstractContainer
+     */
+    private static function setContainer(AbstractContainer $container): AbstractContainer
+    {
+        LibraryContainer::ensure();
+
+        $previous = ContainerSingleton::getInstance();
+
+        ContainerSingleton::setContainer($container);
+
+        return $previous;
     }
 }

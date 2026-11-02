@@ -18,11 +18,15 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * A connection that no refresh has written (`metadata_fetched_at` unset), its
  * settings entered by hand or imported once, never expires. One a refresh has
  * written expires at the earlier of its `metadata_valid_until` (the earliest
- * applicable `validUntil` the refresh found, an enclosing one included) and its
- * last validated fetch plus `MetadataSettings::staleLimitSeconds()`, when there
- * is a limit. The rows are read as the caller holds them, so a caller deciding
- * a flow reads the connection from the write connection first (SSO-11.3); a
- * connection given only through its contract is read again there, by its id.
+ * applicable `validUntil` the refresh found, an enclosing aggregate's included)
+ * and its last validated fetch (the moment the fetched document was validated,
+ * which the refresh stamps as `metadata_fetched_at`) plus
+ * `MetadataSettings::staleLimitSeconds()`, when there is a limit. A refresh
+ * applies the same rule when it commits (`hasExpired()`), from the moment it
+ * validated the document, so what it writes is never already expired. The rows
+ * are read as the caller holds them, so a caller deciding a flow reads the
+ * connection from the write connection first (SSO-11.3); a connection given
+ * only through its contract is read again there, by its id.
  *
  * It holds the settings and the clock, neither of which keeps anything of one
  * request for the next (SSO-11.2).
@@ -81,10 +85,42 @@ final readonly class MetadataExpiry
             return null;
         }
 
-        $limit = $this->settings->staleLimitSeconds();
-        $stale = $limit === null ? null : $fetched->addSeconds($limit);
+        return $this->expiryOf($row->metadata_valid_until, $fetched);
+    }
 
-        return self::earliest($row->metadata_valid_until, $stale);
+    /**
+     * When metadata validated at the instant given, with the `validUntil`
+     * given, expires: the earlier of the `validUntil` and that instant plus the
+     * stale limit, when there is one; `null` when neither applies.
+     *
+     * @param  ?\Carbon\CarbonImmutable  $validUntil
+     * @param  \Carbon\CarbonImmutable  $validatedAt
+     * @return ?\Carbon\CarbonImmutable
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function expiryOf(?CarbonImmutable $validUntil, CarbonImmutable $validatedAt): ?CarbonImmutable
+    {
+        $limit = $this->settings->staleLimitSeconds();
+
+        return self::earliest($validUntil, $limit === null ? null : $validatedAt->addSeconds($limit));
+    }
+
+    /**
+     * Whether metadata validated at the instant given, with the `validUntil`
+     * given, has expired by now: what a refresh checks again when it commits.
+     *
+     * @param  ?\Carbon\CarbonImmutable  $validUntil
+     * @param  \Carbon\CarbonImmutable  $validatedAt
+     * @return bool
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function hasExpired(?CarbonImmutable $validUntil, CarbonImmutable $validatedAt): bool
+    {
+        $expiry = $this->expiryOf($validUntil, $validatedAt);
+
+        return $expiry !== null && $this->clock->now() >= $expiry;
     }
 
     /**

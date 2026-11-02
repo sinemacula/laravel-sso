@@ -386,6 +386,51 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
+     * Rows of `[request's trust version, connection's, reason]`: the trust
+     * version the request was started with, the connection's, and what the
+     * consumption comes to.
+     *
+     * @return iterable<string, array{0: int, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideTrustVersions(): iterable
+    {
+        yield from [
+            'the same'               => [4, 4, null],
+            'the connection raised'  => [4, 5, FailureReason::CONNECTION_UNAVAILABLE],
+            'the connection lowered' => [4, 3, FailureReason::CONNECTION_UNAVAILABLE],
+        ];
+    }
+
+    /**
+     * A request whose trust version is not the connection's (a trust change
+     * since it started that voided nothing it could see) is refused
+     * `connection_unavailable`, as a voided one is, and consumed; one of the
+     * connection's trust version is consumed.
+     *
+     * @param  int  $started
+     * @param  int  $current
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('provideTrustVersions')]
+    public function testARequestOfAnotherTrustVersionIsRefused(int $started, int $current, ?FailureReason $reason): void
+    {
+        $request = $this->request(['trust_version' => $started]);
+
+        $this->connection->forceFill(['trust_version' => $current])->save();
+
+        $result = $this->consume(Correlation::solicited(self::STATE), $this->connection->fresh());
+
+        if ($reason === null) {
+            self::assertTrue($result->isConsumed());
+        } else {
+            self::assertRefused($reason, $result, true);
+        }
+
+        self::assertNotNull($this->reread($request)->consumed_at);
+    }
+
+    /**
      * A request started through another connection than the response arrived
      * for is refused `connection_mismatch`, and consumed.
      *
@@ -517,7 +562,7 @@ final class RequestConsumptionTest extends TestCase
 
     /**
      * The reasons are judged in order: the `RelayState`, then the voiding, then
-     * the connection, then the expiry.
+     * the connection, then the trust version, then the expiry.
      *
      * @return void
      */
@@ -528,11 +573,13 @@ final class RequestConsumptionTest extends TestCase
 
         $this->request(['saml_request_id' => self::SAML_REQUEST_ID, 'voided_at' => $now, 'expires_at' => $now], 'state-1');
         $this->request(['voided_at' => $now, 'expires_at' => $now], 'state-2');
-        $this->request(['expires_at' => $now], 'state-3');
+        $this->request(['expires_at' => $now, 'trust_version' => 9], 'state-3');
+        $this->request(['expires_at' => $now, 'trust_version' => 9], 'state-4');
 
         self::assertRefused(FailureReason::REQUEST_MISMATCH, $this->consume(Correlation::solicited('state-2', self::SAML_REQUEST_ID)), true);
         self::assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->consume(Correlation::solicited('state-2'), $other), true);
         self::assertRefused(FailureReason::CONNECTION_MISMATCH, $this->consume(Correlation::solicited('state-3'), $other), true);
+        self::assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->consume(Correlation::solicited('state-4')), true);
     }
 
     /**

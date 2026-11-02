@@ -21,8 +21,11 @@ use SineMacula\Laravel\Sso\Fetching\FetchResult;
  * from the request), then assert what was fetched. A URL is matched exactly, as
  * the request carries it. A request to a URL with no response throws a
  * `LogicException` naming the URL, so a stray request fails the test rather
- * than passing unnoticed. It applies none of the default fetcher's checks:
- * those are the default fetcher's tests' to cover.
+ * than passing unnoticed. It applies none of the default fetcher's checks
+ * (those are the default fetcher's tests' to cover) but one: a request that
+ * carries its own size cap (a metadata request's) fails, as `fetch_failed`,
+ * when the body it would be answered with is longer than that cap, as the
+ * default fetcher stops such a transfer.
  *
  * @api
  *
@@ -54,7 +57,8 @@ final class FakeFetcher implements Fetcher
     }
 
     /**
-     * Record the request and answer it with the response given for its URL.
+     * Record the request and answer it with the response given for its URL, or
+     * fail it when that body is longer than the request's own cap.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return \SineMacula\Laravel\Sso\Fetching\FetchResult
@@ -71,8 +75,9 @@ final class FakeFetcher implements Fetcher
         }
 
         $response = $this->responses[$request->url];
+        $result   = $response instanceof \Closure ? $response($request) : $response;
 
-        return $response instanceof \Closure ? $response($request) : $response;
+        return $request->maxBytes !== null && strlen((string) $result->body()) > $request->maxBytes ? FetchResult::failed() : $result;
     }
 
     /**

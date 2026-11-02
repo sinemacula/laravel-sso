@@ -252,9 +252,13 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    chain.
 2. **Always a pinned verifier.** `verify()` always receives a verifier built from the connection's trusted
    certificates, and an architecture test forbids calling it without one.
-3. **Re-root every signed assertion.** Copy it into a document of its own before `verify()`, the same change as
-   upstream PR #424, and read every value only from the object `verify()` returned. Before decrypting or verifying,
-   check by absolute path that the signed element is the root `Response` or the single `/samlp:Response/saml:Assertion`.
+3. **Re-root every signed assertion.** Copy it into a document of its own before `verify()`, the same change as upstream
+   PR #424, and read every value only from the object `verify()` returned. Before decrypting or verifying, check by
+   absolute path that the signed element is the root `Response` or the single `/samlp:Response/saml:Assertion`. Metadata
+   descriptors are re-rooted the same way and verified as the package's `Library\SignedDescriptor`, which models the
+   signature and the `ID` alone: the library's `EntitiesDescriptor` would model every member of an aggregate and refuse
+   the whole when one member holds a value its stricter rules refuse. Only the pinned entity is schema-validated, and
+   values are read from the digested bytes.
 4. **The package owns SSO-6.7 policy.** Check `SignatureMethod`, `DigestMethod`, a single `Reference` and its
    transforms on the parsed `SignedInfo`. Build the decryptor for RSA-OAEP only, check `EncryptionMethod` before
    `decrypt()`, and verify a trusted Response signature before decrypting AES-CBC. The ordering must be enforceable,
@@ -265,9 +269,24 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    saml2's dependencies allow `guzzlehttp/psr7` 3.x, or with v7, which requires PHP 8.5.
 7. **Composer setup.** The installation guide tells applications to allow the
    `simplesamlphp/composer-xmlprovider-installer` plugin.
+8. **SAML is RSA only on this floor.** The owner decided (2026-11-01) that SAML stays on PHP 8.3 and saml2 v6, whose
+   signatures are RSA alone: RSA with SHA-256, SHA-384 or SHA-512 signs and verifies, RSA-OAEP transports keys, and
+   AES-128-GCM or AES-192-GCM encrypts content. This is a known limit of SSO-6.7. Configuration validation refuses
+   everything else for every SAML key use, each with its own code: a generated `sp_signing` or `sp_encryption` key of
+   type `ec` (`key_type`, `not_allowed`); an elliptic curve certificate trusted as `idp_signing` or as a
+   `metadata_signing` anchor (`certificate`, `unsupported`); and an ECDSA or RSA-PSS signature algorithm or AES-256-GCM
+   in a connection's allow-lists (`not_allowed`). An elliptic curve certificate published in metadata is ignored, for an
+   import and a refresh alike, and metadata whose only signing certificates are elliptic curve is refused
+   `metadata_invalid` (`signing_certificate`). ECDSA signatures and AES-256-GCM arrive when the PHP floor moves to 8.5
+   and saml2 v7 is stable.
+9. **The package owns the library's container.** The library reads its clock, logger, temporary directory, files and
+   algorithm blacklist from one process-wide container. The package sets its own (`Library\LibraryContainer`) before
+   its first parse, keeps it for the life of the process (idempotent under Octane and in queue workers), and refuses
+   with a `LogicException` a container something else set first, rather than run SAML through services it does not
+   control.
 
-Move to saml2 v7 when the package's PHP floor reaches 8.5. v7 removes conditions 3, 5 and 6, but the API changes to
-PHP's new DOM classes, so the adapter has to be rewritten, not reconfigured.
+Move to saml2 v7 when the package's PHP floor reaches 8.5 and v7 is stable. v7 removes conditions 3, 5, 6 and 8, but
+the API changes to PHP's new DOM classes, so the adapter has to be rewritten, not reconfigured.
 
 ## Implementation Anchors
 
@@ -281,7 +300,10 @@ PHP's new DOM classes, so the adapter has to be rewritten, not reconfigured.
 
 - saml2 6.2.x backports PR #424, or `xml-security` 2.x fixes the AES-256-GCM URI: drop the matching condition.
 - `assert` or `xml-common` 2.x loosens `guzzlehttp/psr7` to allow 3.x: restore Guzzle 8.
-- The package's PHP floor moves to 8.5: re-run this comparison against saml2 v7 and plan the adapter rewrite.
+- The package's PHP floor moves to 8.5 and saml2 v7 is stable: re-run this comparison against v7, plan the adapter
+  rewrite, and allow ECDSA signatures and AES-256-GCM (conditions 5 and 8).
+- An application needs the library's container for its own use of the library: condition 9 refuses it; the two cannot
+  share one process until the library's container is per call.
 - An advisory against `saml2`, `xml-security` or `xml-common`: re-run the fixture set against the patched version
   before taking it.
 - onelogin moves to xmlseclibs 4 and adds incoming algorithm allow-lists: it can be reconsidered.

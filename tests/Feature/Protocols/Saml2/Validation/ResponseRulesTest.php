@@ -120,9 +120,11 @@ final class ResponseRulesTest extends TestCase
         yield from [
             'the service, signed'               => [self::ACS, true, null],
             'the service, unsigned'             => [self::ACS, false, null],
-            'none, unsigned'                    => [null, false, null],
+            'none, unsigned'                    => [null, false, FailureReason::RECIPIENT_MISMATCH],
             'none, signed'                      => [null, true, FailureReason::RECIPIENT_MISMATCH],
+            'empty, unsigned'                   => ['', false, FailureReason::RECIPIENT_MISMATCH],
             'another URL'                       => ['https://sp.example.test/other', false, FailureReason::RECIPIENT_MISMATCH],
+            'another URL, signed'               => ['https://sp.example.test/other', true, FailureReason::RECIPIENT_MISMATCH],
             'the service with a trailing slash' => [self::ACS . '/', true, FailureReason::RECIPIENT_MISMATCH],
             'the service with a query'          => [self::ACS . '?x=1', true, FailureReason::RECIPIENT_MISMATCH],
             'the service in another case'       => [strtoupper(self::ACS), true, FailureReason::RECIPIENT_MISMATCH],
@@ -130,8 +132,9 @@ final class ResponseRulesTest extends TestCase
     }
 
     /**
-     * The `Destination` must be the assertion consumer service exactly, and
-     * present when the response is signed; for an unsuccessful response too.
+     * The `Destination` must be present and the assertion consumer service
+     * exactly, whether the response is signed or not; for an unsuccessful
+     * response too.
      *
      * @param  ?string  $destination
      * @param  bool  $signed

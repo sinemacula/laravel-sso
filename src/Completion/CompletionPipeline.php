@@ -53,7 +53,8 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  *    so none answers from an older snapshot. A completion still going on is
  *    refused with `connection_unavailable` when the connection is gone or no
  *    longer usable (`Protocols\ProtocolManager::isUsable()`), when the request
- *    is gone or a change to its connection voided it since it was consumed, or
+ *    is gone, a change to its connection voided it since it was consumed or the
+ *    trust version it was started with is no longer the locked connection's, or
  *    when the inheritance contract, asked again, no longer names the tenant
  *    whose rule is locked; it is refused with `metadata_expired` when what a
  *    metadata refresh applied to the locked connection has expired by now
@@ -352,8 +353,9 @@ final readonly class CompletionPipeline
 
     /**
      * Whether the completion may go on under its locks: the connection still
-     * there and usable, the request still there and not voided, and the locked
-     * rule, if any, still the enforcing tenant's.
+     * there and usable, the request still there, not voided and of the
+     * connection's trust version, and the locked rule, if any, still the
+     * enforcing tenant's.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
@@ -366,7 +368,7 @@ final readonly class CompletionPipeline
     private function isGoingOn(?Connection $connection, ?AuthorizationRequest $request, ?LockedEnforcement $enforcement): bool
     {
         $usable = $connection !== null && $this->protocols->isUsable($connection);
-        $live   = $request    !== null && $request->voided_at === null;
+        $live   = $request    !== null && $request->voided_at === null && $request->trust_version === $connection?->trust_version;
 
         return $usable && $live && ($enforcement?->isCurrent() ?? true);
     }

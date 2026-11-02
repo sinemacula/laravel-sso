@@ -51,11 +51,14 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * time, or that the response gave no `RelayState` for, is `request_mismatch`
  * (SSO-5.3); a request a change to its connection voided is
  * `connection_unavailable`; one started through another connection than the
- * response arrived for is `connection_mismatch`; one whose expiry is not after
- * now is `request_expired`. Each of these keeps the application, so the
- * completion redirects to it with the failure. Otherwise it is `consumed`, with
- * what the driver is given of it: its PKCE verifier, still encrypted, with the
- * encrypter that decrypts it only when the driver asks for it to build the
+ * response arrived for is `connection_mismatch`; one whose trust version is not
+ * the connection's (the connection as the caller read it, locked) is
+ * `connection_unavailable`, as a voided one is, so no response is validated or
+ * provider called for a flow a trust change has overtaken; one whose expiry is
+ * not after now is `request_expired`. Each of these keeps the application, so
+ * the completion redirects to it with the failure. Otherwise it is `consumed`,
+ * with what the driver is given of it: its PKCE verifier, still encrypted, with
+ * the encrypter that decrypts it only when the driver asks for it to build the
  * token request; its nonce digest, the issuer it expects, its SAML request id
  * and when it started. Nothing is decrypted here, so a ciphertext no key
  * decrypts never stops a request being consumed.
@@ -248,9 +251,23 @@ final readonly class RequestConsumption
             self::isRelayStateMismatch($request, $correlation) => FailureReason::REQUEST_MISMATCH,
             $request->voided_at     !== null                   => FailureReason::CONNECTION_UNAVAILABLE,
             $request->connection_id !== $routeConnection->id   => FailureReason::CONNECTION_MISMATCH,
+            self::isTrustChanged($request, $routeConnection)   => FailureReason::CONNECTION_UNAVAILABLE,
             $request->expires_at <= $now                       => FailureReason::REQUEST_EXPIRED,
             default                                            => null,
         };
+    }
+
+    /**
+     * Whether the connection's trust version is no longer the one the request
+     * captured when it started.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
+     * @return bool
+     */
+    private static function isTrustChanged(AuthorizationRequest $request, Connection $routeConnection): bool
+    {
+        return $request->trust_version !== $routeConnection->trust_version;
     }
 
     /**

@@ -56,8 +56,10 @@ helper), `keys.md` (trusted certificates), `domains.md` (`DomainWithdrawal`) and
 A key of the service provider's own keeps what subjects mean and what the identity provider signs, so its rotation
 voids nothing. An identity provider certificate trusted beside the others only adds a key a signature may verify with,
 so a provider's next certificate can be trusted ahead of its switch without voiding its own flows; removing one, and
-any change to the metadata signing anchors, voids. Each voiding change raises the connection's trust version. A
-refused or unchanged change voids nothing.
+any change to the metadata signing anchors, voids. Each voiding change raises the connection's trust version, which
+every authorisation request stores when it starts: a start whose connection's trust version moved between its read and
+its insert stores nothing, and a completion whose request's trust version is not the connection's is refused at
+consumption and again under its lock, as a voided one is. A refused or unchanged change voids nothing.
 
 ### Disabling and deleting
 

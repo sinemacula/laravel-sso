@@ -37,12 +37,14 @@ the race. The tables, the value types and the completion they feed are in `flows
   6. a `link` asks `Freshness\FreshnessGate` with `sso.link.create` (SSO-2.12), else `freshness_required`;
   7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing($identity, $sessionId, $connection)`, else
      `session_ineligible` for anything but `signed_in` (SSO-5.10); the default answers `not_signed_in`;
-  8. `Flows\ProtocolState::generate()`, then the driver's `start()` with a `Protocols\StartRequest` (purpose,
-     application, reference, state, nonce, PKCE verifier), outside any transaction the start opens; a refused `Start` is
-     refused with the driver's reason;
-  9. in a transaction on the storage connection: the connection's row is read again
-     locked for update, the first lock of every flow, and when it is gone or its switch, settings or secrets changed
-     since step 5 the start answers as step 5 does, writing nothing; otherwise the request is inserted through its
+  8. the connection's `trust_version`, as step 5 read it, is captured; `Flows\ProtocolState::generate()`, then the
+     driver's `start()` with a `Protocols\StartRequest` (purpose, application, reference, state, nonce, PKCE verifier),
+     outside any transaction the start opens; a refused `Start` is refused with the driver's reason;
+  9. in a transaction on the storage connection: the connection's row is read again locked for update, the first lock
+     of every flow, and when it is gone, its switch, settings or secrets changed since step 5, or its `trust_version` is
+     no longer the one captured (a certificate removed meanwhile voided only the requests already stored, so this one
+     must not be stored against the old trust), the start answers as step 5 does (`connection_unavailable`), writing
+     nothing; otherwise the request is inserted through its
      model, and the connection's `flows_version` raised by one under the lock, so the insert also writes the
      connection's row: a PostgreSQL `REPEATABLE READ` change whose snapshot predates the request fails to serialise
      when it locks the connection, rather than void the connection's requests without it (`Connections\InFlightVoider`).
@@ -53,7 +55,9 @@ the race. The tables, the value types and the completion they feed are in `flows
 - The stored request holds `reference`; `state_digest` and `nonce_digest`, the lower-case hex SHA-256 of the state and
   the nonce, never either; `purpose`, `application`, `connection_id`; `expected_issuer`, `issuer_required` and
   `saml_request_id` as the driver's `Start` gave them; `code_verifier`, the PKCE verifier encrypted through
-  `Contracts\SecretEncrypter`; `handoff_challenge`, the client's challenge or the generated verifier's; `identity_type`,
+  `Contracts\SecretEncrypter`; `handoff_challenge`, the client's challenge or the generated verifier's; `trust_version`,
+  the connection's as the start read it, which the completion compares with the connection's at consumption, before
+  anything is validated or a provider called, and again under its lock (`completion.md`); `identity_type`,
   `identity_id` and `session_id` as given; and `expires_at`, now plus `FlowSettings::requestTtlSeconds()` (60 to 900,
   default 600).
 - `begin()` (steps 1, 4 and 6 to 11, for an application already admitted and a connection already found) and
@@ -157,7 +161,8 @@ the race. The tables, the value types and the completion they feed are in `flows
 - `tests/Feature/Flows/AuthorizationRequestServiceTest.php`, `tests/Feature/Flows/StartEventSequenceTest.php`,
   `tests/Feature/Flows/RequestConsumptionTest.php`.
 - `tests/Integration/Flows/ConcurrentRequestConsumptionTest.php`, `tests/Integration/Flows/StartAfterCommitTest.php`
-  (a start inside a caller's transaction refused).
+  (a start inside a caller's transaction refused), `tests/Integration/Flows/StartTrustChangeRaceTest.php` (a trust
+  change between the start's read and its insert, across processes on MySQL and PostgreSQL).
 - `tests/Performance/AuthorizationRequestQueryBudgetTest.php`; the fixtures
   `tests/Fixtures/Protocols/StartingDriver.php` and `tests/Fixtures/Secrets/CountingSecretEncrypter.php`.
 

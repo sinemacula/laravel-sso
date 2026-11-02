@@ -485,6 +485,10 @@ final class SamlAdversarialCompletionTest extends TestCase
                 static fn (self $test): CompletionRequest => $test->posted($test->response()->signed(true, true)->with(['destination' => null])),
                 FailureReason::RECIPIENT_MISMATCH,
             ],
+            'an unsigned response without a destination' => [
+                static fn (self $test): CompletionRequest => $test->changed(['destination' => null]),
+                FailureReason::RECIPIENT_MISMATCH,
+            ],
             'a condition of a type the package does not use' => [
                 static fn (self $test): CompletionRequest => $test->posted(self::signedAssertion(self::withCondition($test->response()))),
                 FailureReason::CONDITION_UNSUPPORTED,

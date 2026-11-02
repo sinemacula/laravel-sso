@@ -11,64 +11,76 @@ use SineMacula\Laravel\Sso\Config\Enums\Feature;
 use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Connections\ConnectionFinder;
 use SineMacula\Laravel\Sso\Connections\SettingRules;
+use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
-use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
-use SineMacula\Laravel\Sso\Keys\KeyRing;
-use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\MetadataReader;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
+use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
  * Refreshes SAML connections' certificates and endpoints from their identity
- * provider's metadata, on a schedule (`refreshDue()`, which
- * `sso:metadata:refresh` runs) and when an administrator asks (`refreshNow()`)
- * (SSO-2.8, SSO-10.3, SSO-11.12).
+ * provider's metadata, on a schedule and when an administrator asks
+ * (`refreshNow()`) (SSO-2.8, SSO-10.3, SSO-11.12).
+ *
+ * The schedule (`sso:metadata:refresh`) lists the connections due
+ * (`dueConnectionIds()`) and queues a `RefreshConnectionMetadata` job for each,
+ * which calls `refreshQueued()`, so a large aggregate is fetched and checked on
+ * a queue whose workers are sized for it; with `--sync`, the command refreshes
+ * them itself (`refreshDue()`).
  *
  * A connection refreshes while `sso.features.metadata_refresh` is on, it is a
  * SAML connection, its `metadata_refresh` setting is on and its `metadata_url`
  * is a valid `https` URL. It is due while its `metadata_refresh_at` is unset or
  * not after now and no claim on it holds (`metadata_claimed_until` unset or not
  * after now); the due connections are read on the write connection in chunks of
- * `CHUNK_SIZE`, by keyset on their id. An administrator's refresh skips the
- * backoff, never a claim another server holds.
+ * `CHUNK_SIZE`, by keyset on their id. A queued refresh reads its connection
+ * again and is `skipped` when it is no longer due, refreshes or exists. An
+ * administrator's refresh skips the backoff, never a claim another server
+ * holds, and counts against the connection's metadata limit
+ * (`sso.rate_limits.metadata`) before anything is claimed or fetched: past it,
+ * it is `rate_limited` with the seconds until the window ends.
  *
  * Each refresh, outside any transaction:
  *
- * 1. reads the connection's metadata signing anchors, after the connection
- *    itself, so both are the snapshot the refresh is judged against;
+ * 1. reads the connection's identity provider signing certificates and its
+ *    metadata signing anchors, after the connection itself, so all three are
+ *    the snapshot the refresh is judged against, and
  * 2. claims the connection with one conditional update, until now plus
- *    `claim_seconds`, only while no claim holds and its metadata version is
+ *    `claim_seconds` and with a fresh random token (`RefreshClaims`, answering
+ *    a `RefreshClaim`), only while no claim holds and its metadata version is
  *    still the one read; no row updated is `skipped` for the schedule and
  *    `in_progress` for an administrator, with nothing else done;
  * 3. fetches the saved `metadata_url` through the package's fetcher as a
- *    metadata request (SSO-2.9), and reads it for the pinned `idp_entity_id`
- *    with the anchors (`Protocols\Saml2\Library\MetadataReader`);
+ *    metadata request held to `sso.metadata.max_bytes` (SSO-2.9), never the
+ *    fetcher's own cap, and reads it for the pinned `idp_entity_id` with the
+ *    anchors (`Protocols\Saml2\Library\MetadataReader`), noting the moment it
+ *    validated;
  * 4. applies it, or records the failure, in one transaction that locks the
- *    connection and compares the snapshot (`MetadataApplier`).
+ *    connection and compares the claim and the snapshot (`MetadataApplier`).
  *
  * A refused or failed fetch is `fetch_refused` or `fetch_failed` (a response
- * that is not `2xx` included), and metadata refused is its reader's reason.
- * Each refresh that did not apply is logged as a warning, through the
- * sanitising logger, with its reason and the fetch's status alone, never the
- * URL, the response or the metadata.
+ * that is not `2xx` or is larger than the cap included), and metadata refused
+ * is its reader's reason. Each refresh that did not apply is logged as a
+ * warning, through the sanitising logger, with its reason and the fetch's
+ * status alone, never the URL, the response or the metadata.
  *
- * Both entries refuse to run inside a transaction on the storage connection (a
+ * Every entry refuses to run inside a transaction on the storage connection (a
  * `LogicException`), since a refresh fetches before it writes. A database error
  * propagates (SSO-11.4) and stops a scheduled run. It asks no freshness: the
  * refresh is a system job, which an administrator switched on, and an
- * administrator's refresh does no more than a scheduled one would. It holds the
- * lookup, the key ring, the fetcher, the reader, the applier, the settings, the
- * clock and the logger, none of which keeps anything of one run for the next
- * (SSO-11.2); resolve it per run.
+ * administrator's refresh does no more than a scheduled one would, but always
+ * names the administrator. It holds the lookup, the claims, the fetcher, the
+ * reader, the applier, the limiter, the clock and the logger, none of which
+ * keeps anything of one run for the next (SSO-11.2); resolve it per run.
  *
  * @api
  *
@@ -87,11 +99,11 @@ final readonly class MetadataRefresher
      * Constructor.
      *
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionFinder  $connections
-     * @param  \SineMacula\Laravel\Sso\Keys\KeyRing  $keys
+     * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaims  $claims
      * @param  \SineMacula\Laravel\Sso\Contracts\Fetcher  $fetcher
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Library\MetadataReader  $reader
      * @param  \SineMacula\Laravel\Sso\Metadata\MetadataApplier  $applier
-     * @param  \SineMacula\Laravel\Sso\Metadata\MetadataSettings  $settings
+     * @param  \SineMacula\Laravel\Sso\Contracts\AttemptLimiter  $limiter
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      * @param  \Psr\Log\LoggerInterface  $logger
      *
@@ -102,8 +114,8 @@ final readonly class MetadataRefresher
         /** Finds an administrator's connection, on the write connection. */
         private ConnectionFinder $connections,
 
-        /** The connection's metadata signing anchors. */
-        private KeyRing $keys,
+        /** Snapshots and claims a connection's refresh. */
+        private RefreshClaims $claims,
 
         /** Fetches the metadata URL. */
         private Fetcher $fetcher,
@@ -114,8 +126,8 @@ final readonly class MetadataRefresher
         /** Writes the refresh or its failure under the connection's lock. */
         private MetadataApplier $applier,
 
-        /** How long a claim holds. */
-        private MetadataSettings $settings,
+        /** Limits how often an administrator refreshes a connection's metadata. */
+        private AttemptLimiter $limiter,
 
         /** The clock every time is read from. */
         private Clock $clock,
@@ -135,43 +147,58 @@ final readonly class MetadataRefresher
      */
     public function refreshDue(): array
     {
-        StorageConnection::assertNoTransaction(self::IN_TRANSACTION);
-
-        if (!Features::enabled(Feature::METADATA_REFRESH)) {
-            return [];
-        }
-
-        $results = [];
-        $after   = null;
-
-        do {
-
-            $chunk = $this->dueAfter($after);
-
-            foreach (array_filter($chunk, self::refreshes(...)) as $connection) {
-                $results[] = $this->refresh($connection, null, false);
-            }
-
-            $after = $chunk === [] ? null : $chunk[count($chunk) - 1]->id;
-        } while (count($chunk) === self::CHUNK_SIZE);
-
-        return $results;
+        return array_map(fn (Connection $connection): RefreshResult => $this->refresh($connection, null, false), $this->due());
     }
 
     /**
-     * Refresh the tenant's connection now, whatever its backoff, for the
-     * administrator who asked.
+     * The ids of the connections whose refresh is due and that refresh, in id
+     * order, for the schedule to queue a refresh of each.
      *
-     * @param  string  $tenantId
+     * @return list<string>
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    public function dueConnectionIds(): array
+    {
+        return array_map(static fn (Connection $connection): string => $connection->id, $this->due());
+    }
+
+    /**
+     * Refresh the connection a queued job names, read again: `skipped` when it
+     * is gone, no longer refreshes or is no longer due.
+     *
      * @param  string  $connectionId
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function refreshNow(string $tenantId, string $connectionId, ?ActingIdentity $actor = null): RefreshResult
+    public function refreshQueued(string $connectionId): RefreshResult
+    {
+        StorageConnection::assertNoTransaction(self::IN_TRANSACTION);
+
+        $connection = Connection::query()->useWritePdo()->whereKey($connectionId)->first();
+
+        return $this->isStillDue($connection, $connectionId) ? $this->refresh($connection, null, false) : RefreshResult::skipped($connectionId);
+    }
+
+    /**
+     * Refresh the tenant's connection now, whatever its backoff, for the
+     * administrator who asked, once it is counted against the connection's
+     * metadata limit.
+     *
+     * @param  string  $tenantId
+     * @param  string  $connectionId
+     * @param  \SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \Throwable
+     */
+    public function refreshNow(string $tenantId, string $connectionId, ActingIdentity $actor): RefreshResult
     {
         StorageConnection::assertNoTransaction(self::IN_TRANSACTION);
 
@@ -185,12 +212,14 @@ final readonly class MetadataRefresher
             return RefreshResult::refused(FailureReason::FEATURE_DISABLED, $connection->id);
         }
 
-        return $this->refresh($connection, $actor, true);
+        $attempt = $this->limiter->attempt(AttemptSubject::metadata($connection->id));
+
+        return $attempt->retryAfter !== null ? RefreshResult::rateLimited($connection->id, $attempt->retryAfter) : $this->refresh($connection, $actor, true);
     }
 
     /**
-     * Claim the connection as read, fetch and read its metadata, and apply it
-     * or record the failure; log a refresh that did not apply.
+     * Snapshot and claim the connection as read, fetch and read its metadata,
+     * and apply it or record the failure; log a refresh that did not apply.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
@@ -202,17 +231,19 @@ final readonly class MetadataRefresher
      */
     private function refresh(Connection $connection, ?ActingIdentity $actor, bool $asked): RefreshResult
     {
-        $anchors = $this->keys->trustedCertificates($connection->id, KeyUse::METADATA_SIGNING);
+        $claim = $this->claims->claim($connection);
 
-        if (!$this->claimed($connection)) {
+        if ($claim === null) {
             return $asked ? RefreshResult::inProgress($connection->id) : RefreshResult::skipped($connection->id);
         }
 
-        $fetched  = $this->fetcher->fetch(FetchRequest::metadata(self::setting($connection, Saml2Setting::METADATA_URL)));
-        $metadata = $fetched->isSuccessful() ? $this->read($connection, (string) $fetched->body(), $anchors) : null;
-        $result   = $metadata !== null && $metadata->isRead()
-            ? $this->applier->apply($connection, self::fingerprints($anchors), $metadata, $actor)
-            : $this->applier->fail($connection, $metadata->reason ?? self::fetchFailure($fetched), $actor);
+        $fetched  = $this->fetcher->fetch(FetchRequest::metadata(self::setting($connection, Saml2Setting::METADATA_URL), $this->reader->maxBytes()));
+        $metadata = $fetched->isSuccessful() ? $this->read($connection, (string) $fetched->body(), $claim->anchors) : null;
+
+        // The moment the document was validated, read once the reader is done
+        $result = $metadata !== null && $metadata->isRead()
+            ? $this->applier->apply($claim, $metadata, $this->clock->now(), $actor)
+            : $this->applier->fail($claim, $metadata->reason ?? self::fetchFailure($fetched), $actor);
 
         if (!$result->isRefreshed()) {
             $this->logger->warning('sso.metadata.refresh_' . $result->outcome->value, ['reason' => $result->reason?->value, 'fetch_status' => $fetched->status->value]);
@@ -223,48 +254,71 @@ final readonly class MetadataRefresher
 
     /**
      * The fetched metadata of the connection's pinned entity, read with its
-     * anchors, its current binding preferred.
+     * anchors' certificates, its current binding preferred.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $xml
-     * @param  list<\SineMacula\Laravel\Sso\Keys\KeySummary>  $anchors
+     * @param  list<string>  $anchors
      * @return \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata
      *
      * @throws \InvalidArgumentException
      */
     private function read(Connection $connection, #[\SensitiveParameter] string $xml, array $anchors): IdpMetadata
     {
-        $certificate = static fn (KeySummary $anchor): ?string => $anchor->key->certificate;
-        $pems        = array_values(array_filter(array_map($certificate, $anchors), static fn (?string $pem): bool => $pem !== null));
-
-        return $this->reader->read($xml, self::setting($connection, Saml2Setting::IDP_ENTITY_ID), $pems, self::setting($connection, Saml2Setting::SSO_BINDING));
+        return $this->reader->read($xml, self::setting($connection, Saml2Setting::IDP_ENTITY_ID), $anchors, self::setting($connection, Saml2Setting::SSO_BINDING));
     }
 
     /**
-     * Claim the connection's refresh until now plus the claim, while no claim
-     * holds and its metadata version is still the one read; whether it was
-     * claimed.
+     * Whether the connection a queued job names is still there with exactly
+     * that id, refreshes, and is due and unclaimed by now.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  string  $connectionId
      * @return bool
      *
      * @throws \InvalidArgumentException
+     *
+     * @phpstan-assert-if-true !null $connection
      */
-    private function claimed(Connection $connection): bool
+    private function isStillDue(?Connection $connection, string $connectionId): bool
     {
-        $now   = $this->clock->now();
-        $at    = UtcDateTime::format($connection, $now);
-        $until = UtcDateTime::format($connection, $now->addSeconds($this->settings->claimSeconds()));
+        if ($connection?->id !== $connectionId || !Features::enabled(Feature::METADATA_REFRESH) || !self::refreshes($connection)) {
+            return false;
+        }
 
-        $claimed = Connection::query()
-            ->whereKey($connection->id)
-            ->where('metadata_version', $connection->metadata_version)
-            ->where(static function (Builder $free) use ($at): void {
-                $free->whereNull('metadata_claimed_until')->orWhere('metadata_claimed_until', '<=', $at);
-            })
-            ->update(['metadata_claimed_until' => $until]);
+        $now = $this->clock->now();
 
-        return $claimed === 1;
+        return ($connection->metadata_refresh_at ?? $now) <= $now && ($connection->metadata_claimed_until ?? $now) <= $now;
+    }
+
+    /**
+     * Every SAML connection whose refresh is due and unclaimed and that
+     * refreshes, in id order, read in chunks; none while the refresh is off.
+     *
+     * @return list<\SineMacula\Laravel\Sso\Models\Connection>
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    private function due(): array
+    {
+        StorageConnection::assertNoTransaction(self::IN_TRANSACTION);
+
+        if (!Features::enabled(Feature::METADATA_REFRESH)) {
+            return [];
+        }
+
+        $due   = [];
+        $after = null;
+
+        do {
+
+            $chunk = $this->dueAfter($after);
+            $due   = [...$due, ...array_values(array_filter($chunk, self::refreshes(...)))];
+            $after = $chunk === [] ? null : $chunk[count($chunk) - 1]->id;
+        } while (count($chunk) === self::CHUNK_SIZE);
+
+        return $due;
     }
 
     /**
@@ -319,19 +373,6 @@ final readonly class MetadataRefresher
         $value = $connection->settings[$setting->value] ?? null;
 
         return is_string($value) ? $value : '';
-    }
-
-    /**
-     * The fingerprints of the anchors.
-     *
-     * @param  list<\SineMacula\Laravel\Sso\Keys\KeySummary>  $anchors
-     * @return list<string>
-     */
-    private static function fingerprints(array $anchors): array
-    {
-        $fingerprint = static fn (KeySummary $anchor): ?string => $anchor->key->fingerprint;
-
-        return array_values(array_filter(array_map($fingerprint, $anchors), static fn (?string $value): bool => $value !== null));
     }
 
     /**

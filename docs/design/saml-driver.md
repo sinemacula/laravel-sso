@@ -32,6 +32,13 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
   response is validated is refused there too, recording nothing.
 - `startUrl()` answers the start URL re-initiation sends the browser to, naming the connection, or `null` when the
   connection does not allow IdP-initiated sign-in; the re-initiation asks it again of the locked connection.
+- SAML is RSA only on PHP 8.3 and saml2 v6, a known limit of SSO-6.7 decided by the owner: RSA signatures with
+  SHA-256, SHA-384 or SHA-512, RSA-OAEP key transport, AES-128-GCM or AES-192-GCM content encryption. Every SAML key use
+  refuses an elliptic curve key or certificate, and the allow-lists refuse ECDSA, RSA-PSS and AES-256-GCM, at
+  validation, with a code naming the setting; ECDSA and AES-256-GCM arrive when the PHP floor moves to 8.5 and saml2 v7
+  is stable (`saml-library.md`, condition 8).
+- A response's `Destination` must be present and exactly the assertion consumer service URL, signed or not, as every
+  bearer confirmation's `Recipient` must (`saml-responses.md`).
 - Only the adapter's namespace (`Protocols\Saml2\Library`) calls the SAML library. The driver and its collaborators
   read only the package's own values (`Protocols\Saml2\Messages`), each holding what the identity provider sent in a
   `\SensitiveParameterValue`.
@@ -39,14 +46,20 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
   1. `correlation`: the driver's `correlate()`, outside any transaction;
   2. `consumption`: the request found by `(connection, saml_request_id)` is consumed in a transaction of its own, the
      connection's row locked before the request's, and the `RelayState`'s digest compared with its state digest, before
-     anything in the response is validated, so a response is consumed once whether it then passes or fails;
+     anything in the response is validated, so a response is consumed once whether it then passes or fails; a request
+     whose stored trust version is not the locked connection's is refused `connection_unavailable` there, so a flow a
+     trust change overtook is never validated;
   3. `validation`: the driver's `complete()` against the consumed request, outside any transaction, with the
      connection's trusted certificates read for it;
   4. `replay_recording` and every later step: one transaction that takes the global lock order (the enforcing tenant's
      guard when enforcement applies, then the connections in ascending id order, then the request), refuses a
-     connection no longer usable (its trust read again under the lock) or a request a trust change voided since
-     consumption, records the assertion's id through the single-use store, then resolves the link, judges enforcement
-     and issues the handoff code.
+     connection no longer usable (its trust read again under the lock), a request a trust change voided since
+     consumption, or one whose stored trust version is no longer the locked connection's, records the assertion's id
+     through the single-use store, then resolves the link, judges enforcement and issues the handoff code.
+- The start stores the connection's trust version, as it read it before the driver's `start()`, on the request, and
+  refuses (`connection_unavailable`, storing nothing) when the locked connection's is another by the insert: a
+  certificate removed between the read and the insert voided only the requests already stored. An additive
+  certificate raises nothing, so a provider publishing its next key never refuses its own flows.
 - An unsolicited response is handed by the correlation step to `Completion\UnsolicitedReinitiation`, which consumes no
   request: it asks the driver's `reinitiate()`, records the assertion under the connection's lock after rechecking its
   trust version, usability, metadata expiry and start URL, and answers a redirect to the connection's start URL. The
@@ -72,7 +85,12 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
 - A response that names a request but fails validation has consumed it: the failure redirects to the request's
   application with the driver's reason, and nothing is recorded against replay.
 - A trust change (a certificate distrusted, an endpoint moved by a metadata refresh, a disable) between validation and
-  the lock voids the request: the completion is refused with `connection_unavailable` under the lock.
+  the lock voids the request: the completion is refused with `connection_unavailable` under the lock. One between the
+  start's read of the connection and its insert refuses the start; one before the response is consumed refuses it at
+  consumption, before validation.
+- A response with no `Destination`, or another, is `recipient_mismatch`, whether or not it is signed.
+- An elliptic curve certificate in an identity provider's metadata, or a signature by ECDSA, is never trusted: SAML is
+  RSA only until the PHP floor moves to 8.5.
 - The same assertion posted twice: the second post finds its request consumed (`request_unknown`), and an assertion
   replayed against another request is refused with `replayed` by the record made the first time.
 
@@ -92,8 +110,8 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
 - `tests/Feature/Completion/SamlCompletionTest.php`, `SamlCompletionEventSequenceTest.php`,
   `SamlAdversarialCompletionTest.php` and `SamlFixtureCompletionTest.php` (the 40 library fixtures through the public
   completion helper).
-- `tests/Integration/Completion/ConcurrentSamlReplayTest.php` and `SamlTrustChangeRaceTest.php` (MySQL and
-  PostgreSQL).
+- `tests/Integration/Completion/ConcurrentSamlReplayTest.php` and `SamlTrustChangeRaceTest.php`, and
+  `tests/Integration/Flows/StartTrustChangeRaceTest.php` (MySQL and PostgreSQL).
 - `tests/Performance/SamlCompletionQueryBudgetTest.php`.
 - `tests/Unit/Architecture/SamlLibraryBoundaryTest.php`.
 

@@ -25,8 +25,14 @@ use SimpleSAML\SAML2\Compat\ContainerSingleton;
  * is refused: the adapter holds every algorithm to the connection's allow-list
  * itself.
  *
- * `ensure()` sets it when no container is set yet, and keeps a container an
- * application that uses the library itself has set.
+ * `ensure()` sets the package's own container when none is set yet, and does
+ * nothing more when the one set is the package's, so it is idempotent across
+ * requests in one process (Octane, queue workers). A container set by anything
+ * else (an application that uses the library itself, say) is refused with a
+ * `LogicException`, since its clock, logger, files and blacklist are not held
+ * to the package's rules and would silently apply to every SAML message the
+ * package reads; the package never runs SAML through a container it did not
+ * set.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,18 +44,31 @@ final class LibraryContainer extends AbstractContainer
     /** @var string Why a service the package never uses is refused. */
     private const string UNUSED = 'The SAML adapter never asks the library for its %s.';
 
+    /** @var string Why a container something else set is refused. */
+    private const string FOREIGN = 'The SAML library\'s process-wide container is already set to [%s], not the package\'s own: '
+        . 'the package runs SAML only through the container it sets itself.';
+
     /**
-     * Set the container, unless one is set already.
+     * Set the package's own container when none is set, keep it when it is set,
+     * and refuse a container something else set.
      *
      * @return void
+     *
+     * @throws \LogicException
      */
     public static function ensure(): void
     {
-        if ((new \ReflectionProperty(ContainerSingleton::class, 'container'))->isInitialized()) {
+        if (!(new \ReflectionProperty(ContainerSingleton::class, 'container'))->isInitialized()) {
+            ContainerSingleton::setContainer(new self);
+
             return;
         }
 
-        ContainerSingleton::setContainer(new self);
+        $container = ContainerSingleton::getInstance();
+
+        if (!$container instanceof self) {
+            throw new \LogicException(sprintf(self::FOREIGN, $container::class));
+        }
     }
 
     /**

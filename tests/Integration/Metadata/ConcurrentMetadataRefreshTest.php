@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\CompletionState;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
@@ -63,8 +64,15 @@ use Tests\TestCase;
  *   other is `in_progress` (an administrator's) or finds nothing due (the
  *   schedule's);
  * - a refresh paused between its fetch and its write while an administrator
- *   distrusts a certificate or adds a metadata signing anchor: the refresh is
- *   refused `metadata_conflict` and the administrator's change stands;
+ *   distrusts a certificate, adds an identity provider signing certificate
+ *   (additive, which raises no trust version) or adds a metadata signing
+ *   anchor: the refresh is refused `metadata_conflict` and the administrator's
+ *   change stands, so a refresh never removes a certificate added while it
+ *   fetched;
+ * - a refresh whose claim expired while it fetched and was taken over by
+ *   another server's refresh: the one that lost its claim writes nothing,
+ *   whether it then applies or records a failure, and the new owner's
+ *   refresh stands;
  * - a refresh removing a certificate while a completion through the connection
  *   is between its validation and its lock: the completion is refused
  *   `connection_unavailable` under its lock.
@@ -266,7 +274,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
         });
 
         [$first, $other] = $this->inProcesses([
-            fn (): array => ['status' => $this->refresher()->refreshNow(self::TENANT, $this->connectionId())->outcome->value],
+            fn (): array => ['status' => $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor())->outcome->value],
             function () use ($second, $fetching, $done): array {
 
                 self::await($fetching);
@@ -298,6 +306,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
         yield from [
             'a certificate distrusted'                      => ['distrust', false],
             'a certificate distrusted inside a transaction' => ['distrust', true],
+            'a certificate added'                           => ['add', false],
+            'a certificate added inside a transaction'      => ['add', true],
             'an anchor added'                               => ['anchor', false],
             'an anchor added inside a transaction'          => ['anchor', true],
         ];
@@ -334,7 +344,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
 
                 self::await($read);
 
-                $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId());
+                $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor());
 
                 return ['status' => $result->outcome->value, 'reason' => $result->reason?->value];
             },
@@ -344,9 +354,84 @@ final class ConcurrentMetadataRefreshTest extends TestCase
         $failed   = $inTransaction && DB::connection()->getDriverName() === 'pgsql';
 
         self::assertSame($failed ? self::SERIALIZATION_FAILURE : ($change === 'distrust' ? 'distrusted' : 'trusted'), $administrator['status'] ?? null, $reported);
+        self::assertSame($failed || $change !== 'distrust' ? 0 : 1, $this->row()->trust_version, $reported);
         self::assertSame($failed ? ['refreshed', null] : ['conflict', 'metadata_conflict'], [$refresh['status'] ?? null, $refresh['reason'] ?? null], $reported);
         self::assertSame(self::expectedKeys($change, $failed), $this->keys(), $reported);
         self::assertSame($failed ? 1 : 0, $this->row()->metadata_version, $reported);
+    }
+
+    /**
+     * Rows of `[served]`: what the refresh whose claim is taken over is served,
+     * the metadata to apply or a failed fetch to record.
+     *
+     * @return iterable<string, array{0: bool}>
+     */
+    public static function provideLostClaims(): iterable
+    {
+        yield from [
+            'the loser applying'          => [true],
+            'the loser recording failure' => [false],
+        ];
+    }
+
+    /**
+     * A refresh whose claim expired while it fetched, and was taken over by
+     * another server's refresh once it had, writes nothing when it then applies
+     * or records a failure: it is `conflict`, and the other refresh's write,
+     * which published a further certificate, stands.
+     *
+     * @param  bool  $served
+     * @return void
+     */
+    #[DataProvider('provideLostClaims')]
+    public function testARefreshWhoseClaimWasTakenOverWritesNothing(bool $served): void
+    {
+        $fetching = "{$this->outcomes}/first-fetching";
+        $taken    = "{$this->outcomes}/claim-taken";
+        $winner   = self::metadata()->with(['signing_certificates' => [self::idp()->certificate(), Certificates::distinct(9), Certificates::distinct(10)]])->toXml();
+
+        $this->fetcher->respond(self::URL, static function () use ($fetching, $taken, $served): FetchResult {
+            touch($fetching);
+            self::await($taken);
+
+            return $served ? FetchResult::fetched(200, [], self::metadata()->toXml()) : FetchResult::failed();
+        });
+
+        [$loser, $owner] = $this->inProcesses([
+            function (): array {
+                $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor());
+
+                return ['status' => $result->outcome->value, 'reason' => $result->reason?->value];
+            },
+            function () use ($fetching, $taken, $winner): array {
+
+                self::await($fetching);
+
+                try {
+                    app()->instance(Clock::class, new FixedClock('2026-11-01T09:35:01Z'));
+                    $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], $winner));
+
+                    $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor());
+                } finally {
+                    touch($taken);
+                }
+
+                return ['status' => $result->outcome->value, 'reason' => $result->reason?->value];
+            },
+        ]);
+
+        $reported = (string) json_encode([$loser, $owner]);
+        $row      = $this->row();
+
+        self::assertSame(['status' => 'refreshed', 'reason' => null], $owner, $reported);
+        self::assertSame(['status' => 'conflict', 'reason' => 'metadata_conflict'], $loser, $reported);
+        self::assertSame([1, 0, null, '2026-11-01T09:35:01+00:00'], [
+            $row->metadata_version,
+            $row->metadata_refresh_failures,
+            $row->metadata_claim_token,
+            $row->metadata_fetched_at?->toIso8601String(),
+        ], $reported);
+        self::assertSame(self::expectedKeys('distrust', true), $this->keys(), $reported);
     }
 
     /**
@@ -380,7 +465,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
                 self::await($validated);
 
                 try {
-                    $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId());
+                    $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor());
                 } finally {
                     touch($refreshed);
                 }
@@ -437,7 +522,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     private function secondRefresh(string $second): string
     {
         if ($second === 'now') {
-            return $this->refresher()->refreshNow(self::TENANT, $this->connectionId())->outcome->value;
+            return $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor())->outcome->value;
         }
 
         $results = $this->refresher()->refreshDue();
@@ -448,8 +533,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     /**
      * In a forked process: inside a `REPEATABLE READ` transaction that read the
      * connection and its keys first, or plainly, signal it has read, wait for
-     * the refresh to fetch, then distrust the second certificate or add an
-     * anchor, and signal once that is done or failed.
+     * the refresh to fetch, then distrust the second certificate, add a signing
+     * certificate or add an anchor, and signal once that is done or failed.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -481,9 +566,11 @@ final class ConcurrentMetadataRefreshTest extends TestCase
         self::await($fetched);
 
         try {
-            $result = $change === 'distrust'
-                ? app(KeyService::class)->distrustCertificate(self::TENANT, $id, $second)
-                : app(KeyService::class)->trustCertificate(self::TENANT, $id, Certificates::distinct(11), use: KeyUse::METADATA_SIGNING);
+            $result = match ($change) {
+                'distrust' => app(KeyService::class)->distrustCertificate(self::TENANT, $id, $second),
+                'add'      => app(KeyService::class)->trustCertificate(self::TENANT, $id, Certificates::distinct(11)),
+                default    => app(KeyService::class)->trustCertificate(self::TENANT, $id, Certificates::distinct(11), use: KeyUse::METADATA_SIGNING),
+            };
 
             if ($inTransaction) {
                 $database->commit();
@@ -658,6 +745,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
         $signing = match (true) {
             $failed                => $sorted([self::idp()->certificate(), Certificates::distinct(9), Certificates::distinct(10)]),
             $change === 'distrust' => $sorted([self::idp()->certificate()]),
+            $change === 'add'      => $sorted([self::idp()->certificate(), Certificates::distinct(9), Certificates::distinct(11)]),
             default                => $sorted([self::idp()->certificate(), Certificates::distinct(9)]),
         };
 
@@ -851,5 +939,15 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     private static function singleUseMigration(): Migration
     {
         return require dirname(__DIR__, 3) . self::SINGLE_USE_MIGRATION;
+    }
+
+    /**
+     * The administrator who asks for a refresh now.
+     *
+     * @return \SineMacula\Laravel\Sso\Administration\ActingIdentity
+     */
+    private static function actor(): ActingIdentity
+    {
+        return new ActingIdentity('App\Models\User', '42');
     }
 }

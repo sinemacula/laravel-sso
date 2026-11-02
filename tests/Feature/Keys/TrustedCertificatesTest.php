@@ -489,6 +489,31 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
+     * SAML is RSA only, for every use: an elliptic curve certificate is refused
+     * as an identity provider signing certificate and as a metadata signing
+     * anchor alike, as `unsupported`, before freshness is asked, with nothing
+     * written.
+     *
+     * @return void
+     */
+    public function testAnEllipticCurveCertificateIsRefusedForEverySamlUse(): void
+    {
+        foreach ([KeyUse::IDP_SIGNING, KeyUse::METADATA_SIGNING] as $use) {
+            foreach ([Certificates::ecP256(), Certificates::ecP384()] as $certificate) {
+
+                $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $certificate, null, $use);
+
+                $refusal = [$result->reason, $result->jsonSerialize()['violations']];
+
+                self::assertSame([FailureReason::SETTINGS_INVALID, [['setting' => 'certificate', 'code' => 'unsupported']]], $refusal);
+            }
+        }
+
+        self::assertSame([], $this->freshness->asked());
+        self::assertSame(0, ConnectionKey::query()->count());
+    }
+
+    /**
      * Only a trusted certificate's use may be trusted, and the key ring answers
      * only those.
      *

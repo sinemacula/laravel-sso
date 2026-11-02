@@ -132,7 +132,7 @@ final readonly class XmlSigner
         $uri       = $options['uri']       ?? '#' . $target->getAttribute('ID');
         $digest    = $options['digest']    ?? 'sha256';
         $algorithm = $options['algorithm'] ?? 'rsa-sha256';
-        $digested  = ($uri === '' ? $document->documentElement : $target)?->C14N(true, false);
+        $digested  = ($uri === '' ? $document : $target)->C14N(true, false);
 
         $signature = $document->createElementNS(self::NS_DS, 'ds:Signature');
         $info      = $this->signedInfo($document, $algorithm, $options['comments'] ?? false);
@@ -145,7 +145,9 @@ final readonly class XmlSigner
         $signature->appendChild($this->keyInfo($document));
         $element->insertBefore($signature, self::anchor($element));
 
-        $value->appendChild($document->createTextNode($this->signatureValue((string) $info->C14N(true, $options['comments'] ?? false), $algorithm)));
+        // The SignedInfo holds no comment, so it canonicalises the same with or
+        // without them
+        $value->appendChild($document->createTextNode($this->signatureValue((string) $info->C14N(true), $algorithm)));
 
         return $signature;
     }

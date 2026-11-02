@@ -208,7 +208,7 @@ final readonly class FakeSamlMetadata
         $signing    = array_map(static fn (string $certificate): string => self::keyDescriptor('signing', $certificate), $this->options['signing_certificates']);
         $encryption = array_map(static fn (string $certificate): string => self::keyDescriptor('encryption', $certificate), $this->options['encryption_certificates']);
         $formats    = array_map(
-            static fn (string $format): string => '<md:NameIDFormat>' . htmlspecialchars($format, ENT_XML1 | ENT_QUOTES) . '</md:NameIDFormat>',
+            static fn (string $format): string => '<md:NameIDFormat>' . htmlspecialchars($format, ENT_XML1) . '</md:NameIDFormat>',
             $this->options['name_id_formats'],
         );
         $post = $this->options['post_sso_url'] === null ? '' : self::service(self::HTTP_POST, $this->options['post_sso_url']);

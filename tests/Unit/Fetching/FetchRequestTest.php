@@ -53,6 +53,41 @@ final class FetchRequestTest extends TestCase
     }
 
     /**
+     * A metadata request may carry a size cap of its own, of at least a byte,
+     * shown by a dump; every other request, and a metadata request given none,
+     * carries none.
+     *
+     * @return void
+     */
+    public function testOnlyAMetadataRequestCarriesItsOwnCap(): void
+    {
+        $client = FetchCredentials::clientSecretBasic('client', 'secret');
+
+        self::assertSame(1, FetchRequest::metadata(self::URL, 1)->maxBytes);
+        self::assertSame(268435456, FetchRequest::metadata(self::URL, 268435456)->maxBytes);
+        self::assertSame(4096, FetchRequest::metadata(self::URL, 4096)->__debugInfo()['max_bytes']);
+        self::assertSame(
+            [null, null, null, null, null],
+            [
+                FetchRequest::metadata(self::URL)->maxBytes,
+                FetchRequest::discovery(self::URL)->maxBytes,
+                FetchRequest::jwks(self::URL)->maxBytes,
+                FetchRequest::token(self::URL, [], $client)->maxBytes,
+                FetchRequest::userInfo(self::URL, FetchCredentials::accessToken('token'))->maxBytes,
+            ],
+        );
+
+        foreach ([0, -1] as $maxBytes) {
+            try {
+                FetchRequest::metadata(self::URL, $maxBytes);
+                self::fail("A cap of {$maxBytes} bytes was taken.");
+            } catch (\InvalidArgumentException $exception) {
+                self::assertSame('A request\'s own size cap is at least one byte.', $exception->getMessage());
+            }
+        }
+    }
+
+    /**
      * A token request is a `POST` of its form with the client authentication;
      * UserInfo a `GET` with the access token. Neither follows a redirect.
      *
@@ -129,8 +164,8 @@ final class FetchRequestTest extends TestCase
     }
 
     /**
-     * A dump shows the form's field names and the credential's kind, never a
-     * value.
+     * A dump shows the form's field names, the credential's kind and the size
+     * cap, never a value.
      *
      * @return void
      */
@@ -138,8 +173,11 @@ final class FetchRequestTest extends TestCase
     {
         $request = FetchRequest::token(self::URL, ['code' => 'the-code', 'code_verifier' => 'the-verifier'], FetchCredentials::clientSecretPost('client', 'the-secret'));
 
-        self::assertSame(['purpose' => 'token', 'url' => self::URL, 'form' => ['code', 'code_verifier'], 'credentials' => 'client_secret_post'], $request->__debugInfo());
-        self::assertSame(['purpose' => 'jwks', 'url' => self::URL, 'form' => [], 'credentials' => null], FetchRequest::jwks(self::URL)->__debugInfo());
+        self::assertSame(
+            ['purpose' => 'token', 'url' => self::URL, 'form' => ['code', 'code_verifier'], 'credentials' => 'client_secret_post', 'max_bytes' => null],
+            $request->__debugInfo(),
+        );
+        self::assertSame(['purpose' => 'jwks', 'url' => self::URL, 'form' => [], 'credentials' => null, 'max_bytes' => null], FetchRequest::jwks(self::URL)->__debugInfo());
 
         $printed = print_r($request, true);
 

@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Feature\Metadata;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -22,7 +23,10 @@ use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
+use SineMacula\Laravel\Sso\Metadata\ImportResult;
+use SineMacula\Laravel\Sso\Metadata\MetadataImporter;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
+use SineMacula\Laravel\Sso\Metadata\RefreshClaims;
 use SineMacula\Laravel\Sso\Metadata\RefreshResult;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
@@ -60,9 +64,13 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(MetadataRefresher::class)]
+#[CoversClass(RefreshClaims::class)]
 final class MetadataRefresherTest extends TestCase
 {
     use CapturesLogs, RecordsEventSequences, UsesConnections, UsesFlowTables;
+
+    /** @var string The shipped migration of the rate limit counters. */
+    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
 
     /** @var string The tenant whose connection refreshes. */
     private const string TENANT = 'tenant-1';
@@ -84,7 +92,8 @@ final class MetadataRefresherTest extends TestCase
 
     /**
      * Bind a fixed clock and a fake fetcher serving the provider's metadata,
-     * switch SAML and the refresh on, create the tables, and record events.
+     * switch SAML and the refresh on, create the tables (the rate limit
+     * counters' among them), and record events.
      *
      * @return void
      */
@@ -105,6 +114,7 @@ final class MetadataRefresherTest extends TestCase
 
         $this->createConnectionTables();
         $this->createFlowTables();
+        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
 
         $this->serve(self::metadata());
         $this->startRecordingEvents();
@@ -118,6 +128,7 @@ final class MetadataRefresherTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
         $this->dropFlowTables();
         $this->dropConnectionTables();
 
@@ -417,7 +428,7 @@ final class MetadataRefresherTest extends TestCase
 
         $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], $xml()));
 
-        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id);
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
         $row    = $this->row($connection);
 
         self::assertSame([RefreshOutcome::FAILED, $reason], [$result->outcome, $result->reason]);
@@ -433,7 +444,7 @@ final class MetadataRefresherTest extends TestCase
     public function testAConnectionWithNoPinnedEntityIdFindsNoEntity(): void
     {
         $connection = $this->saml(['idp_entity_id' => null]);
-        $result     = $this->refresher()->refreshNow(self::TENANT, $connection->id);
+        $result     = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
 
         self::assertSame([RefreshOutcome::FAILED, FailureReason::METADATA_ENTITY_NOT_FOUND], [$result->outcome, $result->reason]);
         self::assertArrayNotHasKey('idp_entity_id', $this->row($connection)->settings);
@@ -451,7 +462,7 @@ final class MetadataRefresherTest extends TestCase
         $this->trust($connection, self::idp()->certificate(), KeyUse::METADATA_SIGNING);
         $this->serve(self::metadata()->with(['aggregate' => ['https://other.example.test/saml'], 'sign' => 'aggregate']));
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id)->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
     }
 
     /**
@@ -499,11 +510,10 @@ final class MetadataRefresherTest extends TestCase
     public function testARefreshNowSkipsTheBackoff(): void
     {
         $connection = $this->saml([], ['metadata_refresh_at' => $this->clock->now()->addHours(6), 'metadata_refresh_failures' => 8]);
-        $actor      = new ActingIdentity('App\Models\User', '42');
 
         self::assertSame([], $this->refresher()->refreshDue());
 
-        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor);
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
 
         self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, [], 1, false]], self::summaries([$result]));
         self::assertSame(0, $this->row($connection)->metadata_refresh_failures);
@@ -520,7 +530,7 @@ final class MetadataRefresherTest extends TestCase
     public function testARefreshNowNeverSkipsAHeldClaim(): void
     {
         $connection = $this->saml([], ['metadata_claimed_until' => $this->clock->now()->addSecond()]);
-        $result     = $this->refresher()->refreshNow(self::TENANT, $connection->id);
+        $result     = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
 
         self::assertSame([RefreshOutcome::IN_PROGRESS, FailureReason::METADATA_REFRESH_IN_PROGRESS, $connection->id], [$result->outcome, $result->reason, $result->connectionId]);
         self::assertSame('2026-11-01T09:30:01+00:00', $this->row($connection)->metadata_claimed_until?->toIso8601String());
@@ -530,7 +540,247 @@ final class MetadataRefresherTest extends TestCase
 
         $this->clock->advance(1);
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id)->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+    }
+
+    /**
+     * A refresh now counts against the connection's metadata limit before it
+     * claims or fetches anything: past the limit it is `rate_limited` with the
+     * seconds until the window ends, claims, fetches, writes and reports
+     * nothing; the schedule is never counted.
+     *
+     * @return void
+     */
+    public function testARefreshNowIsRateLimitedBeforeItFetches(): void
+    {
+        config()->set('sso.rate_limits.metadata.per_connection', ['max' => 2, 'decay_seconds' => 3600]);
+
+        $connection = $this->saml();
+
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+
+        $this->startRecordingEvents();
+
+        $before  = $this->row($connection)->getAttributes();
+        $limited = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+
+        self::assertSame(
+            [RefreshOutcome::RATE_LIMITED, FailureReason::RATE_LIMITED, $connection->id, 1800],
+            [$limited->outcome, $limited->reason, $limited->connectionId, $limited->retryAfter],
+        );
+        self::assertSame($before, $this->row($connection)->getAttributes());
+        self::assertCount(2, $this->fetcher->requests());
+        $this->assertNoEvents();
+
+        $this->row($connection)->forceFill(['metadata_refresh_at' => null])->save();
+
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshDue()[0]->outcome ?? null);
+
+        $this->clock->advance(1799);
+
+        self::assertSame(RefreshOutcome::RATE_LIMITED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+
+        $this->clock->advance(1);
+
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+    }
+
+    /**
+     * A refresh now and a URL import naming the connection draw from one limit,
+     * either way round: imports that fill it leave a refresh now
+     * `rate_limited`, and refreshes now that fill it leave an import so, each
+     * having fetched nothing more.
+     *
+     * @return void
+     */
+    public function testARefreshNowSharesItsLimitWithAnImport(): void
+    {
+        config()->set('sso.rate_limits.metadata.per_connection', ['max' => 2, 'decay_seconds' => 3600]);
+
+        $imported  = $this->saml();
+        $refreshed = $this->saml();
+        $importer  = app(MetadataImporter::class);
+        $import    = static fn (Connection $connection): ImportResult => $importer->importUrl(self::TENANT, $connection->id, self::URL, FakeSamlIdentityProvider::ENTITY_ID);
+
+        self::assertTrue($import($imported)->isProposed());
+        self::assertTrue($import($imported)->isProposed());
+        self::assertSame(RefreshOutcome::RATE_LIMITED, $this->refresher()->refreshNow(self::TENANT, $imported->id, self::actor())->outcome);
+
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $refreshed->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $refreshed->id, self::actor())->isRefreshed());
+        self::assertSame([true, 1800], [$import($refreshed)->isRateLimited(), $import($refreshed)->retryAfter]);
+
+        self::assertCount(4, $this->fetcher->requests());
+    }
+
+    /**
+     * A refresh fetches through the metadata cap, never the fetcher's: the
+     * request carries the cap, and a document over it fails the fetch, at it is
+     * applied.
+     *
+     * @return void
+     */
+    public function testARefreshFetchesHeldToTheMetadataCap(): void
+    {
+        $xml = str_pad(self::metadata()->toXml(), 70000, "\n");
+
+        config()->set('sso.metadata.max_bytes', 69999);
+        config()->set('sso.fetcher.max_response_bytes', 1024);
+
+        $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], $xml));
+
+        $connection = $this->saml();
+        $over       = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+
+        self::assertSame([RefreshOutcome::FAILED, FailureReason::FETCH_FAILED], [$over->outcome, $over->reason]);
+        self::assertSame(69999, $this->fetcher->requests()[0]->maxBytes);
+
+        config()->set('sso.metadata.max_bytes', 70000);
+
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertSame(70000, $this->fetcher->requests()[1]->maxBytes);
+    }
+
+    /**
+     * The fetch a refresh records is the moment the document was validated,
+     * after the fetch, never a moment before it.
+     *
+     * @return void
+     */
+    public function testTheFetchRecordedIsWhenTheDocumentWasValidated(): void
+    {
+        $clock = $this->clock;
+
+        $this->fetcher->respond(self::URL, static function () use ($clock): FetchResult {
+            $clock->advance(7);
+
+            return FetchResult::fetched(200, [], self::metadata()->toXml());
+        });
+
+        $connection = $this->saml();
+
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertSame('2026-11-01T09:30:07+00:00', $this->row($connection)->metadata_fetched_at?->toIso8601String());
+    }
+
+    /**
+     * A claim is written with a fresh random token, which the write that ends
+     * the refresh releases with the claim.
+     *
+     * @return void
+     */
+    public function testAClaimCarriesATokenItsWriteReleases(): void
+    {
+        $connection = $this->saml();
+        $tokens     = [];
+
+        $this->fetcher->respond(self::URL, function () use ($connection, &$tokens): FetchResult {
+            $tokens[] = [$this->row($connection)->metadata_claim_token, $this->row($connection)->metadata_claimed_until?->toIso8601String()];
+
+            return FetchResult::fetched(200, [], self::metadata()->toXml());
+        });
+
+        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+
+        self::assertCount(2, $tokens);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/D', (string) $tokens[0][0]);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/D', (string) $tokens[1][0]);
+        self::assertNotSame($tokens[0][0], $tokens[1][0]);
+        self::assertSame('2026-11-01T09:35:00+00:00', $tokens[0][1]);
+        self::assertSame([null, null], [$this->row($connection)->metadata_claim_token, $this->row($connection)->metadata_claimed_until]);
+    }
+
+    /**
+     * A refresh whose claim expired and was taken over while it fetched writes
+     * nothing, and leaves the new owner's claim; a failed fetch likewise.
+     *
+     * @return void
+     */
+    public function testARefreshWhoseClaimWasTakenOverWhileItFetchedWritesNothing(): void
+    {
+        $connection = $this->saml();
+
+        foreach ([self::metadata()->toXml(), null] as $served) {
+
+            $this->fetcher->respond(self::URL, function () use ($connection, $served): FetchResult {
+                Connection::query()->whereKey($connection->id)->update(['metadata_claim_token' => str_repeat('b', 32)]);
+
+                return $served === null ? FetchResult::failed() : FetchResult::fetched(200, [], $served);
+            });
+
+            $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+
+            self::assertSame([RefreshOutcome::CONFLICT, FailureReason::METADATA_CONFLICT], [$result->outcome, $result->reason]);
+            self::assertSame([str_repeat('b', 32), 0, 0], [
+                $this->row($connection)->metadata_claim_token,
+                $this->row($connection)->metadata_version,
+                $this->row($connection)->metadata_refresh_failures,
+            ]);
+
+            Connection::query()->whereKey($connection->id)->update(['metadata_claim_token' => null, 'metadata_claimed_until' => null]);
+        }
+    }
+
+    /**
+     * An administrator's certificate added while the refresh fetched is kept:
+     * the refresh, which would have replaced the certificates exactly, is a
+     * conflict and writes nothing.
+     *
+     * @return void
+     */
+    public function testACertificateAddedWhileTheRefreshFetchedIsKept(): void
+    {
+        $connection = $this->saml();
+
+        $this->fetcher->respond(self::URL, function () use ($connection): FetchResult {
+            $this->trust($connection, Certificates::distinct(5));
+
+            return FetchResult::fetched(200, [], self::metadata()->toXml());
+        });
+
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+
+        self::assertSame(RefreshOutcome::CONFLICT, $result->outcome);
+        self::assertCount(2, ConnectionKey::query()->where('connection_id', $connection->id)->where('use', KeyUse::IDP_SIGNING->value)->get());
+    }
+
+    /**
+     * The schedule lists the ids of the connections due that refresh, in id
+     * order, and nothing while the refresh is off; a queued refresh refreshes
+     * its connection while it is still due, and is `skipped` once it is not,
+     * for a connection gone, or one that no longer refreshes.
+     *
+     * @return void
+     */
+    public function testTheScheduleListsTheDueConnectionsAndAQueuedRefreshChecksItIsStillDue(): void
+    {
+        $one   = $this->saml();
+        $two   = $this->saml();
+        $off   = $this->saml(['metadata_refresh' => false]);
+        $later = $this->saml([], ['metadata_refresh_at' => $this->clock->now()->addSecond()]);
+
+        $expected = [$one->id, $two->id];
+
+        sort($expected);
+
+        self::assertSame($expected, $this->refresher()->dueConnectionIds());
+        self::assertTrue($this->refresher()->refreshQueued($one->id)->isRefreshed());
+        self::assertSame(
+            [RefreshOutcome::SKIPPED, RefreshOutcome::SKIPPED, RefreshOutcome::SKIPPED, RefreshOutcome::SKIPPED],
+            [
+                $this->refresher()->refreshQueued($one->id)->outcome,
+                $this->refresher()->refreshQueued($off->id)->outcome,
+                $this->refresher()->refreshQueued($later->id)->outcome,
+                $this->refresher()->refreshQueued('01jbunknownconnection00000')->outcome,
+            ],
+        );
+
+        config()->set('sso.features.metadata_refresh', false);
+
+        self::assertSame([[], RefreshOutcome::SKIPPED], [$this->refresher()->dueConnectionIds(), $this->refresher()->refreshQueued($two->id)->outcome]);
+        self::assertCount(1, $this->fetcher->requests());
     }
 
     /**
@@ -571,7 +821,7 @@ final class MetadataRefresherTest extends TestCase
         config()->set('sso.features.metadata_refresh', $kind !== 'feature-off');
 
         $id     = $kind === 'unknown' ? '01jbunknownconnection00000' : $connection->id;
-        $result = $this->refresher()->refreshNow(self::TENANT, $id);
+        $result = $this->refresher()->refreshNow(self::TENANT, $id, self::actor());
         $named  = $reason === FailureReason::CONNECTION_NOT_FOUND ? null : $connection->id;
 
         self::assertSame([RefreshOutcome::REFUSED, $reason, $named], [$result->outcome, $result->reason, $result->connectionId]);
@@ -581,7 +831,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Neither refresh runs inside a transaction on the storage connection.
+     * No refresh, nor the listing of the due connections, runs inside a
+     * transaction on the storage connection.
      *
      * @return void
      *
@@ -592,7 +843,9 @@ final class MetadataRefresherTest extends TestCase
         $connection = $this->saml();
         $refreshes  = [
             fn (): mixed => $this->refresher()->refreshDue(),
-            fn (): mixed => $this->refresher()->refreshNow(self::TENANT, $connection->id),
+            fn (): mixed => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()),
+            fn (): mixed => $this->refresher()->dueConnectionIds(),
+            fn (): mixed => $this->refresher()->refreshQueued($connection->id),
         ];
 
         foreach ($refreshes as $refresh) {
@@ -783,5 +1036,25 @@ final class MetadataRefresherTest extends TestCase
     private static function idp(): FakeSamlIdentityProvider
     {
         return self::$idp ??= new FakeSamlIdentityProvider;
+    }
+
+    /**
+     * The administrator who asks for a refresh now.
+     *
+     * @return \SineMacula\Laravel\Sso\Administration\ActingIdentity
+     */
+    private static function actor(): ActingIdentity
+    {
+        return new ActingIdentity('App\Models\User', '42');
+    }
+
+    /**
+     * The shipped migration of the rate limit counters.
+     *
+     * @return \Illuminate\Database\Migrations\Migration
+     */
+    private static function rateLimitsMigration(): Migration
+    {
+        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

@@ -299,14 +299,73 @@ final class MetadataImporterTest extends TestCase
 
         self::assertSame(FakeSamlIdentityProvider::ENTITY_ID, $result->proposed?->settings()['idp_entity_id']);
         self::assertCount(1, $this->fetcher->requests());
-        self::assertSame([FetchPurpose::METADATA, self::URL, null, 'GET'], [
+        self::assertSame([FetchPurpose::METADATA, self::URL, null, 'GET', 1048576], [
             $this->fetcher->requests()[0]->purpose,
             $this->fetcher->requests()[0]->url,
             $this->fetcher->requests()[0]->credentials,
             $this->fetcher->requests()[0]->method(),
+            $this->fetcher->requests()[0]->maxBytes,
         ]);
 
         $this->assertNoEvents();
+    }
+
+    /**
+     * Rows of `[cap, imported]`: the metadata cap one over, at and one under
+     * the document's length, and whether the import proposes settings.
+     *
+     * @return iterable<string, array{0: int, 1: bool}>
+     */
+    public static function provideCaps(): iterable
+    {
+        yield from [
+            'one under the cap' => [70001, true],
+            'at the cap'        => [70000, true],
+            'one over the cap'  => [69999, false],
+        ];
+    }
+
+    /**
+     * A URL is fetched held to the metadata cap, never the fetcher's, and a
+     * fetched document over it fails the fetch; one at or under it is imported,
+     * however small the fetcher's own cap.
+     *
+     * @param  int  $cap
+     * @param  bool  $imported
+     * @return void
+     */
+    #[DataProvider('provideCaps')]
+    public function testAUrlIsFetchedHeldToTheMetadataCap(int $cap, bool $imported): void
+    {
+        config()->set('sso.metadata.max_bytes', $cap);
+        config()->set('sso.fetcher.max_response_bytes', 1024);
+
+        $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], str_pad(self::metadata()->toXml(), 70000, "\n")));
+
+        $result = $this->importer()->importUrl(self::TENANT, null, self::URL, FakeSamlIdentityProvider::ENTITY_ID);
+
+        self::assertSame($cap, $this->fetcher->requests()[0]->maxBytes);
+        self::assertSame([$imported, $imported ? null : FailureReason::FETCH_FAILED], [$result->isProposed(), $result->reason]);
+    }
+
+    /**
+     * Metadata given as XML is held to the same cap before it is parsed.
+     *
+     * @return void
+     */
+    public function testXmlIsHeldToTheMetadataCap(): void
+    {
+        $xml = str_pad(self::metadata()->toXml(), 70000, "\n");
+
+        config()->set('sso.metadata.max_bytes', 69999);
+
+        $refused = $this->importer()->importXml(self::TENANT, null, $xml, FakeSamlIdentityProvider::ENTITY_ID);
+
+        self::assertSame([FailureReason::METADATA_INVALID, 'too_large'], [$refused->reason, $refused->detail]);
+
+        config()->set('sso.metadata.max_bytes', 70000);
+
+        self::assertTrue($this->importer()->importXml(self::TENANT, null, $xml, FakeSamlIdentityProvider::ENTITY_ID)->isProposed());
     }
 
     /**

@@ -84,14 +84,17 @@ return new class extends Migration {
             // writes, so two refreshes compare and set; the last validated
             // fetch and the earliest validUntil of what it applied, from which
             // the settings expire; when the next attempt is due, how many have
-            // failed in a row (the backoff), and until when a server's claim on
-            // a refresh in progress holds.
+            // failed in a row (the backoff), until when a server's claim on a
+            // refresh in progress holds, and the random token that claim was
+            // made with, which a refresh's write must match, so one whose claim
+            // expired and was taken over writes nothing.
             $blueprint->unsignedBigInteger('metadata_version')->default(0);
             $blueprint->dateTime('metadata_fetched_at', 0)->nullable();
             $blueprint->dateTime('metadata_valid_until', 0)->nullable();
             $blueprint->dateTime('metadata_refresh_at', 0)->nullable();
             $blueprint->unsignedInteger('metadata_refresh_failures')->default(0);
             $blueprint->dateTime('metadata_claimed_until', 0)->nullable();
+            $blueprint->char('metadata_claim_token', 32)->nullable();
 
             // Whole seconds in UTC, from the package's clock.
             $blueprint->dateTime('created_at', 0);

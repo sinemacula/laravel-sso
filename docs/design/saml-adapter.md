@@ -42,17 +42,21 @@ replay) is the driver's, not the adapter's.
   the signed element, and only the enveloped-signature and exclusive canonicalisation transforms.
 - Decryption is RSA-OAEP key transport only, with exactly one `EncryptedKey`; the `EncryptionMethod` is checked against
   the connection's allow-list before `decrypt()`. AES-128-GCM and AES-192-GCM are allowed; AES-CBC only when the
-  connection lists it and the response carries a verified signature. AES-256-GCM is out until saml2 v7. Every
-  decryption failure is the one refusal `decryption_failed`, whichever key or step failed.
+  connection lists it and the response carries a verified signature. AES-256-GCM is out until the PHP floor moves to 8.5
+  and saml2 v7 is stable (`saml-library.md`, condition 8). Every decryption failure is the one refusal
+  `decryption_failed`, whichever key or step failed.
 - An assertion that no verified signature covers, its own or the response's, is refused. An unsuccessful response reads
   no assertion, but every signature it carries must still verify.
 - The response is read into the package's values (`Protocols\Saml2\Messages`). Each holds what the identity provider
   asserted in a `\SensitiveParameterValue`, redacts it from debug output and JSON, and refuses to be serialised or
   unserialised. The adapter never logs, reports or keeps what it read; a refusal's detail is the package's own word
   for the rule (`schema`, `signature_policy`, `assertion_location`), never the message.
-- The library's container is set once per process to the package's own (`Library\LibraryContainer`): no logger output,
-  no clock, temporary files, redirects or blacklist. Nothing in the namespace keeps anything between calls
-  (SSO-11.2).
+- The library's container is set once per process to the package's own (`Library\LibraryContainer::ensure()`): no
+  logger output, no clock, temporary files, redirects or blacklist. Ensuring it again is a no-op while it is the
+  package's own, so it is safe under Octane and in queue workers; a container something else set first (an
+  application using the library itself) is refused with a `LogicException` naming its class, never silently inherited,
+  since its clock, logger, files and blacklist would apply to every SAML message the package reads. Nothing in the
+  namespace keeps anything between calls (SSO-11.2).
 
 ## Success Path
 
@@ -83,7 +87,8 @@ replay) is the driver's, not the adapter's.
 
 - `src/Protocols/Saml2/Library/SamlAdapter.php`, `HardenedParser.php`, `ResponseReader.php`, `PinnedVerifier.php`,
   `AssertionDecryptor.php`, `AssertionMapper.php`, `LibraryContainer.php`, `ReadFailure.php`; the namespace's other
-  entries, `AuthnRequestWriter.php`, `MetadataReader.php` and `MetadataWriter.php`
+  entries, `AuthnRequestWriter.php`, `MetadataReader.php` (with `SignedDescriptor.php`, the signed descriptor it
+  verifies) and `MetadataWriter.php`
 - `src/Protocols/Saml2/Messages/`
 - `src/Protocols/Saml2/Saml2Limits.php`
 - `src/Testing/FakeSamlIdentityProvider.php` and `src/Testing/Saml/`: the fake identity provider whose responses and
@@ -97,8 +102,8 @@ replay) is the driver's, not the adapter's.
   `tests/Feature/Completion/SamlFixtureCompletionTest.php`: the same fixtures through the public completion path.
 - `tests/Feature/Protocols/Saml2/Library/SamlAdapterTest.php`
 - `tests/Feature/Protocols/Saml2/Library/LibraryInternalsTest.php`
-- `tests/Feature/Protocols/Saml2/Library/AuthnRequestWriterTest.php`, `MetadataReaderTest.php` and
-  `MetadataWriterTest.php`
+- `tests/Feature/Protocols/Saml2/Library/AuthnRequestWriterTest.php`, `MetadataReaderTest.php`,
+  `SignedDescriptorTest.php` and `MetadataWriterTest.php`
 - `tests/Unit/Protocols/Saml2/Messages/MessageValuesTest.php`
 - `tests/Feature/Testing/FakeSamlIdentityProviderTest.php`
 

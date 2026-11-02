@@ -287,12 +287,14 @@ Each violation names a setting by its dotted path (`issuer`, `signature_algorith
 | `metadata_refresh`               | `true` (with `sso.features.metadata_refresh` on), `false`                     | `false`                    |
 
 The algorithms are given by their XML Signature and XML Encryption URIs, for example
-`http://www.w3.org/2001/04/xmldsig-more#rsa-sha256` and `http://www.w3.org/2009/xmlenc11#aes128-gcm`; an encryption
-list holds at least one key transport and one data algorithm, and never RSA 1.5. These are what the SAML library the
-package uses can verify and decrypt: it has no ECDSA or RSA-PSS signatures, and it cannot decrypt AES-256-GCM until its
-next major version, so neither is accepted. A SAML connection has no secret among its settings: its key pairs and
-trusted certificates are managed with its keys (see [Keys and certificates](keys.md)). Setting up a SAML connection
-from start to finish is described in [Setting up a SAML connection](saml-connections.md).
+`http://www.w3.org/2001/04/xmldsig-more#rsa-sha256` and `http://www.w3.org/2009/xmlenc11#aes128-gcm`; an encryption list
+holds at least one key transport and one data algorithm, and never RSA 1.5. SAML is RSA only on PHP 8.3 and saml2 v6:
+ECDSA and RSA-PSS signatures and AES-256-GCM in these lists are refused as `not_allowed`; a generated elliptic curve key
+is refused as `key_type` `not_allowed`, and a trusted elliptic curve certificate as `certificate` `unsupported`, for
+every SAML key use. ECDSA and AES-256-GCM arrive when the PHP floor moves to 8.5 and saml2 v7 is stable (see [Setting up
+a SAML connection](saml-connections.md#saml-is-rsa-only)). A SAML connection has no secret among its settings: its key
+pairs and trusted certificates are managed with its keys (see [Keys and certificates](keys.md)). Setting up a SAML
+connection from start to finish is described in [Setting up a SAML connection](saml-connections.md).
 
 ## OIDC settings
 

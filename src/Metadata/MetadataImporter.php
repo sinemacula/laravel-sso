@@ -44,10 +44,13 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * request, with no credential and every rule of the safe fetcher (SSO-2.9);
  * with a connection named, each import counts against the connection's metadata
  * limit (`sso.rate_limits.metadata`) before anything is fetched. The document,
- * fetched or given, is capped at `sso.fetcher.max_response_bytes`. The proposal
- * is checked as the connection's settings would be (an `https` single sign-on
- * URL, an entity id that is a URL or a URN), and refused as `metadata_invalid`
- * otherwise.
+ * fetched or given, is capped at `sso.metadata.max_bytes`, not the fetcher's
+ * `max_response_bytes`: the fetch stops reading past it and a document over it
+ * is never parsed. The fetch runs while `importUrl()` is called, so a large
+ * aggregate is imported from the console or a queued job, never a web request,
+ * whose timeout and memory it could exceed. The proposal is checked as the
+ * connection's settings would be (an `https` single sign-on URL, an entity id
+ * that is a URL or a URN), and refused as `metadata_invalid` otherwise.
  *
  * It holds the reader, the lookup, the key ring, the fetcher, the limiter and
  * the protocols, none of which keeps anything of one request for the next
@@ -147,8 +150,9 @@ final readonly class MetadataImporter
     }
 
     /**
-     * The URL fetched as a metadata request, once an import of the connection
-     * named, if any, is counted against its limit; or the import rate limited.
+     * The URL fetched as a metadata request held to the metadata cap, once an
+     * import of the connection named, if any, is counted against its limit;
+     * or the import rate limited.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $url
@@ -164,7 +168,7 @@ final readonly class MetadataImporter
             return ImportResult::rateLimited($attempt->retryAfter ?? 1);
         }
 
-        return $this->fetcher->fetch(FetchRequest::metadata($url));
+        return $this->fetcher->fetch(FetchRequest::metadata($url, $this->reader->maxBytes()));
     }
 
     /**

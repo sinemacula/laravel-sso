@@ -523,6 +523,99 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
+     * Rows of `[body bytes, fetched]`: a body one under, at and one over the
+     * request's own cap.
+     *
+     * @return iterable<string, array{0: int, 1: bool}>
+     */
+    public static function provideOwnCapBodies(): iterable
+    {
+        yield from [
+            'one under' => [4095, true],
+            'at'        => [4096, true],
+            'one over'  => [4097, false],
+        ];
+    }
+
+    /**
+     * A request that carries its own cap is held to it in place of the
+     * configured one, both above and below it: the body is fetched up to it and
+     * fails as too large one byte past it.
+     *
+     * @param  int  $bytes
+     * @param  bool  $fetched
+     * @return void
+     */
+    #[DataProvider('provideOwnCapBodies')]
+    public function testARequestsOwnCapReplacesTheConfiguredOne(int $bytes, bool $fetched): void
+    {
+        foreach ([1024, 1048576] as $configured) {
+
+            config()->set('sso.fetcher.max_response_bytes', $configured);
+
+            $result = $this->fetcher([new Response(200, [], str_repeat('a', $bytes))])->fetch(FetchRequest::metadata(self::URL, 4096));
+
+            self::assertSame([$fetched, $fetched ? $bytes : null], [$result->isFetched(), $result->body() === null ? null : strlen($result->body())]);
+
+            if ($fetched) {
+                continue;
+            }
+
+            self::assertSame('too_large', $this->loggedContext()['cause']);
+        }
+    }
+
+    /**
+     * A declared length past the request's own cap stops the transfer before
+     * the body, and the sink takes no byte past it: nothing past the cap is
+     * read.
+     *
+     * @return void
+     */
+    public function testARequestsOwnCapStopsTheTransfer(): void
+    {
+        config()->set('sso.fetcher.max_response_bytes', 1048576);
+
+        $result = $this->fetcher([new Response(200, ['Content-Length' => '4097'], 'small')])->fetch(FetchRequest::metadata(self::URL, 4096));
+
+        self::assertSame(FetchStatus::FAILED, $result->status);
+        self::assertSame('too_large', $this->loggedContext()['cause']);
+
+        $this->fetcher([new Response(200, [], 'ok')])->fetch(FetchRequest::metadata(self::URL, 4096));
+
+        $sink = $this->sentOptions()['sink'] ?? null;
+
+        self::assertInstanceOf(StreamInterface::class, $sink);
+        self::assertSame(4094, $sink->write(str_repeat('a', 4094)));
+        self::assertSame(0, $sink->write('a'));
+        self::assertSame(4096, $sink->getSize());
+    }
+
+    /**
+     * One request's own cap leaves every other request to the configured cap: a
+     * metadata request allowed 4 KiB, then a request with none, held to the
+     * configured 1 KiB.
+     *
+     * @return void
+     */
+    public function testARequestsOwnCapLeavesOtherRequestsToTheConfiguredCap(): void
+    {
+        config()->set('sso.fetcher.max_response_bytes', 1024);
+
+        $fetcher = $this->fetcher([
+            new Response(200, [], str_repeat('a', 4096)),
+            new Response(200, [], str_repeat('a', 1025)),
+            new Response(200, [], str_repeat('a', 1025)),
+            new Response(200, [], str_repeat('a', 1024)),
+        ]);
+
+        self::assertTrue($fetcher->fetch(FetchRequest::metadata(self::URL, 4096))->isFetched());
+        self::assertSame(FetchStatus::FAILED, $fetcher->fetch(FetchRequest::metadata(self::URL))->status);
+        self::assertSame(FetchStatus::FAILED, $fetcher->fetch(FetchRequest::jwks(self::URL))->status);
+        self::assertTrue($fetcher->fetch(FetchRequest::discovery(self::URL))->isFetched());
+    }
+
+    /**
      * The headers callback refuses a declared length over the cap and lets one
      * at the cap, or none, through; the progress callback asks the transfer to
      * stop once the bytes received pass the cap, which Guzzle 8 acts on (the

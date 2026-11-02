@@ -25,7 +25,9 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * its lock; and its SAML metadata refresh state: the metadata version every
  * refresh that writes raises, the last validated fetch, the earliest
  * `validUntil` it applied, when the next refresh is due, how many failed in a
- * row, and until when a refresh in progress holds its claim (SSO-2.8).
+ * row, and until when a refresh in progress holds its claim and the random
+ * token that claim was made with, which only its owner's write matches
+ * (SSO-2.8).
  *
  * Its key is a lower-case ULID, the `{connection}` of its endpoints, and its
  * timestamps come from the package's clock (see `SsoModel`). Changing its
@@ -60,6 +62,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property ?\Carbon\CarbonImmutable $metadata_refresh_at
  * @property int $metadata_refresh_failures
  * @property ?\Carbon\CarbonImmutable $metadata_claimed_until
+ * @property ?string $metadata_claim_token
  * @property \Carbon\CarbonImmutable $created_at
  * @property \Carbon\CarbonImmutable $updated_at
  */
@@ -86,12 +89,13 @@ final class Connection extends SsoModel implements SsoConnection
     /** @var list<string> The attributes hidden from serialisation: the encrypted secrets. */
     protected $hidden = ['secrets'];
 
-    /** @var array<string, mixed> The model's default attribute values: a new connection is disabled, has completed no sign-in and has no settings or mapping. */
+    /** @var array<string, mixed> The model's default attribute values: disabled, no sign-in completed, no settings or mapping, trust version 0. */
     protected $attributes = [
         'settings'              => '[]',
         'attribute_mapping'     => '[]',
         'enabled'               => false,
         'has_completed_sign_in' => false,
+        'trust_version'         => 0,
     ];
 
     /**

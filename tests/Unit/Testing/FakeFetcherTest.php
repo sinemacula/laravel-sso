@@ -8,6 +8,7 @@ use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
 use SineMacula\Laravel\Sso\Fetching\FetchCredentials;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
@@ -121,6 +122,23 @@ final class FakeFetcherTest extends TestCase
         self::assertSame('metadata', $fetcher->fetch($first)->body());
         self::assertSame('userinfo', $fetcher->fetch($second)->body());
         self::assertSame([$first, $second], $seen->getArrayCopy());
+    }
+
+    /**
+     * A request that carries its own cap fails when the body it would be
+     * answered with is longer, and is answered at the cap; a request with none
+     * is answered whatever the body's length.
+     *
+     * @return void
+     */
+    public function testARequestsOwnCapHoldsTheBody(): void
+    {
+        $fetcher = (new FakeFetcher)->respond(self::METADATA, FetchResult::fetched(200, [], str_repeat('a', 10)));
+
+        self::assertSame(FailureReason::FETCH_FAILED, $fetcher->fetch(FetchRequest::metadata(self::METADATA, 9))->reason);
+        self::assertSame(10, strlen((string) $fetcher->fetch(FetchRequest::metadata(self::METADATA, 10))->body()));
+        self::assertSame(10, strlen((string) $fetcher->fetch(FetchRequest::metadata(self::METADATA))->body()));
+        self::assertCount(3, $fetcher->requests());
     }
 
     /**

@@ -73,8 +73,7 @@ final class ReplayWindow
                 continue;
             }
 
-            $bound = $context->skewed($notOnOrAfter);
-            $until = $bound < $until ? $bound : $until;
+            $until = $until->min($context->skewed($notOnOrAfter));
         }
 
         return $until;

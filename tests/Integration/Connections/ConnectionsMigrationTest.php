@@ -82,6 +82,7 @@ final class ConnectionsMigrationTest extends TestCase
             'has_completed_sign_in'     => false,
             'id'                        => false,
             'links_version'             => false,
+            'metadata_claim_token'      => true,
             'metadata_claimed_until'    => true,
             'metadata_fetched_at'       => true,
             'metadata_refresh_at'       => true,

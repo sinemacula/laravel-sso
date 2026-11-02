@@ -19,6 +19,11 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind;
  * kind, given by its absolute path, while an entity loader refuses everything
  * but the library's own schema files, so validation makes no network request;
  * and no two `ID`, `Id` or `xml:id` attributes anywhere in it share a value.
+ * Metadata is the exception to whole-document validation: an aggregate is held
+ * to the unique identifiers alone (`loadUnique()`), and only the entity the
+ * reader chooses is validated against the schema (`validateElement()`), copied
+ * into a document of its own with every namespace in scope where it stood, so
+ * one invalid member of a federation never refuses the rest.
  *
  * Values are read from a parsed document as text content, so a comment or a
  * processing instruction inside an element cannot change or truncate what is
@@ -82,6 +87,43 @@ final readonly class HardenedParser
         self::assertUniqueIds($document, $reason);
 
         return $document;
+    }
+
+    /**
+     * Parse a document of at most the cap with no `ID` repeated, leaving schema
+     * validation to the element read from it (`validateElement()`).
+     *
+     * @param  string  $xml
+     * @param  int  $maxBytes
+     * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return \DOMDocument
+     *
+     * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
+     */
+    public function loadUnique(#[\SensitiveParameter] string $xml, int $maxBytes, FailureReason $reason = FailureReason::RESPONSE_INVALID): \DOMDocument
+    {
+        $document = $this->load($xml, $maxBytes, $reason);
+
+        self::assertUniqueIds($document, $reason);
+
+        return $document;
+    }
+
+    /**
+     * Validate one element against the schema of its kind, copied into a
+     * document of its own with every namespace in scope where it stood, so a
+     * prefix an attribute value names still resolves.
+     *
+     * @param  \DOMElement  $element
+     * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind  $kind
+     * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     *
+     * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
+     */
+    public function validateElement(\DOMElement $element, MessageKind $kind, FailureReason $reason = FailureReason::RESPONSE_INVALID): void
+    {
+        self::validate(self::reRooted($element, $reason), $kind, $reason);
     }
 
     /**
@@ -166,6 +208,62 @@ final readonly class HardenedParser
             libxml_clear_errors();
             libxml_use_internal_errors($errors);
         }
+    }
+
+    /**
+     * The element copied into a document of its own, every namespace in scope
+     * where it stood declared on the copy unless the copy already binds its
+     * prefix.
+     *
+     * @param  \DOMElement  $element
+     * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return \DOMDocument
+     *
+     * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
+     */
+    private static function reRooted(\DOMElement $element, FailureReason $reason): \DOMDocument
+    {
+        $document = new \DOMDocument('1.0', 'UTF-8');
+        $scope    = $element->ownerDocument === null ? false : (new \DOMXPath($element->ownerDocument))->query('namespace::*', $element);
+
+        try {
+            $copy = $document->importNode($element, true);
+
+            if (!$copy instanceof \DOMElement || $scope === false) {
+                throw new ReadFailure($reason, 'structure');
+            }
+
+            $document->appendChild($copy);
+
+            foreach ($scope as $namespace) {
+                self::declare($copy, $namespace);
+            }
+        } catch (\DOMException) {
+            throw new ReadFailure($reason, 'structure');
+        }
+
+        return $document;
+    }
+
+    /**
+     * Declare the namespace on the copy, unless it is no namespace node, the
+     * `xml` namespace, or one whose prefix the copy already binds.
+     *
+     * @param  \DOMElement  $copy
+     * @param  \DOMNameSpaceNode|\DOMNode  $namespace
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    private static function declare(\DOMElement $copy, \DOMNameSpaceNode|\DOMNode $namespace): void
+    {
+        $prefix = $namespace instanceof \DOMNameSpaceNode ? $namespace->prefix : 'xml';
+
+        if ($prefix === 'xml' || $copy->lookupNamespaceURI($prefix === '' ? null : $prefix) !== null) {
+            return;
+        }
+
+        $copy->setAttributeNS('http://www.w3.org/2000/xmlns/', $namespace->nodeName, (string) $namespace->nodeValue);
     }
 
     /**

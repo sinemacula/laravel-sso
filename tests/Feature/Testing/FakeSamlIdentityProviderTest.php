@@ -64,6 +64,47 @@ final class FakeSamlIdentityProviderTest extends TestCase
     }
 
     /**
+     * A key pair is a 2048-bit RSA key and a certificate signed with
+     * RSA-SHA256, valid for exactly 365 days, whose common name is the one
+     * given with every character outside letters, digits, dots and hyphens
+     * replaced and cut to 64 characters.
+     *
+     * @return void
+     */
+    public function testMakesAKeyPairAsDescribed(): void
+    {
+        [$private, $certificate] = FakeSamlIdentityProvider::keyPair(str_repeat('a', 60) . ' b/c:d');
+
+        $key     = openssl_pkey_get_private($private) ?: self::fail('The private key does not load.');
+        $details = openssl_pkey_get_details($key) ?: self::fail('The private key has no details.');
+        $parsed  = openssl_x509_parse($certificate) ?: self::fail('The certificate does not parse.');
+
+        self::assertSame([OPENSSL_KEYTYPE_RSA, 2048], [$details['type'], $details['bits']]);
+        self::assertSame(['RSA-SHA256', 365 * 86400], [$parsed['signatureTypeSN'], $parsed['validTo_time_t'] - $parsed['validFrom_time_t']]);
+        self::assertSame(str_repeat('a', 60) . '-b-c', $parsed['subject']['CN']);
+        self::assertSame('idp.example.test', openssl_x509_parse(FakeSamlIdentityProvider::keyPair()[1])['subject']['CN'] ?? null);
+    }
+
+    /**
+     * A provider given a key without its certificate, or a certificate without
+     * its key, makes its own pair, named for its entity id, rather than half of
+     * one.
+     *
+     * @return void
+     */
+    public function testMakesItsOwnPairWhenGivenHalfOfOne(): void
+    {
+        [$private, $certificate] = FakeSamlIdentityProvider::keyPair('given.example.test');
+
+        $keyOnly         = new FakeSamlIdentityProvider('https://key.example.test/saml', $private);
+        $certificateOnly = new FakeSamlIdentityProvider('https://certificate.example.test/saml', null, $certificate);
+
+        self::assertFalse(openssl_x509_check_private_key($keyOnly->certificate(), $private));
+        self::assertNotSame($certificate, $certificateOnly->certificate());
+        self::assertSame('https---key.example.test-saml', openssl_x509_parse($keyOnly->certificate())['subject']['CN'] ?? null);
+    }
+
+    /**
      * A response holds its defaults, and each change answers a new response,
      * the old one kept.
      *

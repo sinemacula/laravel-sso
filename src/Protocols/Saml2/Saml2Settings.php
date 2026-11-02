@@ -34,9 +34,11 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
  *   default and never SHA-1; `encryption_algorithms`: RSA-OAEP key transport
  *   and AES-128-GCM or AES-192-GCM by default, AES-CBC only when listed, never
  *   RSA 1.5, with at least one key transport and one data algorithm (SSO-6.7).
- *   These are what the SAML library verifies and decrypts: it has no ECDSA or
- *   RSA-PSS, and its AES-256-GCM is unusable until `xml-security` 3
- *   (`docs/design/saml-library.md`).
+ *   These are what the SAML library verifies and decrypts on PHP 8.3 with
+ *   `saml2` 6: SAML is RSA only, every other signature algorithm (ECDSA,
+ *   RSA-PSS) and AES-256-GCM refused as `not_allowed`, as every SAML key use
+ *   refuses an elliptic curve key; ECDSA and AES-256-GCM arrive when the PHP
+ *   floor moves to 8.5 and `saml2` 7 is stable (`docs/design/saml-library.md`).
  * - `requested_authn_context`: up to ten authentication context classes (none
  *   by default), requested with `Comparison="exact"` and required of the
  *   response, which must assert one of them (SSO-6.10).

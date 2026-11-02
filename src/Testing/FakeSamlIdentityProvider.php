@@ -82,13 +82,13 @@ final readonly class FakeSamlIdentityProvider
      */
     public static function keyPair(string $commonName = 'idp.example.test'): array
     {
-        $key  = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048]);
+        $key  = openssl_pkey_new(['private_key_bits' => 2048]) ?: self::failed();
         $name = ['commonName' => substr((string) preg_replace('/[^A-Za-z0-9.-]/', '-', $commonName), 0, 64)];
-        $csr  = $key === false ? false : openssl_csr_new($name, $key, ['digest_alg' => 'sha256']);
-        $cert = $csr === false || $csr === true ? false : openssl_csr_sign($csr, null, $key, 365, ['digest_alg' => 'sha256']);
+        $csr  = openssl_csr_new($name, $key);
+        $cert = $csr instanceof \OpenSSLCertificateSigningRequest ? openssl_csr_sign($csr, null, $key, 365, ['digest_alg' => 'sha256']) : self::failed();
 
-        if ($key === false || $cert === false || !openssl_pkey_export($key, $private) || !openssl_x509_export($cert, $certificate)) {
-            throw new \LogicException('The fake identity provider could not generate its keys.');
+        if ($cert === false || !openssl_pkey_export($key, $private) || !openssl_x509_export($cert, $certificate)) {
+            self::failed();
         }
 
         return [$private, $certificate];
@@ -138,5 +138,17 @@ final readonly class FakeSamlIdentityProvider
     public function metadata(string $ssoUrl = self::SSO_URL): FakeSamlMetadata
     {
         return new FakeSamlMetadata($this->signer(), FakeSamlMetadata::defaults($this->entityId, $ssoUrl, $this->certificate));
+    }
+
+    /**
+     * Refuse a key pair OpenSSL could not generate.
+     *
+     * @return never
+     *
+     * @throws \LogicException
+     */
+    private static function failed(): never
+    {
+        throw new \LogicException('The fake identity provider could not generate its keys.');
     }
 }

@@ -259,9 +259,9 @@ enum FailureReason: string
     case LINKS_UNACCOUNTED = 'links_unaccounted';
 
     // Identity provider metadata is too large, unparseable, declares a document
-    // type, is invalid against the SAML 2.0 metadata schema, repeats an `ID`,
-    // or names no single sign-on service or signing certificate the package can
-    // use (SSO-2.8, SSO-6.11)
+    // type, repeats an `ID`, has a chosen entity invalid against the SAML 2.0
+    // metadata schema, or names no single sign-on service or signing
+    // certificate the package can use (SSO-2.8, SSO-6.11)
     case METADATA_INVALID = 'metadata_invalid';
 
     // The metadata is unsigned while the connection has a metadata signing

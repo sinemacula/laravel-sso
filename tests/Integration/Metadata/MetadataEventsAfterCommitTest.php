@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Metadata;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
@@ -17,7 +18,9 @@ use SineMacula\Laravel\Sso\Events\MetadataRefreshed;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Keys\KeyRing;
 use SineMacula\Laravel\Sso\Metadata\MetadataApplier;
+use SineMacula\Laravel\Sso\Metadata\RefreshClaim;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
@@ -125,8 +128,8 @@ final class MetadataEventsAfterCommitTest extends TestCase
 
         try {
             DB::connection(StorageConnection::name())->transaction(function (): void {
-                self::assertTrue($this->applier()->apply($this->row(), [], self::replacement())->isRefreshed());
-                self::assertSame(1, $this->applier()->fail($this->row(), FailureReason::FETCH_FAILED)->failures);
+                self::assertTrue($this->applier()->apply($this->claim(), self::replacement(), self::now())->isRefreshed());
+                self::assertSame(1, $this->applier()->fail($this->claim(), FailureReason::FETCH_FAILED)->failures);
 
                 throw new \RuntimeException('Rolled back.');
             });
@@ -150,7 +153,7 @@ final class MetadataEventsAfterCommitTest extends TestCase
     public function testARefreshCommittedReportsOnlyOnceTheTransactionCommits(): void
     {
         DB::connection(StorageConnection::name())->transaction(function (): void {
-            $this->applier()->apply($this->row(), [], self::replacement(), new ActingIdentity('App\Models\User', '42'));
+            $this->applier()->apply($this->claim(), self::replacement(), self::now(), new ActingIdentity('App\Models\User', '42'));
 
             $this->assertNoEvents();
         });
@@ -177,8 +180,8 @@ final class MetadataEventsAfterCommitTest extends TestCase
      */
     public function testEachEventCrossesAQueueIntact(): void
     {
-        $this->applier()->apply($this->row(), [], self::replacement());
-        $this->applier()->fail($this->row(), FailureReason::METADATA_INVALID);
+        $this->applier()->apply($this->claim(), self::replacement(), self::now());
+        $this->applier()->fail($this->claim(), FailureReason::METADATA_INVALID);
 
         $events = $this->recordedEvents();
 
@@ -205,6 +208,35 @@ final class MetadataEventsAfterCommitTest extends TestCase
     private function applier(): MetadataApplier
     {
         return app(MetadataApplier::class);
+    }
+
+    /**
+     * Claim the connection as it is now, as the refresher does: a fresh token
+     * written, and the connection, its trusted certificates and its anchors as
+     * they are, the snapshot.
+     *
+     * @return \SineMacula\Laravel\Sso\Metadata\RefreshClaim
+     */
+    private function claim(): RefreshClaim
+    {
+        $row     = $this->row();
+        $keys    = app(KeyRing::class);
+        $trusted = RefreshClaim::trustedOf($keys->trustedCertificates($row->id), $keys->trustedCertificates($row->id, KeyUse::METADATA_SIGNING));
+        $token   = hash('md5', uniqid('claim', true));
+
+        Connection::query()->whereKey($row->id)->update(['metadata_claim_token' => $token]);
+
+        return new RefreshClaim($row, $token, $trusted);
+    }
+
+    /**
+     * The clock's now, the moment the metadata was validated.
+     *
+     * @return \Carbon\CarbonImmutable
+     */
+    private static function now(): CarbonImmutable
+    {
+        return app(Clock::class)->now();
     }
 
     /**

@@ -40,8 +40,10 @@ enum ViolationCode: string
     // The list or map has more entries than its cap
     case TOO_MANY = 'too_many';
 
-    // The value is outside the setting's allow-list: an algorithm, a binding, a
-    // client authentication method, an authorisation parameter, a key type
+    // The value is outside the setting's allow-list: an algorithm (any but
+    // RSA's for SAML: ECDSA, RSA-PSS or AES-256-GCM, say), a binding, a client
+    // authentication method, an authorisation parameter, a key type (any but
+    // RSA for a SAML key)
     case NOT_ALLOWED = 'not_allowed';
 
     // The value would set something the package reserves: a parameter the flow
@@ -73,6 +75,7 @@ enum ViolationCode: string
     // The setting needs another that is not set or not on: a client
     // authentication of `private_key_jwt` with no key, an IdP-initiated start
     // URL with IdP-initiated sign-in off, a feature switched off in
-    // `sso.features`
+    // `sso.features`; or the certificate's key is of a type its use cannot take
+    // (an elliptic curve certificate for SAML, which is RSA only)
     case UNSUPPORTED = 'unsupported';
 }

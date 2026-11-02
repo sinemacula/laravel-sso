@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Metadata;
 
+use Illuminate\Database\Migrations\Migration;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\MetadataEvents;
@@ -56,6 +57,9 @@ final class MetadataEventSequenceTest extends TestCase
 {
     use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
+    /** @var string The shipped migration of the rate limit counters. */
+    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+
     /** @var string The tenant whose connection refreshes. */
     private const string TENANT = 'tenant-1';
 
@@ -79,8 +83,8 @@ final class MetadataEventSequenceTest extends TestCase
 
     /**
      * Bind a fixed clock and a fake fetcher, switch SAML and the refresh on,
-     * create the tables and a refreshing connection trusting the provider's
-     * certificate, and record events.
+     * create the tables (the rate limit counters' among them) and a refreshing
+     * connection trusting the provider's certificate, and record events.
      *
      * @return void
      */
@@ -100,6 +104,7 @@ final class MetadataEventSequenceTest extends TestCase
 
         $this->createConnectionTables();
         $this->createFlowTables();
+        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2', 'enabled' => true, 'settings' => [
             'idp_entity_id'    => FakeSamlIdentityProvider::ENTITY_ID,
@@ -121,6 +126,7 @@ final class MetadataEventSequenceTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
         $this->dropFlowTables();
         $this->dropConnectionTables();
 
@@ -379,5 +385,15 @@ final class MetadataEventSequenceTest extends TestCase
     private static function idp(): FakeSamlIdentityProvider
     {
         return self::$idp ??= new FakeSamlIdentityProvider;
+    }
+
+    /**
+     * The shipped migration of the rate limit counters.
+     *
+     * @return \Illuminate\Database\Migrations\Migration
+     */
+    private static function rateLimitsMigration(): Migration
+    {
+        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

@@ -16,9 +16,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
  * 1. the response's `Issuer`, when present, and the assertion's `Issuer` each
  *    equal the connection's identity provider entity id, compared exactly, or
  *    `issuer_mismatch`;
- * 2. the response's `Destination` equals the connection's assertion consumer
- *    service URL exactly, and is present when the response is signed, or
- *    `recipient_mismatch`;
+ * 2. the response's `Destination` is present and equals the connection's
+ *    assertion consumer service URL exactly, whether or not the response is
+ *    signed, or `recipient_mismatch`;
  * 3. a connection that requires encrypted assertions refuses a plain one with
  *    `encryption_required`, so a response cannot downgrade;
  * 4. a connection that wants assertions signed (the default) refuses an
@@ -95,8 +95,8 @@ final class ResponseRules
     }
 
     /**
-     * Whether the response's `Destination` is the assertion consumer service,
-     * or absent from a response that is not signed.
+     * Whether the response's `Destination` is present and exactly the assertion
+     * consumer service, signed or not.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -104,9 +104,7 @@ final class ResponseRules
      */
     private static function isDestination(SamlResponse $response, ValidationContext $context): bool
     {
-        $destination = $response->destination();
-
-        return $destination === null ? !$response->isSigned() : $destination === $context->assertionConsumerService;
+        return $response->destination() === $context->assertionConsumerService;
     }
 
     /**
