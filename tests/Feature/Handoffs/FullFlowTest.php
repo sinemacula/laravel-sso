@@ -6,6 +6,7 @@ namespace Tests\Feature\Handoffs;
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
@@ -14,10 +15,12 @@ use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\ProtocolDriver;
 use SineMacula\Laravel\Sso\Contracts\ProtocolSettings;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\AuthorizationRequestStarted;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
+use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -27,6 +30,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\NoLinks;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\Completion;
@@ -43,6 +47,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
@@ -214,7 +219,7 @@ final class FullFlowTest extends TestCase
         self::assertSame(VerifyingDriver::SUBJECT, $answer->result?->subject);
         self::assertFalse(Connection::query()->whereKey($this->connection->id)->sole()->has_completed_sign_in);
 
-        $this->assertEventSequence([AuthorizationRequestStarted::class, ResultVerified::class, HandoffIssued::class, HandoffRedeemed::class]);
+        $this->assertEventSequence([AuthorizationRequestStarted::class, ResultVerified::class, ResultUnlinked::class, HandoffIssued::class, HandoffRedeemed::class]);
     }
 
     /**
@@ -289,12 +294,12 @@ final class FullFlowTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return \SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
-                return ($this->resolve)($result);
+                return ExampleLinks::resolution(($this->resolve)($result));
             }
         });
     }
@@ -345,7 +350,11 @@ final class FullFlowTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier);
+        $redemption = $app->make(HandoffRedemption::class);
+
+        return DB::connection(StorageConnection::name())->transaction(
+            fn (): RedemptionResult => $redemption->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier),
+        );
     }
 
     /**

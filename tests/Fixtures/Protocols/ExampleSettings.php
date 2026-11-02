@@ -67,6 +67,17 @@ final readonly class ExampleSettings implements ProtocolSettings
     }
 
     /**
+     * The setting that names the issuer.
+     *
+     * @return list<string>
+     */
+    #[\Override]
+    public static function issuerNames(): array
+    {
+        return ['issuer'];
+    }
+
+    /**
      * The issuer is trust; nothing else needs freshness.
      *
      * @param  string  $name

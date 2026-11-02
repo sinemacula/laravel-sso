@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Flows;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Evidence\AcceptedEvidence;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
@@ -640,6 +642,39 @@ final class AuthorizationRequestServiceTest extends TestCase
                 $this->asked[] = [$identity, $sessionId, $connection->getConnectionId()];
 
                 return $this->standing;
+            }
+
+            /**
+             * The identity's session, locked; as `standing()` answers.
+             *
+             * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+             * @param  string  $sessionId
+             * @param  string  $application
+             * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+             * @param  string  $linkId
+             * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
+             */
+            #[\Override]
+            public function lockedStanding(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection, string $linkId): SessionStanding
+            {
+                unset($application, $linkId);
+
+                return $this->standing($identity, $sessionId, $connection);
+            }
+
+            /**
+             * Renew nothing.
+             *
+             * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+             * @param  string  $sessionId
+             * @param  \Carbon\CarbonImmutable  $authenticatedAt
+             * @param  ?\SineMacula\Laravel\Sso\Evidence\AcceptedEvidence  $evidence
+             * @return void
+             */
+            #[\Override]
+            public function renewAuthentication(IdentityReference $identity, string $sessionId, CarbonImmutable $authenticatedAt, ?AcceptedEvidence $evidence): void
+            {
+                unset($identity, $sessionId, $authenticatedAt, $evidence);
             }
         };
 

@@ -143,10 +143,10 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
      *
      * @return void
      */
-    public function testTrustingAnAnchorIsFourReadsAndFourWrites(): void
+    public function testTrustingAnAnchorIsFourReadsAndFiveWrites(): void
     {
         $anchor = Certificates::distinct(0);
-        $result = $this->assertQueryBudget(4, 4, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $anchor, null, KeyUse::METADATA_SIGNING));
+        $result = $this->assertQueryBudget(4, 5, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $anchor, null, KeyUse::METADATA_SIGNING));
 
         self::assertTrue($result->isSucceeded());
     }
@@ -157,10 +157,10 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
      *
      * @return void
      */
-    public function testDistrustingACertificateIsFourReadsAndFourWrites(): void
+    public function testDistrustingACertificateIsFourReadsAndFiveWrites(): void
     {
         $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0)));
-        $result      = $this->assertQueryBudget(4, 4, fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id));
+        $result      = $this->assertQueryBudget(4, 5, fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id));
 
         self::assertTrue($result->isSucceeded());
     }

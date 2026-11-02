@@ -31,24 +31,31 @@ use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
+use SineMacula\Laravel\Sso\Contracts\EvidencePolicy;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
+use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
+use SineMacula\Laravel\Sso\Contracts\LinkEmailMatcher;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\LinkLimit;
+use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
 use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
 use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
 use SineMacula\Laravel\Sso\Contracts\RedirectUriResolver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
+use SineMacula\Laravel\Sso\Contracts\TenantMembership;
 use SineMacula\Laravel\Sso\Domains\DomainsCheck;
 use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
 use SineMacula\Laravel\Sso\Endpoints\ConfiguredEndpointResolver;
 use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
 use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
+use SineMacula\Laravel\Sso\Evidence\InsufficientEvidence;
 use SineMacula\Laravel\Sso\Fetching\FetcherCheck;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
@@ -58,6 +65,12 @@ use SineMacula\Laravel\Sso\Freshness\FreshnessCheck;
 use SineMacula\Laravel\Sso\Freshness\RefusingFreshness;
 use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
 use SineMacula\Laravel\Sso\Keys\KeysCheck;
+use SineMacula\Laravel\Sso\Linking\LinkingCheck;
+use SineMacula\Laravel\Sso\Linking\NoEmailMatches;
+use SineMacula\Laravel\Sso\Linking\NoTenantMembership;
+use SineMacula\Laravel\Sso\Linking\RefusingLinkConfirmation;
+use SineMacula\Laravel\Sso\Linking\RefusingLinkEligibility;
+use SineMacula\Laravel\Sso\Linking\RefusingPrincipalScope;
 use SineMacula\Laravel\Sso\Links\NoLinks;
 use SineMacula\Laravel\Sso\Links\OneLinkPerConnection;
 use SineMacula\Laravel\Sso\Logging\LoggingCheck;
@@ -109,6 +122,7 @@ final class SsoServiceProvider extends ServiceProvider
         'mapping'      => MappingCheck::class,
         'domains'      => DomainsCheck::class,
         'flows'        => FlowsCheck::class,
+        'linking'      => LinkingCheck::class,
         'saml2'        => Saml2Check::class,
         'oidc'         => OidcCheck::class,
         'metadata'     => MetadataCheck::class,
@@ -155,6 +169,7 @@ final class SsoServiceProvider extends ServiceProvider
         '2026_11_03_000000_create_sso_links_table.php',
         '2026_11_03_000001_create_sso_authorization_requests_table.php',
         '2026_11_03_000002_create_sso_handoff_codes_table.php',
+        '2026_11_03_000003_create_sso_identity_guards_table.php',
     ];
 
     /** @var list<class-string<\Illuminate\Console\Command>> The package's console commands, registered in the console only. */
@@ -183,7 +198,9 @@ final class SsoServiceProvider extends ServiceProvider
      * endpoints are the configured ones, never the request's (SSO-5.1,
      * SSO-5.5); nothing is linked, an identity holds one link per connection,
      * and no session is found for reauthentication (SSO-8.3, SSO-8.4,
-     * SSO-5.10); the provider's session deadline limits the application's
+     * SSO-5.10); no identity may link, no email matches, no principal set or
+     * membership is known, and no evidence is accepted (SSO-8.5, SSO-8.7,
+     * SSO-8.8); the provider's session deadline limits the application's
      * (SSO-6.10); and handoff codes are the package's own (SSO-9.2). The
      * protocol registry is a singleton that builds its drivers with the
      * application serving (see `ProtocolManager::driver()`). Each is resolved
@@ -216,6 +233,12 @@ final class SsoServiceProvider extends ServiceProvider
         $this->app->singletonIf(Linker::class, NoLinks::class);
         $this->app->singletonIf(LinkLimit::class, OneLinkPerConnection::class);
         $this->app->singletonIf(ReauthenticationSessions::class, NoReauthenticationSessions::class);
+        $this->app->singletonIf(LinkEligibility::class, RefusingLinkEligibility::class);
+        $this->app->singletonIf(LinkConfirmation::class, RefusingLinkConfirmation::class);
+        $this->app->singletonIf(LinkEmailMatcher::class, NoEmailMatches::class);
+        $this->app->singletonIf(PrincipalScope::class, RefusingPrincipalScope::class);
+        $this->app->singletonIf(TenantMembership::class, NoTenantMembership::class);
+        $this->app->singletonIf(EvidencePolicy::class, InsufficientEvidence::class);
         $this->app->singletonIf(ProviderSessionDeadline::class, ProviderDeadlineLimitsSession::class);
         $this->app->scopedIf(HandoffIssuer::class, DatabaseHandoffStore::class);
         $this->app->singletonIf(ProtocolManager::class);

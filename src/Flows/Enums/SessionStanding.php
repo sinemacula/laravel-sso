@@ -7,7 +7,8 @@ namespace SineMacula\Laravel\Sso\Flows\Enums;
 /**
  * What the reauthentication contract answered for an identity, a session and a
  * connection (SSO-5.10, SSO-9.9): whether the identity is signed in through the
- * connection on that session, still active.
+ * connection on that session, still active, and at redemption whether that
+ * session is of the application and bound to exactly the link given.
  *
  * Only `signed_in` lets a `reauthenticate` flow start, or a `reauthenticate`
  * handoff be redeemed; every other answer refuses with `session_ineligible`.

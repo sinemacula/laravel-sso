@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
@@ -23,6 +24,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -88,14 +90,14 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return \SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
                 unset($result);
 
-                return new IdentityReference('App\Models\User', '42');
+                return ExampleLinks::resolution(new IdentityReference('App\Models\User', '42'));
             }
         });
         $this->app?->instance('request', Request::create('/auth/sso/connections/x/callback', 'GET', server: ['REMOTE_ADDR' => '203.0.113.7']));

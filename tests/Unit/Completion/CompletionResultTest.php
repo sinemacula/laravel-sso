@@ -151,7 +151,7 @@ final class CompletionResultTest extends TestCase
     public function testTheStepsAndTheirOrder(): void
     {
         self::assertSame([
-            'correlation', 'consumption', 'validation', 'replay_recording', 'link_resolution', 'enforcement', 'domain_reservation', 'provisioning',
+            'correlation', 'consumption', 'validation', 'replay_recording', 'link_resolution', 'enforcement', 'purpose_rules', 'domain_reservation', 'provisioning',
             'unlinked_decision', 'handoff_issuance',
         ], array_column(CompletionStep::cases(), 'value'));
 
@@ -160,7 +160,26 @@ final class CompletionResultTest extends TestCase
             array_filter(CompletionStep::cases(), static fn (CompletionStep $step): bool => $step->isLocked()),
         ));
 
-        self::assertSame(['replay_recording', 'link_resolution', 'enforcement', 'domain_reservation', 'provisioning', 'unlinked_decision', 'handoff_issuance'], $locked);
+        self::assertSame(
+            ['replay_recording', 'link_resolution', 'enforcement', 'purpose_rules', 'domain_reservation', 'provisioning', 'unlinked_decision', 'handoff_issuance'],
+            $locked,
+        );
+    }
+
+    /**
+     * The final continuation repeats neither the replay recording, nor the
+     * domain selection, nor the provisioning boundary: exactly these steps.
+     *
+     * @return void
+     */
+    public function testTheStepsOfTheFinalContinuation(): void
+    {
+        $continued = array_values(array_map(
+            static fn (CompletionStep $step): string => $step->value,
+            array_filter(CompletionStep::cases(), static fn (CompletionStep $step): bool => $step->isInContinuation()),
+        ));
+
+        self::assertSame(['link_resolution', 'enforcement', 'purpose_rules', 'unlinked_decision', 'handoff_issuance'], $continued);
     }
 
     /**

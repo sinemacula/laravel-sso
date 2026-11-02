@@ -184,16 +184,16 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refetch removing a key is two reads and five writes, the trust version
+     * A refetch removing a key is two reads and six writes, the trust version
      * raised once.
      *
      * @return void
      */
-    public function testARefetchRemovingAKeyIsTwoReadsAndFiveWrites(): void
+    public function testARefetchRemovingAKeyIsTwoReadsAndSixWrites(): void
     {
         $connection = $this->oidc([self::key(), self::next()]);
 
-        $this->assertQueryBudget(2, 5, fn (): KeySelection => $this->selected($connection, 'rsa-3'));
+        $this->assertQueryBudget(2, 6, fn (): KeySelection => $this->selected($connection, 'rsa-3'));
 
         self::assertSame(1, $this->row($connection)->trust_version);
     }
@@ -204,13 +204,13 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
      *
      * @return void
      */
-    public function testARefetchRemovingAKeyForARequestIsThreeReadsAndFiveWrites(): void
+    public function testARefetchRemovingAKeyForARequestIsThreeReadsAndSixWrites(): void
     {
         $connection = $this->oidc([self::next()]);
         $request    = $this->makeAuthorizationRequest($connection, ['consumed_at' => $this->clock->now()]);
         $consumed   = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString($request->reference), $this->clock->now());
 
-        $selection = $this->assertQueryBudget(3, 5, fn (): KeySelection => app(ProviderKeys::class)->select($connection, self::token('rsa-1'), self::rs256(), $consumed));
+        $selection = $this->assertQueryBudget(3, 6, fn (): KeySelection => app(ProviderKeys::class)->select($connection, self::token('rsa-1'), self::rs256(), $consumed));
 
         self::assertSame(KeySelectionOutcome::FOUND, $selection->outcome);
         self::assertNotNull($selection->receipt);
@@ -294,17 +294,17 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * A refresh now removing a key and moving an endpoint is two reads and
-     * seven writes, the trust version raised once.
+     * eight writes, the trust version raised once.
      *
      * @return void
      */
-    public function testARefreshRemovingAKeyAndMovingAnEndpointIsTwoReadsAndSevenWrites(): void
+    public function testARefreshRemovingAKeyAndMovingAnEndpointIsTwoReadsAndEightWrites(): void
     {
         $connection = $this->oidc([self::key(), self::next()]);
 
         $this->provider->withDiscovery(['token_endpoint' => 'https://moved.example.test/token']);
 
-        $result = $this->assertQueryBudget(2, 7, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(2, 8, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['token_endpoint', 'jwks'], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
         self::assertSame(1, $this->row($connection)->trust_version);
@@ -400,16 +400,16 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now of keys alone removing a key is two reads and seven writes,
+     * A refresh now of keys alone removing a key is two reads and eight writes,
      * the trust version raised once.
      *
      * @return void
      */
-    public function testARefreshOfKeysAloneRemovingAKeyIsTwoReadsAndSevenWrites(): void
+    public function testARefreshOfKeysAloneRemovingAKeyIsTwoReadsAndEightWrites(): void
     {
         $connection = $this->oidc([self::key(), self::next()], ['jwks_fetched_at' => $this->clock->now()], ['metadata_refresh' => false]);
 
-        $result = $this->assertQueryBudget(2, 7, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(2, 8, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['jwks'], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
         self::assertSame(1, $this->row($connection)->trust_version);

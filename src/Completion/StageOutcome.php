@@ -19,6 +19,12 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  * nor is refused; the pipeline runs no further step and answers it through
  * `Completion\UnsolicitedReinitiation`.
  *
+ * The provisioning step alone may instead stop at the provisioning boundary
+ * (SSO-8.6): a genuinely unlinked `sign_in` result holding no reservation. Such
+ * an outcome neither proceeds nor is refused: the pipeline commits what the
+ * completion has so far and offers the result to the unlinked-result event's
+ * listeners, with no package transaction open, before its final continuation.
+ *
  * @api
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -32,6 +38,7 @@ final readonly class StageOutcome
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  bool  $reinitiating
+     * @param  bool  $provisioning
      */
     private function __construct(
 
@@ -43,6 +50,9 @@ final readonly class StageOutcome
 
         /** Whether the completion is handed to re-initiation. */
         private bool $reinitiating = false,
+
+        /** Whether the completion stops at the provisioning boundary. */
+        private bool $provisioning = false,
     ) {}
 
     /**
@@ -81,13 +91,34 @@ final readonly class StageOutcome
     }
 
     /**
+     * Stop the completion at the provisioning boundary.
+     *
+     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
+     * @return self
+     */
+    public static function provision(CompletionState $state): self
+    {
+        return new self($state, null, provisioning: true);
+    }
+
+    /**
      * Whether the completion goes on.
      *
      * @return bool
      */
     public function isProceeding(): bool
     {
-        return $this->reason === null && !$this->reinitiating;
+        return $this->reason === null && !$this->reinitiating && !$this->provisioning;
+    }
+
+    /**
+     * Whether the completion stopped at the provisioning boundary.
+     *
+     * @return bool
+     */
+    public function isProvisioning(): bool
+    {
+        return $this->provisioning;
     }
 
     /**

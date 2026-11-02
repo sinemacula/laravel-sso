@@ -15,7 +15,8 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * pending; when it became verified, kept until it lapses and set anew when it
  * is verified again; when it last passed a check; when linking by it was
  * suspended and when it lapses, once a recheck found its record gone; when it
- * lapsed; and the lease that keeps two servers from rechecking it at once.
+ * lapsed; how many times it has become verified, which a link reservation binds
+ * (SSO-8.8); and the lease that keeps two servers from rechecking it at once.
  *
  * `verified_domain` holds the domain while it is verified and `null` otherwise,
  * under a unique index, so a domain is verified for at most one connection at a
@@ -45,6 +46,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property \Carbon\CarbonImmutable $claimed_at
  * @property ?\Carbon\CarbonImmutable $pending_expires_at
  * @property ?\Carbon\CarbonImmutable $verified_at
+ * @property int $verification_generation
  * @property ?\Carbon\CarbonImmutable $last_successful_check_at
  * @property ?\Carbon\CarbonImmutable $linking_suspended_at
  * @property ?\Carbon\CarbonImmutable $lapses_at
@@ -107,6 +109,7 @@ final class Domain extends SsoModel
             'claimed_at'               => UtcDateTime::class,
             'pending_expires_at'       => UtcDateTime::class,
             'verified_at'              => UtcDateTime::class,
+            'verification_generation'  => 'integer',
             'last_successful_check_at' => UtcDateTime::class,
             'linking_suspended_at'     => UtcDateTime::class,
             'lapses_at'                => UtcDateTime::class,

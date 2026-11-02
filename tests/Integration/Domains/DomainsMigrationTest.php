@@ -89,6 +89,7 @@ final class DomainsMigrationTest extends TestCase
             'record_name'              => false,
             'state'                    => false,
             'updated_at'               => false,
+            'verification_generation'  => false,
             'verification_token'       => false,
             'verified_at'              => true,
             'verified_domain'          => true,
@@ -185,21 +186,22 @@ final class DomainsMigrationTest extends TestCase
      *
      * @param  string  $id
      * @param  string  $connectionId
-     * @return array<string, ?string>
+     * @return array<string, int|string|null>
      */
     private static function row(string $id, string $connectionId): array
     {
         return [
-            'id'                 => $id,
-            'connection_id'      => $connectionId,
-            'domain'             => 'example.com',
-            'verified_domain'    => null,
-            'state'              => 'pending',
-            'record_name'        => '_sso-verification',
-            'verification_token' => str_repeat('a', 64),
-            'claimed_at'         => '2026-11-01 09:30:00',
-            'created_at'         => '2026-11-01 09:30:00',
-            'updated_at'         => '2026-11-01 09:30:00',
+            'id'                      => $id,
+            'connection_id'           => $connectionId,
+            'domain'                  => 'example.com',
+            'verified_domain'         => null,
+            'state'                   => 'pending',
+            'record_name'             => '_sso-verification',
+            'verification_generation' => 0,
+            'verification_token'      => str_repeat('a', 64),
+            'claimed_at'              => '2026-11-01 09:30:00',
+            'created_at'              => '2026-11-01 09:30:00',
+            'updated_at'              => '2026-11-01 09:30:00',
         ];
     }
 

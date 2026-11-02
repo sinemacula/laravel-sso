@@ -88,6 +88,8 @@ final class ClaimsAssemblerTest extends TestCase
         $this->app?->instance(Fetcher::class, $this->fetcher);
 
         $this->captureLogs();
+
+        config()->set('sso.features.domain_linking', true);
     }
 
     /**
@@ -788,7 +790,7 @@ final class ClaimsAssemblerTest extends TestCase
 
         /** @var \Illuminate\Foundation\Application $app */
         $app        = $this->app;
-        $connection = new IdentifiedConnection(self::CONNECTION_ID, settings: $settings);
+        $connection = new IdentifiedConnection(self::CONNECTION_ID, settings: $settings, linking: true);
         $consumed   = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString(self::REFERENCE), CarbonImmutable::parse('2026-11-01T09:28:00Z'));
         $tokens     = new TokenResponse('header.payload.signature', self::ACCESS_TOKEN);
 

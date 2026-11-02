@@ -18,6 +18,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\HandoffIssued;
+use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -164,7 +165,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
     {
         self::assertTrue($this->complete($this->response())->isCompleted());
 
-        $this->assertEventSequence([ResultVerified::class, HandoffIssued::class]);
+        $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class, HandoffIssued::class]);
         $this->assertNoFailure();
 
         $expected = [$this->connection->id, 'tenant-reported', 'saml2', 'web', 'sign_in', $this->request->reference];
@@ -249,7 +250,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
 
         self::assertNotSame([], $this->capturedLogRecords());
         self::assertSame(
-            [ResultVerified::class, HandoffIssued::class, ResultVerified::class, FlowFailed::class, FlowFailed::class, FlowFailed::class],
+            [ResultVerified::class, ResultUnlinked::class, HandoffIssued::class, ResultVerified::class, FlowFailed::class, FlowFailed::class, FlowFailed::class],
             array_map(static fn (SsoEvent $event): string => $event::class, $this->recordedEvents()),
         );
 
@@ -268,7 +269,9 @@ final class SamlCompletionEventSequenceTest extends TestCase
      */
     private function assertNothingReportedContains(array $needles): void
     {
-        $events = $this->recordedEvents();
+        // The unlinked-result event alone carries the result (SSO-8.6), to its
+        // synchronous listeners
+        $events = array_values(array_filter($this->recordedEvents(), static fn (SsoEvent $event): bool => !$event instanceof ResultUnlinked));
         $texts  = [...array_values(self::dumps($events)), (string) json_encode($events, JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR)];
 
         foreach ($needles as $needle) {

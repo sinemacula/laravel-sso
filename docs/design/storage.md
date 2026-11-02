@@ -42,15 +42,17 @@ commit with the package follows (SSO-11.7, SSO-11.10).
   identity provider (SSO-5.1, SSO-11.5).
 - Security state (authorisation requests, single-use keys, handoff codes, links, domains, enforcement) is read from the
   write connection by the query that reads it (SSO-11.3); the model does not decide it.
-- Locks are taken in one order, so two changes never wait on each other: a tenant's enforcement row, then connection
-  rows (in id order when several), then domain rows (one connection's claim by `connection_id` and `domain`, or every
-  claim of one domain by the `domain` index in id order), then key rows. Under a lock, every read that decides a write
-  is itself a locking read, since a plain read answers from the snapshot of a transaction the caller opened (MySQL's
-  `REPEATABLE READ`). No locking read goes by a column whose only purpose is a unique guard (`verified_domain`): its
-  MySQL gap locks would deadlock with the update that sets it, and the unique index guards it instead.
+- Locks are taken in one order, so two changes never wait on each other: an identity's guard (only what changes its
+  verified domain links, `linking.md`), a tenant's enforcement row, then connection rows (in id order when several),
+  then domain rows (one connection's claim by `connection_id` and `domain`, or every claim of one domain by the `domain`
+  index in id order), then key rows. Under a lock, every read that decides a write is itself a locking read, since a
+  plain read answers from the snapshot of a transaction the caller opened (MySQL's `REPEATABLE READ`). No locking read
+  goes by a column whose only purpose is a unique guard (`verified_domain`): its MySQL gap locks would deadlock with the
+  update that sets it, and the unique index guards it instead.
 - A row of the application's opaque tenant id that must be unique per tenant (`sso_enforcement`) is keyed by the
   lower-case hex SHA-256 of the id (`Enforcement\TenantHash`), so a collation that counts `acme`, `Acme` and `acme`
-  with a trailing space as equal cannot merge two tenants; a read by the hash still compares the id byte for byte.
+  with a trailing space as equal cannot merge two tenants; a read by the hash still compares the id byte for byte. An
+  identity's guard (`sso_identity_guards`) is keyed the same way, by a digest of its type and id, and names nobody.
 - A model takes its connection and table when it is built, so the settings are deployment configuration, fixed for the
   life of a process.
 
@@ -80,9 +82,9 @@ commit with the package follows (SSO-11.7, SSO-11.10).
   `holds()`.
 - `src/Models/SsoModel.php`: the constructor and `identifiedAndStamped()`; `src/Database/MigrationCollisionGuard.php`.
 - `src/Models/Connection.php`, `src/Models/ConnectionKey.php`, `src/Models/Domain.php`,
-  `src/Models/TenantEnforcement.php` and their migrations (`connections.table`, `keys.table`, `domains.table`,
-  `enforcement.table`): records keyed by a ULID and stamped by the package's clock (see `connections.md`,
-  `domains.md`, `enforcement.md`).
+  `src/Models/TenantEnforcement.php`, `src/Models/IdentityGuard.php` and their migrations (`connections.table`,
+  `keys.table`, `domains.table`, `enforcement.table`, `identity_guards.table`): records keyed by a ULID and stamped by
+  the package's clock (see `connections.md`, `domains.md`, `enforcement.md`).
 - `src/SsoServiceProvider.php`: `MIGRATIONS`, `registerPublishing()`; `src/Config/Checks/StorageCheck.php`;
   `config/sso.php`: `storage`, and each section's `table`.
 

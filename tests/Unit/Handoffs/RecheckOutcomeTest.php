@@ -23,14 +23,18 @@ use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 final class RecheckOutcomeTest extends TestCase
 {
     /**
-     * The outcomes are these four, in this order, with these values.
+     * The outcomes are these, in this order, with these values.
      *
      * @return void
      */
     public function testTheOutcomesAndTheirValues(): void
     {
         self::assertSame(
-            ['passed', 'connection_unavailable', 'enforcement_unsatisfied', 'link_changed'],
+            [
+                'passed', 'connection_unavailable', 'enforcement_unsatisfied', 'link_changed', 'link_suspended', 'principal_scope_unknown', 'link_reserved', 'link_ineligible',
+                'independent_authentication_required', 'identity_mismatch', 'subject_already_linked', 'link_limit_reached', 'reservation_invalid',
+                'freshness_required', 'session_ineligible', 'authentication_expired',
+            ],
             array_map(static fn (RecheckOutcome $outcome): string => $outcome->value, RecheckOutcome::cases()),
         );
     }
@@ -46,6 +50,18 @@ final class RecheckOutcomeTest extends TestCase
         yield 'connection unavailable' => [RecheckOutcome::CONNECTION_UNAVAILABLE, FailureReason::CONNECTION_UNAVAILABLE];
         yield 'enforcement unsatisfied' => [RecheckOutcome::ENFORCEMENT_UNSATISFIED, FailureReason::ENFORCEMENT_UNSATISFIED];
         yield 'link changed' => [RecheckOutcome::LINK_CHANGED, FailureReason::LINK_CHANGED];
+        yield 'link suspended' => [RecheckOutcome::LINK_SUSPENDED, FailureReason::LINK_SUSPENDED];
+        yield 'principal scope unknown' => [RecheckOutcome::PRINCIPAL_SCOPE_UNKNOWN, FailureReason::PRINCIPAL_SCOPE_UNKNOWN];
+        yield 'link reserved' => [RecheckOutcome::LINK_RESERVED, FailureReason::LINK_RESERVED];
+        yield 'link ineligible' => [RecheckOutcome::LINK_INELIGIBLE, FailureReason::LINK_INELIGIBLE];
+        yield 'identity mismatch' => [RecheckOutcome::IDENTITY_MISMATCH, FailureReason::IDENTITY_MISMATCH];
+        yield 'subject already linked' => [RecheckOutcome::SUBJECT_ALREADY_LINKED, FailureReason::SUBJECT_ALREADY_LINKED];
+        yield 'link limit reached' => [RecheckOutcome::LINK_LIMIT_REACHED, FailureReason::LINK_LIMIT_REACHED];
+        yield 'independent authentication required' => [RecheckOutcome::INDEPENDENT_AUTHENTICATION_REQUIRED, FailureReason::INDEPENDENT_AUTHENTICATION_REQUIRED];
+        yield 'reservation invalid' => [RecheckOutcome::RESERVATION_INVALID, FailureReason::RESERVATION_INVALID];
+        yield 'freshness required' => [RecheckOutcome::FRESHNESS_REQUIRED, FailureReason::FRESHNESS_REQUIRED];
+        yield 'session ineligible' => [RecheckOutcome::SESSION_INELIGIBLE, FailureReason::SESSION_INELIGIBLE];
+        yield 'authentication expired' => [RecheckOutcome::AUTHENTICATION_EXPIRED, FailureReason::AUTHENTICATION_EXPIRED];
     }
 
     /**

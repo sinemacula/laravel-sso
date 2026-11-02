@@ -40,6 +40,12 @@ final class Presets
         'id_token_algorithms' => ['RS256'],
     ];
 
+    /** @var string What each issuer of a Microsoft Entra ID directory over OIDC looks like. */
+    private const string ENTRA_ISSUERS = '#^https://(?:login\.microsoftonline\.com/[^/]+/v2\.0|sts\.windows\.net/[^/]+/)$#D';
+
+    /** @var string What each entity id of a Microsoft Entra ID directory over SAML looks like. */
+    private const string ENTRA_ENTITY_IDS = '#^https://sts\.windows\.net/[^/]+/$#D';
+
     /** @var string The namespace of the claim types Microsoft Entra ID's SAML attributes are named by. */
     private const string WS_CLAIMS = 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/';
 
@@ -60,7 +66,7 @@ final class Presets
     {
         $presets = [
             self::google(),
-            new Preset('microsoft_entra', 'oidc', ['client_authentication' => 'client_secret_basic'] + self::OIDC_SETTINGS, self::OIDC_MAPPING, 'tid'),
+            new Preset('microsoft_entra', 'oidc', ['client_authentication' => 'client_secret_basic'] + self::OIDC_SETTINGS, self::OIDC_MAPPING, 'tid', self::ENTRA_ISSUERS),
             new Preset('okta', 'oidc', ['client_authentication' => 'client_secret_basic'] + self::OIDC_SETTINGS, self::OIDC_MAPPING + ['groups' => 'groups']),
             new Preset('auth0', 'oidc', ['client_authentication' => 'client_secret_post'] + self::OIDC_SETTINGS, self::OIDC_MAPPING),
             self::microsoftEntraSaml(),
@@ -110,6 +116,6 @@ final class Presets
             'family_name'  => self::WS_CLAIMS . 'surname',
             'display_name' => self::MS_CLAIMS . 'displayname',
             'groups'       => 'http://schemas.microsoft.com/ws/2008/06/identity/claims/groups',
-        ], self::MS_CLAIMS . 'tenantid');
+        ], self::MS_CLAIMS . 'tenantid', self::ENTRA_ENTITY_IDS);
     }
 }

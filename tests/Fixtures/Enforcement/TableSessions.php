@@ -48,6 +48,7 @@ final class TableSessions implements SessionRevocation
             $table->id();
             $table->string('tenant_id');
             $table->char('connection_id', 26);
+            $table->char('link_id', 26)->nullable();
         });
     }
 
@@ -67,11 +68,12 @@ final class TableSessions implements SessionRevocation
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
+     * @param  ?string  $linkId
      * @return void
      */
-    public static function write(string $tenantId, string $connectionId): void
+    public static function write(string $tenantId, string $connectionId, ?string $linkId = null): void
     {
-        DB::connection(StorageConnection::name())->table(self::TABLE)->insert(['tenant_id' => $tenantId, 'connection_id' => $connectionId]);
+        DB::connection(StorageConnection::name())->table(self::TABLE)->insert(['tenant_id' => $tenantId, 'connection_id' => $connectionId, 'link_id' => $linkId]);
     }
 
     /**
@@ -90,7 +92,8 @@ final class TableSessions implements SessionRevocation
     /**
      * Delete every session the scope no longer allows: for a tenant's
      * enforcement, each of the tenant not established through one of the
-     * policy's connections; otherwise each established through the connection.
+     * policy's connections; for a widened scope, each established through the
+     * link; otherwise each established through the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Revocation\RevocationScope  $scope
      * @return void
@@ -100,9 +103,11 @@ final class TableSessions implements SessionRevocation
     {
         $sessions = DB::connection(StorageConnection::name())->table(self::TABLE)->where('tenant_id', $scope->tenantId);
 
-        $scope->kind === RevocationScopeKind::TENANT
-            ? $sessions->whereNotIn('connection_id', $scope->policy->connectionIds ?? [])->delete()
-            : $sessions->where('connection_id', $scope->connectionId)->delete();
+        match ($scope->kind) {
+            RevocationScopeKind::TENANT        => $sessions->whereNotIn('connection_id', $scope->policy->connectionIds ?? [])->delete(),
+            RevocationScopeKind::IDENTITY_LINK => $sessions->where('link_id', $scope->linkId)->delete(),
+            default                            => $sessions->where('connection_id', $scope->connectionId)->delete(),
+        };
 
         if ($this->afterRevoking === null) {
             return;

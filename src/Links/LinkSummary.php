@@ -63,7 +63,7 @@ final readonly class LinkSummary implements \JsonSerializable
         /** The SAML `NameID` format; `null` for none. */
         public ?string $nameIdFormat,
 
-        /** Whether the link resolves (active) or is held for a redemption (reserved). */
+        /** Whether the link resolves (active), is held for a redemption (reserved), or is suspended until confirmed. */
         public LinkState $state,
 
         /** Whether the link was made by a verified domain and not since confirmed. */

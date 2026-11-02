@@ -40,6 +40,21 @@ final class PresetTest extends TestCase
     }
 
     /**
+     * A preset's OIDC issuer decides over an entity id its settings also hold.
+     *
+     * @return void
+     */
+    public function testTheIssuerFilledInDecidesOverAnEntityId(): void
+    {
+        $both = new Preset('acme', 'oidc', ['issuer' => 'https://issuer.example.com', 'idp_entity_id' => 'https://entity.example.com']);
+        $saml = new Preset('acme', 'saml2', ['idp_entity_id' => 'https://entity.example.com']);
+
+        self::assertTrue($both->names('https://issuer.example.com'));
+        self::assertFalse($both->names('https://entity.example.com'));
+        self::assertTrue($saml->names('https://entity.example.com'));
+    }
+
+    /**
      * A preset with an organisation claim is for a shared issuer; one without
      * is not.
      *

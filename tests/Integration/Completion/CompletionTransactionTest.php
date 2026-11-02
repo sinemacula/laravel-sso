@@ -21,7 +21,9 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\HandoffIssued;
+use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -33,6 +35,7 @@ use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
+use Tests\Fixtures\Links\FixedLinker;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
@@ -147,6 +150,8 @@ final class CompletionTransactionTest extends TestCase
     public function testAThrowingIssuerRollsTheCompletionBack(): void
     {
         $failure = new \RuntimeException('The handoff store cannot be written.');
+
+        $this->app?->instance(Linker::class, new FixedLinker(new IdentityReference('App\Models\User', '42')));
 
         $this->issuer->failure = $failure;
 
@@ -265,7 +270,7 @@ final class CompletionTransactionTest extends TestCase
         $this->assertNoEvents();
 
         self::assertTrue($this->completeAtCallback()->isCompleted());
-        $this->assertEventSequence([ResultVerified::class, HandoffIssued::class]);
+        $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class, HandoffIssued::class]);
     }
 
     /**

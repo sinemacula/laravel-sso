@@ -18,9 +18,10 @@ reasons by flow and the events each operation reports. Each part's own behaviour
   255, SAML only), kept as received; `subject`, byte for byte in a binary column (`Models\Casts\BinaryString`: a
   stream on PostgreSQL, a string elsewhere); `subject_key`, the lower-case hex SHA-256 of the issuer, the format and the
   subject, each length-prefixed, unique with `connection_id`, the only column a lookup compares, so no collation can
-  fold or trim a subject; `identity_type` and `identity_id`; `state` (`Links\Enums\LinkState`: `active`, `reserved`),
-  `reservation_expires_at` and `reservation_reference` for linking by a verified domain (P6); `domain_provenance`
-  (SSO-8.8); `last_used_at`, `created_at`, `updated_at`. The connection, issuer, format, subject and key are fixed once
+  fold or trim a subject; `identity_type` and `identity_id`; `state` (`Links\Enums\LinkState`: `active`, `reserved`,
+  `suspended`) with `suspended_at`; `provenance` (`Links\Enums\LinkOrigin`), from which `domain_provenance` is read; a
+  reservation's binding (`linking.md`); `last_used_at`, `created_at`, `updated_at`. The connection, issuer, format,
+  subject and key are fixed once
   the link exists (`LogicException`). Indexed by (`identity_type`, `identity_id`, `connection_id`) for listing and the
   link limit.
 - `sso.authorization_requests.table` (`sso_authorization_requests`, `Models\AuthorizationRequest`): `reference`, the
@@ -30,13 +31,15 @@ reasons by flow and the events each operation reports. Each part's own behaviour
   unique with the connection; `handoff_challenge`, the client's S256 challenge; `trust_version`, the connection's trust
   version as the start read it, compared at consumption and again under the completion's lock; `identity_type`,
   `identity_id` (`link`, `reauthenticate`) and `session_id` (`reauthenticate`); `expires_at`, and `consumed_at` (a
-  completion consumed it), `voided_at` (a change to its connection voided it) and `completed_at` (its completion
+  completion consumed it), `verified_at` (its response was verified and recorded against replay, at the provisioning
+  boundary), `voided_at` (a change to its connection voided it) and `completed_at` (its completion
   finished, either way).
 - `sso.handoff_codes.table` (`sso_handoff_codes`, `Models\HandoffCode`): `code_digest`, unique, never the code; what the
   code is bound to: `purpose`, `application`, `connection_id`, `request_reference`, `handoff_challenge`, `identity_type`
-  and `identity_id` (the flow's identity), `session_id`, `linked_identity_type` and `linked_identity_id` (what the
-  result's link resolved to at completion); `result`, the serialised verified result, encrypted; `enforcement_version`
-  and `session_not_after` (SSO-9.10); `expires_at`, `redeemed_at`, `voided_at`.
+  and `identity_id` (the flow's identity), `session_id`, `linked_identity_type`, `linked_identity_id` and `link_id`
+  (what the result's link resolved to at completion, and through which link), `reservation_id` (the reservation it
+  holds); `result`, the serialised verified result, encrypted; `enforcement_version` and `session_not_after` (SSO-9.10);
+  `expires_at`, `redeemed_at`, `voided_at`.
 - Every model is keyed by a lower-case ULID and stamped from the package's clock (`SsoModel::identifiedAndStamped()`),
   hidden columns (digests, ciphertexts) never serialise, and no model carries behaviour: a reader builds an identity
   from two columns with `Identities\IdentityReference::fromColumns()`. There is no foreign key: a connection's deletion
@@ -90,6 +93,12 @@ reasons by flow and the events each operation reports. Each part's own behaviour
 | `EndpointResolver`         | `Endpoints\ConfiguredEndpointResolver`       | configuration only, never the request        |
 | `Linker`                   | `Links\NoLinks`                              | linking nothing                              |
 | `LinkLimit`                | `Links\OneLinkPerConnection`                 | one link per identity per connection         |
+| `LinkEligibility`          | `Linking\RefusingLinkEligibility`            | refusing every identity                      |
+| `LinkConfirmation`         | `Linking\RefusingLinkConfirmation`           | no caller counts as independent              |
+| `LinkEmailMatcher`         | `Linking\NoEmailMatches`                     | finding no identity                          |
+| `PrincipalScope`           | `Linking\RefusingPrincipalScope`             | `unknown` for every identity                 |
+| `TenantMembership`         | `Linking\NoTenantMembership`                 | no membership that counts                    |
+| `EvidencePolicy`           | `Evidence\InsufficientEvidence`              | accepting nothing                            |
 | `ReauthenticationSessions` | `Flows\NoReauthenticationSessions`           | `not_signed_in` for every question           |
 | `ProviderSessionDeadline`  | `Results\ProviderDeadlineLimitsSession`      | the deadline limits the session              |
 | `HandoffIssuer`            | `Handoffs\DatabaseHandoffStore`              | the package's own store                      |
@@ -108,11 +117,12 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
   answers `Protocols\Completion::verified(VerifiedClaims)` or `refused(FailureReason)`.
   `Protocols\Start` keeps what a request stores, typed: `samlRequestId`, `expectedIssuer`, `issuerRequired`.
 - The steps run in `Completion\Enums\CompletionStep`'s order: `correlation`, `consumption`, `validation`,
-  `replay_recording`, `link_resolution`, `enforcement`, `domain_reservation`, `provisioning`, `unlinked_decision`,
-  `handoff_issuance`. Each is a `Contracts\CompletionStage` taking and returning a `Completion\CompletionState` through
+  `replay_recording`, `link_resolution`, `enforcement`, `purpose_rules`, `domain_reservation`, `provisioning`,
+  `unlinked_decision`, `handoff_issuance`. Each is a `Contracts\CompletionStage` taking and returning a
+  `Completion\CompletionState` through
   a `Completion\StageOutcome` (`proceed`, `refuse` with a reason, or, from `correlation` alone, `reinitiate` for an
-  unsolicited SAML response; the state kept either way). The two P6 steps, `domain_reservation` and `provisioning`, are
-  `Completion\Stages\UnbuiltStage`s that pass every state on.
+  unsolicited SAML response, or, from `provisioning` alone, `provision` for the boundary of `linking.md`; the state kept
+  either way).
 - Transactions: a completion, and a start (named or by discovery), run outside any transaction on the storage
   connection; called inside one, each is a `LogicException` at entry, before anything is written, so a caller's rollback
   never undoes a consumption (SSO-5.1) and a caller's transaction never keeps the connection's lock across a call to the
@@ -129,8 +139,9 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
   crosses a trust version: the sign-in whose own token triggered an unknown-`kid` refetch that removed a key may finish
   across exactly that transition, on a `Protocols\TransitionReceipt` judged at those locks (`oidc-driver.md`); it never
   restores a voided request and never adopts a later trust version.
-  Events are dispatched after that transaction commits (or after the consumption's, for a refusal before it), never on a
-  rollback.
+  A genuinely unlinked `sign_in` stops that transaction at the provisioning boundary and finishes in a final
+  continuation, with the unlinked-result event dispatched between them (`linking.md`). Events are dispatched after their
+  transaction commits (or after the consumption's, for a refusal before it), never on a rollback, except that one.
 - `Completion\CompletionResult` is how a completion ended: `completed` (redirect URI, delivery, reference, issued
   handoff), `failed` (reason, redirect URI, delivery, reference), `rejected` (reason, no trusted target: a 400),
   `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL, SSO-5.8). It may hold the code, so
@@ -142,9 +153,19 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
 
 ### Lock order
 
-A tenant's enforcement row, then connection rows in ascending id order, then their rows in the other tables: domains
-(P2), requests, codes, links.
+An identity's guard, for what changes its verified domain links; a tenant's enforcement row; connection rows in
+ascending id order; then their rows in the other tables: domains (P2), requests, codes, links; then the application's
+guards.
 
+- The identity's guard (`Linking\IdentityLock`, `sso_identity_guards`) comes first in a principal widening, a
+  reservation, the redemption of a code bound to a reservation (its activation), and every `link` redemption, whether it
+  confirms a link, creates one or is refused, and whether or not the `domain_linking` feature is on: a `link` is
+  confirmed against the identity's verified domain links, held now or before. Nothing else takes it: an ordinary linked
+  sign-in, a `reauthenticate` and a sign-in with no reservation never do. It amends the order this note first set, for
+  the reason `linking.md` records: what is about to be changed is found by plain reads, locked in this order, and judged
+  again under the locks. The application's principal-change transaction calls `Linking\ScopeWidening::widened()` first,
+  then its own guard and its write, so a racing reservation or activation cannot slip past it. See `linking.md` for each
+  flow's discovery and what it does when the candidates changed.
 - The enforcement row comes first wherever a rule is changed or an admission is judged against one: the enforcement
   change (P2), a redemption (`HandoffRecheck::lock()`, before the code), and the locked steps of a completion (at the
   start of `CompletionPipeline::finish()`, before the request). An admission takes it only under the default
@@ -161,18 +182,19 @@ A tenant's enforcement row, then connection rows in ascending id order, then the
 - With the feature off, or another enforcement contract bound, no enforcement row is locked, read or inserted, and the
   inheritance contract is not asked.
 
-Every re-read under a lock that decides a write is a locking read (`lockForUpdate()`), since a caller's MySQL
-REPEATABLE READ transaction answers a plain read from an older snapshot, and an answer reached before the lock
-("unchanged", "already done", the state a slow step was based on) is confirmed under it. On PostgreSQL under
-`REPEATABLE READ`, a transaction fails to serialise (SQLSTATE `40001`) only when it locks a row that a transaction
-committed since its snapshot updated or deleted; a row that was only locked raises nothing, and a row inserted since
-stays invisible to it. So a writer whose insert a later locker must see also writes the row they both lock: a link's
-creation raises its connection's `links_version` (`Links\LinkStore::create()`), so a subject migration that locks the
-connection after it fails to serialise rather than miss the link; a stored authorisation request and an issued handoff
-code each raise their connection's `flows_version` (`Flows\AuthorizationRequestService`,
-`Handoffs\DatabaseHandoffStore`), so a change that voids the connection's flows (`Connections\InFlightVoider`) and locks
-the connection after either fails to serialise rather than leave the new request or code unvoided. The failure
-propagates, and a caller retries its whole transaction, never a part of it.
+Every re-read under a lock that decides a write is a locking read (`lockForUpdate()`), since a caller's MySQL REPEATABLE
+READ transaction answers a plain read from an older snapshot, and an answer reached before the lock ("unchanged",
+"already done", the state a slow step was based on) is confirmed under it. On PostgreSQL under `REPEATABLE READ`, a
+transaction fails to serialise (SQLSTATE `40001`) only when it locks a row that a transaction committed since its
+snapshot updated or deleted; a row that was only locked raises nothing, and a row inserted since stays invisible to it.
+So a writer whose insert a later locker must see also writes the row they both lock: a link's creation raises its
+connection's `links_version` (`Links\LinkStore::create()`), so a subject migration that locks the connection after it
+fails to serialise rather than miss the link; a stored authorisation request and an issued handoff code each raise their
+connection's `flows_version` (`Flows\AuthorizationRequestService`, `Handoffs\DatabaseHandoffStore`), so a change that
+voids the connection's flows (`Connections\InFlightVoider`) and locks the connection after either fails to serialise
+rather than leave the new request or code unvoided; and the identity's guard is written by every locker, so one whose
+snapshot predates another's commit fails to serialise rather than miss what that one did. The failure propagates, and a
+caller retries its whole transaction, never a part of it.
 
 ### Start
 
@@ -193,11 +215,18 @@ fallback's navigation (`Protocols\Navigation::toApplication()`), a reference and
   `challenge_invalid`, `freshness_required` (`link`), `session_ineligible` (`reauthenticate`), `discovery_no_match`,
   `rate_limited`.
 - Assertion and callback (`Flow::ASSERTION`, `Flow::CALLBACK`): `connection_unavailable`, `connection_mismatch`,
-  `request_unknown`, `request_expired`, every validation reason of P4 and P5, `enforcement_unsatisfied`, `unlinked`,
-  `application_not_allowed`, `rate_limited`.
+  `request_unknown`, `request_expired`, every validation reason of P4 and P5, `enforcement_unsatisfied`,
+  `link_suspended` (a `sign_in` or a `reauthenticate`), `principal_scope_unknown` (a `sign_in`, a `link` or a
+  `reauthenticate`), `link_reserved` (a `sign_in` or a `link`),
+  `link_ineligible` and `subject_already_linked` (`link`), `identity_mismatch` and `authentication_expired`
+  (`reauthenticate`), `unlinked`, `application_not_allowed`, `rate_limited`.
 - Redemption (`Flow::REDEMPTION`): `handoff_unknown`, `handoff_expired`, `replayed`, `purpose_mismatch`,
   `application_mismatch`, `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`,
-  `enforcement_unsatisfied`, `link_changed`, `application_not_allowed`, `rate_limited`.
+  `enforcement_unsatisfied`, `link_changed`, `link_suspended`, `principal_scope_unknown`, `link_reserved`,
+  `reservation_invalid`,
+  `identity_mismatch`, `freshness_required`, `link_ineligible`, `independent_authentication_required`,
+  `subject_already_linked`, `link_limit_reached`,
+  `session_ineligible`, `authentication_expired`, `application_not_allowed`, `rate_limited`.
 - Administration (a helper's result, no event): `link_not_found`, `link_limit_reached`, `subject_already_linked`,
   `connection_has_links`, `links_unaccounted`, with P1's `freshness_required` and `connection_not_found`.
 
@@ -205,8 +234,11 @@ fallback's navigation (`Protocols\Navigation::toApplication()`), a reference and
 
 `Events\AuthorizationRequestStarted`, `Events\ResultVerified`, `Events\HandoffIssued`, `Events\HandoffRedeemed`,
 `Events\LinkCreated` (with `Links\Enums\LinkOrigin`: `link_purpose`, `provisioning`, `verified_domain`, `migration`) and
-`Events\LinkRemoved`, each carrying only an `EventContext`; every refused start, completion and redemption fires exactly
-one `Events\FlowFailed`. No event holds a code, verifier, state, nonce, subject, attribute or result.
+`Events\LinkRemoved`, `Events\LinkActivated`, `Events\LinkConfirmed`, `Events\LinkSuspended` and
+`Events\ReauthenticationCompleted`, each carrying only an `EventContext` and at most an id; every refused start,
+completion and redemption fires exactly one `Events\FlowFailed`. No event holds a code, verifier, state, nonce, subject,
+attribute or result, but for `Events\ResultUnlinked`, the one event dispatched synchronously and carrying the result
+and its provisioning grant (`linking.md`).
 
 ## Success Path
 
@@ -233,7 +265,8 @@ one `Events\FlowFailed`. No event holds a code, verifier, state, nonce, subject,
 
 ## Implementation Anchors
 
-- `database/migrations/2026_11_03_000000_create_sso_links_table.php`,
+- `database/migrations/2026_11_03_000003_create_sso_identity_guards_table.php`,
+  `database/migrations/2026_11_03_000000_create_sso_links_table.php`,
   `database/migrations/2026_11_03_000001_create_sso_authorization_requests_table.php`,
   `database/migrations/2026_11_03_000002_create_sso_handoff_codes_table.php`; `src/Models/Link.php`,
   `src/Models/AuthorizationRequest.php`, `src/Models/HandoffCode.php`, `src/Models/Casts/BinaryString.php`.

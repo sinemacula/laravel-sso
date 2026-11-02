@@ -20,18 +20,24 @@ use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
+use SineMacula\Laravel\Sso\Contracts\EvidencePolicy;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
+use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
+use SineMacula\Laravel\Sso\Contracts\LinkEmailMatcher;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\LinkLimit;
+use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
 use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
 use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
 use SineMacula\Laravel\Sso\Contracts\RedirectUriResolver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
+use SineMacula\Laravel\Sso\Contracts\TenantMembership;
 use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
 use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
@@ -84,6 +90,12 @@ final class SsoServiceProviderTest extends TestCase
         Linker::class,
         LinkLimit::class,
         ReauthenticationSessions::class,
+        LinkEligibility::class,
+        LinkConfirmation::class,
+        LinkEmailMatcher::class,
+        PrincipalScope::class,
+        TenantMembership::class,
+        EvidencePolicy::class,
         ProviderSessionDeadline::class,
         HandoffIssuer::class,
         ProtocolManager::class,
@@ -267,7 +279,7 @@ final class SsoServiceProviderTest extends TestCase
         self::assertSame(
             [
                 'features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits', 'freshness', 'keys',
-                'mapping', 'domains', 'flows', 'saml2', 'oidc', 'metadata',
+                'mapping', 'domains', 'flows', 'linking', 'saml2', 'oidc', 'metadata',
             ],
             array_keys(SsoServiceProvider::CONFIGURATION_CHECKS),
         );

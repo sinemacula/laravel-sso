@@ -1182,7 +1182,7 @@ final class ConnectionServiceTest extends TestCase
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame(['issuer'], $result->changedSettings);
         self::assertSame('https://login.example.com', $this->stored($id)->settings['issuer']);
-        self::assertSame(2, $expired->newQuery()->whereKey([$expired->id, $expiry->id])->count());
+        self::assertSame(0, $expired->newQuery()->whereKey([$expired->id, $expiry->id])->count());
     }
 
     /**

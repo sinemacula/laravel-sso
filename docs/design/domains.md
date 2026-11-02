@@ -80,7 +80,7 @@ order, and the predicates every later reader judges a domain by. The scheduled r
   capped at 86400 seconds: SSO-8.8) and `lookupName()`.
 - `Domains\DomainWithdrawal::linkingWithdrawn()` is the seam called, under the connection's and the domain's locks and
   before the write, whenever a domain stops allowing linking: a removal here, a suspension or a lapse in the recheck.
-  It does nothing yet; linking by a verified domain (BL-61) voids the domain's open link reservations there.
+  It deletes the domain's open link reservations (`Links\ReservationWithdrawal`, `linking.md`).
 - `[domains]` (`Domains\DomainsCheck`) checks `record_name`, `refused`, `pending_expiry_seconds` (3600 to 2592000,
   default 604800), `recheck_grace_seconds` (0 to 2592000, default 259200) and `linking_max_age_seconds` (60 to 86400,
   default 86400) while the package is in use, each as `DomainSettings` reads it.

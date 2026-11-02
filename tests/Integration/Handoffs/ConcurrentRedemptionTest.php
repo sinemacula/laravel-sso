@@ -18,7 +18,9 @@ use SineMacula\Laravel\Sso\Flows\S256Challenge;
 use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
 use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -29,6 +31,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
@@ -116,14 +119,14 @@ final class ConcurrentRedemptionTest extends TestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return \SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
                 unset($result);
 
-                return new IdentityReference('App\Models\User', '42');
+                return ExampleLinks::resolution(new IdentityReference('App\Models\User', '42'));
             }
         });
 
@@ -284,7 +287,9 @@ final class ConcurrentRedemptionTest extends TestCase
                 usleep((int) ($wait * 1000000));
             }
 
-            $answer  = app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $this->code, self::VERIFIER);
+            $answer = DB::connection(StorageConnection::name())->transaction(
+                fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $this->code, self::VERIFIER),
+            );
             $outcome = $answer->isRedeemed() ? 'redeemed' : 'refused:' . $answer->reason?->value;
 
             if ($inTransaction) {
@@ -331,6 +336,7 @@ final class ConcurrentRedemptionTest extends TestCase
             challenge: S256Challenge::fromString('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'),
             expiresAt: CarbonImmutable::parse('2026-11-01T09:31:00Z'),
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
+            linkId: 'link-42',
         );
 
         return app(DatabaseHandoffStore::class)->issue($grant)->code->reveal();

@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Completion\CompletionState;
 use SineMacula\Laravel\Sso\Completion\ResultBuilder;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
 use SineMacula\Laravel\Sso\Completion\Stages\CheckEnforcement;
+use SineMacula\Laravel\Sso\Completion\Stages\CheckPurpose;
 use SineMacula\Laravel\Sso\Completion\Stages\ConsumeRequest;
 use SineMacula\Laravel\Sso\Completion\Stages\CorrelateResponse;
 use SineMacula\Laravel\Sso\Completion\Stages\DecideUnlinked;
@@ -27,6 +28,7 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\CompletionStage;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\ProtocolDriver;
 use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
@@ -37,6 +39,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
+use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\SingleUseKey;
@@ -54,6 +58,8 @@ use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
+use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
@@ -73,6 +79,7 @@ use Tests\TestCase;
 #[CoversClass(RecordReplay::class)]
 #[CoversClass(ResolveLink::class)]
 #[CoversClass(CheckEnforcement::class)]
+#[CoversClass(CheckPurpose::class)]
 #[CoversClass(DecideUnlinked::class)]
 #[CoversClass(IssueHandoff::class)]
 final class StagesTest extends TestCase
@@ -515,8 +522,11 @@ final class StagesTest extends TestCase
 
         self::assertTrue($linked->isProceeding());
         self::assertSame($identity, $linked->state->linkedIdentity);
+        self::assertTrue($linked->state->resolution?->isLinked());
+        self::assertSame('link-' . $identity->id, $linked->state->resolution->linkId);
         self::assertTrue($unlinked->isProceeding());
-        self::assertSame($state, $unlinked->state);
+        self::assertNull($unlinked->state->linkedIdentity);
+        self::assertTrue($unlinked->state->resolution?->isAbsent());
     }
 
     /**
@@ -582,7 +592,7 @@ final class StagesTest extends TestCase
     public function testTheUnlinkedDecision(Purpose $purpose, string $application, bool $linked, ?FailureReason $reason): void
     {
         $state = $this->verified($purpose, $application);
-        $state = $linked ? $state->withLinkedIdentity(new IdentityReference('App\Models\User', '42')) : $state;
+        $state = $linked ? $state->withResolution(ExampleLinks::resolution(new IdentityReference('App\Models\User', '42'))) : $state;
 
         $outcome = $this->stage(DecideUnlinked::class)->run($state);
 
@@ -599,7 +609,7 @@ final class StagesTest extends TestCase
     public function testIssuanceIssuesTheHandoffForTheGrant(): void
     {
         $linked = new IdentityReference('App\Models\User', '42');
-        $state  = $this->verified(Purpose::REAUTHENTICATE, 'native')->withLinkedIdentity($linked)->withEnforcementVersion('version-4');
+        $state  = $this->verified(Purpose::REAUTHENTICATE, 'native')->withResolution(ExampleLinks::resolution($linked))->withEnforcementVersion('version-4');
 
         $outcome = $this->stage(IssueHandoff::class)->run($state);
 
@@ -662,12 +672,13 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * The seams of linking by a verified domain and provisioning pass every
-     * state on unchanged.
+     * A verified state with no resolved link: linking by a verified domain
+     * finds nothing to reserve, and provisioning nothing to stop, so each
+     * passes it on unchanged.
      *
      * @return void
      */
-    public function testTheUnbuiltStepsPassTheStateOn(): void
+    public function testAStateWithNoResolvedLinkPassesThrough(): void
     {
         $state = $this->verified();
 
@@ -678,6 +689,58 @@ final class StagesTest extends TestCase
             self::assertTrue($outcome->isProceeding());
             self::assertSame($state, $outcome->state);
         }
+    }
+
+    /**
+     * Rows of `[purpose, the link as it resolved, the reason it refuses]`: each
+     * purpose reaches its own rules, and a refusal keeps their exact reason.
+     *
+     * @return iterable<string, array{
+     *     0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose,
+     *     1: \SineMacula\Laravel\Sso\Links\LinkResolution,
+     *     2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
+     * }>
+     */
+    public static function providePurposes(): iterable
+    {
+        $person  = new IdentityReference('App\Models\User', '7');
+        $another = new IdentityReference('App\Models\User', '8');
+
+        yield 'a sign-in of a linked result' => [Purpose::SIGN_IN, LinkResolution::linked($person, 'link-7'), null];
+        yield 'a sign-in of a suspended link' => [Purpose::SIGN_IN, LinkResolution::suspended($person, 'link-7'), FailureReason::LINK_SUSPENDED];
+        yield 'a sign-in of a reserved link' => [Purpose::SIGN_IN, LinkResolution::reserved(), FailureReason::LINK_RESERVED];
+        yield 'a sign-in of a link of unknown scope' => [Purpose::SIGN_IN, LinkResolution::scopeUnknown($person, 'link-7'), FailureReason::PRINCIPAL_SCOPE_UNKNOWN];
+        yield 'a link of an absent subject' => [Purpose::LINK, LinkResolution::absent(), null];
+        yield 'a link of a reserved subject' => [Purpose::LINK, LinkResolution::reserved(), FailureReason::LINK_RESERVED];
+        yield 'a link of another identity\'s subject' => [Purpose::LINK, LinkResolution::linked($another, 'link-8'), FailureReason::SUBJECT_ALREADY_LINKED];
+        yield 'a link of its own link of unknown scope' => [Purpose::LINK, LinkResolution::scopeUnknown($person, 'link-7'), FailureReason::PRINCIPAL_SCOPE_UNKNOWN];
+        yield 'a link of another identity\'s link of unknown scope' => [Purpose::LINK, LinkResolution::scopeUnknown($another, 'link-8'), FailureReason::SUBJECT_ALREADY_LINKED];
+        yield 'a reauthentication of a suspended link' => [Purpose::REAUTHENTICATE, LinkResolution::suspended($person, 'link-7'), FailureReason::LINK_SUSPENDED];
+        yield 'a reauthentication of another identity' => [Purpose::REAUTHENTICATE, LinkResolution::linked($another, 'link-8'), FailureReason::IDENTITY_MISMATCH];
+        yield 'a reauthentication of a link of unknown scope' => [Purpose::REAUTHENTICATE, LinkResolution::scopeUnknown($person, 'link-7'), FailureReason::PRINCIPAL_SCOPE_UNKNOWN];
+    }
+
+    /**
+     * The stage asks the rules of the flow's purpose, and no other: it goes on
+     * with the state exactly as it was, or refuses for the reason they gave.
+     *
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $resolution
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('providePurposes')]
+    public function testThePurposesRulesDecide(Purpose $purpose, LinkResolution $resolution, ?FailureReason $reason): void
+    {
+        $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+        $this->app?->instance(Linker::class, app(LinkStore::class));
+
+        $state   = $this->verified($purpose)->withResolution($resolution);
+        $outcome = $this->stage(CheckPurpose::class)->run($state);
+
+        self::assertSame($reason, $outcome->reason);
+        self::assertSame($reason === null, $outcome->isProceeding());
+        self::assertSame($state, $outcome->state);
     }
 
     /**
@@ -692,6 +755,7 @@ final class StagesTest extends TestCase
         yield 'validation' => [ValidateResponse::class, 'A response is validated once its connection is read.'];
         yield 'link resolution' => [ResolveLink::class, 'A link is resolved once the result is verified.'];
         yield 'enforcement' => [CheckEnforcement::class, 'Enforcement is checked once the connection is read.'];
+        yield 'purpose rules' => [CheckPurpose::class, 'A purpose\'s rules are checked once the request is consumed.'];
         yield 'unlinked decision' => [DecideUnlinked::class, 'An unlinked result is decided once the request is consumed.'];
         yield 'issuance' => [IssueHandoff::class, 'A handoff is issued once the request is consumed.'];
     }
@@ -1004,14 +1068,14 @@ final class StagesTest extends TestCase
              * The identity given.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return ?\SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): ?IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
                 unset($result);
 
-                return $this->identity;
+                return ExampleLinks::resolution($this->identity);
             }
         };
     }

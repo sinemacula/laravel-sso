@@ -214,6 +214,22 @@ final class RedemptionResultTest extends TestCase
     }
 
     /**
+     * An answer was redeemed inside the caller's transaction only when it says
+     * so: nothing else, redeemed or not, claims it.
+     *
+     * @return void
+     */
+    public function testOnlyAnAnswerToldSoWasAdmitted(): void
+    {
+        $result = ExampleResults::full(Purpose::SIGN_IN);
+
+        self::assertFalse(RedemptionResult::redeemed($result)->admitted);
+        self::assertTrue(RedemptionResult::redeemed($result, admitted: true)->admitted);
+        self::assertFalse(RedemptionResult::refused(FailureReason::HANDOFF_UNKNOWN)->admitted);
+        self::assertFalse(RedemptionResult::rateLimited(60)->admitted);
+    }
+
+    /**
      * A dump and `json_encode()` of a redeemed answer show its outcome, the
      * purpose, the connection and the reference, and never the subject, an
      * attribute or an identity.

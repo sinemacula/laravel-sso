@@ -67,15 +67,21 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * 5. In a savepoint: the change is written and reported (`ConnectionUpdated`),
  *    and what the connection has in flight is voided (`InFlightVoider`); every
  *    link of the connection is deleted and reported removed (`LinkRemoved`, in
- *    id order), and, for each link removed rather than relinked, the identity's
- *    sessions through the connection are revoked
+ *    id order), and, for each link removed rather than relinked, and each
+ *    relinked link of verified domain provenance, whose new row a session of
+ *    the old one could no longer be reached through, the identity's sessions
+ *    through the connection are revoked
  *    (`RevocationScope::identityInConnection`).
  * 6. Each relinked link's identity is linked to its new subject through
  *    `Links\LinkStore::create()` with the origin `migration`, in the order the
- *    relinks are given (`LinkCreated`). A new subject already linked in the
- *    connection, another relink's included, is `duplicate` at `relinks.<id>`,
- *    and an identity at its link limit `too_many` there: either is `invalid`
- *    and rolls the whole migration back.
+ *    relinks are given (`LinkCreated`). A link of verified domain provenance
+ *    keeps it, since only a confirming `link` clears it (SSO-8.8), so the new
+ *    row is still judged by `Contracts\PrincipalScope` at its next resolution
+ *    and found by `Linking\ScopeWidening`; any other relinked link's provenance
+ *    is `migration`. A new subject already linked in the connection, another
+ *    relink's included, is `duplicate` at `relinks.<id>`, and an identity at
+ *    its link limit `too_many` there: either is `invalid` and rolls the whole
+ *    migration back.
  *
  * Its events are dispatched once it commits, in that order
  * (`ConnectionUpdated`, each `LinkRemoved`, each `LinkCreated`), and never when
@@ -216,7 +222,8 @@ final readonly class SubjectMigration
     /**
      * Make the change through the management helpers and, once it is written,
      * delete every link of the connection, report each removed and revoke the
-     * sessions of each identity that is not relinked.
+     * sessions of each identity that is not relinked, or whose link stood on a
+     * verified domain.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $changes
@@ -247,7 +254,7 @@ final readonly class SubjectMigration
 
             $identity = new IdentityReference($link->identity_type, $link->identity_id);
 
-            if (!array_key_exists($linkId, $subjects)) {
+            if (!array_key_exists($linkId, $subjects) || $link->domain_provenance) {
                 $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($locked->tenant_id, $locked->id, $identity));
             }
 
@@ -286,9 +293,28 @@ final readonly class SubjectMigration
 
                 return ConnectionResult::invalid([new SettingViolation(SettingRules::path(self::RELINKS, $linkId), $code)]);
             }
+
+            if (!$link->domain_provenance) {
+                continue;
+            }
+
+            self::keepDomainProvenance((string) $creation->linkId());
         }
 
         return null;
+    }
+
+    /**
+     * Give the new row of a relinked link back the verified domain provenance
+     * the old one held, under the connection's lock, in the migration's
+     * transaction.
+     *
+     * @param  string  $linkId
+     * @return void
+     */
+    private static function keepDomainProvenance(string $linkId): void
+    {
+        Link::query()->useWritePdo()->whereKey($linkId)->update(['provenance' => LinkOrigin::VERIFIED_DOMAIN->value]);
     }
 
     /**

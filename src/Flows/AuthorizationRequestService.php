@@ -58,9 +58,10 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  *    when the application offers discovery (SSO-3.5);
  * 6. a `link` asks the freshness contract (`sso.link.create`), else
  *    `freshness_required` (SSO-2.12);
- * 7. a `reauthenticate` asks `Contracts\ReauthenticationSessions` whether the
- *    identity is signed in through the connection on the session, else
- *    `session_ineligible` (SSO-5.10);
+ * 7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing()`
+ *    whether the identity is signed in through the connection on the session,
+ *    else `session_ineligible` (SSO-5.10); that alone, since the exact link is
+ *    judged at redemption, under the session's lock;
  * 8. the connection's trust version, as step 5 read it, is captured, the
  *    protocol state is generated (`ProtocolState`) and the driver asked to
  *    start, outside any transaction the start opens; a refused start is refused

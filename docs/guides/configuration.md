@@ -62,8 +62,12 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `domains.pending_expiry_seconds`                     | `604800`                                        | `SSO_DOMAINS_PENDING_EXPIRY_SECONDS`          | [Domains](domains.md)                           |
 | `domains.recheck_grace_seconds`                      | `259200`                                        | `SSO_DOMAINS_RECHECK_GRACE_SECONDS`           | [Domains](domains.md)                           |
 | `domains.linking_max_age_seconds`                    | `86400`                                         | `SSO_DOMAINS_LINKING_MAX_AGE_SECONDS`         | [Domains](domains.md)                           |
+| `linking.verified_result_max_age_seconds`            | `120`                                           | `SSO_LINKING_VERIFIED_RESULT_MAX_AGE_SECONDS` | [Provisioning](provisioning.md)                 |
+| `linking.evidence_max_age_seconds`                   | `900`                                           | `SSO_LINKING_EVIDENCE_MAX_AGE_SECONDS`        | [Evidence](evidence.md)                         |
+| `linking.shared_issuers`                             | `[]`                                            |                                               | [Linking by domain](linking-by-domain.md)       |
 | `enforcement.table`                                  | `sso_enforcement`                               | `SSO_ENFORCEMENT_TABLE`                       | [Enforcement](enforcement.md)                   |
 | `links.table`                                        | `sso_links`                                     | `SSO_LINKS_TABLE`                             | [Storage](#storage)                             |
+| `identity_guards.table`                              | `sso_identity_guards`                           | `SSO_IDENTITY_GUARDS_TABLE`                   | [Storage](#storage)                             |
 | `authorization_requests.table`                       | `sso_authorization_requests`                    | `SSO_AUTHORIZATION_REQUESTS_TABLE`            | [Storage](#storage)                             |
 | `authorization_requests.ttl_seconds`                 | `600`                                           | `SSO_AUTHORIZATION_REQUESTS_TTL_SECONDS`      | [Flows](#flows)                                 |
 | `handoff_codes.table`                                | `sso_handoff_codes`                             | `SSO_HANDOFF_CODES_TABLE`                     | [Storage](#storage)                             |
@@ -280,9 +284,9 @@ php artisan sso:check
 
 It prints `[subject] OK`, `[subject] not enabled` for what is off, or one line per problem, and exits `1` when there is
 a problem. The subjects are `features` (always checked), `extensions`, `storage`, `endpoints`, `applications`, `clock`,
-`secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys`, `mapping`, `domains` and `flows` (each checked
-while a protocol is on). The check reads configuration only: it opens no database connection and prints no secret or
-configured value. What the last ten check is in their guides and sections: [Clock](clock.md), [Secrets](secrets.md),
-[Outbound requests](outbound-requests.md), [Logging](logging.md), [Rate limits](rate-limits.md),
+`secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys`, `mapping`, `domains`, `flows` and `linking` (each
+checked while a protocol is on). The check reads configuration only: it opens no database connection and prints no
+secret or configured value. What the last eleven check is in their guides and sections: [Clock](clock.md),
+[Secrets](secrets.md), [Outbound requests](outbound-requests.md), [Logging](logging.md), [Rate limits](rate-limits.md),
 [Fresh authentication](freshness.md), [Keys and certificates](keys.md), [Managing connections](managing-connections.md),
-[Domains](domains.md) and [Flows](#flows).
+[Domains](domains.md), [Flows](#flows) and [Linking by domain](linking-by-domain.md).

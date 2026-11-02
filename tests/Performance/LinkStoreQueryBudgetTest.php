@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkCreationStatus;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkCreation;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkResult;
 use SineMacula\Laravel\Sso\Links\LinkService;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -91,13 +92,13 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
     {
         $this->createLink('subject-1');
 
-        $first  = $this->assertQueryBudget(1, 1, fn (): ?IdentityReference => $this->store()->resolve($this->resultFor('subject-1')));
-        $second = $this->assertQueryBudget(1, 1, fn (): ?IdentityReference => $this->store()->resolve($this->resultFor('subject-1')));
-        $miss   = $this->assertQueryBudget(1, 0, fn (): ?IdentityReference => $this->store()->resolve($this->resultFor('subject-2')));
+        $first  = $this->assertQueryBudget(1, 1, fn (): LinkResolution => $this->store()->resolve($this->resultFor('subject-1')));
+        $second = $this->assertQueryBudget(1, 1, fn (): LinkResolution => $this->store()->resolve($this->resultFor('subject-1')));
+        $miss   = $this->assertQueryBudget(1, 0, fn (): LinkResolution => $this->store()->resolve($this->resultFor('subject-2')));
 
-        self::assertSame('1', $first?->id);
-        self::assertSame('1', $second?->id);
-        self::assertNull($miss);
+        self::assertSame('1', $first->identity?->id);
+        self::assertSame('1', $second->identity?->id);
+        self::assertTrue($miss->isAbsent());
     }
 
     /**
@@ -107,10 +108,10 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
      *
      * @return void
      */
-    public function testACreationIsTwoReadsTheInsertAndTheVersion(): void
+    public function testACreationIsThreeReadsTheInsertAndTheVersion(): void
     {
-        $created   = $this->assertQueryBudget(2, 2, fn (): LinkCreation => $this->createLink('subject-1'));
-        $duplicate = $this->assertQueryBudget(2, 1, fn (): LinkCreation => $this->createLink('subject-1', new IdentityReference('user', '2')));
+        $created   = $this->assertQueryBudget(3, 2, fn (): LinkCreation => $this->createLink('subject-1'));
+        $duplicate = $this->assertQueryBudget(3, 1, fn (): LinkCreation => $this->createLink('subject-1', new IdentityReference('user', '2')));
         $limited   = $this->assertQueryBudget(2, 0, fn (): LinkCreation => $this->createLink('subject-2'));
 
         self::assertSame(LinkCreationStatus::CREATED, $created->status);
@@ -136,7 +137,7 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
 
         $this->freshness->answer(FreshnessOutcome::FRESH);
 
-        $removed = $this->assertQueryBudget(3, 1, fn (): LinkResult => $this->service()->remove($this->identity, $id));
+        $removed = $this->assertQueryBudget(3, 2, fn (): LinkResult => $this->service()->remove($this->identity, $id));
 
         self::assertTrue($missing->isRefused());
         self::assertTrue($stale->isRefused());

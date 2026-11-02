@@ -387,6 +387,7 @@ final class Saml2SettingsTest extends TestCase
         self::assertNull(Saml2Settings::freshnessFor('client_secret'));
         self::assertSame(Saml2Setting::subjectNames(), Saml2Settings::subjectNames());
         self::assertSame(['idp_entity_id', 'subject_source', 'subject_attribute', 'name_id_format'], Saml2Settings::subjectNames());
+        self::assertSame(['idp_entity_id'], Saml2Settings::issuerNames());
         self::assertSame([], Saml2Settings::secretNames());
     }
 

@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\S256Challenge;
 use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkReservations;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
@@ -32,7 +33,11 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *    expiry of the application's handoff lifetime from now, the identity the
  *    link resolved to, the identity and the session the request was started
  *    for, the enforcement version checked and the session's latest end;
- * 4. the issued handoff goes on with the state.
+ * 4. the issued handoff goes on with the state. A result holding a reservation
+ *    is issued a code bound to it and expiring exactly when it does, whose
+ *    reference and stored expiry are written to the reservation in this same
+ *    transaction (`Links\LinkReservations::bindHandoff()`), and it names no
+ *    linked identity: a reservation resolves nothing.
  *
  * An issuer signals failure by throwing, which rolls the completion back as a
  * server error (SSO-11.4); it is never turned into a refusal.
@@ -54,6 +59,7 @@ final readonly class IssueHandoff implements CompletionStage
      * @param  \SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline  $deadlines
      * @param  \SineMacula\Laravel\Sso\Contracts\HandoffIssuer  $issuer
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
+     * @param  \SineMacula\Laravel\Sso\Links\LinkReservations  $reservations
      */
     public function __construct(
 
@@ -68,6 +74,9 @@ final readonly class IssueHandoff implements CompletionStage
 
         /** The clock the code's expiry is read from. */
         private Clock $clock,
+
+        /** Binds a reservation to the handoff issued for it. */
+        private LinkReservations $reservations,
     ) {}
 
     /**
@@ -89,19 +98,27 @@ final readonly class IssueHandoff implements CompletionStage
             return StageOutcome::refuse($state, FailureReason::APPLICATION_NOT_ALLOWED);
         }
 
-        $state = $this->limited($state, $result);
-        $grant = new HandoffGrant(
+        $state     = $this->limited($state, $result);
+        $candidate = $state->reservedCandidate;
+        $grant     = new HandoffGrant(
             result: $result,
             challenge: S256Challenge::fromString($request->handoff_challenge),
-            expiresAt: $this->clock->now()->addSeconds($application->handoffTtlSeconds),
+            expiresAt: $candidate->expiresAt ?? $this->clock->now()->addSeconds($application->handoffTtlSeconds),
             linkedIdentity: $state->linkedIdentity,
             identity: IdentityReference::fromColumns($request->identity_type, $request->identity_id),
             sessionId: $request->session_id,
             enforcementVersion: $state->enforcementVersion,
             sessionNotAfter: $state->sessionNotAfter,
+            linkId: $state->resolution?->linkId,
+            reservationId: $candidate?->reservationId,
         );
+        $issued = $this->issuer->issue($grant);
 
-        return StageOutcome::proceed($state->withHandoff($this->issuer->issue($grant)));
+        if ($candidate !== null && $state->resolution !== null) {
+            $state = $state->withResolution($state->resolution, $this->reservations->bindHandoff($candidate, $issued));
+        }
+
+        return StageOutcome::proceed($state->withHandoff($issued));
     }
 
     /**

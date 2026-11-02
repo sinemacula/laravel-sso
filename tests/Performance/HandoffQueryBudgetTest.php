@@ -6,8 +6,12 @@ namespace Tests\Performance;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
 use SineMacula\Laravel\Sso\Contracts\Linker;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
@@ -19,13 +23,19 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
+use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Links\DelegatingLinkStorage;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -35,15 +45,19 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  *
  * - issuing a code is one insert and the update that raises its connection's
  *   flows version;
- * - a linked `sign_in` redeemed reads the code by its digest, then, in its
- *   transaction, reads the connection's tenant, locks the connection and the
+ * - a linked `sign_in` redeemed reads the code by its digest and the
+ *   connection's tenant, then, in its transaction, locks the connection and the
  *   code, writes the single-use record and the code's mark, and marks the
  *   connection's first completed sign-in on the row it holds locked; once
- *   marked, the connection is not written again; a `link` is not
- *   acknowledged; the linker and enforcement while it is off cost nothing;
+ *   marked, the connection is not written again; the linker and enforcement
+ *   while it is off cost nothing;
+ * - a `link` is not acknowledged; it upserts its identity's guard first, reads
+ *   by a locking read whether the identity has held a verified domain link,
+ *   finds by a plain read the connections holding its verified domain links,
+ *   and reads those links in its judgement and again in its admission;
  * - with enforcement on, the recheck's lock adds the upsert of the tenant's
- *   enforcement row and its locking read, and the connections are locked in
- *   the same one statement, the rule's with them;
+ *   enforcement row and its locking read, and the connections are locked in the
+ *   same one statement, the rule's with them;
  * - a refusal once the code is consumed stops before the recheck, and one by
  *   the recheck after it, with no lock more;
  * - a replay and a voided code stop at the two locking reads, a code whose
@@ -85,14 +99,14 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return \SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
                 unset($result);
 
-                return new IdentityReference('App\Models\User', '42');
+                return ExampleLinks::resolution(new IdentityReference('App\Models\User', '42'));
             }
         });
         $this->app?->instance('request', Request::create('/auth/sso/handoffs', 'POST', server: ['REMOTE_ADDR' => '203.0.113.7']));
@@ -178,17 +192,28 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A `link` redeemed is four reads and three writes: it acknowledges no
-     * sign-in.
+     * A `link` redeemed is nine reads and four writes: it acknowledges no
+     * sign-in; it upserts the identity's guard (the fourth write), reads by a
+     * locking read whether the identity has ever held a verified domain link,
+     * and finds by a plain read the connections holding its verified domain
+     * links; it reads the link it confirms, and the identity's verified domain
+     * links in its judgement and again in its admission.
      *
      * @return void
      *
      * @throws \Random\RandomException
      */
-    public function testALinkRedeemedIsFourReadsAndThreeWrites(): void
+    public function testALinkRedeemedIsNineReadsAndFourWrites(): void
     {
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+        $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+
+        $identity = new IdentityReference('App\Models\User', '42');
+
+        $this->app?->instance(Linker::class, new DelegatingLinkStorage(app(LinkStore::class), ExampleLinks::resolution($identity)));
+
         $code   = $this->issue(Purpose::LINK);
-        $answer = $this->assertQueryBudget(4, 3, fn (): RedemptionResult => $this->redeem($code, Purpose::LINK));
+        $answer = $this->assertQueryBudget(9, 4, fn (): RedemptionResult => $this->redeem($code, Purpose::LINK));
 
         self::assertTrue($answer->isRedeemed());
     }
@@ -304,6 +329,7 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
             challenge: S256Challenge::fromString('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'),
             expiresAt: $expiresAt ?? $this->clock->now()->addMinute(),
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
+            linkId: 'link-42',
             identity: $purpose === Purpose::SIGN_IN ? null : new IdentityReference('App\Models\User', '42'),
         );
     }
@@ -321,7 +347,12 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(HandoffRedemption::class)->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER);
+        $redemption = $app->make(HandoffRedemption::class);
+        $caller     = new IdentityReference('App\Models\User', '42');
+
+        return DB::connection(StorageConnection::name())->transaction(
+            fn (): RedemptionResult => $redemption->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER, $caller),
+        );
     }
 
     /**

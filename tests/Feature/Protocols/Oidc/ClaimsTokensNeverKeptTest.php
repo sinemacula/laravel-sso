@@ -29,6 +29,7 @@ use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
@@ -49,7 +50,7 @@ use Tests\TestCase;
 #[CoversClass(UserInfoReader::class)]
 final class ClaimsTokensNeverKeptTest extends TestCase
 {
-    use CapturesLogs, DumpsValues, UsesConnections, UsesDomains;
+    use CapturesLogs, DumpsValues, UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var string The connection's UserInfo endpoint. */
     private const string ENDPOINT = 'https://op.example.test/userinfo';
@@ -99,8 +100,11 @@ final class ClaimsTokensNeverKeptTest extends TestCase
 
         $this->createConnectionTables();
         $this->createDomainsTable();
+        $this->createFlowTables();
 
         $this->captureLogs();
+
+        config()->set('sso.features.domain_linking', true);
     }
 
     /**
@@ -111,6 +115,7 @@ final class ClaimsTokensNeverKeptTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        $this->dropFlowTables();
         $this->dropDomainsTable();
         $this->dropConnectionTables();
 
@@ -336,7 +341,7 @@ final class ClaimsTokensNeverKeptTest extends TestCase
 
         /** @var \Illuminate\Foundation\Application $app */
         $app        = $this->app;
-        $connection = new IdentifiedConnection('c1', settings: ['fetch_userinfo' => true, 'userinfo_endpoint' => self::ENDPOINT]);
+        $connection = new IdentifiedConnection('c1', settings: ['fetch_userinfo' => true, 'userinfo_endpoint' => self::ENDPOINT], linking: true);
 
         return $app->make(ClaimsAssembler::class)->assemble($connection, OidcOptions::of($connection), self::idToken(), self::tokens(), self::consumed());
     }

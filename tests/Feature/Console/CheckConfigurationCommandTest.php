@@ -153,6 +153,7 @@ final class CheckConfigurationCommandTest extends TestCase
             '[mapping] sso.mapping.max_values must be an integer from 1 to 10000.',
             '[domains] sso.domains.recheck_grace_seconds must be an integer from 0 to 2592000.',
             '[flows] sso.authorization_requests.ttl_seconds must be an integer from 60 to 900.',
+            '[linking] OK',
             '[saml2] sso.saml2.max_response_bytes must be an integer from 16384 to 1048576.',
             '[oidc] sso.oidc.max_id_token_bytes must be an integer from 2048 to 16384.',
             '[metadata] sso.metadata.claim_seconds must be an integer from 30 to 3600.',

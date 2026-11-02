@@ -88,31 +88,32 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A suspension is three reads and two writes; with no grace period, the
-     * lapse that follows adds one write.
+     * A suspension is three reads and three writes, the deletion of its open
+     * reservations among them; with no grace period, the lapse that follows
+     * adds another such deletion and its own write.
      *
      * @return void
      */
-    public function testASuspensionIsThreeReadsAndTwoWrites(): void
+    public function testASuspensionIsThreeReadsAndThreeWrites(): void
     {
         $claim = $this->verifiedClaim();
 
         $this->dns->absent(self::RECORD)->absent('_sso-verification.example.org');
 
-        self::assertSame(RecheckOutcome::SUSPENDED, $this->recheckWithin(3, 2, $claim)->outcome);
+        self::assertSame(RecheckOutcome::SUSPENDED, $this->recheckWithin(3, 3, $claim)->outcome);
 
         config()->set('sso.domains.recheck_grace_seconds', 0);
 
-        self::assertSame(RecheckOutcome::LAPSED, $this->recheckWithin(3, 3, $this->verifiedClaim('example.org'))->outcome);
+        self::assertSame(RecheckOutcome::LAPSED, $this->recheckWithin(3, 5, $this->verifiedClaim('example.org'))->outcome);
     }
 
     /**
-     * A lapse at the end of the grace period is three reads and two writes,
+     * A lapse at the end of the grace period is three reads and three writes,
      * with nothing looked up.
      *
      * @return void
      */
-    public function testALapseIsThreeReadsAndTwoWritesWithNoLookup(): void
+    public function testALapseIsThreeReadsAndThreeWritesWithNoLookup(): void
     {
         $now   = $this->clock->now();
         $claim = $this->verifiedClaim('example.com', [
@@ -120,12 +121,12 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
             'lapses_at'            => $now->addSeconds(60),
         ]);
 
-        self::assertSame(RecheckOutcome::LAPSED, $this->recheckWithin(3, 2, $claim)->outcome);
+        self::assertSame(RecheckOutcome::LAPSED, $this->recheckWithin(3, 3, $claim)->outcome);
         $this->dns->assertNothingLookedUp();
     }
 
     /**
-     * A failed lookup is three reads and two writes: the lease taken and
+     * A failed lookup is three reads and three writes: the lease taken and
      * released.
      *
      * @return void

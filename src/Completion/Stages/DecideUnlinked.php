@@ -51,7 +51,8 @@ final readonly class DecideUnlinked implements CompletionStage
     }
 
     /**
-     * Whether the state is a `sign_in` whose result resolved to no identity.
+     * Whether the state is a `sign_in` whose result resolved to no identity and
+     * holds no reservation.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return bool
@@ -62,6 +63,6 @@ final readonly class DecideUnlinked implements CompletionStage
     {
         $consumed = $state->consumed ?? throw new \LogicException('An unlinked result is decided once the request is consumed.');
 
-        return $consumed->purpose === Purpose::SIGN_IN && $state->linkedIdentity === null;
+        return $consumed->purpose === Purpose::SIGN_IN && $state->linkedIdentity === null && $state->reservedCandidate === null;
     }
 }

@@ -59,6 +59,12 @@ return new class extends Migration {
             $blueprint->string('linked_identity_type', 255)->nullable();
             $blueprint->string('linked_identity_id', 255)->nullable();
 
+            // The link the result resolved to at completion, so a link removed
+            // and made again is told apart from the one observed; and the
+            // reservation a result holding no link was bound to.
+            $blueprint->string('link_id', 255)->nullable();
+            $blueprint->char('reservation_id', 26)->nullable();
+
             // The verified result, serialised and encrypted.
             $blueprint->longText('result');
 

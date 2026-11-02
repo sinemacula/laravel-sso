@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
@@ -28,6 +29,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
+use Tests\Fixtures\Links\ExampleLinks;
 
 /**
  * Query budgets for completing a SAML sign-in (SSO-5.6, SSO-6.6, SSO-11.3,
@@ -84,14 +86,14 @@ final class SamlCompletionQueryBudgetTest extends PerformanceContractTestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return \SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
                 unset($result);
 
-                return new IdentityReference('App\Models\User', '42');
+                return ExampleLinks::resolution(new IdentityReference('App\Models\User', '42'));
             }
         });
         $this->app?->instance('request', Request::create('/auth/sso/connections/x/assertions', 'POST', server: ['REMOTE_ADDR' => '203.0.113.7']));

@@ -6,6 +6,8 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc;
 
 use Carbon\CarbonImmutable;
 use Psr\Log\LoggerInterface;
+use SineMacula\Laravel\Sso\Config\Enums\Feature;
+use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Connections\AttributeMapping;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -17,6 +19,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken;
 use SineMacula\Laravel\Sso\Results\AssertedEmail;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
+use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
+use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
@@ -44,7 +48,10 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *   and the asserted one never disagree;
  * - the pair of `email` and `email_verified` comes from one source
  *   (`EmailPairing`), and is carried as asserted. It gives a linking email only
- *   when `email_verified` is exactly `true`, with no organisation.
+ *   when linking by a verified domain is on, by its feature and its connection,
+ *   and `email_verified` is exactly `true`, with the organisation claim the
+ *   connection names read from that same source (SSO-8.8). With linking off, no
+ *   linking email is built at all.
  *
  * It answers with no replay record: the single use of the request and of the
  * code stand in for one. It reports no event, since the pipeline reports the
@@ -105,7 +112,7 @@ readonly class ClaimsAssembler
     public function assemble(SsoConnection $connection, OidcOptions $options, ValidatedIdToken $idToken, TokenResponse $tokens, ConsumedRequest $consumed): Completion
     {
         if (!$options->fetchesUserInfo()) {
-            return self::verified($idToken, null);
+            return self::verified($connection, $idToken, null);
         }
 
         $fetched = $this->userInfo->fetch($options, $tokens);
@@ -117,7 +124,7 @@ readonly class ClaimsAssembler
             return Completion::refused($reason);
         }
 
-        return self::verified($idToken, $this->userInfo->claims($fetched, $idToken));
+        return self::verified($connection, $idToken, $this->userInfo->claims($fetched, $idToken));
     }
 
     /**
@@ -148,13 +155,14 @@ readonly class ClaimsAssembler
      * was not fetched, or `id_token_invalid` when the token's claims do not
      * fit.
      *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken  $idToken
      * @param  ?array<array-key, mixed>  $userInfo
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      *
      * @throws \LogicException
      */
-    private static function verified(ValidatedIdToken $idToken, #[\SensitiveParameter] ?array $userInfo): Completion
+    private static function verified(SsoConnection $connection, ValidatedIdToken $idToken, #[\SensitiveParameter] ?array $userInfo): Completion
     {
         $claims = $idToken->claims();
 
@@ -170,9 +178,37 @@ readonly class ClaimsAssembler
             nameIdFormat: null,
             attributes: self::attributes($claims, $userInfo, $asserted),
             authenticationContext: self::context($claims),
-            linkingEmail: EmailPairing::linkingEmail($asserted),
+            linkingEmail: self::linkingEmail($connection, $asserted, $claims, $userInfo),
             assertedEmail: $asserted,
         ));
+    }
+
+    /**
+     * The linking email of the pair, with the organisation read from the pair's
+     * own source, or `null` while the feature or the connection's linking is
+     * off.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @param  ?\SineMacula\Laravel\Sso\Results\AssertedEmail  $asserted
+     * @param  array<array-key, mixed>  $idToken
+     * @param  ?array<array-key, mixed>  $userInfo
+     * @return ?\SineMacula\Laravel\Sso\Results\LinkingEmail
+     */
+    private static function linkingEmail(
+        SsoConnection $connection,
+        ?AssertedEmail $asserted,
+        #[\SensitiveParameter] array $idToken,
+        #[\SensitiveParameter] ?array $userInfo,
+    ): ?LinkingEmail {
+        $linking = $connection->getLinkingSettings();
+
+        if (!Features::enabled(Feature::DOMAIN_LINKING) || ($linking['enabled'] ?? false) !== true) {
+            return null;
+        }
+
+        $source = $asserted?->source === LinkingEmailSource::USERINFO ? ($userInfo ?? []) : $idToken;
+
+        return EmailPairing::linkingEmail($asserted, EmailPairing::organization($source, $linking['organization_claim'] ?? null));
     }
 
     /**

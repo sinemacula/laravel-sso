@@ -5,13 +5,13 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Links;
 
 use SineMacula\Laravel\Sso\Contracts\Linker;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
  * The default linking contract (SSO-8.3): no result resolves to an identity, so
  * every `sign_in` result is unlinked until the application binds the link
- * store, `laravel-iam` binds it, or the application binds its own.
+ * store, `laravel-iam` binds it, or the application binds its own. It is no
+ * `Contracts\LinkStorage`, so nothing writes a link while it is bound.
  *
  * It holds nothing between calls (SSO-11.2).
  *
@@ -24,13 +24,13 @@ final readonly class NoLinks implements Linker
      * Resolve nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-     * @return ?\SineMacula\Laravel\Sso\Identities\IdentityReference
+     * @return \SineMacula\Laravel\Sso\Links\LinkResolution
      */
     #[\Override]
-    public function resolve(VerifiedResult $result): ?IdentityReference
+    public function resolve(VerifiedResult $result): LinkResolution
     {
         unset($result);
 
-        return null;
+        return LinkResolution::absent();
     }
 }

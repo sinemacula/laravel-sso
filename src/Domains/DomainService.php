@@ -483,6 +483,7 @@ final readonly class DomainService
             'verified_domain'          => $claim->domain,
             'pending_expires_at'       => null,
             'verified_at'              => $now,
+            'verification_generation'  => $claim->verification_generation + 1,
             'last_successful_check_at' => $now,
             'linking_suspended_at'     => null,
             'lapses_at'                => null,

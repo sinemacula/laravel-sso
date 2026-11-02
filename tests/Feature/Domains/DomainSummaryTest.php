@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Domains\DomainSummary;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -27,7 +28,7 @@ use Tests\TestCase;
 #[CoversClass(DomainSummary::class)]
 final class DomainSummaryTest extends TestCase
 {
-    use UsesConnections, UsesDomains;
+    use UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var string The token every claim here carries. */
     private const string TOKEN = 'abababababababababababababababababababababababababababababababab';
@@ -46,6 +47,7 @@ final class DomainSummaryTest extends TestCase
 
         $this->createConnectionTables();
         $this->createDomainsTable();
+        $this->createFlowTables();
     }
 
     /**
@@ -56,6 +58,7 @@ final class DomainSummaryTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        $this->dropFlowTables();
         $this->dropDomainsTable();
         $this->dropConnectionTables();
 

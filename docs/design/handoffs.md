@@ -44,16 +44,18 @@ order, and the first that refuses ends the redemption:
 2. A code that is not `HandoffCode::isWellFormed()` is `handoff_unknown`.
 3. The row is read by `code_digest` on the write connection and matched again in constant time
    (`HandoffCode::matches()`, SSO-11.9); none is `handoff_unknown`.
-4. In a transaction on the storage connection (a savepoint inside the caller's), the code's connection's tenant is read
-   by a plain read (gone: `connection_unavailable`; a connection's tenant never changes), then
-   `HandoffRecheck::lock()` takes the locks of `flows.md`'s order for that tenant, the connection and the code's
-   application: under `DatabaseEnforcement` with the `enforcement` feature on, the enforcing tenant's row (the tenant
-   `Contracts\EnforcementInheritance` names, inserted unconfigured when it has none) and then, in one locking statement
-   in ascending id order, the connection and the connections the rule names; otherwise the connection alone (gone
-   meanwhile: `connection_unavailable`). Only then is the code row read again, locked: gone, or no longer naming the
-   connection and the application its plain read did, it is `handoff_unknown`, and no other lock is taken out of
-   order.
-5. A code whose `voided_at` is set is `handoff_unknown`.
+4. The code's connection's tenant is read by a plain read before the transaction opens (a connection's tenant never
+   changes). Then, in a transaction on the storage connection (a savepoint inside the caller's), a connection gone is
+   `connection_unavailable`, and `HandoffRecheck::lock()` takes the locks of `flows.md`'s order for that tenant, the
+   connection and the code's application: for a code bound to a reservation or a `link` code, the identity's guard first
+   (the first statement of a standalone redemption's transaction); under `DatabaseEnforcement` with the `enforcement`
+   feature on, the enforcing tenant's row (the tenant `Contracts\EnforcementInheritance` names, inserted unconfigured
+   when it has none) and then, in one locking statement in ascending id order, the connection and the connections the
+   rule names; otherwise the connection alone (gone meanwhile: `connection_unavailable`). Only then is the code row read
+   again, locked: gone, or no longer naming the connection and the application its plain read did, it is
+   `handoff_unknown`, and no other lock is taken out of order.
+5. On the standalone path, any code but a `link` is a `LogicException`, before the single-use store records it or it is
+   consumed. A code whose `voided_at` is set is `handoff_unknown`.
 6. A code whose `redeemed_at` is set, or whose digest the single-use store has seen, is `replayed`.
 7. The code is consumed: its digest is recorded in the single-use store until `max(expires_at, now + 1s)` and its
    `redeemed_at` set, in the transaction.
@@ -65,7 +67,7 @@ order, and the first that refuses ends the redemption:
     time), is `verifier_mismatch`.
 13. The result is decrypted, restored (a result naming another tenant than its connection's is not one the package
     wrote) and `HandoffRecheck::recheck()`ed against the linked identity under step 4's lock:
-    `connection_unavailable`, `enforcement_unsatisfied` or `link_changed`.
+    `connection_unavailable`, `enforcement_unsatisfied` or a purpose's own refusal (`linking.md`).
 14. A `sign_in` code with a linked identity calls `HandoffRecheck::acknowledgeSignIn()` under the same lock.
 15. `HandoffRedeemed` is reported, after commit.
 16. It answers `redeemed`.
@@ -76,13 +78,22 @@ order, and the first that refuses ends the redemption:
   locking reads, so a caller's older `REPEATABLE READ` snapshot never answers whether the rule is on, the connection
   usable, or the code voided or redeemed. Step 3's read and the read of the tenant are plain: they give only the row's
   id, connection and application and the connection's tenant, which the locked reads confirm, and a miss refuses
-  (fails closed).
-- The lock order is `flows.md`'s: the tenant's enforcement row, then connection rows in id order, then the code's. A
-  change that voids a connection's codes (BL-37) locks the connection first, so it waits for a redemption that holds
-  it, or the redemption finds the code voided. A change to enforcement locks the rule's row first, so it waits for a
-  redemption that holds it, and its revocation, inside its own transaction, then sees the session the redeemer wrote
-  in its transaction; or the redemption waits for the change and refuses under the new rule. No session written in the
-  redeemer's transaction survives a rule that does not allow it.
+  (fails closed). Both run before the redemption's transaction opens, so on the standalone path the identity guard of a
+  `link` is that transaction's first statement, and every plain read after it, under MySQL's `REPEATABLE READ`, sees
+  what the guard's previous holder committed. A standalone `link` that comes to `Exceptions\LinkCandidatesChanged` all
+  the same is rolled back and restarted once; inside a caller's transaction it propagates for a retry of the whole.
+- A `link` redemption reads, by a locking read under the identity's guard, whether the identity has ever held an active
+  link by a verified domain (`domain_linked_at`, stamped at activation and never cleared), and asks
+  `Contracts\LinkConfirmation` whenever it has, even when none remains.
+- The standalone path refuses any code but a `link` with a `LogicException` as soon as the code is locked, before the
+  single-use store records it and before it is consumed, so a store that is not transactional keeps nothing either.
+- The lock order is `flows.md`'s: for a code bound to a reservation and a `link` code, the identity's guard, then the
+  tenant's enforcement row, then connection rows in id order, then the code's. A change that voids a connection's codes
+  (BL-37) locks the connection first, so it waits for a redemption that holds it, or the redemption finds the code
+  voided. A change to enforcement locks the rule's row first, so it waits for a redemption that holds it, and its
+  revocation, inside its own transaction, then sees the session the redeemer wrote in its transaction; or the redemption
+  waits for the change and refuses under the new rule. No session written in the redeemer's transaction survives a rule
+  that does not allow it.
 - On PostgreSQL under `REPEATABLE READ`, a redemption that waited on a change of the rule may get a serialisation
   failure (SQLSTATE `40001`) instead of the new rule. It propagates, as a server error; the package never retries a
   part of a caller's transaction, and a caller that redeems inside its own transaction retries the whole of it.
@@ -132,10 +143,9 @@ codes, AUTH-3.10):
   2. `enforcement_unsatisfied`: the enforcement of the connection's tenant on the result's application is not satisfied
      by the connection: judged from the locked rows under `DatabaseEnforcement`, asked of the bound contract now
      otherwise;
-  3. `link_changed`: the bound `Contracts\Linker` resolves the result to another identity than the one given: a link
-     removed, reassigned (another type or id, byte for byte), or added where there was none;
-  4. otherwise `passed`.
-- `RecheckOutcome` is `passed`, `connection_unavailable`, `enforcement_unsatisfied` or `link_changed`, and `reason()`
+  3. the purpose's own rules (`Contracts\PurposeBranch`, `linking.md`), which compare the link as it is now with the one
+     observed at completion by its id, so a link removed and made again is told apart.
+- `RecheckOutcome` is `passed`, or a refusal of the same value as its `FailureReason`, and `reason()`
   answers the `FailureReason` a redemption refused by it reports, `null` for `passed`.
 - `acknowledgeSignIn(VerifiedResult $result, RecheckLock $lock)` sets the connection's `has_completed_sign_in`
   (SSO-4.3), through the model, on the row the lock holds, and writes nothing when it is already set. A result of
@@ -170,14 +180,18 @@ nothing (SSO-10.5).
 ## Success Path
 
 1. The completion issues a code through the store, under the connection's lock, and redirects with it.
-2. The client posts the code and its verifier to the application's redemption endpoint, which calls `redeem()` with
-   the purpose it redeems, its application and the connection.
+2. The client posts the code and its verifier to the application's redemption endpoint, which calls `admit()` inside its
+   transaction with the purpose it redeems, its application and the connection.
 3. The code is found, locked, consumed, checked, rechecked; a `sign_in` acknowledges the connection's completed
    sign-in; the transaction commits and `HandoffRedeemed` is reported.
 4. The application signs in (or links, or re-authenticates) with the result.
 
 ## Failure / Edge Cases
 
+- `redeem()` with no transaction open on the storage connection takes only a `link` code, which creates no session.
+  Every `sign_in` code, linked, reserved or unlinked, and every `reauthenticate` code is a `LogicException` there,
+  leaving it unconsumed, since each must commit with the session the caller writes. Unlinked handoffs remain available
+  through `admit()`.
 - A replay, or a code the single-use store has seen, is `replayed`, and is written nothing more.
 - A code at its expiry, or after, is `handoff_expired` and consumed; one a second before it is redeemed.
 - A connection disabled or left incomplete since completion is `connection_unavailable` and consumes the code; one

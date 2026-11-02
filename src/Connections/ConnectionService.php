@@ -85,7 +85,11 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
  * `metadata_refresh` is one too: `true` delegates trust to its metadata URL and
  * its TLS, and a change that brings it to hold a stale deadline clears what was
  * stamped before and makes its first refresh due
- * (`Metadata\SamlRefreshRule::resetForSettings()`).
+ * (`Metadata\SamlRefreshRule::resetForSettings()`). A change of the setting
+ * naming the issuer (the protocol's `issuerNames()`) turns the connection's
+ * linking off and clears its classification, organisation and acknowledgement
+ * in the same save (`LinkingPolicyReset`), raising `linking_version` and naming
+ * each as `linking.*`, since they were stated about another issuer (SSO-8.8).
  *
  * It holds the registry, the lookup, the freshness gate, the secrets, the
  * reporter, the mapping's caps, the voider and the clock, none of which keeps
@@ -425,8 +429,7 @@ final readonly class ConnectionService
             self::DISPLAY_NAME      => $name !== $locked->display_name,
             self::ATTRIBUTE_MAPPING => !SettingRules::isSame($map->toArray(), $locked->attribute_mapping),
         ]);
-
-        $changed = [...$changedSettings, ...$changedSecrets, ...array_keys($fields)];
+        $changed = [...$changedSettings, ...$changedSecrets, ...array_keys($fields), ...LinkingPolicyReset::changedNames($locked, $typed, $changedSettings)];
 
         $refusal = match (true) {
             $violations !== [] => ConnectionResult::invalid($violations),
@@ -445,6 +448,7 @@ final readonly class ConnectionService
             'attribute_mapping' => $map->toArray(),
             ...ProviderKeys::resetFor($locked, $changedSettings, $stored),
             ...SamlRefreshRule::resetForSettings($locked, $changedSettings, $stored),
+            ...LinkingPolicyReset::of($locked, $typed, $changedSettings),
         ]);
 
         CiphertextWrite::save($locked, self::SECRETS, self::SECRETS_NOT_WRITTEN);
@@ -543,7 +547,7 @@ final readonly class ConnectionService
         $link = $query->useWritePdo()
             ->where('connection_id', $locked->id)
             ->where(static function (Builder $held) use ($now): void {
-                $held->where('state', LinkState::ACTIVE->value)->orWhere(static function (Builder $reserved) use ($now): void {
+                $held->whereIn('state', [LinkState::ACTIVE->value, LinkState::SUSPENDED->value])->orWhere(static function (Builder $reserved) use ($now): void {
                     $reserved->where('state', LinkState::RESERVED->value)->where('reservation_expires_at', '>', $now);
                 });
             })

@@ -116,7 +116,7 @@ final class SettingRules
      * One of the allowed strings, compared exactly.
      *
      * @param  mixed  $value
-     * @param  list<string>  $allowed
+     * @param  array<array-key, mixed>  $allowed
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
      */
     public static function choice(mixed $value, array $allowed): ?ViolationCode
@@ -148,7 +148,7 @@ final class SettingRules
      *
      * @param  string  $path
      * @param  mixed  $value
-     * @param  list<string>  $allowed
+     * @param  array<array-key, mixed>  $allowed
      * @param  bool  $required
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
      */

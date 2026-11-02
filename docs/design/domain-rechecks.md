@@ -57,8 +57,9 @@ domain is claimed and first verified, and the predicates it is judged by, are in
   `DomainWithdrawal::linkingWithdrawn()` first, then sets `state` to `lapsed` and clears `verified_domain`,
   `verified_at`, `lapses_at`, `linking_suspended_at` and the lease, sets `lapsed_at` to now and keeps
   `last_successful_check_at` for display, then reports `DomainLapsed`. Clearing `verified_domain` frees the domain for
-  another connection. The withdrawal is the seam linking by a verified domain (BL-61) extends to void the domain's open
-  link reservations, so a lapse or a suspension can never leave one to be redeemed. A lapse without a lookup runs in its
+  another connection. The withdrawal deletes the domain's open link reservations
+  (`Links\ReservationWithdrawal::ofDomain()`, raising the connection's `links_version`), so a lapse or a suspension can
+  never leave one to be redeemed, and a code bound to one is `reservation_invalid`. A lapse without a lookup runs in its
   own such transaction, with the same locks.
 - Every write goes through the model (`forceFill()->save()`), so `updated_at` is stamped from the clock, and releases
   the lease in the same save. A skip or an exception leaves the lease to expire, at most `LEASE_SECONDS` later.
@@ -86,7 +87,10 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 - A record removed or replaced suspends linking at once, while discovery keeps routing until `lapses_at`; a record back
   within the grace period restores the domain; still gone at the end of it, the domain lapses at the next run.
 - A domain lapsed is verified again with `DomainService::verify()`, and then counts from its new verification time and
-  its new check.
+  its new check, under a new `verification_generation`: a reservation bound to the old one never activates, and a
+  membership must have been accepted before the new time, so a re-verification cannot capture people who joined since.
+- A domain restored within the grace period keeps its verification time and generation; its reservations, deleted when
+  it was suspended, do not come back.
 - A claim removed, claimed again, given another token or no longer verified between the lookup and the transaction is
   skipped with nothing written or reported; a claim removed before its lease is taken leases nothing and is skipped.
 - A server that dies mid-check leaves its lease to expire; the next run takes the claim over.
@@ -105,7 +109,8 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 - `src/Domains/DomainRechecker.php`, `src/Domains/RecheckReport.php`, `src/Domains/RecheckEntry.php`,
   `src/Domains/Enums/RecheckOutcome.php`, `src/Console/RecheckDomainsCommand.php`.
 - Shared with the domain helpers: `src/Domains/DomainFinder.php`, `DomainStanding.php`, `DomainSettings.php`,
-  `DomainWithdrawal.php`, `DnsLookup.php`, `Enums/RecheckFailure.php`; `src/Administration/DomainEvents.php`;
+  `DomainWithdrawal.php`, `DnsLookup.php`, `Enums/RecheckFailure.php`; `src/Links/ReservationWithdrawal.php`;
+  `src/Administration/DomainEvents.php`;
   `src/Events/DomainRecheckFailed.php`, `DomainRestored.php`, `DomainLapsed.php`; `src/Models/Domain.php`.
 
 ## Authoritative Tests
@@ -114,6 +119,8 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 - `tests/Unit/Domains/RecheckReportTest.php`, `tests/Unit/Domains/Enums/RecheckOutcomeTest.php`.
 - `tests/Integration/Domains/ConcurrentDomainRechecksTest.php` (MySQL and PostgreSQL, plainly and inside a caller's
   transaction, and racing removals), `tests/Integration/Domains/DomainRecheckAfterCommitTest.php`.
+- `tests/Feature/Linking/ReservationWithdrawalTest.php`, `tests/Integration/Linking/ConcurrentReservationTest.php`
+  (a withdrawal racing a reservation).
 - `tests/Performance/DomainRecheckQueryBudgetTest.php`.
 
 ## Change Triggers

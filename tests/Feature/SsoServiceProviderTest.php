@@ -373,6 +373,7 @@ final class SsoServiceProviderTest extends TestCase
             '2026_11_03_000000_create_sso_links_table.php',
             '2026_11_03_000001_create_sso_authorization_requests_table.php',
             '2026_11_03_000002_create_sso_handoff_codes_table.php',
+            '2026_11_03_000003_create_sso_identity_guards_table.php',
         ], array_map(basename(...), array_keys($paths)));
 
         foreach ($paths as $from => $to) {

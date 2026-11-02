@@ -353,6 +353,7 @@ final class OidcSettingsTest extends TestCase
         self::assertNull(OidcSettings::freshnessFor('idp_entity_id'));
         self::assertSame(OidcSetting::subjectNames(), OidcSettings::subjectNames());
         self::assertSame(['issuer', 'client_id'], OidcSettings::subjectNames());
+        self::assertSame(['issuer'], OidcSettings::issuerNames());
         self::assertSame(OidcSetting::secretNames(), OidcSettings::secretNames());
         self::assertSame(['client_secret'], OidcSettings::secretNames());
         self::assertArrayNotHasKey('client_secret', OidcSettings::fromArray(['client_secret' => 'shh'])->toArray());

@@ -115,7 +115,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     {
         $id = $this->createdId();
 
-        $result = $this->assertQueryBudget(2, 4, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, [
+        $result = $this->assertQueryBudget(2, 5, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, [
             'display_name' => 'Renamed',
             'settings'     => ['issuer' => 'https://login.example.com', 'client_secret' => 'a-new-client-secret'],
         ]));
@@ -134,7 +134,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     {
         $id = $this->createdId();
 
-        $result = $this->assertQueryBudget(2, 4, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, ['settings' => ['client_assertion_algorithm' => 'RS256']]));
+        $result = $this->assertQueryBudget(2, 5, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, ['settings' => ['client_assertion_algorithm' => 'RS256']]));
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
     }

@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Completion;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -14,6 +15,7 @@ use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
+use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -22,7 +24,9 @@ use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\JwksRefreshed;
 use SineMacula\Laravel\Sso\Events\JwksRefreshFailed;
+use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
+use SineMacula\Laravel\Sso\Evidence\AcceptedEvidence;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
@@ -47,6 +51,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Links\FixedLinker;
 use Tests\TestCase;
 
 /**
@@ -178,7 +183,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
 
         self::assertTrue($this->receiveCallback($connection, $grant)->isCompleted());
 
-        $this->assertEventSequence([ResultVerified::class, HandoffIssued::class]);
+        $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class, HandoffIssued::class]);
         $this->assertNoFailure();
 
         foreach ($this->recordedEvents() as $event) {
@@ -212,6 +217,39 @@ final class OidcCompletionEventSequenceTest extends TestCase
 
                 return SessionStanding::SIGNED_IN;
             }
+
+            /**
+             * The identity's session, locked; as `standing()` answers.
+             *
+             * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+             * @param  string  $sessionId
+             * @param  string  $application
+             * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+             * @param  string  $linkId
+             * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
+             */
+            #[\Override]
+            public function lockedStanding(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection, string $linkId): SessionStanding
+            {
+                unset($application, $linkId);
+
+                return $this->standing($identity, $sessionId, $connection);
+            }
+
+            /**
+             * Renew nothing.
+             *
+             * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+             * @param  string  $sessionId
+             * @param  \Carbon\CarbonImmutable  $authenticatedAt
+             * @param  ?\SineMacula\Laravel\Sso\Evidence\AcceptedEvidence  $evidence
+             * @return void
+             */
+            #[\Override]
+            public function renewAuthentication(IdentityReference $identity, string $sessionId, CarbonImmutable $authenticatedAt, ?AcceptedEvidence $evidence): void
+            {
+                unset($identity, $sessionId, $authenticatedAt, $evidence);
+            }
         });
 
         $connection = $this->connection();
@@ -219,6 +257,8 @@ final class OidcCompletionEventSequenceTest extends TestCase
         $grant      = $this->provider->authorize($url);
 
         $this->startRecordingEvents();
+
+        $this->app?->instance(Linker::class, new FixedLinker(new IdentityReference(self::IDENTITY_TYPE, self::IDENTITY_ID)));
 
         self::assertTrue($this->receiveCallback($connection, $grant)->isCompleted());
 
@@ -255,7 +295,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
 
         self::assertTrue($this->receiveCallback($connection, $grant)->isCompleted());
 
-        $this->assertEventSequence([JwksRefreshed::class, ResultVerified::class, HandoffIssued::class]);
+        $this->assertEventSequence([JwksRefreshed::class, ResultVerified::class, ResultUnlinked::class, HandoffIssued::class]);
 
         [$refreshed, $verified, $issued] = $this->recordedEvents();
 
@@ -286,7 +326,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
 
         self::assertTrue($this->receiveCallback($connection, $grant)->isCompleted());
 
-        $this->assertEventSequence([JwksRefreshed::class, ResultVerified::class, HandoffIssued::class]);
+        $this->assertEventSequence([JwksRefreshed::class, ResultVerified::class, ResultUnlinked::class, HandoffIssued::class]);
 
         [$refreshed, $verified] = $this->recordedEvents();
 

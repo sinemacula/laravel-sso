@@ -28,8 +28,11 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
  *
  * `linkingEmail()` is the only way an asserted email becomes a linking email:
  * `email_verified` exactly `true`, and one `@` between a local part and a
- * domain, by `Results\LinkingEmail`'s own rule. Nothing is logged here, and
- * nothing is kept between calls (SSO-11.2).
+ * domain, by `Results\LinkingEmail`'s own rule. `organization()` reads the
+ * organisation claim the connection names, from the source the email came from
+ * and never another, only when it is a string a result can hold: never from the
+ * email's domain or the mapped attributes. Nothing is logged here, and nothing
+ * is kept between calls (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -82,21 +85,38 @@ final class EmailPairing
     }
 
     /**
-     * The linking email the pair gives, or `null` unless its `email_verified`
-     * is exactly `true` and its email has one `@` between two non-empty parts.
-     * No organisation is named.
+     * The value of the named claim in the claims of the one source the email
+     * came from, or `null` when no claim is named or it is not a string of 1 to
+     * 255 bytes.
+     *
+     * @param  array<array-key, mixed>  $claims
+     * @param  mixed  $claim
+     * @return ?string
+     */
+    public static function organization(#[\SensitiveParameter] array $claims, mixed $claim): ?string
+    {
+        $value = is_string($claim) ? ($claims[$claim] ?? null) : null;
+
+        return is_string($value) && $value !== '' && strlen($value) <= LinkingEmail::MAX_ORGANIZATION_LENGTH ? $value : null;
+    }
+
+    /**
+     * The linking email the pair gives, with the organisation the same source
+     * named, or `null` unless its `email_verified` is exactly `true` and its
+     * email has one `@` between two non-empty parts.
      *
      * @param  ?\SineMacula\Laravel\Sso\Results\AssertedEmail  $asserted
+     * @param  ?string  $organization
      * @return ?\SineMacula\Laravel\Sso\Results\LinkingEmail
      */
-    public static function linkingEmail(?AssertedEmail $asserted): ?LinkingEmail
+    public static function linkingEmail(?AssertedEmail $asserted, #[\SensitiveParameter] ?string $organization = null): ?LinkingEmail
     {
         if ($asserted?->verified !== true) {
             return null;
         }
 
         try {
-            return new LinkingEmail($asserted->email(), $asserted->source);
+            return new LinkingEmail($asserted->email(), $asserted->source, $organization);
         } catch (\InvalidArgumentException) {
             return null;
         }

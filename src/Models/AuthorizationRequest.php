@@ -57,6 +57,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property ?string $session_id
  * @property \Carbon\CarbonImmutable $expires_at
  * @property ?\Carbon\CarbonImmutable $consumed_at
+ * @property ?\Carbon\CarbonImmutable $verified_at
  * @property ?\Carbon\CarbonImmutable $voided_at
  * @property ?\Carbon\CarbonImmutable $completed_at
  * @property \Carbon\CarbonImmutable $created_at
@@ -112,6 +113,7 @@ final class AuthorizationRequest extends SsoModel
             'trust_version'   => 'integer',
             'expires_at'      => UtcDateTime::class,
             'consumed_at'     => UtcDateTime::class,
+            'verified_at'     => UtcDateTime::class,
             'voided_at'       => UtcDateTime::class,
             'completed_at'    => UtcDateTime::class,
             'created_at'      => UtcDateTime::class,

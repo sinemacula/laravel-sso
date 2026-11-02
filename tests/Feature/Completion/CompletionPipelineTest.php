@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Applications\Application;
+use SineMacula\Laravel\Sso\Completion\CompletionLocks;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
@@ -17,6 +18,7 @@ use SineMacula\Laravel\Sso\Completion\CompletionState;
 use SineMacula\Laravel\Sso\Completion\Enums\CompletionStep;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
 use SineMacula\Laravel\Sso\Completion\Stages\CheckEnforcement;
+use SineMacula\Laravel\Sso\Completion\Stages\CheckPurpose;
 use SineMacula\Laravel\Sso\Completion\Stages\ConsumeRequest;
 use SineMacula\Laravel\Sso\Completion\Stages\CorrelateResponse;
 use SineMacula\Laravel\Sso\Completion\Stages\DecideUnlinked;
@@ -45,6 +47,7 @@ use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\UnsolicitedResponseReinitiated;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Metadata\MetadataSettings;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -70,6 +73,7 @@ use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\ExampleSettings;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
@@ -96,6 +100,7 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(CompletionPipeline::class)]
+#[CoversClass(CompletionLocks::class)]
 #[CoversClass(UnsolicitedReinitiation::class)]
 final class CompletionPipelineTest extends TestCase
 {
@@ -225,6 +230,7 @@ final class CompletionPipelineTest extends TestCase
             'replay_recording'   => RecordReplay::class,
             'link_resolution'    => ResolveLink::class,
             'enforcement'        => CheckEnforcement::class,
+            'purpose_rules'      => CheckPurpose::class,
             'domain_reservation' => DomainReservation::class,
             'provisioning'       => Provisioning::class,
             'unlinked_decision'  => DecideUnlinked::class,
@@ -249,7 +255,7 @@ final class CompletionPipelineTest extends TestCase
 
         self::assertSame(array_map(static fn (CompletionStep $step): array => [$step->value, $step->isLocked() ? 1 : 0], CompletionStep::cases()), $this->ran->getArrayCopy());
         self::assertSame(
-            [0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
+            [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
             array_map(static fn (array $ran): int => $ran[1], $this->ran->getArrayCopy()),
         );
         self::assertFalse($this->spied('handoff_issuance')[1]);
@@ -863,7 +869,7 @@ final class CompletionPipelineTest extends TestCase
         $result = $this->completeAtCallback();
 
         self::assertSame([$reason === null ? 'completed' : 'failed', $reason], [$result->status->value, $result->reason?->value]);
-        self::assertCount($reason === null ? 10 : 3, $this->stepsRan());
+        self::assertCount($reason === null ? 11 : 3, $this->stepsRan());
         self::assertCount($reason === null ? 1 : 0, $this->issuer->grants());
         self::assertNotNull($this->reread($request)->completed_at);
     }
@@ -972,6 +978,73 @@ final class CompletionPipelineTest extends TestCase
             self::fail('A link resolution handing over to re-initiation completed.');
         } catch (\LogicException $e) {
             self::assertSame('Only the correlation step hands a completion to re-initiation, not the [link_resolution] step.', $e->getMessage());
+        }
+
+        self::assertNull($this->reread($request)->completed_at);
+        $this->assertNoEvents();
+    }
+
+    /**
+     * A stage that stops at the provisioning boundary, but is not the
+     * provisioning step's, is a misconfiguration, reported nowhere.
+     *
+     * @return void
+     */
+    public function testOnlyTheProvisioningStepStopsAtItsBoundary(): void
+    {
+        $request = $this->request();
+
+        $this->app?->instance(ResolveLink::class, self::answering(static fn (CompletionState $state): StageOutcome => StageOutcome::provision($state)));
+
+        try {
+            $this->completeAtCallback();
+            self::fail('A link resolution stopped at the provisioning boundary.');
+        } catch (\LogicException $e) {
+            self::assertSame('Only the provisioning step stops at its boundary, not the [link_resolution] step.', $e->getMessage());
+        }
+
+        self::assertNull($this->reread($request)->completed_at);
+        $this->assertNoEvents();
+    }
+
+    /**
+     * Rows of `[what the stage's state holds, the message]`: a completion
+     * answered with less than it consumed is a misconfiguration.
+     *
+     * @return iterable<string, array{0: bool, 1: string}>
+     */
+    public static function provideHollowStates(): iterable
+    {
+        yield 'no application' => [false, 'A consumed completion holds its application.'];
+        yield 'no connection' => [true, 'A consumed completion holds its connection.'];
+    }
+
+    /**
+     * A stage answering with a state that lost what the completion consumed
+     * rolls the completion back, and is answered to no one.
+     *
+     * @param  bool  $consumed
+     * @param  string  $message
+     * @return void
+     */
+    #[DataProvider('provideHollowStates')]
+    public function testAStateThatLostWhatItConsumedIsAMisconfiguration(bool $consumed, string $message): void
+    {
+        $request = $this->request();
+
+        $this->app?->instance(ResolveLink::class, self::answering(static function (CompletionState $state) use ($consumed): StageOutcome {
+
+            $arrived = CompletionState::arrived($state->connectionId, $state->request);
+            $hollow  = $consumed ? $arrived->withAuthorizationRequest($state->authorizationRequest, $state->consumed, $state->application) : $arrived;
+
+            return StageOutcome::refuse($hollow, FailureReason::UNLINKED);
+        }));
+
+        try {
+            $this->completeAtCallback();
+            self::fail('A hollow state was answered.');
+        } catch (\LogicException $e) {
+            self::assertSame($message, $e->getMessage());
         }
 
         self::assertNull($this->reread($request)->completed_at);
@@ -1408,6 +1481,40 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
+     * A stage that answers whatever the callback does with the state.
+     *
+     * @param  \Closure(\SineMacula\Laravel\Sso\Completion\CompletionState): \SineMacula\Laravel\Sso\Completion\StageOutcome  $answer
+     * @return \SineMacula\Laravel\Sso\Contracts\CompletionStage
+     */
+    private static function answering(\Closure $answer): CompletionStage
+    {
+        return new readonly class ($answer) implements CompletionStage {
+            /**
+             * Constructor.
+             *
+             * @param  \Closure(\SineMacula\Laravel\Sso\Completion\CompletionState): \SineMacula\Laravel\Sso\Completion\StageOutcome  $answer
+             */
+            public function __construct(
+
+                /** What the stage answers. */
+                private \Closure $answer,
+            ) {}
+
+            /**
+             * Answer the state.
+             *
+             * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
+             * @return \SineMacula\Laravel\Sso\Completion\StageOutcome
+             */
+            #[\Override]
+            public function run(CompletionState $state): StageOutcome
+            {
+                return ($this->answer)($state);
+            }
+        };
+    }
+
+    /**
      * A stage that hands every state to re-initiation.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\CompletionStage
@@ -1441,14 +1548,14 @@ final class CompletionPipelineTest extends TestCase
              * The one identity.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return \SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
                 unset($result);
 
-                return new IdentityReference('App\Models\User', '42');
+                return ExampleLinks::resolution(new IdentityReference('App\Models\User', '42'));
             }
         };
     }

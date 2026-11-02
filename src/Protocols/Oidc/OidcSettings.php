@@ -191,6 +191,17 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
+     * The setting that names the issuer.
+     *
+     * @return list<string>
+     */
+    #[\Override]
+    public static function issuerNames(): array
+    {
+        return [OidcSetting::ISSUER->value];
+    }
+
+    /**
      * The operation whose freshness a change to the setting needs, as
      * `OidcSetting` classifies it; `null` for a name it does not have.
      *

@@ -20,9 +20,11 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
  *
  * The classification is the driver's, and the helpers act on it alone:
  * `freshnessFor()` names the operation whose freshness a change to a setting
- * needs (SSO-2.12), and `subjectNames()` the settings a change to which may
- * alter what existing subjects mean (SSO-2.13). A setting with no operation is
- * profile or presentation, which never widens access.
+ * needs (SSO-2.12), `subjectNames()` the settings a change to which may alter
+ * what existing subjects mean (SSO-2.13), and `issuerNames()` the settings that
+ * name the issuer an administrator's linking policy was stated about (SSO-8.8).
+ * A setting with no operation is profile or presentation, which never widens
+ * access.
  *
  * An implementation is an immutable value and holds nothing of one request for
  * the next (SSO-11.2).
@@ -59,6 +61,14 @@ interface ProtocolSettings
      * @return list<string>
      */
     public static function subjectNames(): array;
+
+    /**
+     * The names of the settings that name the issuer, a change to which leaves
+     * the connection's linking policy stated about another issuer (SSO-8.8).
+     *
+     * @return list<string>
+     */
+    public static function issuerNames(): array;
 
     /**
      * The operation whose freshness a change to the setting needs, or `null`

@@ -31,7 +31,9 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * JWKS; and an OIDC connection's JWKS (SSO-7.3): the public keys the package
  * admitted, the version every write of them raises, their last validated fetch,
  * until when no unknown-`kid` refetch may start, and the random token of the
- * refetch in progress.
+ * refetch in progress. It holds its settings for linking by a verified domain
+ * (SSO-8.8) and their version, apart from its protocol settings, since a change
+ * to them voids reservations and no flow (`docs/design/linking.md`).
  *
  * Its key is a lower-case ULID, the `{connection}` of its endpoints, and its
  * timestamps come from the package's clock (see `SsoModel`). Changing its
@@ -60,6 +62,15 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property int $links_version
  * @property int $flows_version
  * @property int $trust_version
+ * @property bool $linking_enabled
+ * @property ?string $linking_issuer_class
+ * @property ?string $linking_organization_claim
+ * @property ?string $linking_organization_value
+ * @property ?string $linking_saml_attribute
+ * @property ?string $linking_saml_attribute_format
+ * @property ?\Carbon\CarbonImmutable $linking_acknowledged_at
+ * @property int $linking_version
+ * @property ?array<string, mixed> $evidence_policy
  * @property int $metadata_version
  * @property ?\Carbon\CarbonImmutable $metadata_fetched_at
  * @property ?\Carbon\CarbonImmutable $metadata_valid_until
@@ -96,8 +107,8 @@ final class Connection extends SsoModel implements SsoConnection
     /** @var array<string> The attributes that aren't mass assignable. */
     protected $guarded = ['*'];
 
-    /** @var list<string> The attributes hidden from serialisation: the encrypted secrets. */
-    protected $hidden = ['secrets'];
+    /** @var list<string> The attributes hidden from serialisation: the encrypted secrets, and the organisation a linking result must assert. */
+    protected $hidden = ['secrets', 'linking_organization_value'];
 
     /** @var array<string, mixed> The model's default attribute values: disabled, no sign-in completed, no settings or mapping, trust version 0. */
     protected $attributes = [
@@ -106,6 +117,8 @@ final class Connection extends SsoModel implements SsoConnection
         'enabled'               => false,
         'has_completed_sign_in' => false,
         'trust_version'         => 0,
+        'linking_enabled'       => false,
+        'linking_version'       => 0,
     ];
 
     /**
@@ -197,6 +210,39 @@ final class Connection extends SsoModel implements SsoConnection
     }
 
     /**
+     * The connection's settings for linking by a verified domain.
+     *
+     * @return array<string, bool|int|string|null>
+     */
+    #[\Override]
+    public function getLinkingSettings(): array
+    {
+        return [
+            'enabled'               => $this->linking_enabled,
+            'issuer_class'          => $this->linking_issuer_class,
+            'organization_claim'    => $this->linking_organization_claim,
+            'organization_value'    => $this->linking_organization_value,
+            'saml_attribute'        => $this->linking_saml_attribute,
+            'saml_attribute_format' => $this->linking_saml_attribute_format,
+            'acknowledged'          => $this->linking_acknowledged_at !== null,
+            'version'               => $this->linking_version,
+        ];
+    }
+
+    /**
+     * The authentication context the connection accepts as evidence.
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function getEvidencePolicy(): array
+    {
+        $policy = $this->evidence_policy;
+
+        return is_array($policy) ? $policy : [];
+    }
+
+    /**
      * Key and stamp each new connection, and refuse a change to its tenant or
      * protocol once it exists.
      *
@@ -230,6 +276,10 @@ final class Connection extends SsoModel implements SsoConnection
             'links_version'             => 'integer',
             'flows_version'             => 'integer',
             'trust_version'             => 'integer',
+            'linking_enabled'           => 'boolean',
+            'linking_version'           => 'integer',
+            'evidence_policy'           => 'array',
+            'linking_acknowledged_at'   => UtcDateTime::class,
             'metadata_version'          => 'integer',
             'metadata_fetched_at'       => UtcDateTime::class,
             'metadata_valid_until'      => UtcDateTime::class,

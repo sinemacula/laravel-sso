@@ -6,9 +6,10 @@ namespace SineMacula\Laravel\Sso\Revocation\Enums;
 
 /**
  * Which sessions a call to the `Contracts\SessionRevocation` contract concerns
- * (SSO-4.5): those active in a tenant that no longer comply with its
- * enforcement, those established through a connection, or one identity's
- * established through a connection.
+ * (SSO-4.5, SSO-8.8): those active in a tenant that no longer comply with its
+ * enforcement, those established through a connection, one identity's
+ * established through a connection, or one identity's established through one
+ * link.
  *
  * Backed, and stable once released: a value is never renamed or reused.
  *
@@ -28,4 +29,7 @@ enum RevocationScopeKind: string
 
     // The identity's sessions established through the connection
     case IDENTITY_CONNECTION = 'identity_connection';
+
+    // The identity's sessions established through the link
+    case IDENTITY_LINK = 'identity_link';
 }

@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Models\Domain;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -33,7 +34,7 @@ use Tests\TestCase;
 #[CoversClass(DomainStanding::class)]
 final class DomainTest extends TestCase
 {
-    use UsesConnections, UsesDomains;
+    use UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     private FixedClock $clock;
@@ -54,6 +55,7 @@ final class DomainTest extends TestCase
 
         $this->createConnectionTables();
         $this->createDomainsTable();
+        $this->createFlowTables();
     }
 
     /**
@@ -64,6 +66,7 @@ final class DomainTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        $this->dropFlowTables();
         $this->dropDomainsTable();
         $this->dropConnectionTables();
 

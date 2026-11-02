@@ -58,15 +58,35 @@ return new class extends Migration {
             $blueprint->string('identity_type', 255);
             $blueprint->string('identity_id', 255);
 
-            // Active, or reserved by a completion that matched the subject by a
-            // verified domain until its handoff is redeemed, with when the
-            // reservation expires and the request it was made for.
+            // Active; reserved by a completion that matched the subject by a
+            // verified domain until its handoff is redeemed; or suspended, a
+            // link made by a verified domain whose identity was found to hold a
+            // principal outside the tenant, latched until a confirming link
+            // (suspended_at is the marker).
             $blueprint->string('state', 16);
+            $blueprint->dateTime('suspended_at', 0)->nullable();
+
+            // How the link came to stand as it does: a value of LinkOrigin. A
+            // confirming link replaces verified_domain with link_purpose.
+            $blueprint->string('provenance', 32)->default('link_purpose');
+
+            // A reservation's binding, all cleared on activation: its unique
+            // identity; when it expires, exactly when its handoff does; the
+            // request it was made for; the handoff's opaque reference, which
+            // works for the package's codes and an adapter's; the salted digest
+            // of the linking email; the organisation claim's accepted value;
+            // the domain claim with its verification generation; and the
+            // linking policy version the evidence was accepted under. The
+            // matched identity is the row's own identity.
+            $blueprint->char('reservation_id', 26)->nullable();
             $blueprint->dateTime('reservation_expires_at', 0)->nullable();
             $blueprint->string('reservation_reference', 64)->nullable();
-
-            // Made by a verified domain, until a confirming link clears it.
-            $blueprint->boolean('domain_provenance')->default(false);
+            $blueprint->string('reservation_handoff', 255)->nullable();
+            $blueprint->char('reservation_email_digest', 64)->nullable();
+            $blueprint->string('reservation_organization', 255)->nullable();
+            $blueprint->char('reservation_domain_id', 26)->nullable();
+            $blueprint->unsignedBigInteger('reservation_domain_generation')->nullable();
+            $blueprint->unsignedBigInteger('reservation_linking_version')->nullable();
 
             // Whole seconds in UTC, from the package's clock.
             $blueprint->dateTime('last_used_at', 0)->nullable();
@@ -76,6 +96,8 @@ return new class extends Migration {
             // One link per subject in a connection; an identity's links, by
             // connection, for listing and for the link limit.
             $blueprint->unique(['connection_id', 'subject_key'], self::indexName($table, 'subject_unique'));
+            $blueprint->unique(['reservation_id'], self::indexName($table, 'reservation_unique'));
+            $blueprint->index(['connection_id', 'reservation_domain_id'], self::indexName($table, 'reservation_domain_index'));
             $blueprint->index(['identity_type', 'identity_id', 'connection_id'], self::indexName($table, 'identity_index'));
         });
     }

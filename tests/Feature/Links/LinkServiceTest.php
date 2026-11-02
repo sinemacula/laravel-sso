@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Events\LinkRemoved;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkEvents;
 use SineMacula\Laravel\Sso\Links\LinkResult;
@@ -134,7 +135,7 @@ final class LinkServiceTest extends TestCase
 
         $this->clock->advance(60);
 
-        $remote = $this->makeLink($foreign, 'subject-2', ['name_id_format' => 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent', 'domain_provenance' => true]);
+        $remote = $this->makeLink($foreign, 'subject-2', ['name_id_format' => 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent', 'provenance' => LinkOrigin::VERIFIED_DOMAIN]);
 
         $this->makeLink($this->connection, 'subject-3', ['identity_id' => '2']);
 
@@ -337,6 +338,21 @@ final class LinkServiceTest extends TestCase
         self::assertNull($context->purpose);
         self::assertNull($context->requestReference);
         self::assertSame([], $this->service()->list($this->identity));
+    }
+
+    /**
+     * A removal raises the connection's links version by exactly one, so a flow
+     * that read the link before it fails to serialise rather than miss it.
+     *
+     * @return void
+     */
+    public function testARemovalRaisesTheLinksVersion(): void
+    {
+        $link   = $this->makeLink($this->connection, 'subject-1');
+        $before = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
+
+        self::assertTrue($this->service()->remove($this->identity, $link->id, null, new ActingIdentity('App\Models\User', '42'))->isRemoved());
+        self::assertSame($before + 1, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
     }
 
     /**

@@ -82,6 +82,12 @@ their own.
 - A new connection is disabled. Enabling needs no complete settings, and never writes `has_completed_sign_in`. The
   tenant and the protocol never change: an update naming either is `immutable`.
 
+### Linking and evidence settings
+
+A connection's linking settings and evidence policy are columns of their own, outside the protocol settings, written by
+`Connections\LinkingPolicyService` and `Connections\EvidenceSettingsService` (`linking.md`, `evidence.md`). Both ask
+`sso.connection.trust`; neither raises the trust version or voids a flow.
+
 ## Success Path
 
 1. `create()` checks the tenant id, the protocol's availability and the preset; fills in the preset's settings and

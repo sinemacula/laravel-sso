@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Handoffs;
 
 use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Evidence\AcceptedEvidence;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RedemptionStatus;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
@@ -19,8 +20,12 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *   verified result, the identity its link resolved to at completion (and still
  *   resolves to), the identity a `link` or `reauthenticate` flow was started
  *   for, the session a `reauthenticate` flow was started on, the enforcement
- *   version the completion checked and the latest end of the application's
- *   session the provider's deadline sets (SSO-9.10);
+ *   version the completion checked, the latest end of the application's session
+ *   the provider's deadline sets (SSO-9.10), the link that established it, the
+ *   evidence the evidence contract accepted, and whether it was admitted:
+ *   redeemed inside the caller's transaction, so its session write commits with
+ *   it. A
+ *   result not admitted must never lead to a session;
  * - refused: for the reason given, the first check that refused it; a code
  *   consumed before the refusal stays consumed;
  * - rate limited: the redemption limit for the client's IP address is full,
@@ -57,6 +62,9 @@ final readonly class RedemptionResult implements \JsonSerializable
      * @param  ?string  $sessionId
      * @param  ?string  $enforcementVersion
      * @param  ?\Carbon\CarbonImmutable  $sessionNotAfter
+     * @param  ?string  $linkId
+     * @param  ?\SineMacula\Laravel\Sso\Evidence\AcceptedEvidence  $evidence
+     * @param  bool  $admitted
      */
     private function __construct(
 
@@ -86,6 +94,15 @@ final readonly class RedemptionResult implements \JsonSerializable
 
         /** The latest end of the application's session the provider's deadline sets. */
         public ?CarbonImmutable $sessionNotAfter = null,
+
+        /** The link the identity resolved through, which a session binds. */
+        public ?string $linkId = null,
+
+        /** What the evidence contract accepted of the result's own assertion. */
+        public ?AcceptedEvidence $evidence = null,
+
+        /** Whether it was redeemed inside the caller's transaction. */
+        public bool $admitted = false,
     ) {}
 
     /**
@@ -137,7 +154,12 @@ final readonly class RedemptionResult implements \JsonSerializable
      * @param  ?string  $sessionId
      * @param  ?string  $enforcementVersion
      * @param  ?\Carbon\CarbonImmutable  $sessionNotAfter
+     * @param  ?string  $linkId
+     * @param  ?\SineMacula\Laravel\Sso\Evidence\AcceptedEvidence  $evidence
+     * @param  bool  $admitted
      * @return self
+     *
+     * @SuppressWarnings("php:S107")
      */
     public static function redeemed(
         VerifiedResult $result,
@@ -146,6 +168,9 @@ final readonly class RedemptionResult implements \JsonSerializable
         ?string $sessionId = null,
         ?string $enforcementVersion = null,
         ?CarbonImmutable $sessionNotAfter = null,
+        ?string $linkId = null,
+        ?AcceptedEvidence $evidence = null,
+        bool $admitted = false,
     ): self {
         return new self(
             RedemptionStatus::REDEEMED,
@@ -155,6 +180,9 @@ final readonly class RedemptionResult implements \JsonSerializable
             sessionId: $sessionId,
             enforcementVersion: $enforcementVersion,
             sessionNotAfter: $sessionNotAfter,
+            linkId: $linkId,
+            evidence: $evidence,
+            admitted: $admitted,
         );
     }
 
@@ -200,6 +228,17 @@ final readonly class RedemptionResult implements \JsonSerializable
     public function isRedeemed(): bool
     {
         return $this->status === RedemptionStatus::REDEEMED;
+    }
+
+    /**
+     * Whether the code was redeemed inside the caller's transaction, so what
+     * the caller writes with it commits with its consumption (decision D5).
+     *
+     * @return bool
+     */
+    public function isAdmitted(): bool
+    {
+        return $this->isRedeemed() && $this->admitted;
     }
 
     /**

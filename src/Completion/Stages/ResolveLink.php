@@ -10,11 +10,12 @@ use SineMacula\Laravel\Sso\Contracts\CompletionStage;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 
 /**
- * The `link_resolution` step (SSO-8.2, SSO-8.6): the verified result's link is
- * resolved through the bound `Contracts\Linker`, by its connection, issuer and
- * subject alone, inside the completion's locked transaction. The identity it
- * resolves to goes on with the state; a result linked to none goes on unlinked,
- * for the later steps to decide. It never refuses.
+ * The `link_resolution` step (SSO-8.2, SSO-8.6, SSO-8.8): the verified result's
+ * link is resolved through the bound `Contracts\Linker`, by its connection,
+ * issuer and subject alone, inside the completion's locked transaction, and in
+ * its final continuation again. The `Links\LinkResolution` goes on with the
+ * state, with the identity it resolves to, for the later steps to decide. It
+ * never refuses.
  *
  * It holds the linking contract, which keeps nothing of one completion for the
  * next (SSO-11.2). A database error propagates (SSO-11.4).
@@ -48,9 +49,8 @@ final readonly class ResolveLink implements CompletionStage
     #[\Override]
     public function run(CompletionState $state): StageOutcome
     {
-        $result   = $state->result ?? throw new \LogicException('A link is resolved once the result is verified.');
-        $identity = $this->linker->resolve($result);
+        $result = $state->result ?? throw new \LogicException('A link is resolved once the result is verified.');
 
-        return StageOutcome::proceed($identity === null ? $state : $state->withLinkedIdentity($identity));
+        return StageOutcome::proceed($state->withResolution($this->linker->resolve($result)));
     }
 }

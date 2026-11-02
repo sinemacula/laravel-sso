@@ -6,6 +6,8 @@ namespace SineMacula\Laravel\Sso\Protocols\Saml2\Validation;
 
 use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Clock\ClockSkew;
+use SineMacula\Laravel\Sso\Config\Enums\Feature;
+use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
@@ -17,10 +19,13 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Library\SamlAdapter;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Enums\ValidationProfile;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ReadResult;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion;
+use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Limits;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options;
+use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
+use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 
 /**
@@ -54,9 +59,21 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
  * A response that passes is verified with its claims (the identity provider's
  * entity id, the subject and its NameID format, the attributes of its
  * assertion's attribute statements by name, each a list of its string values in
- * order, and the authentication context; no linking email until P6) and the
- * replay record of its assertion (`ReplayWindow`), which the completion records
- * under the connection's lock; nothing is recorded here.
+ * order, the authentication context and the linking email) and the replay
+ * record of its assertion (`ReplayWindow`), which the completion records under
+ * the connection's lock; nothing is recorded here.
+ *
+ * The linking email (SSO-8.8) is built only while linking by a verified domain
+ * is on, by its feature and its connection, with its acknowledgement, and only
+ * from the one attribute the connection names by exact `Name` and `NameFormat`,
+ * present once with exactly one non-empty string value: an attribute of that
+ * `Name` in another `NameFormat`, a second one, a second value, an empty value
+ * or a value that is not simple text gives none, an encrypted attribute leaves
+ * "present once" unknowable and gives none, and nothing falls back to a
+ * `FriendlyName` or an email-format `NameID`. An absent `NameFormat` is
+ * `unspecified`, as SAML 2.0 Core 2.7.3.1 says. The organisation comes from the
+ * attribute the connection names as its claim, under the same exactness, never
+ * from the email's domain or the mapped attributes.
  *
  * Every time rule reads one instant, the clock's now once the response is read,
  * with the skew of `sso.clock.skew_seconds`. Nothing of the response is ever
@@ -75,6 +92,9 @@ final readonly class AssertionValidator
 {
     /** @var string The posted field that carries the response. */
     public const string FIELD = 'SAMLResponse';
+
+    /** @var string What an attribute with no `NameFormat` is named under (SAML 2.0 Core 2.7.3.1). */
+    private const string UNSPECIFIED_NAME_FORMAT = 'urn:oasis:names:tc:SAML:2.0:attrname-format:unspecified';
 
     /**
      * Constructor.
@@ -108,6 +128,29 @@ final readonly class AssertionValidator
     ) {}
 
     /**
+     * The linking email the assertion gives under the connection's linking
+     * settings, or `null`: with linking off or not acknowledged, with no
+     * attribute named, or when the named attribute is not exactly as it must
+     * be.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
+     * @param  array<string, bool|int|string|null>  $linking
+     * @return ?\SineMacula\Laravel\Sso\Results\LinkingEmail
+     */
+    public static function linkingEmail(SamlAssertion $assertion, array $linking): ?LinkingEmail
+    {
+        $named = self::namedAttribute($linking);
+
+        if ($named === null || $assertion->encryptedAttributes() !== 0) {
+            return null;
+        }
+
+        $email = self::soleValue($assertion, $named[0], $named[1]);
+
+        return $email === null ? null : self::builtEmail($email, self::organization($assertion, $linking['organization_claim'] ?? null, $named[1]));
+    }
+
+    /**
      * Validate the posted response for the connection, against the consumed
      * request, or by the unsolicited profile when none is given.
      *
@@ -130,7 +173,11 @@ final readonly class AssertionValidator
         $read     = $this->adapter->readResponse($encoded, $this->policies->policy($connection, $options));
         $response = $read->response;
 
-        return $response === null ? $this->refusedRead($read, $connection, $consumed) : $this->judge($response, $this->context($connection, $options, $consumed));
+        if ($response === null) {
+            return $this->refusedRead($read, $connection, $consumed);
+        }
+
+        return $this->judge($response, $this->context($connection, $options, $consumed), $connection->getLinkingSettings());
     }
 
     /**
@@ -188,11 +235,12 @@ final readonly class AssertionValidator
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
+     * @param  array<string, bool|int|string|null>  $linking
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      *
      * @throws \InvalidArgumentException
      */
-    private function judge(SamlResponse $response, ValidationContext $context): Completion
+    private function judge(SamlResponse $response, ValidationContext $context, array $linking): Completion
     {
         $reason = $this->profileRefusal($response, $context);
 
@@ -202,7 +250,7 @@ final readonly class AssertionValidator
 
         $assertion = $response->assertion();
 
-        return $assertion === null ? Completion::refused(FailureReason::RESPONSE_INVALID) : self::verify($response, $assertion, $context);
+        return $assertion === null ? Completion::refused(FailureReason::RESPONSE_INVALID) : self::verify($response, $assertion, $context, $linking);
     }
 
     /**
@@ -276,11 +324,12 @@ final readonly class AssertionValidator
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
+     * @param  array<string, bool|int|string|null>  $linking
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      *
      * @throws \InvalidArgumentException
      */
-    private static function verify(SamlResponse $response, SamlAssertion $assertion, ValidationContext $context): Completion
+    private static function verify(SamlResponse $response, SamlAssertion $assertion, ValidationContext $context, array $linking): Completion
     {
         $reason = ResponseRules::refusal($response, $assertion, $context) ?? ConditionRules::refusal($response, $assertion, $context);
 
@@ -290,7 +339,7 @@ final readonly class AssertionValidator
 
         $confirmation = BearerConfirmations::chosen($response, $assertion, $context);
 
-        return $confirmation instanceof FailureReason ? Completion::refused($confirmation) : self::claimed($assertion, $confirmation, $context);
+        return $confirmation instanceof FailureReason ? Completion::refused($confirmation) : self::claimed($assertion, $confirmation, $context, $linking);
     }
 
     /**
@@ -300,11 +349,12 @@ final readonly class AssertionValidator
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation  $confirmation
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
+     * @param  array<string, bool|int|string|null>  $linking
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      *
      * @throws \InvalidArgumentException
      */
-    private static function claimed(SamlAssertion $assertion, SubjectConfirmation $confirmation, ValidationContext $context): Completion
+    private static function claimed(SamlAssertion $assertion, SubjectConfirmation $confirmation, ValidationContext $context, array $linking): Completion
     {
         $subject = SubjectRules::subject($assertion, $context);
 
@@ -318,9 +368,86 @@ final readonly class AssertionValidator
             return Completion::refused($authentication);
         }
 
-        $claims = new VerifiedClaims($assertion->issuer()->value(), $subject[0], $subject[1], self::attributes($assertion), $authentication);
+        $email  = self::linkingEmail($assertion, $linking);
+        $claims = new VerifiedClaims($assertion->issuer()->value(), $subject[0], $subject[1], self::attributes($assertion), $authentication, $email);
 
         return Completion::verified($claims, ReplayWindow::record($assertion, $confirmation, $context));
+    }
+
+    /**
+     * The `Name` and `NameFormat` the connection names, while the feature and
+     * its linking are on and acknowledged; `null` otherwise.
+     *
+     * @param  array<string, bool|int|string|null>  $linking
+     * @return ?array{0: string, 1: string}
+     */
+    private static function namedAttribute(array $linking): ?array
+    {
+        $name   = $linking['saml_attribute']        ?? null;
+        $format = $linking['saml_attribute_format'] ?? null;
+
+        if (!Features::enabled(Feature::DOMAIN_LINKING) || ($linking['enabled'] ?? false) !== true || ($linking['acknowledged'] ?? false) !== true) {
+            return null;
+        }
+
+        return is_string($name) && is_string($format) ? [$name, $format] : null;
+    }
+
+    /**
+     * The linking email of the value and the organisation, or `null` when the
+     * value is no address.
+     *
+     * @param  string  $email
+     * @param  ?string  $organization
+     * @return ?\SineMacula\Laravel\Sso\Results\LinkingEmail
+     */
+    private static function builtEmail(#[\SensitiveParameter] string $email, #[\SensitiveParameter] ?string $organization): ?LinkingEmail
+    {
+        try {
+            return new LinkingEmail($email, LinkingEmailSource::SAML_ATTRIBUTE, $organization);
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    /**
+     * The organisation the claim names under the format, or `null` when none is
+     * named or it is not a string a result can hold.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
+     * @param  mixed  $claim
+     * @param  string  $format
+     * @return ?string
+     */
+    private static function organization(SamlAssertion $assertion, mixed $claim, string $format): ?string
+    {
+        $value = is_string($claim) ? self::soleValue($assertion, $claim, $format) : null;
+
+        return $value !== null && strlen($value) <= LinkingEmail::MAX_ORGANIZATION_LENGTH ? $value : null;
+    }
+
+    /**
+     * The one non-empty string value of the one attribute of the name, when it
+     * is in exactly the format; `null` otherwise. Only `Name` selects it, so a
+     * second attribute of the name in another format refuses it, and a
+     * `FriendlyName` is never read.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
+     * @param  string  $name
+     * @param  string  $format
+     * @return ?string
+     */
+    private static function soleValue(SamlAssertion $assertion, string $name, string $format): ?string
+    {
+        $named = array_values(array_filter($assertion->attributes(), static fn (SamlAttribute $attribute): bool => $attribute->name() === $name));
+
+        if (count($named) !== 1 || ($named[0]->nameFormat() ?? self::UNSPECIFIED_NAME_FORMAT) !== $format) {
+            return null;
+        }
+
+        $values = $named[0]->values();
+
+        return count($values) === 1 && $values[0] !== '' ? $values[0] : null;
     }
 
     /**

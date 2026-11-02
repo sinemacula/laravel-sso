@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -34,7 +35,7 @@ use Tests\TestCase;
  */
 abstract class DomainServiceTestCase extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains;
+    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var string The tenant whose connection the helpers act on. */
     protected const string TENANT = 'tenant-1';
@@ -79,6 +80,7 @@ abstract class DomainServiceTestCase extends TestCase
 
         $this->createConnectionTables();
         $this->createDomainsTable();
+        $this->createFlowTables();
         self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
 
         $this->connection = $this->makeConnection();
@@ -95,6 +97,7 @@ abstract class DomainServiceTestCase extends TestCase
     protected function tearDown(): void
     {
         self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
+        $this->dropFlowTables();
         $this->dropDomainsTable();
         $this->dropConnectionTables();
 
