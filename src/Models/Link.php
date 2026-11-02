@@ -4,6 +4,8 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Models\Casts\BinaryString;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
@@ -21,11 +23,15 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * most, however two creations race, and lookups compare it exactly, whatever
  * the engine's collation.
  *
- * It holds its state (active, or reserved by a completion that matched it by a
- * verified domain, with when the reservation expires and the request it was
- * made for, SSO-8.8); whether it was made by a verified domain, a provenance a
- * confirming `link` clears; and when it was created, last used and last
- * changed.
+ * It holds its state (`Links\Enums\LinkState`, SSO-8.8): active; reserved by a
+ * completion that matched it by a verified domain, with the reservation's
+ * binding (`Links\LinkReservations`), all of it cleared on activation; or
+ * suspended, latched with `suspended_at` until a confirming `link`. It holds
+ * its provenance (`Links\Enums\LinkOrigin`), which a confirming `link`
+ * replaces, and from which `domain_provenance` is read; and when it was
+ * created, last used and last changed. The email digest and the accepted
+ * organisation are hidden from serialisation and never put in an event
+ * (SSO-10.4).
  *
  * Its key is a lower-case ULID and its timestamps come from the package's clock
  * (see `SsoModel`); its connection, issuer, format, subject and key are fixed
@@ -47,9 +53,18 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property string $identity_type
  * @property string $identity_id
  * @property \SineMacula\Laravel\Sso\Links\Enums\LinkState $state
+ * @property ?\Carbon\CarbonImmutable $suspended_at
+ * @property \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin $provenance
  * @property bool $domain_provenance
+ * @property ?string $reservation_id
  * @property ?\Carbon\CarbonImmutable $reservation_expires_at
  * @property ?string $reservation_reference
+ * @property ?string $reservation_handoff
+ * @property ?string $reservation_email_digest
+ * @property ?string $reservation_organization
+ * @property ?string $reservation_domain_id
+ * @property ?int $reservation_domain_generation
+ * @property ?int $reservation_linking_version
  * @property ?\Carbon\CarbonImmutable $last_used_at
  * @property \Carbon\CarbonImmutable $created_at
  * @property \Carbon\CarbonImmutable $updated_at
@@ -74,10 +89,13 @@ final class Link extends SsoModel
     /** @var array<string> The attributes that aren't mass assignable. */
     protected $guarded = ['*'];
 
-    /** @var array<string, mixed> The model's default attribute values: a link is active and has no verified domain provenance. */
+    /** @var list<string> The attributes hidden from serialisation: the linking email's digest and the accepted organisation. */
+    protected $hidden = ['reservation_email_digest', 'reservation_organization'];
+
+    /** @var array<string, mixed> The model's default attribute values: a link is active and was made through the `link` purpose. */
     protected $attributes = [
-        'state'             => 'active',
-        'domain_provenance' => false,
+        'state'      => 'active',
+        'provenance' => 'link_purpose',
     ];
 
     /**
@@ -107,13 +125,26 @@ final class Link extends SsoModel
     protected function casts(): array
     {
         return [
-            'subject'                => BinaryString::class,
-            'state'                  => LinkState::class,
-            'domain_provenance'      => 'boolean',
-            'reservation_expires_at' => UtcDateTime::class,
-            'last_used_at'           => UtcDateTime::class,
-            'created_at'             => UtcDateTime::class,
-            'updated_at'             => UtcDateTime::class,
+            'subject'                       => BinaryString::class,
+            'state'                         => LinkState::class,
+            'provenance'                    => LinkOrigin::class,
+            'suspended_at'                  => UtcDateTime::class,
+            'reservation_expires_at'        => UtcDateTime::class,
+            'reservation_domain_generation' => 'integer',
+            'reservation_linking_version'   => 'integer',
+            'last_used_at'                  => UtcDateTime::class,
+            'created_at'                    => UtcDateTime::class,
+            'updated_at'                    => UtcDateTime::class,
         ];
+    }
+
+    /**
+     * Whether the link stands on a verified domain, not since confirmed.
+     *
+     * @return \Illuminate\Database\Eloquent\Casts\Attribute<bool, never>
+     */
+    protected function domainProvenance(): Attribute
+    {
+        return Attribute::get(fn (): bool => $this->provenance === LinkOrigin::VERIFIED_DOMAIN);
     }
 }

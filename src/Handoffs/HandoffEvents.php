@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
+use SineMacula\Laravel\Sso\Events\ReauthenticationCompleted;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -70,13 +71,22 @@ final readonly class HandoffEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function redeemed(StoredCode $code, Connection $connection): void
+    public function redeemed(StoredCode $code, Connection $connection, ?IdentityReference $identity = null): void
     {
-        $this->dispatcher->dispatch(new HandoffRedeemed($this->context($code->purpose, $code, $connection)));
+        $context = $this->context($code->purpose, $code, $connection, $identity);
+
+        $this->dispatcher->dispatch(new HandoffRedeemed($context));
+
+        if ($code->purpose !== Purpose::REAUTHENTICATE) {
+            return;
+        }
+
+        $this->dispatcher->dispatch(new ReauthenticationCompleted($context));
     }
 
     /**
@@ -116,13 +126,14 @@ final readonly class HandoffEvents
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Models\HandoffCode  $code
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $established
      * @return \SineMacula\Laravel\Sso\Events\EventContext
      *
      * @throws \InvalidArgumentException
      */
-    private function context(Purpose $purpose, ?StoredCode $code = null, ?Connection $connection = null): EventContext
+    private function context(Purpose $purpose, ?StoredCode $code = null, ?Connection $connection = null, ?IdentityReference $established = null): EventContext
     {
-        $identity = self::identity($code);
+        $identity = $established ?? self::identity($code);
 
         return $this->contexts->make(
             connectionId: $code?->connection_id,

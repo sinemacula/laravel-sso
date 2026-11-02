@@ -80,10 +80,12 @@ return new class extends Migration {
             $blueprint->string('session_id', 255)->nullable();
 
             // Whole seconds in UTC, from the package's clock: when it expires,
-            // was consumed by a completion, was voided by a change to its
+            // was consumed by a completion, had its response verified and
+            // recorded against replay, was voided by a change to its
             // connection, and completed.
             $blueprint->dateTime('expires_at', 0);
             $blueprint->dateTime('consumed_at', 0)->nullable();
+            $blueprint->dateTime('verified_at', 0)->nullable();
             $blueprint->dateTime('voided_at', 0)->nullable();
             $blueprint->dateTime('completed_at', 0)->nullable();
             $blueprint->dateTime('created_at', 0);

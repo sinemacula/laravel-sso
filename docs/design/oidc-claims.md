@@ -74,7 +74,8 @@ the verified result is built from the claims is `completion.md`.
   apart from the mapped attributes and stores with the handoff (`completion.md`).
 - `EmailPairing::linkingEmail()` gives a `Results\LinkingEmail` only when the pair's `email_verified` is exactly `true`
   and the email has one `@` between a local part and a domain, by `LinkingEmail`'s own rule, with the pair's source and
-  no organisation. Nothing is ever read from the mapped attributes (SSO-8.8). Whether a link is then made is P6's.
+  the organisation claim the connection names, read from that same source. Nothing is ever read from the mapped
+  attributes (SSO-8.8). Whether a link is then made is `linking.md`'s.
 
 ### Provider tokens are never kept
 
@@ -144,5 +145,5 @@ the verified result is built from the claims is `completion.md`.
 - A change to which source an email or an authentication claim comes from.
 - UserInfo becoming optional when on, or a signed UserInfo response being supported.
 - A decision to read anything but a JSON boolean as evidence in `email_verified`.
-- The organisation claim (P6) reaching the linking email.
+- A change to how the organisation claim reaches the linking email.
 - Anything new logged, evented or kept from a provider's answer.

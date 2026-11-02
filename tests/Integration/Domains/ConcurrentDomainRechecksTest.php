@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -48,7 +49,7 @@ use Tests\TestCase;
 #[CoversClass(DomainRechecker::class)]
 final class ConcurrentDomainRechecksTest extends TestCase
 {
-    use UsesConnections, UsesDomains;
+    use UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var int Processes racing in each test. */
     private const int PROCESSES = 8;
@@ -102,6 +103,7 @@ final class ConcurrentDomainRechecksTest extends TestCase
 
         $this->createConnectionTables();
         $this->createDomainsTable();
+        $this->createFlowTables();
 
         $this->connections = [$this->makeConnection(['tenant_id' => 'tenant-0']), $this->makeConnection(['tenant_id' => 'tenant-1'])];
 
@@ -145,6 +147,7 @@ final class ConcurrentDomainRechecksTest extends TestCase
         }
 
         if ($this->connections !== []) {
+            $this->dropFlowTables();
             $this->dropDomainsTable();
             $this->dropConnectionTables();
         }

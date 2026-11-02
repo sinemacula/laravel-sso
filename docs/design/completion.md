@@ -44,8 +44,9 @@ consuming a request is in `authorization-requests.md`; the response values are i
 | `replay_recording`   | `RecordReplay`      | the state unchanged; `replayed`, `assertion_expired`                     |
 | `link_resolution`    | `ResolveLink`       | the identity the linker resolves, if any                                 |
 | `enforcement`        | `CheckEnforcement`  | the policy's version, if any; `enforcement_unsatisfied`                  |
-| `domain_reservation` | `DomainReservation` | the state unchanged, until P6                                            |
-| `provisioning`       | `Provisioning`      | the state unchanged, until P6                                            |
+| `purpose_rules`      | `CheckPurpose`      | the state unchanged; the purpose's refusal (`Completion\Rules`)          |
+| `domain_reservation` | `DomainReservation` | the reservation's candidate, if eligible (`linking.md`)                  |
+| `provisioning`       | `Provisioning`      | the provisioning boundary for a genuinely unlinked `sign_in`; else on    |
 | `unlinked_decision`  | `DecideUnlinked`    | the state unchanged; `unlinked`                                          |
 | `handoff_issuance`   | `IssueHandoff`      | the session's latest end and the handoff; `application_not_allowed`      |
 
@@ -75,7 +76,8 @@ Each stage is in `Completion\Stages`.
   validation passed, before any downstream effect, and a completion that rolls back records nothing. A repeat is
   `replayed`; a record whose expiry is no longer after now is `assertion_expired`, recording nothing. A completion
   that asked for no record goes on (see `saml-responses.md`).
-- `ResolveLink` asks the bound `Contracts\Linker`; only the connection, issuer and subject select an identity (SSO-8.2).
+- `ResolveLink` asks the bound `Contracts\Linker` for a typed `Links\LinkResolution`; only the connection, issuer and
+  subject select an identity (SSO-8.2). Only an `absent` link can reserve, be provisioned or take an unlinked handoff.
 - `CheckEnforcement` judges the policy of the connection's tenant on the request's application. Under the default
   `DatabaseEnforcement` with the feature on, it is the policy the pipeline judged from the rows it locked at the start
   of the locked transaction, carried on the state (`CompletionState::$enforcementPolicy`), so nothing is read again;
@@ -84,14 +86,21 @@ Each stage is in `Completion\Stages`.
   connection, one that requires sign-in only by its connections. A satisfied policy's version, when it has one, goes on
   for the handoff (SSO-4.6, SSO-9.10). No exemption is consulted at completion: an exemption admits a session, and the
   redemption rechecks enforcement against the state then.
-- `DecideUnlinked` refuses a `sign_in` whose result resolved to no identity with `unlinked` unless the application
-  allows unlinked handoffs (SSO-8.6). `link` and `reauthenticate` pass unchanged: their identity rules are P6's.
+- `CheckPurpose` runs the rules of the flow's purpose (`Completion\Rules`): a suspended link ends a `sign_in` with
+  `link_suspended`, a subject another flow's reservation holds with `link_reserved`; a `link` needs an eligible identity
+  and a subject no other identity holds; a `reauthenticate` needs a result resolving to the identity it was started for.
+- `DomainReservation` and `Provisioning` are the frozen machine of `linking.md`. A genuinely unlinked `sign_in` holding no
+  reservation stops T2 at the provisioning boundary, and the final continuation runs only `link_resolution`,
+  `enforcement`, `purpose_rules`, `unlinked_decision` and `handoff_issuance`.
+- `DecideUnlinked` refuses a `sign_in` whose result resolved to no identity, and holds no reservation, with `unlinked`
+  unless the application allows unlinked handoffs (SSO-8.6). `link` and `reauthenticate` pass unchanged.
 - `IssueHandoff` asks `Contracts\ApplicationPolicy` again (SSO-9.2): anything but `allowed` is
   `application_not_allowed`. A result carrying the provider's session deadline asks `Contracts\ProviderSessionDeadline`;
   `limits_session` makes the deadline the session's latest end (SSO-6.10); a result with no deadline never asks. It then
   issues through `Contracts\HandoffIssuer` a `Handoffs\HandoffGrant` of the result, the request's S256 challenge, an
   expiry of the application's `handoff_ttl_seconds` from now, the linked identity, the request's identity and session,
-  the enforcement version and the session's latest end.
+  the enforcement version, the session's latest end, the link and the reservation. A code bound to a reservation expires
+  exactly when it does, and its reference and stored expiry are written to the reservation in the same transaction.
 - A stage run before the steps it needs throws a `LogicException` naming what it needs: the pipeline's mistake.
 
 ### The verified result
@@ -229,7 +238,7 @@ no target is dispatched at once.
 - `src/Completion/CompletionService.php`, `src/Completion/CompletionPipeline.php`, `src/Completion/ResultBuilder.php`,
   `src/Completion/CompletionEvents.php`.
 - `src/Completion/Stages/CorrelateResponse.php`, `ConsumeRequest.php`, `ValidateResponse.php`, `ResolveLink.php`,
-  `CheckEnforcement.php`, `DecideUnlinked.php`, `IssueHandoff.php`, and the shared `DomainReservation.php` and
+  `CheckEnforcement.php`, `CheckPurpose.php`, `DecideUnlinked.php`, `IssueHandoff.php`, `DomainReservation.php` and
   `Provisioning.php`.
 - `src/Completion/CompletionState.php`, `src/Completion/StageOutcome.php`, `src/Completion/CompletionResult.php`,
   `src/Flows/RequestConsumption.php`.
@@ -264,4 +273,4 @@ no target is dispatched at once.
 - A change to which transaction a step runs in, to the locks it takes or their order.
 - A change to what the verified result holds or how `emailDomainVerified` is judged.
 - A change to the events a completion reports or to their context.
-- Re-initiation of unsolicited SAML responses (P4), and domain reservation and provisioning (P6) replacing their seams.
+- A change to re-initiation of unsolicited SAML responses, to the domain reservation or to the provisioning boundary.

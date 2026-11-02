@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Domains;
 
+use SineMacula\Laravel\Sso\Links\ReservationWithdrawal;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 
@@ -16,10 +17,10 @@ use SineMacula\Laravel\Sso\Models\Domain;
  * so whatever depends on the domain's verification is withdrawn atomically with
  * it.
  *
- * Nothing depends on it yet, so it does nothing: linking by a verified domain
- * adds here the voiding of the domain's open link reservations, so a lapse, a
- * suspension or a removal can never leave one to be redeemed. It holds nothing
- * between calls (SSO-11.2). It is not final, so a test can observe the call.
+ * It deletes the domain's open link reservations, so a lapse, a suspension or a
+ * removal can never leave one to be redeemed (`Links\ReservationWithdrawal`).
+ * It holds nothing between calls (SSO-11.2). It is not final, so a test can
+ * observe the call.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,11 +39,9 @@ readonly class DomainWithdrawal
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
      * @return void
-     *
-     * @SuppressWarnings("php:S1172")
      */
     public function linkingWithdrawn(Connection $connection, Domain $domain): void
     {
-        // Nothing depends on a domain's verification yet
+        ReservationWithdrawal::ofDomain($connection, $domain);
     }
 }

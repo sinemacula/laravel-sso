@@ -18,9 +18,10 @@ reasons by flow and the events each operation reports. Each part's own behaviour
   255, SAML only), kept as received; `subject`, byte for byte in a binary column (`Models\Casts\BinaryString`: a
   stream on PostgreSQL, a string elsewhere); `subject_key`, the lower-case hex SHA-256 of the issuer, the format and the
   subject, each length-prefixed, unique with `connection_id`, the only column a lookup compares, so no collation can
-  fold or trim a subject; `identity_type` and `identity_id`; `state` (`Links\Enums\LinkState`: `active`, `reserved`),
-  `reservation_expires_at` and `reservation_reference` for linking by a verified domain (P6); `domain_provenance`
-  (SSO-8.8); `last_used_at`, `created_at`, `updated_at`. The connection, issuer, format, subject and key are fixed once
+  fold or trim a subject; `identity_type` and `identity_id`; `state` (`Links\Enums\LinkState`: `active`, `reserved`,
+  `suspended`) with `suspended_at`; `provenance` (`Links\Enums\LinkOrigin`), from which `domain_provenance` is read; a
+  reservation's binding (`linking.md`); `last_used_at`, `created_at`, `updated_at`. The connection, issuer, format,
+  subject and key are fixed once
   the link exists (`LogicException`). Indexed by (`identity_type`, `identity_id`, `connection_id`) for listing and the
   link limit.
 - `sso.authorization_requests.table` (`sso_authorization_requests`, `Models\AuthorizationRequest`): `reference`, the
@@ -30,12 +31,14 @@ reasons by flow and the events each operation reports. Each part's own behaviour
   unique with the connection; `handoff_challenge`, the client's S256 challenge; `trust_version`, the connection's trust
   version as the start read it, compared at consumption and again under the completion's lock; `identity_type`,
   `identity_id` (`link`, `reauthenticate`) and `session_id` (`reauthenticate`); `expires_at`, and `consumed_at` (a
-  completion consumed it), `voided_at` (a change to its connection voided it) and `completed_at` (its completion
+  completion consumed it), `verified_at` (its response was verified and recorded against replay, at the provisioning
+  boundary), `voided_at` (a change to its connection voided it) and `completed_at` (its completion
   finished, either way).
 - `sso.handoff_codes.table` (`sso_handoff_codes`, `Models\HandoffCode`): `code_digest`, unique, never the code; what the
   code is bound to: `purpose`, `application`, `connection_id`, `request_reference`, `handoff_challenge`, `identity_type`
-  and `identity_id` (the flow's identity), `session_id`, `linked_identity_type` and `linked_identity_id` (what the
-  result's link resolved to at completion); `result`, the serialised verified result, encrypted; `enforcement_version`
+  and `identity_id` (the flow's identity), `session_id`, `linked_identity_type`, `linked_identity_id` and `link_id` (what
+  the result's link resolved to at completion, and through which link), `reservation_id` (the reservation it holds);
+  `result`, the serialised verified result, encrypted; `enforcement_version`
   and `session_not_after` (SSO-9.10); `expires_at`, `redeemed_at`, `voided_at`.
 - Every model is keyed by a lower-case ULID and stamped from the package's clock (`SsoModel::identifiedAndStamped()`),
   hidden columns (digests, ciphertexts) never serialise, and no model carries behaviour: a reader builds an identity
@@ -90,6 +93,12 @@ reasons by flow and the events each operation reports. Each part's own behaviour
 | `EndpointResolver`         | `Endpoints\ConfiguredEndpointResolver`       | configuration only, never the request        |
 | `Linker`                   | `Links\NoLinks`                              | linking nothing                              |
 | `LinkLimit`                | `Links\OneLinkPerConnection`                 | one link per identity per connection         |
+| `LinkEligibility`          | `Linking\RefusingLinkEligibility`            | refusing every identity                      |
+| `LinkConfirmation`         | `Linking\RefusingLinkConfirmation`           | no caller counts as independent              |
+| `LinkEmailMatcher`         | `Linking\NoEmailMatches`                     | finding no identity                          |
+| `PrincipalScope`           | `Linking\RefusingPrincipalScope`             | `unknown` for every identity                 |
+| `TenantMembership`         | `Linking\NoTenantMembership`                 | no membership that counts                    |
+| `EvidencePolicy`           | `Evidence\InsufficientEvidence`              | accepting nothing                            |
 | `ReauthenticationSessions` | `Flows\NoReauthenticationSessions`           | `not_signed_in` for every question           |
 | `ProviderSessionDeadline`  | `Results\ProviderDeadlineLimitsSession`      | the deadline limits the session              |
 | `HandoffIssuer`            | `Handoffs\DatabaseHandoffStore`              | the package's own store                      |
@@ -108,11 +117,12 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
   answers `Protocols\Completion::verified(VerifiedClaims)` or `refused(FailureReason)`.
   `Protocols\Start` keeps what a request stores, typed: `samlRequestId`, `expectedIssuer`, `issuerRequired`.
 - The steps run in `Completion\Enums\CompletionStep`'s order: `correlation`, `consumption`, `validation`,
-  `replay_recording`, `link_resolution`, `enforcement`, `domain_reservation`, `provisioning`, `unlinked_decision`,
-  `handoff_issuance`. Each is a `Contracts\CompletionStage` taking and returning a `Completion\CompletionState` through
+  `replay_recording`, `link_resolution`, `enforcement`, `purpose_rules`, `domain_reservation`, `provisioning`,
+  `unlinked_decision`, `handoff_issuance`. Each is a `Contracts\CompletionStage` taking and returning a
+  `Completion\CompletionState` through
   a `Completion\StageOutcome` (`proceed`, `refuse` with a reason, or, from `correlation` alone, `reinitiate` for an
-  unsolicited SAML response; the state kept either way). The two P6 steps, `domain_reservation` and `provisioning`, are
-  `Completion\Stages\UnbuiltStage`s that pass every state on.
+  unsolicited SAML response, or, from `provisioning` alone, `provision` for the boundary of `linking.md`; the state kept
+  either way).
 - Transactions: a completion, and a start (named or by discovery), run outside any transaction on the storage
   connection; called inside one, each is a `LogicException` at entry, before anything is written, so a caller's rollback
   never undoes a consumption (SSO-5.1) and a caller's transaction never keeps the connection's lock across a call to the
@@ -129,8 +139,9 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
   crosses a trust version: the sign-in whose own token triggered an unknown-`kid` refetch that removed a key may finish
   across exactly that transition, on a `Protocols\TransitionReceipt` judged at those locks (`oidc-driver.md`); it never
   restores a voided request and never adopts a later trust version.
-  Events are dispatched after that transaction commits (or after the consumption's, for a refusal before it), never on a
-  rollback.
+  A genuinely unlinked `sign_in` stops that transaction at the provisioning boundary and finishes in a final
+  continuation, with the unlinked-result event dispatched between them (`linking.md`). Events are dispatched after their
+  transaction commits (or after the consumption's, for a refusal before it), never on a rollback, except that one.
 - `Completion\CompletionResult` is how a completion ended: `completed` (redirect URI, delivery, reference, issued
   handoff), `failed` (reason, redirect URI, delivery, reference), `rejected` (reason, no trusted target: a 400),
   `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL, SSO-5.8). It may hold the code, so
@@ -193,11 +204,16 @@ fallback's navigation (`Protocols\Navigation::toApplication()`), a reference and
   `challenge_invalid`, `freshness_required` (`link`), `session_ineligible` (`reauthenticate`), `discovery_no_match`,
   `rate_limited`.
 - Assertion and callback (`Flow::ASSERTION`, `Flow::CALLBACK`): `connection_unavailable`, `connection_mismatch`,
-  `request_unknown`, `request_expired`, every validation reason of P4 and P5, `enforcement_unsatisfied`, `unlinked`,
+  `request_unknown`, `request_expired`, every validation reason of P4 and P5, `enforcement_unsatisfied`,
+  `link_suspended` and `link_reserved` (a `sign_in`, a `link` for the second), `link_ineligible` and
+  `subject_already_linked` (`link`), `identity_mismatch` and `authentication_expired` (`reauthenticate`), `unlinked`,
   `application_not_allowed`, `rate_limited`.
 - Redemption (`Flow::REDEMPTION`): `handoff_unknown`, `handoff_expired`, `replayed`, `purpose_mismatch`,
   `application_mismatch`, `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`,
-  `enforcement_unsatisfied`, `link_changed`, `application_not_allowed`, `rate_limited`.
+  `enforcement_unsatisfied`, `link_changed`, `link_suspended`, `link_reserved`, `reservation_invalid`,
+  `identity_mismatch`, `freshness_required`, `link_ineligible`, `independent_authentication_required`,
+  `subject_already_linked`, `link_limit_reached`,
+  `session_ineligible`, `authentication_expired`, `application_not_allowed`, `rate_limited`.
 - Administration (a helper's result, no event): `link_not_found`, `link_limit_reached`, `subject_already_linked`,
   `connection_has_links`, `links_unaccounted`, with P1's `freshness_required` and `connection_not_found`.
 
@@ -205,8 +221,11 @@ fallback's navigation (`Protocols\Navigation::toApplication()`), a reference and
 
 `Events\AuthorizationRequestStarted`, `Events\ResultVerified`, `Events\HandoffIssued`, `Events\HandoffRedeemed`,
 `Events\LinkCreated` (with `Links\Enums\LinkOrigin`: `link_purpose`, `provisioning`, `verified_domain`, `migration`) and
-`Events\LinkRemoved`, each carrying only an `EventContext`; every refused start, completion and redemption fires exactly
-one `Events\FlowFailed`. No event holds a code, verifier, state, nonce, subject, attribute or result.
+`Events\LinkRemoved`, `Events\LinkActivated`, `Events\LinkConfirmed`, `Events\LinkSuspended` and
+`Events\ReauthenticationCompleted`, each carrying only an `EventContext` and at most an id; every refused start,
+completion and redemption fires exactly one `Events\FlowFailed`. No event holds a code, verifier, state, nonce, subject,
+attribute or result, but for `Events\ResultUnlinked`, the one event dispatched synchronously and carrying the result
+and its provisioning grant (`linking.md`).
 
 ## Success Path
 

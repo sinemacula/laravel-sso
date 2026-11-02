@@ -7,6 +7,8 @@ namespace Tests\Performance;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -19,13 +21,17 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -85,14 +91,14 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return \SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
                 unset($result);
 
-                return new IdentityReference('App\Models\User', '42');
+                return ExampleLinks::resolution(new IdentityReference('App\Models\User', '42'));
             }
         });
         $this->app?->instance('request', Request::create('/auth/sso/handoffs', 'POST', server: ['REMOTE_ADDR' => '203.0.113.7']));
@@ -178,17 +184,21 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A `link` redeemed is four reads and three writes: it acknowledges no
-     * sign-in.
+     * A `link` redeemed is seven reads and three writes: it acknowledges no
+     * sign-in, reads the link it confirms, and reads the identity's verified
+     * domain links in its judgement and again in its admission.
      *
      * @return void
      *
      * @throws \Random\RandomException
      */
-    public function testALinkRedeemedIsFourReadsAndThreeWrites(): void
+    public function testALinkRedeemedIsSevenReadsAndThreeWrites(): void
     {
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+        $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+
         $code   = $this->issue(Purpose::LINK);
-        $answer = $this->assertQueryBudget(4, 3, fn (): RedemptionResult => $this->redeem($code, Purpose::LINK));
+        $answer = $this->assertQueryBudget(7, 3, fn (): RedemptionResult => $this->redeem($code, Purpose::LINK));
 
         self::assertTrue($answer->isRedeemed());
     }
@@ -304,6 +314,7 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
             challenge: S256Challenge::fromString('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'),
             expiresAt: $expiresAt ?? $this->clock->now()->addMinute(),
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
+            linkId: 'link-42',
             identity: $purpose === Purpose::SIGN_IN ? null : new IdentityReference('App\Models\User', '42'),
         );
     }
@@ -321,7 +332,7 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(HandoffRedemption::class)->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER);
+        return $app->make(HandoffRedemption::class)->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER, new IdentityReference('App\Models\User', '42'));
     }
 
     /**

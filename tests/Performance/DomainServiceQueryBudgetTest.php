@@ -153,7 +153,7 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
     {
         $this->claimDomain();
 
-        $removed = $this->assertQueryBudget(4, 1, fn (): DomainResult => $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com'));
+        $removed = $this->assertQueryBudget(4, 2, fn (): DomainResult => $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com'));
 
         self::assertSame(DomainStatus::REMOVED, $removed->status);
     }

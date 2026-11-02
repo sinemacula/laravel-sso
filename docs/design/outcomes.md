@@ -101,22 +101,41 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   (a refusal with none: `request_unknown`, `connection_unavailable` or `application_not_allowed`, a 400), `rate_limited`
   (`retryAfter`, a 429) or `reinitiated` (SSO-5.8). A failure carries the reason of the step that refused: the
   consumption's above, a driver's (`signature_invalid`, `issuer_mismatch` and the other protocol reasons),
-  `enforcement_unsatisfied`, `unlinked` and `application_not_allowed`. `Responses\CompletionResponses` turns it into the
+  `enforcement_unsatisfied`, the purpose's rules (`link_suspended`, `link_reserved`, `link_ineligible`,
+  `subject_already_linked`, `identity_mismatch` and `authentication_expired`), `unlinked` and
+  `application_not_allowed`. A listener's or a contract's exception is no refusal: it propagates, and the request stays
+  consumed and unfinished. `Responses\CompletionResponses` turns it into the
   response value the application answers with. A completion called inside a transaction open on the storage connection
   is a `LogicException`. See `completion.md` and `completion-responses.md`.
-- **Redeeming a handoff.** `Handoffs\HandoffRedemption::redeem()` answers a `Handoffs\RedemptionResult`, status
-  `Handoffs\Enums\RedemptionStatus`: `redeemed` (the verified result and what the code was bound to), `refused`
-  (`handoff_unknown`, `replayed`, `handoff_expired`, `purpose_mismatch`, `application_mismatch`,
-  `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`, `enforcement_unsatisfied` or `link_changed`)
-  or `rate_limited` (`retryAfter`). `Handoffs\HandoffRecheck::recheck()`, for an adapter's own redemption under the
-  `Handoffs\RecheckLock` its `lock()` took first, answers the outcome enum `Handoffs\Enums\RecheckOutcome` (`passed`
-  or the first refusal), whose `reason()` names the `FailureReason` a refused redemption reports. See `handoffs.md`.
+- **Redeeming a handoff.** `Handoffs\HandoffRedemption::admit()`, the session-admission path, which needs the caller's
+  open transaction on the storage connection, and `redeem()`, its standalone convenience, answer a
+  `Handoffs\RedemptionResult`, status `Handoffs\Enums\RedemptionStatus`: `redeemed` (the verified result and what the
+  code was bound to), `refused` (`handoff_unknown`, `replayed`, `handoff_expired`, `purpose_mismatch`,
+  `application_mismatch`, `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`,
+  `enforcement_unsatisfied`, `link_changed`, or the purpose's refusals below) or `rate_limited` (`retryAfter`).
+  `Handoffs\HandoffRecheck::recheck()`, for an adapter's own redemption under the `Handoffs\RecheckLock` its `lock()`
+  took first, answers the outcome enum `Handoffs\Enums\RecheckOutcome` (`passed` or the first refusal), whose `reason()`
+  names the `FailureReason` a refused redemption reports. Beyond the checks of every redemption, those are
+  `link_suspended`, `link_reserved`, `link_ineligible`, `independent_authentication_required`, `identity_mismatch`,
+  `subject_already_linked`, `link_limit_reached`, `reservation_invalid`, `freshness_required`, `session_ineligible` and
+  `authentication_expired`. `HandoffRecheck::admit()` makes the purpose's writes too and answers a
+  `Handoffs\Redemption\Admission`: `isPassed()`, the outcome, the identity it established, the link it resolved
+  through and any evidence accepted. `discardReservation()` and `acknowledgeSignIn()` answer nothing: each is a write
+  inside the redeemer's transaction, and a call out of turn is a `LogicException`. See `handoffs.md` and `linking.md`.
 - **Links.** `Links\LinkService::list()` answers a list of `Links\LinkSummary`, possibly empty; `remove()` answers a
   `Links\LinkResult`: `removed` (the summary) or `refused` (`link_not_found`, for another identity's link as for an
   unknown one, or `freshness_required`). `Links\LinkStore::create()` answers a `Links\LinkCreation`, status
   `Links\Enums\LinkCreationStatus`: `created` (the summary), `subject_already_linked` or `link_limit_reached`, each
-  refusal naming that reason. `Contracts\Linker::resolve()` answers the linked identity, or `null` when the result is
-  linked to none. See `links.md`.
+  refusal naming that reason. `Contracts\Linker::resolve()` answers a `Links\LinkResolution`, status
+  `Links\Enums\LinkResolutionStatus`: `linked` (the identity and the link's id), `absent`, `reserved` or `suspended`
+  (the holder and the link's id). `null` is no answer here, since a suspension or a reservation must never read as
+  unlinked: only `absent` lets a result reserve, be provisioned or take an unlinked handoff. See `links.md` and
+  `linking.md`.
+- **Provisioning.** `Provisioning\ProvisioningHelper::link()`, called by a listener of `Events\ResultUnlinked` with the
+  grant it was given, answers a `Provisioning\ProvisioningResult`, status `Provisioning\Enums\ProvisioningStatus`:
+  `created` (the summary), `grant_invalid` (`provisioning_grant_invalid`), `request_unavailable`
+  (`connection_unavailable`), `expired` (`request_expired`), `subject_already_linked` or `link_limit_reached`, whose
+  `reason()` names each refusal's reason. See `linking.md`.
 - **Issuing a handoff.** `Contracts\HandoffIssuer::issue()` answers a `Handoffs\IssuedHandoff`: the code, revealed
   once, and its expiry. An issuer that cannot issue throws, and the completion propagates it.
 
@@ -143,8 +162,12 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   `src/Completion/CompletionService.php`, `src/Responses/`.
 - `src/Handoffs/RedemptionResult.php`, `src/Handoffs/Enums/`, `src/Handoffs/HandoffRedemption.php`,
   `src/Handoffs/IssuedHandoff.php`.
+- `src/Handoffs/Redemption/Admission.php`.
 - `src/Links/LinkResult.php`, `src/Links/LinkCreation.php`, `src/Links/Enums/LinkCreationStatus.php`,
-  `src/Links/LinkService.php`, `src/Links/LinkStore.php`.
+  `src/Links/LinkResolution.php`, `src/Links/Enums/LinkResolutionStatus.php`, `src/Links/LinkService.php`,
+  `src/Links/LinkStore.php`.
+- `src/Provisioning/ProvisioningHelper.php`, `src/Provisioning/ProvisioningResult.php`,
+  `src/Provisioning/Enums/ProvisioningStatus.php`.
 
 ## Authoritative Tests
 
@@ -161,7 +184,9 @@ with the flow and the same reason; a link helper's refusal reports nothing.
 - `tests/Unit/Handoffs/RedemptionResultTest.php`, `tests/Unit/Handoffs/RecheckOutcomeTest.php`,
   `tests/Feature/Handoffs/HandoffRedemptionTest.php`.
 - `tests/Unit/Links/LinkResultTest.php`, `tests/Unit/Links/LinkCreationTest.php`,
-  `tests/Feature/Links/LinkServiceTest.php`, `tests/Feature/Links/LinkStoreTest.php`.
+  `tests/Unit/Links/LinkResolutionTest.php`, `tests/Feature/Links/LinkServiceTest.php`,
+  `tests/Feature/Links/LinkStoreTest.php`.
+- `tests/Feature/Linking/ProvisioningTest.php`, `tests/Feature/Linking/LinkConfirmationTest.php`.
 
 ## Change Triggers
 

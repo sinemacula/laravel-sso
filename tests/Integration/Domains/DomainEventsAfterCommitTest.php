@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -41,7 +42,7 @@ use Tests\TestCase;
 #[CoversClass(DomainEvents::class)]
 final class DomainEventsAfterCommitTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains;
+    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var string The shipped migration of the rate limit counters. */
     private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
@@ -68,6 +69,7 @@ final class DomainEventsAfterCommitTest extends TestCase
 
         $this->createConnectionTables();
         $this->createDomainsTable();
+        $this->createFlowTables();
         self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
 
         $this->startRecordingEvents();
@@ -82,6 +84,7 @@ final class DomainEventsAfterCommitTest extends TestCase
     protected function tearDown(): void
     {
         self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
+        $this->dropFlowTables();
         $this->dropDomainsTable();
         $this->dropConnectionTables();
 

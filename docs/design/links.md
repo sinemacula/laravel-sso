@@ -6,7 +6,7 @@ This note records how a verified result is linked to an identity (SSO-8.2 to SSO
 what a link is keyed by, how the package's link store resolves a result and creates a link under its uniqueness and
 the link limit, and how the link helper lists an identity's links and removes one, revoking the identity's sessions
 through the connection in the same transaction. The tables, models and lock order every flow shares are in `flows.md`;
-linking by a verified domain, which reserves and activates links (SSO-8.8), is P6's.
+the state machine that reserves and activates links by a verified domain (SSO-8.8) is in `linking.md`.
 
 ## Invariants
 
@@ -24,19 +24,39 @@ linking by a verified domain, which reserves and activates links (SSO-8.8), is P
 - `Contracts\Linker` defaults to `Links\NoLinks`, which links nothing. `Links\LinkStore` implements it over the links
   table; it is not the default: the application binds it (scoped), or `laravel-iam` does, under which it also answers
   `laravel-authentication`'s link contract (SSO-8.3, AUTH-3.9).
-- `LinkStore::resolve($result)` reads the row with `connection_id` the result's connection, `subject_key` its subject's
-  key and `state` `active`, by a locking read (`lockForUpdate()`) on the write connection (SSO-11.3), and compares the
-  connection, issuer, format and subject again in PHP, byte for byte: a row whose key alone matches is not the
+- `LinkStore::resolve($result)` reads the row with `connection_id` the result's connection and `subject_key` its
+  subject's key, of any state, by a locking read (`lockForUpdate()`) on the write connection (SSO-11.3), and compares
+  the connection, issuer, format and subject again in PHP, byte for byte: a row whose key alone matches is not the
   subject's. A result reaches only the links of the connection it completed through, so another connection, of any
-  tenant, with the same issuer and subject resolves nothing (SSO-8.2). A reserved link resolves nothing. Nothing else
-  in the result (a name, an email, any mapped attribute) is read.
+  tenant, with the same issuer and subject resolves nothing (SSO-8.2). It answers a typed `Links\LinkResolution`:
+  `absent`, `linked`, `reserved` or `suspended`. A reserved link and a suspended one resolve nothing, and neither is an
+  unlinked subject. Nothing else in the result (a name, an email, any mapped attribute) is read.
 - A link it resolves has `last_used_at` stamped with the clock's now by one statement,
   `UPDATE ... WHERE id = ? AND (last_used_at IS NULL OR last_used_at <= now - 60 s)`: at most one change a minute per
   link (`LinkStore::LAST_USED_RESOLUTION_SECONDS`), without touching `updated_at`. The statement is sent on every
   resolution that finds a link, and changes nothing within the minute.
-- The SSO-8.8 provenance rule has its seam in `LinkStore::isSuspended()`: a link with `domain_provenance` whose identity
-  holds a principal outside the connection's tenant will resolve nothing. Until P6 builds that rule, no link is
-  suspended, and a `domain_provenance` link resolves like any other.
+- The SSO-8.8 provenance rule: an active link with verified domain provenance whose identity is no longer known by
+  `Contracts\PrincipalScope` to hold only principals of the tenant is suspended for good, resolving nothing until a
+  confirming `link` by an independently authenticated caller (`linking.md`). `LinkStore::suspend()` stores it, latched,
+  raises the connection's `links_version` and reports `LinkSuspended`; a resolution that finds it answers `suspended`,
+  and `Linking\ScopeWidening` reports it
+  from the application's principal mutation, which is the only way a principal added and removed between two checks is
+  seen.
+- `Linking\ScopeWidening::widened($identity, $tenantId)` runs first in the application's principal-change transaction,
+  on the storage connection (a `LogicException` outside one). `$tenantId` is the new principal's tenant, compared
+  exactly, or `null` for a platform principal. A plain read on the write connection finds the identity's rows with
+  verified domain provenance and the tenants of their connections; a connection of the new principal's tenant is left
+  alone. For the others, in ascending id order: the connection's row is locked, then the identity's rows in it; a
+  reservation is deleted (`Links\ReservationWithdrawal::ofRows()`, raising `links_version`); an active link is
+  suspended; and for each active or already suspended link `Contracts\SessionRevocation::revoke()` is called with
+  `RevocationScope::identityLink($tenantId, $connectionId, $identity, $linkId)`, reason `scope_widened`, inside the
+  transaction. A revocation that throws rolls the change back.
+- `ScopeWidening::assertSettled($identity, $tenantId)` runs after the application took its principal guard and wrote the
+  principal. A shared lock reads the identity's active and reserved rows with that provenance again, current, in other
+  tenants' connections; any is a `RuntimeException`, and the application retries its whole transaction. The package's
+  locks never come after an application's guard, so this read cannot lock a connection; a redemption holding such a row
+  while waiting for the guard is a deadlock the database aborts, which is safe in the same way. Without the application
+  taking part, nothing can suspend a link between two checks (`docs/guides/linking-by-domain.md`).
 - `LinkStore::create($connection, $subject, $identity, $origin, $actor, $application, $purpose, $reference)` runs in
   one transaction on the storage connection (a savepoint inside the caller's), in this order:
   1. the connection's row is read again locked through `Connections\ConnectionFinder::findForUpdate()`, which
@@ -49,8 +69,9 @@ linking by a verified domain, which reserves and activates links (SSO-8.8), is P
   3. `Contracts\LinkLimit::maxLinks($identity, $connection)`, resolved from the container at that moment, is asked; an
      answer below one is a `LogicException` naming the bound class;
   4. a count at or above the limit is `link_limit_reached`;
-  5. the link is inserted through the model, `active`, with `domain_provenance` set only for
-     `LinkOrigin::VERIFIED_DOMAIN`, in a savepoint of its own; the unique index on (`connection_id`, `subject_key`)
+  5. the link is inserted through the model, `active`, with its `provenance` the origin given, which is
+     `verified_domain` only for `LinkOrigin::VERIFIED_DOMAIN`, in a savepoint of its own; the unique index on
+     (`connection_id`, `subject_key`)
      refusing it (`UniqueConstraintViolationException`) is `subject_already_linked`, for this identity or another, and
      the savepoint keeps the caller's transaction usable (PostgreSQL aborts a transaction on a failed statement);
   6. the connection's `links_version` is raised by one, so the insert also writes the connection's row: a PostgreSQL
@@ -59,6 +80,10 @@ linking by a verified domain, which reserves and activates links (SSO-8.8), is P
      read nor its delete would see;
   7. `LinkCreated` with the origin is reported after commit, with the connection, tenant, protocol, identity, acting
      identity and, for a flow, its application, purpose and public reference.
+
+  An expired reservation of the subject is deleted first, since it holds nothing, under a new reservation identity if it
+  is ever reserved again; a live reservation holds the subject, so a creation is `subject_already_linked`, and a `link`
+  flow is refused `link_reserved` before it gets here.
 
   Uniqueness is not configurable; the limit is (SSO-8.4). Any other error propagates (SSO-11.4).
 - `Links\LinkCreation` (status `Links\Enums\LinkCreationStatus`) answers `created` with a `LinkSummary`,
@@ -88,6 +113,12 @@ linking by a verified domain, which reserves and activates links (SSO-8.8), is P
 - `Links\LinkSummary` holds the id, connection id, tenant id, protocol, issuer, `NameID` format, state, verified domain
   provenance, created and last used times, with a snake_case `jsonSerialize()` (times in UTC to the second). It never
   holds the subject.
+- `Links\LinkReservations` is the one place a reserved row is written, and `Links\ReservationWithdrawal` the one place
+  reservations are withdrawn: by connection (a disable, a deletion, a trust change, a linking settings change), by
+  domain (a suspension, a removal, a lapse) or by the rows of an identity whose scope widened. Each raises
+  `links_version` when it deleted anything, as creation, replacement and activation do, so a PostgreSQL
+  `REPEATABLE READ` transaction whose snapshot predates the change fails to serialise when it locks the connection's
+  row, rather than miss it.
 - `Links\LinkEvents` (`@internal`) builds each context through `Events\EventContexts::make()` and dispatches through
   `Events\AfterCommitDispatcher`, so an event reaches listeners once the storage connection's transaction commits and
   never when it rolls back (SSO-10.5). No event carries the subject; the public reference is the only flow identifier
@@ -112,8 +143,12 @@ linking by a verified domain, which reserves and activates links (SSO-8.8), is P
 - Two creations of one subject for different identities race: the connection's lock serialises them and the second is
   `subject_already_linked`. Two subjects for one identity at a limit of one race: the second's locking count sees the
   first and it is `link_limit_reached`. Both hold inside a caller's own transaction.
-- An expired reservation still holds its row under the unique index until P6 voids or activates it, so a creation of
-  the same subject is `subject_already_linked` meanwhile; it no longer counts toward the limit.
+- An expired reservation counts for nothing: a creation or a new reservation of the same subject deletes it first, and
+  a handoff bound to it activates nothing, since the replacement has another reservation identity.
+- A principal added and removed between checks suspends every domain link of the identity for good, and revokes the
+  sessions established through them, so long as the application's principal mutation calls `ScopeWidening`.
+- A link or reservation made between `widened()`'s read and the application's guard is a `RuntimeException` from
+  `assertSettled()`, which rolls the principal change back to be retried.
 - A bound limit that answers zero or less is a misconfiguration, never a silent refusal.
 - A link deleted or reassigned between the removal's first read and its lock is `link_not_found`, with nothing revoked.
 - A revocation that throws, and any database error, propagate (SSO-11.4).
@@ -121,27 +156,32 @@ linking by a verified domain, which reserves and activates links (SSO-8.8), is P
 ## Implementation Anchors
 
 - `src/Links/LinkSubject.php`, `LinkStore.php`, `LinkCreation.php`, `Enums/LinkCreationStatus.php`,
-  `LinkService.php`, `LinkResult.php`, `LinkSummary.php`, `LinkEvents.php`; `NoLinks.php`, `OneLinkPerConnection.php`,
-  `Enums/LinkState.php`, `Enums/LinkOrigin.php`.
-- `src/Contracts/Linker.php`, `LinkLimit.php`, `SessionRevocation.php`; `src/Revocation/RevocationScope.php`.
+  `LinkService.php`, `LinkResult.php`, `LinkSummary.php`, `LinkEvents.php`, `LinkResolution.php`,
+  `LinkReservations.php`, `ReservationTerms.php`, `ReservationWithdrawal.php`, `ReservedCandidate.php`; `NoLinks.php`,
+  `OneLinkPerConnection.php`, `Enums/LinkState.php`, `Enums/LinkOrigin.php`, `Enums/LinkResolutionStatus.php`.
+- `src/Linking/ScopeWidening.php`, `src/Connections/LinkingPolicyService.php`.
+- `src/Contracts/Linker.php`, `LinkLimit.php`, `PrincipalScope.php`, `SessionRevocation.php`;
+  `src/Revocation/RevocationScope.php`.
 - `src/Models/Link.php`, `src/Models/Casts/BinaryString.php`,
   `database/migrations/2026_11_03_000000_create_sso_links_table.php`.
-- `src/Events/LinkCreated.php`, `LinkRemoved.php`.
+- `src/Events/LinkCreated.php`, `LinkRemoved.php`, `LinkActivated.php`, `LinkSuspended.php`, `LinkConfirmed.php`.
 
 ## Authoritative Tests
 
 - `tests/Unit/Links/LinkSubjectTest.php` (independent key vectors and bounds), `LinkCreationTest.php`,
-  `LinkResultTest.php`, `LinkSummaryTest.php`.
+  `LinkResultTest.php`, `LinkSummaryTest.php`, `LinkResolutionTest.php`, `ReservationTermsTest.php`.
+- `tests/Feature/Linking/ScopeWideningTest.php`, `ReservationWithdrawalTest.php`, `DomainLinkEligibilityTest.php`,
+  `DomainLinkingEventSequenceTest.php`.
 - `tests/Feature/Links/LinkStoreTest.php`, `LinkServiceTest.php` (a removal's re-read is a locking read, inside its
   transaction), `LinkEventSequenceTest.php`.
 - `tests/Integration/Links/ConcurrentLinkCreationTest.php` and `ConcurrentLinkRemovalTest.php` (MySQL and PostgreSQL,
   plainly and inside a caller's transaction), `LinkRemovalTransactionTest.php`, `LinkSubjectStorageTest.php` (every
-  engine).
-- `tests/Performance/LinkStoreQueryBudgetTest.php`.
+  engine), `tests/Integration/Linking/ConcurrentReservationTest.php`, `ConcurrentActivationTest.php`.
+- `tests/Performance/LinkStoreQueryBudgetTest.php`, `LinkingQueryBudgetTest.php`.
 
 ## Change Triggers
 
 - A change to the key's layout (a new version tag), to what a lookup compares, or to the bounds of a subject's parts.
 - A change to what counts toward the limit, to the order of a creation or a removal, or to the lock order.
-- The SSO-8.8 provenance rule filling the suspension seam; reservation, activation and voiding of links (P6).
+- A change to the SSO-8.8 provenance rule, or to the reservation, activation or voiding of links (`linking.md`).
 - A new caller of `create()` or of `SessionRevocation`, a new outcome of `LinkCreation` or `LinkResult`.

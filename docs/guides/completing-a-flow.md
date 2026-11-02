@@ -3,8 +3,10 @@
 Once the browser has signed in at the identity provider, the provider sends it back to your API: a SAML response is
 posted to the connection's assertion consumer service, an OIDC authorisation response arrives at the connection's
 callback. The completion helper validates the response, consumes the authorisation request, builds the verified
-result, resolves its link, checks enforcement and issues a single-use handoff code for your client. It answers a
-`CompletionResult` value; your application owns the routes and turns the result into a response.
+result, resolves its link, checks enforcement and issues a single-use handoff code for your client. A result with no
+link may be [reserved by a verified domain](linking-by-domain.md) or offered for [provisioning](provisioning.md), and a
+[`reauthenticate`](reauthenticating.md) has rules of its own. It answers a `CompletionResult` value; your application
+owns the routes and turns the result into a response.
 
 ```php
 use SineMacula\Laravel\Sso\Completion\CompletionService;
@@ -98,11 +100,18 @@ Each call runs in a fixed order, and stops at the first step that refuses:
 7. In one transaction, under the tenant's enforcement lock (with the `enforcement` feature on and the default
    enforcement contract), the connection's lock (taken with the rule's connections, in id order) and the request's:
    the connection must still be usable and the request not voided by a change to its connection; the result's link is
-   resolved through your `Linker`; the connection must satisfy its tenant's enforcement as the locked rule has it; an
-   unlinked `sign_in` ends unless the application allows unlinked handoffs; the application policy is asked again;
-   and the handoff code is issued. A change to enforcement made at the same moment waits for this transaction, or is
+   resolved through your `Linker`; the connection must satisfy its tenant's enforcement as the locked rule has it; the
+   flow's purpose must allow what the link came to; an eligible unlinked `sign_in` reserves a link through a
+   [verified domain](domains.md). A change to enforcement made at the same moment waits for this transaction, or is
    seen by it.
-8. The request is marked completed, and the events are reported once the transaction commits.
+8. A result linked or holding a reservation, and every `link` and `reauthenticate`, finishes in that transaction: the
+   application policy is asked again and the handoff code is issued.
+9. A `sign_in` still unlinked crosses the [provisioning boundary](provisioning.md): that transaction commits, no code
+   issued; the unlinked-result event is dispatched synchronously, with no package transaction open; and a final
+   transaction takes the same locks again and checks everything once more. It resolves the link anew, ends with
+   `unlinked` unless the application allows unlinked handoffs, asks the application policy again and issues the code. It
+   never records the response against replay again, selects a domain or offers the result again.
+10. The request is marked completed, and the events are reported once the transaction commits.
 
 ## The results
 
@@ -117,14 +126,14 @@ A `failed` result carries one of these codes (the protocol drivers add the valid
 [Signing In with SAML](saml-sign-in.md), and of OIDC, in [The OIDC Callback](oidc-callback.md) and
 [OIDC ID Tokens](oidc-id-tokens.md)):
 
-| Code                      | Why                                                                                        |
-|---------------------------|--------------------------------------------------------------------------------------------|
-| `connection_unavailable`  | the connection was disabled, or its trust changed, since the flow started                  |
-| `connection_mismatch`     | the response arrived at another connection's endpoint than its request was started through |
-| `request_expired`         | the request's lifetime (`sso.authorization_requests.ttl_seconds`) ran out                  |
-| `enforcement_unsatisfied` | the tenant requires sign-in through other connections                                      |
-| `unlinked`                | a `sign_in` resolved to no identity, and the application does not allow unlinked handoffs  |
-| `application_not_allowed` | the application no longer allows sign-in through an external provider                      |
+| Code                      | Why                                                                                                          |
+|---------------------------|--------------------------------------------------------------------------------------------------------------|
+| `connection_unavailable`  | the connection was disabled, or its trust changed, since the flow started                                    |
+| `connection_mismatch`     | the response arrived at another connection's endpoint than its request was started through                   |
+| `request_expired`         | the request's lifetime (`sso.authorization_requests.ttl_seconds`) ran out                                    |
+| `enforcement_unsatisfied` | the tenant requires sign-in through other connections                                                        |
+| `unlinked`                | a `sign_in` still resolved to no identity once offered, and the application does not allow unlinked handoffs |
+| `application_not_allowed` | the application no longer allows sign-in through an external provider                                        |
 
 A `rejected` result carries `request_unknown` (a wrong method, a response that names no request, a replay),
 `connection_unavailable` (an unknown connection, or a protocol that does not complete at this endpoint) or
@@ -136,8 +145,22 @@ redemption checks again.
 
 ## Unlinked sign-ins
 
-A `sign_in` whose verified issuer and subject are linked to no identity ends with `unlinked` by default. An application
-that resolves identities itself when it redeems the code can allow unlinked handoffs:
+A `sign_in` whose verified issuer and subject are linked to no identity, and which holds no reservation, is first
+offered to the listeners of `Events\ResultUnlinked`, synchronously and before any handoff, with a single-use grant. A
+listener can create a new identity, its membership and the link just in time: [Provisioning](provisioning.md) shows how.
+
+- A queued listener is too late, and fails loudly: the event refuses to be serialised, so queuing it is a server error.
+- Resolving an existing identity from the email or any mapped attribute is forbidden. Attaching to an existing identity
+  goes through a `link` flow or a [verified domain](domains.md), and only a link (issuer, subject, connection)
+  identifies a person.
+- A listener wraps the identity, its membership and the link in one transaction on the package's storage connection, and
+  rolls it back when the helper refuses. That the identity is new is its obligation: the package creates no identity and
+  cannot tell.
+- A provisioned identity can survive a later failure of the completion, since provisioning runs outside the package's
+  locks.
+
+The link is then resolved again. A result still unlinked ends with `unlinked` by default. An application that resolves
+identities itself when it redeems the code can allow unlinked handoffs:
 
 ```php
 'applications' => [
@@ -150,9 +173,11 @@ that resolves identities itself when it redeems the code can allow unlinked hand
 ```
 
 Its codes then carry no linked identity, and the redemption must decide who signed in. Never resolve an identity from
-the email or any other mapped attribute: only a link (issuer, subject, connection) identifies a person.
+the email or any other mapped attribute there either. An unlinked handoff is only for a link that is genuinely absent:
+a suspended link ends with `link_suspended`, and another flow's live reservation with `link_reserved`, whatever this
+setting says. Under `laravel-iam` the sign-in adapter always requires a linked identity.
 
-`link` and `reauthenticate` flows are never refused as unlinked here.
+`link` and `reauthenticate` flows are never refused as unlinked here, and never offered for provisioning.
 
 ## The contracts it asks
 
@@ -179,13 +204,16 @@ Bind your own in a service provider's `register()`; each default fails closed.
 ## Events
 
 A completed flow reports `ResultVerified` then `HandoffIssued`. A refusal once the response was verified reports
-`ResultVerified` then one `FlowFailed`; any earlier refusal, a full limit included, one `FlowFailed`, with the flow
+`ResultVerified` then one `FlowFailed`. A `sign_in` still unlinked reports `ResultVerified`, then `ResultUnlinked`, then
+what its listener made and how it ended ([Provisioning](provisioning.md)). Any earlier refusal, a full limit included,
+reports one `FlowFailed`, with the flow
 (`assertion` or `callback`) and the reason. Their context carries the connection, its tenant and protocol, the
 application, the purpose and the request's public reference (`request_reference`, the only flow identifier events and
 logs carry); the linked identity for a `sign_in`, the identity a `link` or `reauthenticate` was started for, and the
 session of a `reauthenticate`. Never a subject, an attribute or a code.
 
-Events are dispatched after the completion's transaction commits.
+Events are dispatched after the transaction that caused them commits, but for `ResultUnlinked`, which is synchronous by
+design and is the one event that carries the result.
 
 ## Transactions
 
@@ -195,8 +223,12 @@ before it writes anything. Were it part of your transaction, your rollback would
 the same response be replayed, and your transaction would hold the connection's lock while the driver validates the
 response.
 
+The completion's transactions are its own. Only a provisioning listener opens one during a completion, on the same
+connection, and has committed or rolled it back before it returns.
+
 ## Errors
 
-A database error, a misconfigured contract and an issuer that throws propagate as server errors: they are never
-answered as a failure redirect or a `400`, and they reach your exception handler as any other error does. A completion
-rolled back by one leaves its request consumed, so the browser has to start again.
+A database error, a misconfigured contract and an issuer that throws propagate as server errors: they are never answered
+as a failure redirect or a `400`, and they reach your exception handler as any other error does. A completion rolled
+back by one leaves its request consumed, so the browser has to start again. A provisioning listener's exception is the
+same: nothing resumes the completion, and a replay of the response is `request_unknown`.

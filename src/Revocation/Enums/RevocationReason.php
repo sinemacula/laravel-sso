@@ -30,4 +30,9 @@ enum RevocationReason: string
 
     // The identity's link through the connection was removed
     case LINK_REMOVED = 'link_removed';
+
+    // The identity came to hold a principal outside the connection's tenant, so
+    // the link by a verified domain the sessions were established through was
+    // suspended (SSO-8.8)
+    case SCOPE_WIDENED = 'scope_widened';
 }

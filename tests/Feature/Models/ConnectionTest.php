@@ -159,6 +159,42 @@ final class ConnectionTest extends TestCase
     }
 
     /**
+     * The connection answers its linking settings from its columns, under
+     * exactly these names; the moment of its acknowledgement shows only as
+     * whether there is one.
+     *
+     * @return void
+     */
+    public function testAnswersItsLinkingSettingsFromItsColumns(): void
+    {
+        $connection = $this->makeConnection([
+            'linking_enabled'               => true,
+            'linking_issuer_class'          => 'shared',
+            'linking_organization_claim'    => 'org',
+            'linking_organization_value'    => 'acme',
+            'linking_saml_attribute'        => 'mail',
+            'linking_saml_attribute_format' => 'urn:example:format',
+            'linking_acknowledged_at'       => $this->clock->now(),
+            'linking_version'               => 3,
+        ]);
+
+        self::assertSame([
+            'enabled'               => true,
+            'issuer_class'          => 'shared',
+            'organization_claim'    => 'org',
+            'organization_value'    => 'acme',
+            'saml_attribute'        => 'mail',
+            'saml_attribute_format' => 'urn:example:format',
+            'acknowledged'          => true,
+            'version'               => 3,
+        ], $connection->getLinkingSettings());
+
+        $connection->forceFill(['linking_acknowledged_at' => null]);
+
+        self::assertFalse($connection->getLinkingSettings()['acknowledged']);
+    }
+
+    /**
      * The encrypted secrets are hidden from serialisation.
      *
      * @return void
@@ -169,6 +205,39 @@ final class ConnectionTest extends TestCase
 
         self::assertArrayNotHasKey('secrets', $connection->toArray());
         self::assertStringNotContainsString('ciphertext', (string) json_encode($connection));
+    }
+
+    /**
+     * A column holding what is no policy reads as none: never a type error.
+     *
+     * @return void
+     */
+    public function testAnEvidencePolicyThatIsNoPolicyReadsAsNone(): void
+    {
+        $connection = new Connection;
+
+        foreach ([[null, []], ['5', []], ['"amr"', []], ['true', []], ['not json', []], ['{"amr":["pwd"]}', ['amr' => ['pwd']]]] as [$column, $expected]) {
+            $connection->setRawAttributes(['evidence_policy' => $column]);
+
+            self::assertSame($expected, $connection->getEvidencePolicy());
+        }
+    }
+
+    /**
+     * The organisation a linking result must assert is hidden from
+     * serialisation too, and stays readable to the linking settings.
+     *
+     * @return void
+     */
+    public function testHidesTheLinkingOrganizationValue(): void
+    {
+        $connection = $this->makeConnection();
+
+        $connection->forceFill(['linking_organization_value' => 'acme.example']);
+
+        self::assertArrayNotHasKey('linking_organization_value', $connection->toArray());
+        self::assertStringNotContainsString('acme.example', (string) json_encode($connection));
+        self::assertSame('acme.example', $connection->getLinkingSettings()['organization_value']);
     }
 
     /**

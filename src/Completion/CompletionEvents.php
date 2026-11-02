@@ -23,6 +23,9 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * - completed: `ResultVerified`, then `HandoffIssued`;
  * - refused after its response was verified: `ResultVerified`, then exactly one
  *   `FlowFailed` with the flow and the reason;
+ * - stopped at the provisioning boundary: `ResultVerified` alone, once its
+ *   transaction commits, and the final continuation reports only how it ended,
+ *   so a result is reported verified once;
  * - refused before (a full limit, a method or a connection the endpoint does
  *   not take, a response no request matches, a refused consumption or
  *   validation): exactly one `FlowFailed`;
@@ -77,20 +80,34 @@ final readonly class CompletionEvents
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
      * @param  \SineMacula\Laravel\Sso\Completion\StageOutcome  $outcome
+     * @param  bool  $verifiedReported
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function report(Flow $flow, StageOutcome $outcome): void
+    public function report(Flow $flow, StageOutcome $outcome, bool $verifiedReported = false): void
     {
         $context = $this->context($outcome->state);
         $reason  = $outcome->reason;
 
-        if ($outcome->state->result !== null) {
+        if ($outcome->state->result !== null && !$verifiedReported) {
             $this->dispatcher->dispatch(new ResultVerified($context));
         }
 
         $this->dispatcher->dispatch($reason === null ? new HandoffIssued($context) : new FlowFailed($context, $flow, $reason));
+    }
+
+    /**
+     * Report a result verified that stopped at the provisioning boundary.
+     *
+     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
+     * @return void
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function verified(CompletionState $state): void
+    {
+        $this->dispatcher->dispatch(new ResultVerified($this->context($state)));
     }
 
     /**
@@ -119,7 +136,7 @@ final readonly class CompletionEvents
      *
      * @throws \InvalidArgumentException
      */
-    private function context(CompletionState $state): EventContext
+    public function context(CompletionState $state): EventContext
     {
         $connection = $state->connection;
         $consumed   = $state->consumed;

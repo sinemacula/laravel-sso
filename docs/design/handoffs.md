@@ -65,7 +65,7 @@ order, and the first that refuses ends the redemption:
     time), is `verifier_mismatch`.
 13. The result is decrypted, restored (a result naming another tenant than its connection's is not one the package
     wrote) and `HandoffRecheck::recheck()`ed against the linked identity under step 4's lock:
-    `connection_unavailable`, `enforcement_unsatisfied` or `link_changed`.
+    `connection_unavailable`, `enforcement_unsatisfied` or a purpose's own refusal (`linking.md`).
 14. A `sign_in` code with a linked identity calls `HandoffRecheck::acknowledgeSignIn()` under the same lock.
 15. `HandoffRedeemed` is reported, after commit.
 16. It answers `redeemed`.
@@ -132,10 +132,9 @@ codes, AUTH-3.10):
   2. `enforcement_unsatisfied`: the enforcement of the connection's tenant on the result's application is not satisfied
      by the connection: judged from the locked rows under `DatabaseEnforcement`, asked of the bound contract now
      otherwise;
-  3. `link_changed`: the bound `Contracts\Linker` resolves the result to another identity than the one given: a link
-     removed, reassigned (another type or id, byte for byte), or added where there was none;
-  4. otherwise `passed`.
-- `RecheckOutcome` is `passed`, `connection_unavailable`, `enforcement_unsatisfied` or `link_changed`, and `reason()`
+  3. the purpose's own rules (`Contracts\PurposeBranch`, `linking.md`), which compare the link as it is now with the one
+     observed at completion by its id, so a link removed and made again is told apart.
+- `RecheckOutcome` is `passed`, or a refusal of the same value as its `FailureReason`, and `reason()`
   answers the `FailureReason` a redemption refused by it reports, `null` for `passed`.
 - `acknowledgeSignIn(VerifiedResult $result, RecheckLock $lock)` sets the connection's `has_completed_sign_in`
   (SSO-4.3), through the model, on the row the lock holds, and writes nothing when it is already set. A result of

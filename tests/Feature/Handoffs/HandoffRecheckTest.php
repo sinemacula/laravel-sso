@@ -18,9 +18,11 @@ use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
+use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -31,6 +33,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
 use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
@@ -116,14 +119,14 @@ final class HandoffRecheckTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return ?\SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): ?IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
                 unset($result);
 
-                return ($this->resolve)();
+                return ExampleLinks::resolution(($this->resolve)());
             }
         });
 
@@ -291,7 +294,11 @@ final class HandoffRecheckTest extends TestCase
 
         $calls = [
             fn (): RecheckLock => $recheck->lock('tenant-1', $this->connection->id, 'web'),
-            fn (): RecheckOutcome => $recheck->recheck($this->verifiedResult(), null, $this->withinTransaction(fn (): RecheckLock => $this->lockFor($this->verifiedResult()))),
+            fn (): RecheckOutcome => $recheck->recheck(
+                $this->verifiedResult(),
+                self::bound(null),
+                $this->withinTransaction(fn (): RecheckLock => $this->lockFor($this->verifiedResult())),
+            ),
         ];
 
         foreach ($calls as $call) {
@@ -344,7 +351,7 @@ final class HandoffRecheckTest extends TestCase
                     $lock = $recheck->lock($tenantId, $connectionId ?? $this->connection->id, $application);
 
                     $call === 'recheck'
-                        ? $recheck->recheck($this->verifiedResult(), null, $lock)
+                        ? $recheck->recheck($this->verifiedResult(), self::bound(null), $lock)
                         : $recheck->acknowledgeSignIn($this->verifiedResult(), $lock);
                 });
 
@@ -641,6 +648,18 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
+     * A reservation is only discarded inside the redeemer's transaction.
+     *
+     * @return void
+     */
+    public function testDiscardingAReservationNeedsATransaction(): void
+    {
+        $this->expectExceptionObject(new \LogicException(self::NO_TRANSACTION));
+
+        $this->rechecker()->discardReservation(new HandoffBinding(null, null, null, null, 'reservation-1', 'handoff-1'), $this->connection->id);
+    }
+
+    /**
      * Take the lock for the result and recheck it under the lock, inside a
      * transaction on the storage connection.
      *
@@ -652,7 +671,7 @@ final class HandoffRecheckTest extends TestCase
      */
     private function recheck(VerifiedResult $result, ?IdentityReference $linkedIdentity): RecheckOutcome
     {
-        return $this->withinTransaction(fn (): RecheckOutcome => $this->rechecker()->recheck($result, $linkedIdentity, $this->lockFor($result)));
+        return $this->withinTransaction(fn (): RecheckOutcome => $this->rechecker()->recheck($result, self::bound($linkedIdentity), $this->lockFor($result)));
     }
 
     /**
@@ -793,5 +812,17 @@ final class HandoffRecheckTest extends TestCase
     private function reloaded(): Connection
     {
         return Connection::query()->whereKey($this->connection->id)->sole();
+    }
+
+    /**
+     * What a code that resolved to the identity, through its link, was bound
+     * to.
+     *
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @return \SineMacula\Laravel\Sso\Handoffs\HandoffBinding
+     */
+    private static function bound(?IdentityReference $identity): HandoffBinding
+    {
+        return new HandoffBinding($identity, $identity === null ? null : ExampleLinks::linkId($identity));
     }
 }

@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
@@ -24,6 +25,7 @@ use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
@@ -38,6 +40,8 @@ use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
+use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\Fixtures\Secrets\CountingSecretEncrypter;
 use Tests\TestCase;
@@ -687,6 +691,7 @@ final class CompletionServiceTest extends TestCase
     {
         $this->request(['purpose' => 'link', 'identity_type' => 'App\Models\User', 'identity_id' => '7']);
 
+        $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
         $this->linked = null;
 
         $result = $this->completeAtCallback();
@@ -1079,12 +1084,12 @@ final class CompletionServiceTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return ?\SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): ?IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
-                return ($this->resolve)($result);
+                return ExampleLinks::resolution(($this->resolve)($result));
             }
         };
     }

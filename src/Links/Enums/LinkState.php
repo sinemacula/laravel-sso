@@ -6,10 +6,14 @@ namespace SineMacula\Laravel\Sso\Links\Enums;
 
 /**
  * Where a stored link stands (SSO-8.4, SSO-8.8): active, resolving its issuer
- * and subject to its identity; or reserved by a completion that matched the
+ * and subject to its identity; reserved by a completion that matched the
  * subject to an identity by a verified domain, holding the link's place under
  * the store's uniqueness and the link limit until its handoff is redeemed, its
- * reservation expires or it is voided. A reserved link resolves nothing.
+ * reservation expires or it is voided; or suspended, a link made by a verified
+ * domain whose identity was found to hold a principal outside the connection's
+ * tenant, latched until the person confirms it through the `link` purpose. A
+ * reserved or suspended link resolves nothing, and neither is an unlinked
+ * subject: neither enters provisioning or a new reservation.
  *
  * Backed, and stable once released: a value is never renamed or reused.
  *
@@ -26,4 +30,8 @@ enum LinkState: string
     // The link is held for a redemption that may activate it, and resolves
     // nothing (SSO-8.8)
     case RESERVED = 'reserved';
+
+    // The link is suspended until a confirming `link`, and resolves nothing
+    // (SSO-8.8)
+    case SUSPENDED = 'suspended';
 }

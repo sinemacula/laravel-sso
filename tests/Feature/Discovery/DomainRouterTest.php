@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
@@ -40,7 +41,7 @@ use Tests\TestCase;
 #[CoversClass(DomainClaims::class)]
 final class DomainRouterTest extends TestCase
 {
-    use UsesConnections, UsesDomains;
+    use UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var string The instant the clock is fixed at. */
     private const string NOW = '2026-11-01T09:30:00Z';
@@ -69,6 +70,7 @@ final class DomainRouterTest extends TestCase
 
         $this->createConnectionTables();
         $this->createDomainsTable();
+        $this->createFlowTables();
 
         $this->connection = $this->usableConnection();
     }
@@ -81,6 +83,7 @@ final class DomainRouterTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        $this->dropFlowTables();
         $this->dropDomainsTable();
         $this->dropConnectionTables();
 

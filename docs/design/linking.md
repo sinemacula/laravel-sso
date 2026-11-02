@@ -1,0 +1,209 @@
+# Linking, Provisioning and Evidence
+
+## Purpose
+
+This note freezes the completion and redemption state machine of linking (SSO-3.3, SSO-5.10, SSO-5.11, SSO-8.1 to SSO-8.8,
+SSO-9.5, SSO-9.9): its stages, which transaction each write runs in, the lock order, the reservation and link states,
+what the application's contracts must guarantee, and the events each operation reports. `completion.md` and `flows.md`
+describe the steps; `links.md` and `handoffs.md` the stores. Linking through a verified domain, the `link` purpose,
+provisioning, reauthentication and evidence all stand on this machine and do not change it.
+
+## Invariants
+
+### The lock order
+
+The order is never broken: enforcement guard, connections in ascending id order, the relevant domain claim, the
+request, the existing code, the links. Every re-read that decides a write is a locking read on the write connection. An
+absent row is protected by the row that guards its insertion: a domain claim or a link by the connection's row. A
+reservation's domain is found by a plain read of the reservation, and confirmed under the lock by its immutable binding.
+
+An application's guards come after the package's locks, in every path: its writers of verified emails, principals,
+memberships and sessions take them in the same relative order, or they will deadlock against an admission.
+
+### The stages
+
+| Stage                              | Transaction and writes                                                                                                                                                                                                                                                                                                                                                                         |
+|------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Entry and correlation              | None. The endpoint and application context is validated and the response correlated; attempt limiting keeps its own storage.                                                                                                                                                                                                                                                                   |
+| Consumption, T1                    | Connection, then request. Request single-use record and `consumed_at`; expiry, voiding and trust are checked. Commits before validation.                                                                                                                                                                                                                                                       |
+| Validation                         | None. Provider calls and cryptography build the immutable `VerifiedResult`, the deadline (`VerifiedDeadlines`), the key-transition receipt, and the linking policy version of the connection the driver was given.                                                                                                                                                                             |
+| Preparation, T2                    | Guard, connections, relevant domain, request, links. Request authority, usability, metadata, the deadline and inheritance are rechecked. Replay is recorded once; the link resolves to a typed `LinkResolution`; enforcement and the purpose's rules (`Completion\Rules`, for a `reauthenticate` including the authentication-time window, whichever driver answered) run; domain eligibility. |
+| Ordinary or reserved finish, in T2 | A linked result, an eligible `link` or `reauthenticate`, or a successful reservation: the bound handoff is issued, reservation and handoff committing together with one stored expiry; `completed_at` is set; completion events queue. A refusal discards any reservation made and completes without a code.                                                                                   |
+| Provisioning boundary, from T2     | Only a genuinely unlinked `sign_in` holding no reservation (`StageOutcome::provision()`). Replay and `verified_at` commit; `completed_at` stays unset; no handoff. What lets it go on stays only in memory. `ResultVerified` is reported once, after commit.                                                                                                                                   |
+| Synchronous dispatch               | No package transaction open. `ResultUnlinked` carries the exact result and the grant (`Completion\ProvisioningOffer`). Nothing dispatches it again.                                                                                                                                                                                                                                            |
+| Provisioning, TP                   | The listener's own transaction on the same connection, for identity and membership. `Provisioning\ProvisioningHelper` claims the grant, takes the prescribed locks, checks the request's authority, ownership and limit, inserts the active provisioning link and raises `links_version`; its event waits for TP's outer commit.                                                               |
+| Grant closure                      | In `finally`, the grant is closed. A listener's transaction left open is rolled back and is a `LogicException`; a listener's exception ends the completion and authorises no resumption.                                                                                                                                                                                                       |
+| Final continuation, T3             | The lock order again, with no domain. Trust and receipt, voiding, the deadline, metadata, enforcement and application policy are rechecked; the link resolves anew (`CompletionStep::isInContinuation()`). No second replay record, domain selection or dispatch. A handoff, `unlinked` or another refusal; `completed_at`; the terminal event.                                                |
+| Redemption, TR                     | The caller's transaction on the same connection. Guard, connections, applicable domain, code, links, then the application's guards. Bindings are confirmed; a voided or replayed code is refused; the code is consumed; expiry, purpose, application, connection and verifier are judged; then the common and the purpose's checks.                                                            |
+| `sign_in` in TR                    | An existing link: continuity by its id. A reservation: every condition again for the same candidate, then activation, which clears the reservation's fields and raises `links_version`. The adapter writes its session and accepted evidence, and the sign-in is acknowledged. Together.                                                                                                       |
+| `link` in TR                       | The current caller, freshness and eligibility; the link created, the same link passing idempotently, or provenance and suspension cleared by the confirmation. No session, no proof. Commits with the consumption.                                                                                                                                                                             |
+| `reauthenticate` in TR             | The exact link and the active session bound to it, locked; an adapter's own result with no authentication time is refused (`authentication_expired`); the freshness write with any evidence newly accepted. Sign-in provenance and lifetime are kept. Commits with the consumption.                                                                                                            |
+| Refusal in TR                      | After consumption, that code's reservation is deleted, by its identity and handoff reference, one failure event queues and the refusal commits, with no session and no activation. An exception rolls TR back instead.                                                                                                                                                                         |
+| Administration and withdrawal, TA  | In the change's transaction: connection and domain locks in order; the change; affected reservations deleted (`Links\ReservationWithdrawal`); versions raised. A protocol trust change also voids unfinished requests and unredeemed codes.                                                                                                                                                    |
+
+### Link and reservation states
+
+| State                            | Transitions                                                                                                                                                                                                              |
+|----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Absent                           | to `reserved` by an eligible domain completion; to `active` by an explicit `link` or provisioning                                                                                                                        |
+| Reserved                         | to `active` only by its bound successful redemption; to absent on refusal, expiry cleanup, withdrawal or invalidation. Never resolves a sign-in                                                                          |
+| Active, domain provenance        | resolves while eligible; to suspended when scope fails; to active without domain provenance by a confirming `link`; kept across an explicit migration, whose relink keeps the provenance and revokes the link's sessions |
+| Suspended, domain provenance     | resolves nothing; cannot provision or reserve; to active without provenance only by a confirming `link`; to absent on removal                                                                                            |
+| Active, confirmed or provisioned | resolves through its exact connection, issuer and subject; to absent on removal or an explicit migration                                                                                                                 |
+
+Expired, failed and voided reservations leave no tombstone: deletion and the handoff's immutable reservation binding
+prevent resurrection, since a replacement has another reservation identity. A consumed, unfinished request has no
+recovery once its in-memory continuation is lost. A suspension is latched: removing the principal later never restores
+the link, and only a confirming `link` does, clearing the provenance for good. Any answer of `Contracts\PrincipalScope`
+but `within_tenant` latches it, `unknown` included; a contract that cannot reach its store throws instead, which refuses
+nothing and latches nothing.
+
+A confirmation must be the person's own. The identity provider behind a link of verified domain provenance can sign the
+person in and renew their freshness, so it could answer a `link` of them, and clear the very provenance that holds it to
+the principal scope rule. An identity holding an active or suspended such link, in any connection, therefore needs
+`Contracts\LinkConfirmation` to answer `independent` before any `link` of it goes on, confirming or adding a subject;
+otherwise it is `independent_authentication_required`. Its default answers `dependent`, so someone whose only credential
+is that link cannot confirm it, and removing the link is what remains. `Linking\LinkConfirmationGate` reads those links by
+a locking read in id order, before the subject's own link, in the redemption's judgement and again in its admission.
+
+Every reservation creation, replacement, deletion and activation, and every suspension and confirmation, raises the
+connection's `links_version` under its lock, so a PostgreSQL `REPEATABLE READ` transaction whose snapshot predates the
+change fails to serialise rather than miss it.
+
+### Deadlines
+
+`handoff_expiry = reservation_expiry = min(request_expiry, issuance_time + handoff_ttl)` for a reserved flow, as stored:
+`Contracts\HandoffIssuer` answers its stored expiry and an opaque reference, and `LinkReservations::bindHandoff()` writes
+both in T2. A verified response stops being valid at the earlier of its request's expiry and
+`sso.linking.verified_result_max_age_seconds` from when it was verified, checked in T2, before the helper's write and in
+T3 (`request_expired`). No continuation extends a request's authority.
+
+### The redemption paths
+
+`HandoffRedemption::admit()` is the session-admission API: it needs the caller's transaction open on the storage
+connection (a `LogicException` otherwise), and the session the caller writes commits with the consumption, under the
+locks. `redeem()` inside such a transaction is the same. `redeem()` with none open is the standalone convenience path: it
+commits before it answers, `RedemptionResult::isAdmitted()` is false, and the result must never lead to a session; a
+`reauthenticate` code or one bound to a reservation reached through it is a `LogicException` that leaves it unconsumed. An
+adapter redeeming its own codes calls `HandoffRecheck`'s `lock()`, `admit()`, `discardReservation()` and
+`acknowledgeSignIn()`, with a `HandoffBinding` of what its issuer stored.
+
+A retry is only ever of the caller's whole transaction. A committed refusal spends the code; a rollback undoes
+consumption and activation together.
+
+### What the application's contracts guarantee
+
+Package locks do not serialise the application's writers unless those writers take part.
+
+| Contract                   | Default                      | Protected through admission commit by                                                                                                                                                                                               |
+|----------------------------|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LinkEmailMatcher`         | `NoEmailMatches`             | a uniqueness guarantee on the verified email, or a guard every writer of one takes. Locking the returned rows is not enough                                                                                                         |
+| `PrincipalScope`           | `RefusingPrincipalScope`     | a guard writers of principals take; a widening calls `Linking\ScopeWidening` in its transaction, which suspends the identity's domain links and revokes the sessions established through them through `Contracts\SessionRevocation` |
+| `TenantMembership`         | `NoTenantMembership`         | a guard writers of memberships take; the acceptance time is the person's, never an administrator's creation time                                                                                                                    |
+| `LinkConfirmation`         | `RefusingLinkConfirmation`   | a guard writers of sessions take; with none, or when it cannot tell, it answers `dependent`. Freshness an identity provider renewed is not the person's confirmation                                                                |
+| `LinkEligibility`          | `RefusingLinkEligibility`    | a guard its writers take, or an acceptance that a later change does not undo the link                                                                                                                                               |
+| `ReauthenticationSessions` | `NoReauthenticationSessions` | `lockedStanding()` locks the session's row, bound to exactly the link, through the write                                                                                                                                            |
+| `EvidencePolicy`           | `InsufficientEvidence`       | current policy at redemption; the redeemer stores what it accepted in its transaction                                                                                                                                               |
+| `HandoffIssuer`            | `DatabaseHandoffStore`       | binding and stored expiry written with the code; a missing reference or later expiry fails closed                                                                                                                                   |
+| `Linker`                   | `NoLinks`                    | a typed `LinkResolution`, with a link id; only the package's `LinkStore` can hold a reservation, so another reserves nothing                                                                                                        |
+
+A principal mutation calls `Linking\ScopeWidening` in this order, in its one transaction: `widened()`, which takes the
+package's locks; then the application's guard and its principal write; then `assertSettled()`, which refuses, for a retry
+of the whole transaction, a link or reservation that appeared in between. It is the one place the application's guard
+meets a package row lock in the other direction, and the database aborting one side of such a wait is safe.
+
+### Custom implementations and sessions
+
+An alternative linker answers ownership and state through `LinkResolution`; it cannot hold a reservation. An alternative
+issuer stores reservation bindings and takes part in decision D5, or the completion rolls back. Link suspension blocks new
+admission and reauthentication. Widening a person's scope also revokes the sessions established through the affected
+domain links, through the adapter, in the principal-change transaction. A provisioned identity can survive a later
+completion failure; that is the accepted consequence of provisioning outside the package's locks.
+
+That an identity offered to the provisioning helper is new is the adapter's obligation: a grant proves authority to
+provision for this result, not when an application identity was created.
+
+### Events
+
+`ResultVerified` once per verified response. `ResultUnlinked` synchronously, with no package transaction open, the one
+event that is not after commit and the one that carries the result; it refuses serialisation, so a queued listener fails
+loudly. Link creation, activation (`LinkCreated` then `LinkActivated`, which never carries the provider's email as a
+destination), confirmation (`LinkConfirmed`), suspension (`LinkSuspended`) and handoff events after their owning
+transaction commits. `ReauthenticationCompleted` only with the committed freshness update.
+
+### Settings
+
+`sso.linking` caps `verified_result_max_age_seconds` (5 to 300, default 120) and `evidence_max_age_seconds` (60 to 3600,
+default 900), and `shared_issuers` adds to the shared issuers the package knows without ever changing one
+(`Linking\LinkingSettings`). A connection's linking settings are off by default and raise `linking_version`, which is no
+protocol trust change: it deletes reservations and voids no flow. An unset issuer classification is not single
+organisation. A response's accepted evidence cannot authorise a reservation once the linking version differs under the
+lock, and a reservation carries the version it was made under.
+
+## Success Path
+
+- A linked `sign_in` finishes in T2 and its code is admitted in the caller's transaction, with the link that established
+  it answered for the session to bind.
+- An eligible unlinked `sign_in` reserves in T2, its handoff expiring exactly with the reservation, and its redemption
+  activates the link in the transaction of the caller's session write.
+- A genuinely unlinked `sign_in` stops at the boundary, is offered once to `ResultUnlinked`'s listeners with no package
+  transaction open, and is finished by T3 against what the link resolves to then.
+- A `link` is completed for an eligible identity, and creates the link, or confirms the one it holds, in its redemption.
+- A `reauthenticate` is completed for a result resolving to its identity, and renews the session bound to exactly that
+  link in its redemption.
+
+## Failure / Edge Cases
+
+- A suspended link is `link_suspended`, and another flow's live reservation `link_reserved`: neither reaches a reservation,
+  provisioning or an unlinked handoff.
+- A reservation gone, expired, or one of whose conditions no longer holds for that same identity is `reservation_invalid`
+  at redemption, never a fallback; a different match is never the new target.
+- A linking policy version that moved after validation reserves nothing, and the result goes on unlinked.
+- A deadline passed in T2 or T3 is `request_expired`.
+- A `reauthenticate` result with no authentication time, or one before the request less the skew, is
+  `authentication_expired`, and one later than now plus the skew `assertion_expired`, in T2 and from any driver.
+- A listener's exception ends the completion as a server error: replay is recorded, `completed_at` stays unset, no code is
+  issued, and nothing resumes it. A link it made stays made.
+- A listener leaving a transaction open is rolled back and is a `LogicException`.
+- An issuer that binds nothing, or stores a later expiry than it was given, rolls the completion back.
+- The standalone path reaching a `reauthenticate` code or a reservation is a `LogicException`, with the code unconsumed.
+
+## Implementation Anchors
+
+- `src/Completion/CompletionPipeline.php`, `CompletionLocks.php`, `CompletionLock.php`, `ProvisioningOffer.php`,
+  `VerifiedDeadlines.php`, `src/Completion/Rules/`, `src/Completion/Stages/CheckPurpose.php`, `DomainReservation.php`,
+  `Provisioning.php`.
+- `src/Links/LinkResolution.php`, `LinkReservations.php`, `ReservationTerms.php`, `ReservationWithdrawal.php`,
+  `ReservedCandidate.php`, `LinkStore.php`; `src/Linking/DomainLinkEligibility.php`, `ReservationActivation.php`,
+  `LinkingSettings.php`, `LinkingCheck.php`, `LinkConfirmationGate.php`, `RefusingLinkConfirmation.php`;
+  `src/Connections/LinkingPolicyReset.php`.
+- `src/Handoffs/HandoffRedemption.php`, `HandoffRecheck.php`, `HandoffBinding.php`, `src/Handoffs/Redemption/`,
+  `src/Contracts/PurposeBranch.php`.
+- `src/Provisioning/ProvisioningGrant.php`, `ProvisioningHelper.php`, `ProvisioningResult.php`,
+  `Enums/ProvisioningStatus.php`, `src/Events/ResultUnlinked.php`, `src/Evidence/AcceptedEvidence.php`.
+
+## Authoritative Tests
+
+- `tests/Feature/Linking/StateMachineCompletionPipelineTest.php`, on `tests/Feature/Linking/LinkingTestCase.php`.
+- `tests/Feature/Linking/ProvisioningTest.php`, `ProvisioningEventSequenceTest.php`,
+  `tests/Integration/Linking/ConcurrentProvisioningTest.php`, `tests/Unit/Provisioning/ProvisioningGrantTest.php`,
+  `tests/Unit/Events/ResultUnlinkedTest.php`, `tests/Performance/ProvisioningQueryBudgetTest.php`.
+- `tests/Feature/Linking/DomainLinkEligibilityTest.php`, `DomainLinkingEventSequenceTest.php`,
+  `LinkingPolicyServiceTest.php`, `ReservationWithdrawalTest.php`, `ScopeWideningTest.php`,
+  `tests/Integration/Linking/ConcurrentReservationTest.php`, `ConcurrentActivationTest.php`.
+- `tests/Feature/Linking/LinkConfirmationTest.php`, `IssuerChangeTest.php`, `RealProtocolLinkingTest.php`,
+  `tests/Unit/Linking/LinkConfirmationContractTest.php`.
+- `tests/Feature/Linking/LinkBranchTest.php`, `LinkAdmissionTest.php`, `LinkPurposeEventSequenceTest.php`,
+  `tests/Integration/Linking/ConcurrentConfirmingLinkTest.php`.
+- `tests/Feature/Linking/ReauthenticationBranchTest.php`, `ReauthenticationEventSequenceTest.php`,
+  `tests/Feature/Completion/ReauthenticationRulesTest.php`,
+  `tests/Integration/Linking/ConcurrentReauthenticationTest.php`.
+- `tests/Feature/Completion/CompletionPipelineTest.php`, `tests/Feature/Handoffs/HandoffRecheckTest.php`,
+  `tests/Feature/Links/LinkStoreTest.php`.
+
+## Change Triggers
+
+- A stage, a transaction's writes or the lock order.
+- A new link or reservation state, or a new write that a concurrent change must see, which raises `links_version`.
+- A contract's guarantee through admission commit.
+- A new purpose, or a new session-writing redemption path.

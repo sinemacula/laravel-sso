@@ -58,6 +58,11 @@ return new class extends Migration {
             $blueprint->string('record_name', 63);
             $blueprint->char('verification_token', 64);
 
+            // Raised each time the domain becomes verified, and never lowered:
+            // a reservation binds it, so one made under an earlier verification
+            // never activates under a later one.
+            $blueprint->unsignedBigInteger('verification_generation')->default(0);
+
             // Whole seconds in UTC, from the package's clock. A pending claim
             // expires; a verified domain keeps the time it became verified
             // until it lapses, and records each successful check. A domain

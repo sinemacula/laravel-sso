@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -52,7 +53,7 @@ use Tests\TestCase;
 #[CoversClass(DomainFinder::class)]
 final class ConcurrentDomainClaimsTest extends TestCase
 {
-    use UsesConnections, UsesDomains;
+    use UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var int Processes racing in each test. */
     private const int PROCESSES = 8;
@@ -95,6 +96,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
 
         $this->createConnectionTables();
         $this->createDomainsTable();
+        $this->createFlowTables();
         self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
 
         for ($process = 0; $process < self::PROCESSES; $process++) {
@@ -124,6 +126,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
 
         if ($this->connections !== []) {
             self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
+            $this->dropFlowTables();
             $this->dropDomainsTable();
             $this->dropConnectionTables();
         }

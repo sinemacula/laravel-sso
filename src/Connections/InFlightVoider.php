@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Links\ReservationWithdrawal;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -53,12 +54,12 @@ use SineMacula\Laravel\Sso\Models\HandoffCode;
  * the version before it validates) and a metadata refresh (which captures it
  * before it fetches) find the change under the lock and refuse.
  *
- * It then calls `reservationsVoided()`, which does nothing yet: linking by a
- * verified domain adds there the voiding of the connection's open link
- * reservations (state `reserved`), so a trust change, a disable or a deletion
- * can never leave one to be activated. A database error propagates (SSO-11.4).
- * It holds the clock alone, which keeps nothing of one request for the next
- * (SSO-11.2). It is not final, so a test can observe the calls.
+ * It then calls `reservationsVoided()`, which deletes the connection's open
+ * link reservations (`Links\ReservationWithdrawal`), so a trust change, a
+ * disable or a deletion can never leave one to be activated. A database error
+ * propagates (SSO-11.4). It holds the clock alone, which keeps nothing of one
+ * request for the next (SSO-11.2). It is not final, so a test can observe the
+ * calls.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -112,18 +113,12 @@ readonly class InFlightVoider
      * Void the open link reservations of the locked connection. Called by
      * `voidFor()` once its requests and codes are voided.
      *
-     * Nothing reserves a link yet, so it does nothing: linking by a verified
-     * domain adds here the voiding of the connection's reserved links, under
-     * the same lock and in the same transaction.
-     *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @return void
-     *
-     * @SuppressWarnings("php:S1172")
      */
     protected function reservationsVoided(Connection $locked): void
     {
-        // Nothing reserves a link yet
+        ReservationWithdrawal::ofConnection($locked);
     }
 
     /**

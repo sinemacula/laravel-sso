@@ -16,7 +16,10 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
 use SineMacula\Laravel\Sso\Contracts\Linker;
+use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
@@ -31,18 +34,23 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Linking\RecordingSessions;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
@@ -211,13 +219,16 @@ final class HandoffRedemptionTest extends TestCase
      */
     public function testALinkAndAReauthenticateCodeAnswerTheirIdentityAndSession(): void
     {
+        $this->readyForTheFlowsIdentity();
+
         $link           = $this->redeem($this->issue(Purpose::LINK), purpose: Purpose::LINK);
         $reauthenticate = $this->redeem($this->issue(Purpose::REAUTHENTICATE), purpose: Purpose::REAUTHENTICATE);
 
         self::assertTrue($link->isRedeemed());
         self::assertSame('link', $link->result?->purpose->value);
         self::assertSame(['type' => 'App\Models\User', 'id' => '7'], $link->identity?->jsonSerialize());
-        self::assertSame(['type' => 'App\Models\User', 'id' => '42'], $link->linkedIdentity?->jsonSerialize());
+        self::assertSame(['type' => 'App\Models\User', 'id' => '7'], $link->linkedIdentity?->jsonSerialize());
+        self::assertSame('link-7', $link->linkId);
         self::assertNull($link->sessionId);
 
         self::assertTrue($reauthenticate->isRedeemed());
@@ -735,6 +746,10 @@ final class HandoffRedemptionTest extends TestCase
     #[DataProvider('acknowledgements')]
     public function testOnlyALinkedSignInRedeemedAcknowledgesACompletedSignIn(Purpose $purpose, bool $linked, bool $redeemed, bool $acknowledged): void
     {
+        if ($purpose !== Purpose::SIGN_IN) {
+            $this->readyForTheFlowsIdentity();
+        }
+
         if (!$linked) {
             $this->linked = null;
         }
@@ -1044,6 +1059,7 @@ final class HandoffRedemptionTest extends TestCase
             sessionId: $purpose === Purpose::REAUTHENTICATE ? 'session-1' : null,
             enforcementVersion: 'version-1',
             sessionNotAfter: CarbonImmutable::parse('2026-11-01T18:00:00Z'),
+            linkId: $this->linked === null ? null : ExampleLinks::linkId($this->linked),
         );
 
         /** @var \Illuminate\Foundation\Application $app */
@@ -1075,7 +1091,17 @@ final class HandoffRedemptionTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(HandoffRedemption::class)->redeem($purpose, $application, $connectionId ?? $this->connection->id, $code, $verifier);
+        $caller = $purpose === Purpose::LINK ? new IdentityReference('App\Models\User', '7') : null;
+
+        if ($purpose === Purpose::REAUTHENTICATE) {
+            $redemption = $app->make(HandoffRedemption::class);
+            $connection = $connectionId ?? $this->connection->id;
+            $database   = DB::connection(StorageConnection::name());
+
+            return $database->transaction(static fn (): RedemptionResult => $redemption->admit($purpose, $application, $connection, $code, $verifier));
+        }
+
+        return $app->make(HandoffRedemption::class)->redeem($purpose, $application, $connectionId ?? $this->connection->id, $code, $verifier, $caller);
     }
 
     /**
@@ -1210,12 +1236,12 @@ final class HandoffRedemptionTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return ?\SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): ?IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
-                return ($this->resolve)($result);
+                return ExampleLinks::resolution(($this->resolve)($result));
             }
         };
     }
@@ -1229,5 +1255,21 @@ final class HandoffRedemptionTest extends TestCase
     private static function migration(string $file): Migration
     {
         return require dirname(__DIR__, 3) . $file;
+    }
+
+    /**
+     * Bind what a `link` or a `reauthenticate` code needs to be redeemed by the
+     * identity it was started for: the subject linked to that identity, a fresh
+     * caller, an eligible identity and a session bound to its link.
+     *
+     * @return void
+     */
+    private function readyForTheFlowsIdentity(): void
+    {
+        $this->linked = new IdentityReference('App\Models\User', '7');
+
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+        $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+        $this->app?->instance(ReauthenticationSessions::class, new RecordingSessions(ExampleLinks::linkId($this->linked)));
     }
 }

@@ -69,6 +69,16 @@ final readonly class LinkCreation implements \JsonSerializable
     }
 
     /**
+     * The id of the link made, or `null` when none was.
+     *
+     * @return ?string
+     */
+    public function linkId(): ?string
+    {
+        return $this->link?->id;
+    }
+
+    /**
      * Why the link was not made, or `null` when it was.
      *
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason

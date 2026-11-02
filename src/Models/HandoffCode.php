@@ -45,6 +45,8 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property ?string $session_id
  * @property ?string $linked_identity_type
  * @property ?string $linked_identity_id
+ * @property ?string $link_id
+ * @property ?string $reservation_id
  * @property string $result
  * @property ?string $enforcement_version
  * @property ?\Carbon\CarbonImmutable $session_not_after

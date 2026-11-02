@@ -159,6 +159,61 @@ final class HandoffGrantTest extends TestCase
     }
 
     /**
+     * A reservation binds a `sign_in` grant that resolved to no identity, and
+     * is kept.
+     *
+     * @return void
+     */
+    public function testAReservationBindsAnUnlinkedSignIn(): void
+    {
+        $grant = new HandoffGrant(ExampleResults::full(Purpose::SIGN_IN), S256Challenge::fromString(str_repeat('c', 43)), CarbonImmutable::now(), reservationId: 'reservation-1');
+
+        self::assertSame('reservation-1', $grant->reservationId);
+        self::assertNull($grant->linkedIdentity);
+    }
+
+    /**
+     * Rows of `[purpose, the identity it resolved to, the identity it names,
+     * the session it names]`: what a reservation has no place on.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: bool, 2: bool, 3: ?string}>
+     */
+    public static function provideGrantsNoReservationFits(): iterable
+    {
+        yield 'a sign-in that resolved to an identity' => [Purpose::SIGN_IN, true, false, null];
+        yield 'a link' => [Purpose::LINK, false, true, null];
+        yield 'a link that resolved to an identity' => [Purpose::LINK, true, true, null];
+        yield 'a reauthentication' => [Purpose::REAUTHENTICATE, false, true, 'session-1'];
+    }
+
+    /**
+     * Anything else bound to a reservation is refused.
+     *
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @param  bool  $linked
+     * @param  bool  $named
+     * @param  ?string  $session
+     * @return void
+     */
+    #[DataProvider('provideGrantsNoReservationFits')]
+    public function testAReservationFitsNothingElse(Purpose $purpose, bool $linked, bool $named, ?string $session): void
+    {
+        $identity = new IdentityReference('user', '1');
+
+        $this->expectExceptionObject(new \InvalidArgumentException('A reservation belongs only to a [sign_in] handoff grant that resolved to no identity.'));
+
+        new HandoffGrant(
+            ExampleResults::full($purpose),
+            S256Challenge::fromString(str_repeat('c', 43)),
+            CarbonImmutable::now(),
+            $linked ? $identity : null,
+            $named ? $identity : null,
+            $session,
+            reservationId: 'reservation-1',
+        );
+    }
+
+    /**
      * An issued handoff keeps its code and expiry, and never shows or
      * serialises the code.
      *

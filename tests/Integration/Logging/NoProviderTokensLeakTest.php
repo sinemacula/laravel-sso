@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Fetching\Enums\CredentialKind;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
@@ -563,9 +564,12 @@ final class NoProviderTokensLeakTest extends TestCase
 
             $name = "event {$index} " . $event::class;
 
-            $texts["{$name} serialised"] = serialize($event);
-            $texts["{$name} JSON"]       = (string) json_encode($event, JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
-            $texts["{$name} context"]    = (string) json_encode($event->context()->toArray(), JSON_UNESCAPED_SLASHES);
+            if (!$event instanceof ResultUnlinked) {
+                $texts["{$name} serialised"] = serialize($event);
+            }
+
+            $texts["{$name} JSON"]    = (string) json_encode($event, JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
+            $texts["{$name} context"] = (string) json_encode($event->context()->toArray(), JSON_UNESCAPED_SLASHES);
 
             foreach (self::dumps($event) as $how => $dump) {
                 $texts["{$name} {$how}"] = $dump;

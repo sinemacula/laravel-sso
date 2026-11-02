@@ -13,7 +13,10 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
 use SineMacula\Laravel\Sso\Contracts\Linker;
+use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
@@ -21,6 +24,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
+use SineMacula\Laravel\Sso\Events\ReauthenticationCompleted;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Flows\S256Challenge;
@@ -30,15 +34,20 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Linking\RecordingSessions;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
@@ -131,14 +140,14 @@ final class RedemptionEventSequenceTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return ?\SineMacula\Laravel\Sso\Identities\IdentityReference
+             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): ?IdentityReference
+            public function resolve(VerifiedResult $result): LinkResolution
             {
                 unset($result);
 
-                return ($this->resolve)();
+                return ExampleLinks::resolution(($this->resolve)());
             }
         });
         $this->app?->instance('request', Request::create('/auth/sso/handoffs', 'POST', server: [
@@ -207,13 +216,16 @@ final class RedemptionEventSequenceTest extends TestCase
      */
     public function testARedeemedLinkOrReauthenticateNamesTheFlowsIdentity(): void
     {
+        $this->readyForTheFlowsIdentity();
+
         $this->redeem($this->issue(Purpose::LINK), purpose: Purpose::LINK);
         $this->redeem($this->issue(Purpose::REAUTHENTICATE), purpose: Purpose::REAUTHENTICATE);
 
-        $this->assertEventSequence([HandoffRedeemed::class, HandoffRedeemed::class]);
+        $this->assertEventSequence([HandoffRedeemed::class, HandoffRedeemed::class, ReauthenticationCompleted::class]);
 
         self::assertSame([
             $this->context(['purpose' => 'link', 'identity_id' => '7'] + $this->codeFields()),
+            $this->context(['purpose' => 'reauthenticate', 'identity_id' => '7', 'session_id' => 'session-1'] + $this->codeFields()),
             $this->context(['purpose' => 'reauthenticate', 'identity_id' => '7', 'session_id' => 'session-1'] + $this->codeFields()),
         ], $this->contexts());
     }
@@ -521,8 +533,9 @@ final class RedemptionEventSequenceTest extends TestCase
             challenge: S256Challenge::fromString(self::CHALLENGE),
             expiresAt: $expiresAt ?? $this->clock->now()->addMinute(),
             linkedIdentity: $this->linked,
-            identity: $purpose  === Purpose::SIGN_IN ? null : new IdentityReference('App\Models\User', '7'),
-            sessionId: $purpose === Purpose::REAUTHENTICATE ? 'session-1' : null,
+            identity: $purpose    === Purpose::SIGN_IN ? null : new IdentityReference('App\Models\User', '7'),
+            sessionId: $purpose   === Purpose::REAUTHENTICATE ? 'session-1' : null,
+            linkId: $this->linked === null ? null : ExampleLinks::linkId($this->linked),
         );
 
         /** @var \Illuminate\Foundation\Application $app */
@@ -552,7 +565,17 @@ final class RedemptionEventSequenceTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(HandoffRedemption::class)->redeem($purpose, $application, $connectionId ?? $this->connection->id, $code, $verifier);
+        $caller = $purpose === Purpose::LINK ? new IdentityReference('App\Models\User', '7') : null;
+
+        if ($purpose === Purpose::REAUTHENTICATE) {
+            $redemption = $app->make(HandoffRedemption::class);
+            $connection = $connectionId ?? $this->connection->id;
+            $database   = DB::connection(StorageConnection::name());
+
+            return $database->transaction(static fn (): RedemptionResult => $redemption->admit($purpose, $application, $connection, $code, $verifier));
+        }
+
+        return $app->make(HandoffRedemption::class)->redeem($purpose, $application, $connectionId ?? $this->connection->id, $code, $verifier, $caller);
     }
 
     /**
@@ -624,5 +647,21 @@ final class RedemptionEventSequenceTest extends TestCase
     private static function migration(string $file): Migration
     {
         return require dirname(__DIR__, 3) . $file;
+    }
+
+    /**
+     * Bind what a `link` or a `reauthenticate` code needs to be redeemed by the
+     * identity it was started for: the subject linked to that identity, a fresh
+     * caller, an eligible identity and a session bound to its link.
+     *
+     * @return void
+     */
+    private function readyForTheFlowsIdentity(): void
+    {
+        $this->linked = new IdentityReference('App\Models\User', '7');
+
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+        $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+        $this->app?->instance(ReauthenticationSessions::class, new RecordingSessions(ExampleLinks::linkId($this->linked)));
     }
 }

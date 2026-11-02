@@ -14,7 +14,18 @@ use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
  * application, the connection, the request's public reference, the S256
  * challenge of the client's verifier, the identity the result's link resolved
  * to, the identity of a `link` or `reauthenticate` flow and the session of a
- * `reauthenticate` flow.
+ * `reauthenticate` flow, the link the result resolved to, and the reservation
+ * it is bound to.
+ *
+ * For a grant naming a reservation (SSO-8.8), an implementation stores that
+ * binding and the expiry with the code in the same write, and answers the
+ * expiry as stored, never later than the grant's, and an opaque reference: the
+ * completion writes both to the reservation in the same transaction, so
+ * reservation and handoff expire together. One that cannot is unsupported, and
+ * fails closed: a missing reference or a later expiry rolls the completion back
+ * as a server error. Its redeemer must take `Handoffs\HandoffRecheck`'s locks
+ * and admission, which activate the reservation in its transaction (decision
+ * D5).
  *
  * The completion pipeline asks it once per completed flow, inside the
  * completion's transaction on the storage connection, after rechecking that the

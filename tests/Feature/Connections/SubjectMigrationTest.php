@@ -14,22 +14,30 @@ use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Connections\SubjectMigration;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\LinkCreated;
 use SineMacula\Laravel\Sso\Events\LinkRemoved;
+use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
+use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
+use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
+use SineMacula\Laravel\Sso\Results\AuthenticationContext;
+use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
@@ -41,6 +49,7 @@ use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Enforcement\RecordingRevocation;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
+use Tests\Fixtures\Linking\ScriptedPrincipalScope;
 use Tests\TestCase;
 
 /**
@@ -52,8 +61,9 @@ use Tests\TestCase;
  * change, each refused at `relinks.<id>`; a new subject that collides, or an
  * identity at its link limit, rolling everything back; the freshness asked
  * (`sso.connection.trust` and `sso.link.remove`, through `checkAll()`); the
- * sessions of each identity whose link was removed revoked; what is in flight
- * voided; and the events, after commit.
+ * sessions of each identity whose link was removed revoked; a relinked link of
+ * verified domain provenance keeping it, its old sessions revoked; what is in
+ * flight voided; and the events, after commit.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,6 +73,7 @@ use Tests\TestCase;
 #[CoversClass(SubjectMigration::class)]
 #[CoversClass(ConnectionService::class)]
 #[CoversClass(ConnectionResult::class)]
+#[CoversClass(ScopeWidening::class)]
 final class SubjectMigrationTest extends TestCase
 {
     use RecordsEventSequences, UsesConnections, UsesEnforcement, UsesFlowTables;
@@ -213,6 +224,109 @@ final class SubjectMigrationTest extends TestCase
             self::assertSame($this->connection->id, $event->context()->connectionId);
             self::assertSame('42', $event->context()->actingIdentityId);
         }
+    }
+
+    /**
+     * A relinked link of verified domain provenance keeps it, on a row with a
+     * new id, though the link is reported as the migration's; the old sessions,
+     * which recorded the old id, are revoked through the connection; a relinked
+     * link of any other provenance is the migration's and revokes nothing.
+     *
+     * @return void
+     */
+    public function testARelinkedDomainLinkKeepsItsProvenanceAndLosesItsSessions(): void
+    {
+        $this->links['first']->forceFill(['provenance' => LinkOrigin::VERIFIED_DOMAIN])->save();
+        $this->links['second']->forceFill(['provenance' => LinkOrigin::LINK_PURPOSE])->save();
+
+        $relinks = [$this->links['first']->id => ['first-new'], $this->links['second']->id => ['second-new']];
+        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $relinks, $this->ids('third'));
+
+        self::assertSame(ConnectionStatus::MIGRATED, $result->status);
+
+        $domain = Link::query()->where('identity_id', '1')->sole();
+        $other  = Link::query()->where('identity_id', '2')->sole();
+
+        self::assertNotSame($this->links['first']->id, $domain->id);
+        self::assertSame(LinkOrigin::VERIFIED_DOMAIN, $domain->provenance);
+        self::assertTrue($domain->domain_provenance);
+        self::assertSame(LinkOrigin::MIGRATION, $other->provenance);
+        self::assertFalse($other->domain_provenance);
+
+        $this->assertRevokedIdentities(['1', '3']);
+
+        foreach (array_slice($this->recordedEvents(), 4) as $event) {
+            self::assertInstanceOf(LinkCreated::class, $event);
+            self::assertSame(LinkOrigin::MIGRATION, $event->origin);
+        }
+    }
+
+    /**
+     * A relinked domain link is still judged: a principal outside the tenant
+     * suspends it at its next resolution, even one it held before the
+     * migration, which ran no judgement.
+     *
+     * @return void
+     */
+    public function testARelinkedDomainLinkIsJudgedAtItsNextResolution(): void
+    {
+        $this->app?->instance(PrincipalScope::class, new ScriptedPrincipalScope(ScopeVerdict::OUTSIDE_TENANT));
+
+        $relinked = $this->relinkedDomainLink();
+
+        $result = new VerifiedResult(
+            issuer: self::ISSUER,
+            subject: 'first-new',
+            nameIdFormat: null,
+            connectionId: $this->connection->id,
+            tenantId: self::TENANT,
+            protocol: 'oidc',
+            application: 'web',
+            purpose: Purpose::SIGN_IN,
+            requestReference: RequestReference::fromString('Sq8tVv3w0kLmNoPqRsTuVwXyZ0123456'),
+            attributes: [],
+            emailDomainVerified: false,
+            authenticationContext: new AuthenticationContext,
+        );
+
+        self::assertTrue(app(LinkStore::class)->resolve($result)->isSuspended());
+        self::assertSame(LinkState::SUSPENDED, Link::query()->whereKey($relinked->id)->sole()->state);
+    }
+
+    /**
+     * A relinked domain link is still found when the person's scope widens: it
+     * is suspended, and the sessions of its new row revoked.
+     *
+     * @return void
+     */
+    public function testARelinkedDomainLinkIsFoundByAWidening(): void
+    {
+        $relinked = $this->relinkedDomainLink();
+
+        $widened = $this->connection->getConnection()->transaction(
+            static fn (): int => app(ScopeWidening::class)->widened(new IdentityReference($relinked->identity_type, $relinked->identity_id), 'tenant-2'),
+        );
+
+        self::assertSame(1, $widened);
+        self::assertSame(LinkState::SUSPENDED, Link::query()->whereKey($relinked->id)->sole()->state);
+    }
+
+    /**
+     * A suspended domain link is never relinked: suspension is left only by a
+     * confirming `link`.
+     *
+     * @return void
+     */
+    public function testASuspendedDomainLinkIsNotRelinked(): void
+    {
+        $this->links['first']->forceFill(['provenance' => LinkOrigin::VERIFIED_DOMAIN, 'state' => LinkState::SUSPENDED, 'suspended_at' => $this->clock->now()])->save();
+
+        $relinks = [$this->links['first']->id => ['first-new']];
+        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $relinks, $this->ids('second', 'third'));
+
+        self::assertSame(ConnectionStatus::INVALID, $result->status);
+        self::assertSame([['relinks.' . $this->links['first']->id, 'not_allowed']], self::violationsOf($result));
+        self::assertSame(LinkState::SUSPENDED, Link::query()->whereKey($this->links['first']->id)->sole()->state);
     }
 
     /**
@@ -685,6 +799,25 @@ final class SubjectMigrationTest extends TestCase
             self::assertTrue((new IdentityReference('user', $identities[$index]))->is($scope->identity ?? new IdentityReference('none', '0')));
             self::assertGreaterThan(0, $call['level']);
         }
+    }
+
+    /**
+     * Migrate the connection with the first link, standing on a verified
+     * domain, relinked to a new subject of the same issuer and the others
+     * removed, and answer its new row.
+     *
+     * @return \SineMacula\Laravel\Sso\Models\Link
+     */
+    private function relinkedDomainLink(): Link
+    {
+        $this->links['first']->forceFill(['provenance' => LinkOrigin::VERIFIED_DOMAIN])->save();
+
+        $relinks = [$this->links['first']->id => ['first-new']];
+        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['client_id' => 'client-456']], $relinks, $this->ids('second', 'third'));
+
+        self::assertSame(ConnectionStatus::MIGRATED, $result->status);
+
+        return Link::query()->where('identity_id', '1')->sole();
     }
 
     /**

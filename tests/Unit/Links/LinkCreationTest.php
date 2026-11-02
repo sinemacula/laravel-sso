@@ -12,6 +12,7 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkCreationStatus;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkCreation;
 use SineMacula\Laravel\Sso\Links\LinkSummary;
+use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
  * Unit tests for the result of a link's creation (SSO-8.4, outcomes
@@ -27,6 +28,8 @@ use SineMacula\Laravel\Sso\Links\LinkSummary;
 #[CoversClass(LinkCreationStatus::class)]
 final class LinkCreationTest extends TestCase
 {
+    use TreatsWarningsAsErrors;
+
     /**
      * The statuses are exactly these, by value, and each refusal carries its
      * own reason.
@@ -39,6 +42,20 @@ final class LinkCreationTest extends TestCase
         self::assertNull(LinkCreationStatus::CREATED->reason());
         self::assertSame(FailureReason::SUBJECT_ALREADY_LINKED, LinkCreationStatus::SUBJECT_ALREADY_LINKED->reason());
         self::assertSame(FailureReason::LINK_LIMIT_REACHED, LinkCreationStatus::LINK_LIMIT_REACHED->reason());
+    }
+
+    /**
+     * Only a creation names the link made.
+     *
+     * @return void
+     */
+    public function testOnlyACreationNamesItsLink(): void
+    {
+        $summary = self::summary();
+
+        self::assertSame($summary->id, LinkCreation::created($summary)->linkId());
+        self::assertNull(LinkCreation::subjectAlreadyLinked()->linkId());
+        self::assertNull(LinkCreation::linkLimitReached()->linkId());
     }
 
     /**

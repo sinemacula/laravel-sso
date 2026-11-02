@@ -22,9 +22,9 @@ helper), `keys.md` (trusted certificates), `domains.md` (`DomainWithdrawal`) and
   - on the connection's handoff codes with `redeemed_at` and `voided_at` both unset.
 - A request or code voided before keeps its first `voided_at`; a finished request and a redeemed code are left as they
   are; another connection's rows are never touched.
-- It then calls `reservationsVoided($locked)`, a seam that does nothing yet. Linking by a verified domain (SSO-8.8)
-  adds there the voiding of the connection's open link reservations (state `reserved`), under the same lock and in the
-  same transaction, as `Domains\DomainWithdrawal::linkingWithdrawn()` is the seam of a domain's withdrawal.
+- It then calls `reservationsVoided($locked)`, which deletes the connection's open link reservations (state
+  `reserved`, `Links\ReservationWithdrawal`), under the same lock and in the same transaction, as
+  `Domains\DomainWithdrawal::linkingWithdrawn()` does for a domain's withdrawal (SSO-8.8, `linking.md`).
 - Every completion and redemption takes the connection's row lock first (`flows.md`), so a void either waits for a
   completion or redemption that holds the lock, and then finds its request finished or its code redeemed, or is waited
   for, and the completion refuses a voided request with `connection_unavailable` and the redemption a voided code with
@@ -90,7 +90,9 @@ consumption and again under its lock, as a voided one is. A refused or unchanged
   `RevocationScope::connection($tenantId, $connectionId, $reason)` (kind `connection`, reason `connection_disabled` or
   `connection_deleted`), inside their transaction, after the write and before the report (SSO-4.5).
 - A subject migration revokes `RevocationScope::identityInConnection()` (reason `link_removed`) for the identity of each
-  link it removes, and none for a link it relinks, whose identity keeps signing in through the connection.
+  link it removes and each relinked link of verified domain provenance, whose new row a later revocation by link could
+  not reach the old sessions through, and none for any other link it relinks, whose identity keeps signing in through
+  the connection.
 - An exception the revocation throws rolls the whole change back, reports nothing and propagates (decision D5).
 
 ### Changes to what subjects mean
@@ -128,11 +130,15 @@ consumption and again under its lock, as a voided one is. A refused or unchanged
   4. freshness is asked through `FreshnessGate::checkAll()` with `sso.connection.trust`, each operation the change
      asks and `sso.link.remove`, in `FreshnessOperation`'s order (`freshness_required`);
   5. in a savepoint: the change is written and reported, what is in flight voided, every link of the connection
-     deleted and reported removed, and the sessions of each identity whose link is removed revoked;
+     deleted and reported removed, and the sessions of each identity whose link is removed, or relinked from a verified
+     domain, revoked;
   6. each relinked identity is linked to its new subject through `Links\LinkStore::create()` with the origin
-     `migration`, in the order the relinks are given. A new subject already linked in the connection (another relink's
-     included) is `duplicate` at `relinks.<id>`, an identity at its link limit `too_many`; either is `invalid` and rolls
-     the whole migration back, the change, the removals, the revocations' writes and the voiding included.
+     `migration`, in the order the relinks are given. A link of verified domain provenance keeps it, since only a
+     confirming `link` clears it (SSO-8.8), so the row is still judged by `Contracts\PrincipalScope` and found by
+     `Linking\ScopeWidening`; any other relinked link's provenance is `migration`. A new subject already linked in the
+     connection (another relink's included) is `duplicate` at `relinks.<id>`, an identity at its link limit
+     `too_many`; either is `invalid` and rolls the whole migration back, the change, the removals, the revocations'
+     writes and the voiding included.
 - The result is `migrated` with the summary and the names of what changed, or a refusal as above.
 
 ### Events

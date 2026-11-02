@@ -12,6 +12,7 @@ use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\LinkLimit;
+use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\LinkCreated;
@@ -35,6 +36,7 @@ use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Linking\ScriptedPrincipalScope;
 use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
 
@@ -130,7 +132,7 @@ final class LinkStoreTest extends TestCase
 
         $resolved = $this->store()->resolve($this->resultFor($this->connection));
 
-        self::assertSame(['user', '1'], [$resolved?->type, $resolved?->id]);
+        self::assertSame(['user', '1'], [$resolved->identity?->type, $resolved->identity?->id]);
     }
 
     /**
@@ -146,8 +148,8 @@ final class LinkStoreTest extends TestCase
         $sibling = $this->makeConnection(['enabled' => true, 'protocol' => 'saml2']);
         $foreign = $this->makeConnection(['enabled' => true, 'protocol' => 'saml2', 'tenant_id' => 'tenant-2']);
 
-        self::assertNull($this->store()->resolve($this->resultFor($sibling)));
-        self::assertNull($this->store()->resolve($this->resultFor($foreign)));
+        self::assertTrue($this->store()->resolve($this->resultFor($sibling))->isAbsent());
+        self::assertTrue($this->store()->resolve($this->resultFor($foreign))->isAbsent());
         self::assertNotNull($this->store()->resolve($this->resultFor($this->connection)));
     }
 
@@ -182,7 +184,7 @@ final class LinkStoreTest extends TestCase
     {
         $this->linkSubject();
 
-        self::assertNull($this->store()->resolve($this->resultFor($this->connection, $subject, $format, $issuer)));
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection, $subject, $format, $issuer))->isAbsent());
         self::assertNull(Link::query()->sole()->last_used_at);
     }
 
@@ -216,7 +218,7 @@ final class LinkStoreTest extends TestCase
             'subject_key'    => (new LinkSubject(self::ISSUER, self::SUBJECT, self::FORMAT))->key(),
         ]);
 
-        self::assertNull($this->store()->resolve($this->resultFor($this->connection)));
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isAbsent());
         self::assertNull(Link::query()->sole()->last_used_at);
     }
 
@@ -236,29 +238,162 @@ final class LinkStoreTest extends TestCase
             'reservation_expires_at' => CarbonImmutable::parse(self::NOW)->addMinutes(5),
         ]);
 
-        self::assertNull($this->store()->resolve($this->resultFor($this->connection)));
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isReserved());
 
         $this->clock->advance(600);
 
-        self::assertNull($this->store()->resolve($this->resultFor($this->connection)));
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isAbsent());
         self::assertNull(Link::query()->sole()->last_used_at);
     }
 
     /**
-     * A link made by a verified domain still resolves: its provenance is not
-     * suspended until linking by a verified domain adds that rule (SSO-8.8).
+     * A link made by a verified domain still resolves while its identity holds
+     * only principals of the tenant (SSO-8.8).
      *
      * @return void
      */
     public function testADomainProvenanceLinkStillResolves(): void
     {
+        $this->app?->instance(PrincipalScope::class, new ScriptedPrincipalScope);
+
         $this->linkSubject(origin: LinkOrigin::VERIFIED_DOMAIN);
 
         self::assertTrue(Link::query()->sole()->domain_provenance);
 
         $resolved = $this->store()->resolve($this->resultFor($this->connection));
 
-        self::assertSame(['user', '1'], [$resolved?->type, $resolved?->id]);
+        self::assertSame(['user', '1'], [$resolved->identity?->type, $resolved->identity?->id]);
+    }
+
+    /**
+     * A suspended link resolves to its identity and link, and to nothing it may
+     * sign in as.
+     *
+     * @return void
+     */
+    public function testASuspendedLinkResolvesAsSuspended(): void
+    {
+        $link = $this->makeLink($this->connection, self::SUBJECT, [
+            'issuer'         => self::ISSUER,
+            'name_id_format' => self::FORMAT,
+            'subject_key'    => (new LinkSubject(self::ISSUER, self::SUBJECT, self::FORMAT))->key(),
+            'state'          => LinkState::SUSPENDED,
+            'provenance'     => LinkOrigin::VERIFIED_DOMAIN,
+        ]);
+
+        $resolved = $this->store()->resolve($this->resultFor($this->connection));
+
+        self::assertTrue($resolved->isSuspended());
+        self::assertSame($link->id, $resolved->linkId);
+        self::assertNull($resolved->identity);
+        self::assertSame(['user', '1'], [$resolved->holder?->type, $resolved->holder?->id]);
+        self::assertNull(Link::query()->sole()->last_used_at);
+    }
+
+    /**
+     * A reserved row that states no expiry is no live reservation.
+     *
+     * @return void
+     */
+    public function testAReservedRowWithNoExpiryResolvesNothing(): void
+    {
+        $this->makeLink($this->connection, self::SUBJECT, [
+            'issuer'                 => self::ISSUER,
+            'name_id_format'         => self::FORMAT,
+            'subject_key'            => (new LinkSubject(self::ISSUER, self::SUBJECT, self::FORMAT))->key(),
+            'state'                  => LinkState::RESERVED,
+            'reservation_expires_at' => null,
+        ]);
+
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isAbsent());
+    }
+
+    /**
+     * A link not made by a verified domain never asks after its identity's
+     * principals, and stays active.
+     *
+     * @return void
+     */
+    public function testALinkOfAnotherOriginIsNeverSuspendedByScope(): void
+    {
+        $scope = new ScriptedPrincipalScope;
+
+        $this->app?->instance(PrincipalScope::class, $scope);
+
+        $this->linkSubject();
+
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isLinked());
+        self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
+        self::assertSame([], $scope->asked);
+    }
+
+    /**
+     * What an identity holds in a connection is read directly: its active and
+     * suspended links, and a reservation until it expires.
+     *
+     * @return void
+     */
+    public function testWhatAnIdentityHoldsIsCounted(): void
+    {
+        $now = CarbonImmutable::parse(self::NOW);
+
+        self::assertSame(0, LinkStore::heldBy($this->connection->id, $this->identity, $now));
+
+        $this->makeLink($this->connection, 'active');
+        $this->makeLink($this->connection, 'suspended', ['state' => LinkState::SUSPENDED]);
+        $this->makeLink($this->connection, 'reserved', ['state' => LinkState::RESERVED, 'reservation_expires_at' => $now->addSecond()]);
+
+        self::assertSame(3, LinkStore::heldBy($this->connection->id, $this->identity, $now));
+        self::assertSame(2, LinkStore::heldBy($this->connection->id, $this->identity, $now->addSecond()));
+    }
+
+    /**
+     * The limit is read directly: what the binding answers, at one and above.
+     *
+     * @return void
+     */
+    public function testALimitIsReadDirectly(): void
+    {
+        $this->bindLimit(1);
+
+        /** @var \SineMacula\Laravel\Sso\Contracts\LinkLimit $limit */
+        $limit = app(LinkLimit::class);
+
+        self::assertSame(1, LinkStore::limitOf($limit, $this->identity, $this->connection));
+
+        $this->bindLimit(2);
+
+        /** @var \SineMacula\Laravel\Sso\Contracts\LinkLimit $limit */
+        $limit = app(LinkLimit::class);
+
+        self::assertSame(2, LinkStore::limitOf($limit, $this->identity, $this->connection));
+    }
+
+    /**
+     * A subject's expired reservation does not stand in the way of its link,
+     * and is gone once the link is made.
+     *
+     * @return void
+     */
+    public function testAnExpiredReservationIsReplacedByTheLinkMade(): void
+    {
+        $key      = new LinkSubject(self::ISSUER, self::SUBJECT, self::FORMAT);
+        $reserved = $this->makeLink($this->connection, self::SUBJECT, [
+            'issuer'                 => self::ISSUER,
+            'name_id_format'         => self::FORMAT,
+            'subject_key'            => $key->key(),
+            'identity_id'            => '2',
+            'state'                  => LinkState::RESERVED,
+            'reservation_expires_at' => CarbonImmutable::parse(self::NOW)->subSecond(),
+        ]);
+
+        self::assertTrue($this->linkSubject()->isCreated());
+
+        $link = Link::query()->sole();
+
+        self::assertNotSame($reserved->id, $link->id);
+        self::assertSame(LinkState::ACTIVE, $link->state);
+        self::assertSame('1', $link->identity_id);
     }
 
     /**
@@ -276,8 +411,8 @@ final class LinkStoreTest extends TestCase
         $linker = $app->make(Linker::class);
 
         self::assertInstanceOf(NoLinks::class, $linker);
-        self::assertNull($linker->resolve($this->resultFor($this->connection)));
-        self::assertNotNull($this->store()->resolve($this->resultFor($this->connection)));
+        self::assertTrue($linker->resolve($this->resultFor($this->connection))->isAbsent());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isLinked());
     }
 
     /**

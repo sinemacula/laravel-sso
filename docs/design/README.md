@@ -41,6 +41,10 @@ The current note set is:
 - `flows.md`: what every flow of the links and flow core shares: the links, authorisation requests and handoff codes
   tables, the distinct value types, the verified result, the contracts and their defaults, the completion's fixed steps
   and their transactions, the lock order, and the failure reasons and events by flow.
+- `linking.md`: the frozen completion and redemption state machine: its stages and transactions, the lock order, the
+  link and reservation states, what the application's contracts guarantee through admission, and its events.
+- `evidence.md`: what the identity provider's authentication context counts for: each connection's evidence policy, how
+  a result is judged at redemption and from its own assertion alone, and what a redeemer offers its further factor.
 - `links.md`, `authorization-requests.md`, `discovery.md`, `completion.md`, `handoffs.md`, `completion-responses.md` and
   `connection-lifecycle.md`: the link store, starting a flow, discovery by email domain, the completion pipeline,
   handoff codes and their redemption, the completion's response values, and disabling, deleting and changing the trust

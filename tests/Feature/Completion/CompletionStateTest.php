@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
+use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
 
@@ -93,7 +94,7 @@ final class CompletionStateTest extends TestCase
             ->withEnforcementPolicy($policy)
             ->withClaims($claims)
             ->withResult($result)
-            ->withLinkedIdentity($identity)
+            ->withResolution(ExampleLinks::resolution($identity))
             ->withEnforcementVersion('version-1')
             ->withSessionNotAfter($notAfter)
             ->withHandoff($handoff);
@@ -154,6 +155,8 @@ final class CompletionStateTest extends TestCase
             'linked'              => false,
             'enforcement_version' => null,
             'handed_off'          => false,
+            'resolution'          => null,
+            'reserved'            => false,
         ], $arrived->__debugInfo());
 
         $code  = HandoffCode::generate();
@@ -164,7 +167,7 @@ final class CompletionStateTest extends TestCase
                 Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']),
             )
             ->withResult(ExampleResults::full())
-            ->withLinkedIdentity(new IdentityReference('user', '1'))
+            ->withResolution(ExampleLinks::resolution(new IdentityReference('user', '1')))
             ->withEnforcementVersion('v1')
             ->withHandoff(new IssuedHandoff($code, CarbonImmutable::now()));
 
@@ -176,6 +179,8 @@ final class CompletionStateTest extends TestCase
             'linked'              => true,
             'enforcement_version' => 'v1',
             'handed_off'          => true,
+            'resolution'          => 'linked',
+            'reserved'            => false,
         ], $state->__debugInfo());
         self::assertStringNotContainsString('secret-response', print_r($state, true));
         self::assertStringNotContainsString($code->reveal(), print_r($state, true));

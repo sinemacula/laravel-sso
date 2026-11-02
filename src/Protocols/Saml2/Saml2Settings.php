@@ -209,6 +209,17 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
+     * The setting that names the issuer.
+     *
+     * @return list<string>
+     */
+    #[\Override]
+    public static function issuerNames(): array
+    {
+        return [Saml2Setting::IDP_ENTITY_ID->value];
+    }
+
+    /**
      * The operation whose freshness a change to the setting needs, as
      * `Saml2Setting` classifies it; `null` for a name it does not have.
      *

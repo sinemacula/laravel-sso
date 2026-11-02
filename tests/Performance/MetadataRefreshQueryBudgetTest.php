@@ -150,17 +150,17 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * A refresh now that removes a certificate and moves the endpoint is six
-     * reads and eight writes, the trust version raised once.
+     * reads and nine writes, the trust version raised once.
      *
      * @return void
      */
-    public function testARefreshRemovingACertificateAndMovingTheEndpointIsSixReadsAndEightWrites(): void
+    public function testARefreshRemovingACertificateAndMovingTheEndpointIsSixReadsAndNineWrites(): void
     {
         $connection = $this->saml([self::idp()->certificate(), Certificates::distinct(0)]);
 
         $this->serve(self::idp()->metadata('https://login.example.test/saml/sso'));
 
-        $result = $this->assertQueryBudget(6, 8, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(6, 9, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['sso_url', 'idp_signing_certificates'], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
     }

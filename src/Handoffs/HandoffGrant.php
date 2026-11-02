@@ -18,13 +18,17 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * identity a `link` or `reauthenticate` flow was started for, and the session a
  * `reauthenticate` flow was started on; the enforcement version checked at
  * completion; and the latest end of the application's session the provider's
- * deadline sets, where the deadline contract says it limits the session.
+ * deadline sets, where the deadline contract says it limits the session; the link
+ * the result resolved to, so a link removed and made again is told apart; and the
+ * reservation a result holding no link is bound to (SSO-8.8), which expires exactly
+ * when the code does.
  *
  * The completion pipeline builds one and hands it to `Contracts\HandoffIssuer`;
  * the code is bound to every part of it. A grant whose identity or session does
  * not fit its purpose is the pipeline's mistake (`InvalidArgumentException`): a
  * `sign_in` grant names neither, a `link` grant names the identity only, and a
- * `reauthenticate` grant names both.
+ * `reauthenticate` grant names both; a reservation belongs only to a `sign_in`
+ * grant whose result resolved to no identity.
  *
  * @api
  *
@@ -47,6 +51,8 @@ final readonly class HandoffGrant
      * @param  ?string  $sessionId
      * @param  ?string  $enforcementVersion
      * @param  ?\Carbon\CarbonImmutable  $sessionNotAfter
+     * @param  ?string  $linkId
+     * @param  ?string  $reservationId
      *
      * @throws \InvalidArgumentException
      */
@@ -75,10 +81,20 @@ final readonly class HandoffGrant
 
         /** The latest end of the application's session the provider's deadline sets. */
         public ?CarbonImmutable $sessionNotAfter = null,
+
+        /** The link the result resolved to at completion, active or suspended, if any. */
+        public ?string $linkId = null,
+
+        /** The reservation the code is bound to, if any. */
+        public ?string $reservationId = null,
     ) {
         self::assertBinding($result->purpose, $identity, $sessionId);
 
-        foreach (['session id' => $sessionId, 'enforcement version' => $enforcementVersion] as $name => $value) {
+        if ($reservationId !== null && ($result->purpose !== Purpose::SIGN_IN || $linkedIdentity !== null)) {
+            throw new \InvalidArgumentException('A reservation belongs only to a [sign_in] handoff grant that resolved to no identity.');
+        }
+
+        foreach (['session id' => $sessionId, 'enforcement version' => $enforcementVersion, 'link id' => $linkId, 'reservation id' => $reservationId] as $name => $value) {
             if (!self::isOptionalId($value)) {
                 throw new \InvalidArgumentException(sprintf('A handoff grant\'s %s is 1 to %d bytes.', $name, self::MAX_ID_LENGTH));
             }

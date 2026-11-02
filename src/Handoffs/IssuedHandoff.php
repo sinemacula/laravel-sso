@@ -9,7 +9,9 @@ use Carbon\CarbonImmutable;
 /**
  * A handoff code as `Contracts\HandoffIssuer` issued it (SSO-9.2): the code,
  * which the completion puts on the application's redirect URI once and which is
- * never shown again, and when it expires.
+ * never shown again; when it expires, as stored; and its opaque reference, what
+ * a reservation holds of it (SSO-8.8), which works for the package's codes and
+ * an adapter's. An issuer that holds a reservation must answer a reference.
  *
  * It holds the code, so a dump never shows it and it refuses to be serialised
  * or unserialised, as the code itself does.
@@ -26,6 +28,7 @@ final readonly class IssuedHandoff
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffCode  $code
      * @param  \Carbon\CarbonImmutable  $expiresAt
+     * @param  ?string  $reference
      */
     public function __construct(
 
@@ -34,6 +37,9 @@ final readonly class IssuedHandoff
 
         /** When the code expires. */
         public CarbonImmutable $expiresAt,
+
+        /** The code's opaque reference, never the code. */
+        public ?string $reference = null,
     ) {}
 
     /**

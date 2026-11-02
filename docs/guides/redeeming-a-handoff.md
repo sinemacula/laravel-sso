@@ -3,7 +3,7 @@
 A completed flow ends with a redirect to your application's redirect URI carrying a single-use handoff code and the
 request's public reference. Your client then exchanges the code, with the verifier it started the flow with, at a
 redemption endpoint of your API, which answers with whatever your application signs people in with. The package's
-redemption helper does the checking; your application owns the route and the response.
+redemption helper does the checking; your application owns the route, the session and the response.
 
 ```php
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
@@ -31,6 +31,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 
@@ -42,13 +44,24 @@ final class SsoHandoffController
 
     public function signIn(Request $request): JsonResponse
     {
-        $result = $this->redemptions->redeem(
-            Purpose::SIGN_IN,
-            'web',                                   // your application's name, as configured
-            (string) $request->input('connection'),  // the connection the client started through
-            (string) $request->input('code'),
-            (string) $request->input('verifier'),
-        );
+        $token = null;
+
+        $result = DB::connection(StorageConnection::name())->transaction(function () use ($request, &$token) {
+            $result = $this->redemptions->admit(
+                Purpose::SIGN_IN,
+                'web',                                   // your application's name, as configured
+                (string) $request->input('connection'),  // the connection the client started through
+                (string) $request->input('code'),
+                (string) $request->input('verifier'),
+            );
+
+            if ($result->isAdmitted()) {
+                // Sign in the identity $result->linkedIdentity names, through this same connection.
+                $token = $this->issueYourOwnToken($result);
+            }
+
+            return $result;
+        });
 
         if ($result->isRateLimited()) {
             return response()->json(['error' => 'rate_limited'], 429, [
@@ -61,9 +74,6 @@ final class SsoHandoffController
             return response()->json(['error' => $result->reason?->value], 400, ['Cache-Control' => 'no-store']);
         }
 
-        // Sign in the identity $result->linkedIdentity names, with $result->result.
-        $token = $this->issueYourOwnToken($result);
-
         return response()->json(['token' => $token], 200, ['Cache-Control' => 'no-store']);
     }
 }
@@ -74,6 +84,32 @@ response carries your application's credentials. Never echo the code or the veri
 
 The purpose is your endpoint's, never the request's: a sign-in endpoint redeems `Purpose::SIGN_IN` codes only, and a
 `link` or `reauthenticate` code presented there is refused (SSO-9.9). Give each purpose its own endpoint.
+
+## `admit()` or `redeem()`
+
+There are two ways in, and they differ only in what protects your own writes:
+
+| Call                               | Transaction                        | `isAdmitted()` | For                                                                              |
+|------------------------------------|------------------------------------|----------------|----------------------------------------------------------------------------------|
+| `admit()`                          | Yours, required                    | `true`         | Anything that writes a session: it commits with the consumption, under the locks |
+| `redeem()` inside your transaction | Yours                              | `true`         | The same as `admit()`                                                            |
+| `redeem()` with none open          | Its own, committed when it returns | `false`        | A `link`, which writes no session, or an application that holds no sessions here |
+
+`admit()` is the session-admission API. With no transaction open on the package's storage connection it throws a
+`LogicException` before the code is touched. Use it for every sign-in: a result that answers `isAdmitted()` false has
+already committed and released its locks, so a session written from it is protected by nothing, and it must never lead
+to one. A `reauthenticate` code, and a code bound to a reservation (linking by a verified domain), must commit with your
+session write, so reaching the standalone path with one is a `LogicException` that leaves the code unconsumed.
+
+Both take the caller your application has authenticated as their last argument, an `IdentityReference`:
+
+```php
+$result = $redemptions->admit(Purpose::LINK, 'web', $connectionId, $code, $verifier, $caller);
+```
+
+Only a `link` reads it: holding a code and its verifier proves which client started the flow, not who is calling now.
+No caller, or any other than the identity the code is bound to, compared byte for byte, is `identity_mismatch`. See
+[Links](links.md).
 
 ## What a redemption checks
 
@@ -89,8 +125,14 @@ In this order, the first that fails refusing it:
 6. It must have been issued for the purpose, the application and the connection given, compared exactly.
 7. The verifier must be the one whose S256 challenge the flow was started with, so only the client that started the
    flow can redeem its code (SSO-5.2).
-8. The connection must still be enabled and complete, still satisfy its tenant's enforcement, and the result's link
-   must still resolve to the identity it resolved to at completion.
+8. The connection must still be enabled and complete, and still satisfy its tenant's enforcement.
+9. The purpose's own rules must hold, and its writes are made:
+   - `sign_in`: the same link, by its id, resolves as at completion, or the reservation the code is bound to is judged
+     again for that same identity and activated;
+   - `link`: the caller, freshness, eligibility and the link's continuity ([Links](links.md)), and the link is created
+     or confirmed;
+   - `reauthenticate`: the session is active and bound to exactly this link, and its authentication time is renewed
+     ([Re-authenticating](reauthenticating.md)).
 
 Before the code is locked, the redemption locks the tenant's enforcement (with the `enforcement` feature on and the
 package's default enforcement contract bound), then the connection and the connections the rule names. A change to
@@ -105,11 +147,11 @@ handoff and a code that was never redeemed never do.
 
 ## The results
 
-| Result         | When                                 | Your response              |
-|----------------|--------------------------------------|----------------------------|
-| redeemed       | every check passed                   | sign in, link or renew     |
-| refused        | a check failed, for its `reason`     | a `400` with the code      |
-| rate limited   | the limit for the IP address is full | a `429` with `Retry-After` |
+| Result       | When                                 | Your response                               |
+|--------------|--------------------------------------|---------------------------------------------|
+| redeemed     | every check passed                   | sign in, or confirm the link or the renewal |
+| refused      | a check failed, for its `reason`     | a `400` with the code                       |
+| rate limited | the limit for the IP address is full | a `429` with `Retry-After`                  |
 
 A redeemed result carries:
 
@@ -120,94 +162,150 @@ A redeemed result carries:
 - `identity`: the identity a `link` or `reauthenticate` flow was started for, and `sessionId` the session a
   `reauthenticate` flow was started on;
 - `enforcementVersion`: the enforcement version the completion checked, and `sessionNotAfter`, the latest end of your
-  session the provider's deadline sets. Keep both on the session you create (SSO-9.10).
+  session the provider's deadline sets. Keep both on the session you create (SSO-9.10);
+- `linkId`: the link the identity resolved through, which your session keeps, since a `reauthenticate` accepts only the
+  link that established it;
+- `evidence`: what your `EvidencePolicy` accepted of the result's own assertion, for a `sign_in` or a `reauthenticate`
+  ([Evidence](evidence.md));
+  never for a `link`;
+- `isAdmitted()`: whether it was redeemed inside your transaction.
 
 A refused result carries one of these codes:
 
-| Code                      | Why                                                                                    |
-|---------------------------|----------------------------------------------------------------------------------------|
-| `handoff_unknown`         | not a code, never issued, or voided by a change to its connection                      |
-| `replayed`                | already redeemed                                                                       |
-| `handoff_expired`         | its lifetime ran out                                                                   |
-| `purpose_mismatch`        | issued for another purpose than this endpoint redeems                                  |
-| `application_mismatch`    | issued for another application                                                         |
-| `connection_mismatch`     | issued through another connection                                                      |
-| `verifier_mismatch`       | the verifier is not the one the flow was started with                                  |
-| `connection_unavailable`  | the connection was disabled, deleted or left incomplete since completion               |
-| `enforcement_unsatisfied` | the tenant now requires sign-in through other connections                              |
-| `link_changed`            | the link was removed, now names another identity, or appeared where there was none     |
+| Code                                  | Why                                                                                          |
+|---------------------------------------|----------------------------------------------------------------------------------------------|
+| `handoff_unknown`                     | not a code, never issued, or voided by a change to its connection                            |
+| `replayed`                            | already redeemed                                                                             |
+| `handoff_expired`                     | its lifetime ran out                                                                         |
+| `purpose_mismatch`                    | issued for another purpose than this endpoint redeems                                        |
+| `application_mismatch`                | issued for another application                                                               |
+| `connection_mismatch`                 | issued through another connection                                                            |
+| `verifier_mismatch`                   | the verifier is not the one the flow was started with                                        |
+| `connection_unavailable`              | the connection was disabled, deleted or left incomplete since completion                     |
+| `enforcement_unsatisfied`             | the tenant now requires sign-in through other connections                                    |
+| `link_changed`                        | the link was removed, replaced, or (for a `sign_in`) appeared where there was none           |
+| `link_suspended`                      | the link is suspended until a confirming `link`                                              |
+| `link_reserved`                       | a live reservation holds the subject, which a `link` waits out                               |
+| `reservation_invalid`                 | the reservation is gone, expired, or a condition of it no longer holds                       |
+| `identity_mismatch`                   | the caller is not the identity the `link` is bound to                                        |
+| `freshness_required`                  | the caller of a `link` did not authenticate recently enough                                  |
+| `link_ineligible`                     | the identity may not link through the connection                                             |
+| `independent_authentication_required` | the identity holds a verified domain link, and the caller did not authenticate apart from it |
+| `subject_already_linked`              | another identity holds the subject, which is never named                                     |
+| `link_limit_reached`                  | the identity holds as many links in the connection as it may                                 |
+| `session_ineligible`                  | the session is not active, or not bound to exactly this link                                 |
+| `authentication_expired`              | an adapter's own `reauthenticate` result states no authentication time                       |
 
 Never show a code to a person as it is: map it to your own wording. The result never shows its attributes in a dump or
 `json_encode()`, and refuses to be serialised; keep `result` itself if you need it later.
 
 ## Transactions
 
-Call the helper inside a transaction of your own on the package's storage connection when your sign-in must commit
-with the redemption: the redemption is then part of it (a savepoint), its events wait for your commit, and a rollback
-undoes it, the consumed code included, so the client can try again. A transaction on another connection is not atomic
-with it (decision D5).
+Call `admit()` inside a transaction of your own on the package's storage connection, and write the session in it. The
+redemption is then part of that transaction (a savepoint), its events wait for your commit, and the consumption, any
+reservation's activation and your session commit or roll back together. A transaction on another connection is not
+atomic with it (decision D5).
 
-Write the session inside that same transaction. The enforcement lock the redemption takes is held until your
-transaction commits, so a change to enforcement waits for your session to be written and its revocation then removes
-it if the new rule does not allow it. A session written after your transaction commits, or through another connection,
-is not covered: it can be created after the rule changed and escape the change's revocation.
+The locks the redemption takes are held until your transaction commits, so a change to enforcement waits for your
+session to be written, and its revocation then removes it if the new rule does not allow it. A session written after
+your transaction commits, or through another connection, is not covered: it can be created after the rule changed and
+escape the change's revocation.
+
+Two outcomes spend or keep the code, and they are not the same:
+
+- **A refusal commits.** A check that refuses is an answer, not an error. Once the code is consumed, the refusal deletes
+  that code's reservation, queues one failure event and, when your transaction commits, spends the code. Retrying with
+  everything put right is `replayed`: the client must start again.
+- **An exception rolls back.** A database error, or a contract that throws, propagates. It rolls back the consumption
+  and any activation together, reports nothing, and leaves the code to be tried again. So does your own rollback, for
+  whatever reason.
+
+Retry only your whole transaction, from the start, and never a part of it.
 
 > [!IMPORTANT]
-> On PostgreSQL under `REPEATABLE READ`, a redemption that waited on an enforcement change can fail with a
-> serialisation failure (SQLSTATE `40001`) instead of seeing the new rule. The package propagates it and never retries
+> On PostgreSQL under `REPEATABLE READ`, a redemption that waited on another change to its connection can fail with a
+> serialisation failure (SQLSTATE `40001`) instead of seeing the change. The package propagates it and never retries
 > part of your transaction. Treat it as a server error, or retry your whole transaction from the start (the code is not
 > spent, since the failure rolls everything back). Never catch it and carry on inside the same transaction.
 
 ## Redeeming codes of your own
 
 An adapter that issues handoff codes of its own (binding `Contracts\HandoffIssuer` to its store, as `laravel-iam`
-binds `laravel-authentication`'s codes) redeems them itself, and asks the package's recheck inside the transaction
-that consumes its code, on the package's storage connection. It takes the recheck's lock first, before it locks its own
-code, so every redemption takes the package's lock order (the tenant's enforcement, then the connections, then the
-code) and none deadlocks with an enforcement change:
+binds `laravel-authentication`'s codes) redeems them itself, through `Handoffs\HandoffRecheck`, inside the transaction
+that consumes its code, on the package's storage connection. It describes what its code was bound to with a
+`Handoffs\HandoffBinding`, built from what its issuer stored: everything the issuer was given in its `HandoffGrant`.
+
+It takes the recheck's lock first, before it locks its own code, so every redemption takes the package's lock order (the
+tenant's enforcement, the connections, a reservation's domain claim, the code, the links) and none deadlocks with a
+change:
 
 ```php
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
-use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
+use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 
-DB::connection(StorageConnection::name())->transaction(function () use ($code, $result, $linkedIdentity) {
+DB::connection(StorageConnection::name())->transaction(function () use ($code, $result, $caller) {
+    // The lock comes first, before your code is locked.
     $recheck = app(HandoffRecheck::class);
-    $lock    = $recheck->lock($result->tenantId, $result->connectionId, $result->application); // first
+    $lock    = $recheck->lock($result->tenantId, $result->connectionId, $result->application, $code->reservationId);
 
     $code->consume(); // your own atomic, single-use consumption, locked after, through this same connection
 
-    $outcome = $recheck->recheck($result, $linkedIdentity, $lock);
+    $binding = new HandoffBinding(
+        linkedIdentity: $code->linkedIdentity,     // the identity the result's link resolved to, if any
+        linkId: $code->linkId,                     // the link observed at completion, active or suspended, if any
+        identity: $code->identity,                 // the identity of a `link` or `reauthenticate` flow
+        sessionId: $code->sessionId,               // the session of a `reauthenticate` flow
+        reservationId: $code->reservationId,       // the reservation it holds, if any
+        handoffReference: $code->reference,        // the opaque reference your issuer answered
+    );
 
-    if ($outcome !== RecheckOutcome::PASSED) {
-        return $outcome->reason(); // refuse; your code stays consumed
+    $admission = $recheck->admit($result, $binding, $lock, $caller);
+
+    if (!$admission->isPassed()) {
+        $recheck->discardReservation($binding, $result->connectionId);
+
+        return $admission->outcome->reason(); // refuse; your code stays consumed
     }
 
-    if ($result->purpose === Purpose::SIGN_IN && $linkedIdentity !== null) {
+    if ($result->purpose === Purpose::SIGN_IN && $admission->identity !== null) {
         $recheck->acknowledgeSignIn($result, $lock);
     }
 
-    // sign in, link or re-authenticate, writing the session in this transaction
+    // Write the session for $admission->identity, bound to $admission->linkId, with $admission->evidence.
+    // A `link` writes nothing further; a `reauthenticate` was renewed by the admission.
 });
 ```
 
 - `lock()` takes the locks a redemption holds until your transaction ends: with the `enforcement` feature on and the
   default enforcement contract bound, the tenant's enforcement row (named by the inheritance contract, and inserted
   empty when the tenant has none) and then, in one statement in id order, the connection and the connections the rule
-  names; otherwise the connection alone. Read your code plainly to learn the result before it, if you need to, but lock
-  your code only after it.
-- `recheck()` takes that lock, and refuses one taken for another tenant, connection or application than the result's
-  with a `LogicException`, so it cannot be reached without the locks. It answers `passed`, or the first of
+  names; otherwise the connection alone; then the domain claim of the reservation you name. Read your code plainly to
+  learn the result before it, if you need to, but lock your code only after it.
+- `admit()` is `recheck()` followed by the purpose's writes: activating a reservation, creating or confirming a link, or
+  renewing a session. It answers an `Admission`: `isPassed()`, or the `outcome` that refused it, with the `identity`
+  established, the `linkId` it resolved through, and the `evidence` accepted. `$outcome->reason()` gives the
+  `FailureReason` to refuse with. Pass the caller your application has authenticated: a `link` needs it.
+- `recheck()` alone judges, and writes nothing but a suspension it finds, which is latched whatever the redemption comes
+  to. It takes the lock, and refuses one taken for another tenant, connection or application than the result's with a
+  `LogicException`, so it cannot be reached without the locks. It answers `passed` or the first that refuses:
   `connection_unavailable` (also when the inheritance contract no longer names the tenant whose rule is locked),
-  `enforcement_unsatisfied` and `link_changed`; `reason()` gives the `FailureReason` to refuse with. Under the default
-  contract it judges enforcement from the locked rows.
+  `enforcement_unsatisfied`, then the purpose's own. Under the default contract it judges enforcement from the locked
+  rows.
+- `discardReservation()` removes a refused code's reservation, by its identity and handoff reference and never merely by
+  the subject, in your transaction; a binding with no reservation does nothing. Call it for every refusal after you
+  consumed your code.
 - `acknowledgeSignIn()` records the connection's completed sign-in on the locked row, only for a `sign_in` result; call
-  it after the recheck passed, for a result linked to an identity.
-- All three throw a `LogicException` outside a transaction on the storage connection, and `acknowledgeSignIn()` for a
+  it after the admission passed, for a result that established an identity.
+- All of them throw a `LogicException` outside a transaction on the storage connection, and `acknowledgeSignIn()` for a
   result of another purpose. A lock is only good for the transaction it was taken in.
-- A serialisation failure on PostgreSQL propagates from `lock()`; retry your whole transaction, never a part of it.
+- A binding that does not say what the issuer was given fails closed. In particular, a `link`'s binding naming a linked
+  identity but no link id cannot show the link is the same one, and is `link_changed`; one naming no identity is
+  `identity_mismatch`.
+- A serialisation failure on PostgreSQL propagates from `lock()`; retry your whole transaction, never a part of it. A
+  refusal you commit spends your code, and a rollback does not, just as for the package's own.
 
 If you bind your own `Contracts\Enforcement`, the recheck asks it, under the connection's lock alone. A current read in
 your contract is not enough to keep a session from escaping a rule change: your contract must itself serialise the
@@ -218,11 +316,15 @@ from state that does not change under the transaction, or read it with a current
 
 ## Events
 
-A redeemed code reports `HandoffRedeemed`; every refusal, a full limit included, exactly one `FlowFailed` with the
-`redemption` flow and the reason. Their context carries the connection, its tenant and protocol, the application, the
+A redeemed code reports `HandoffRedeemed`, after `LinkCreated` or `LinkConfirmed` for a `link` that made or confirmed a
+link, `LinkCreated` and `LinkActivated` for an activated reservation, and with `ReauthenticationCompleted` for a
+`reauthenticate`. Every refusal, a full limit included, reports exactly one `FlowFailed` with the `redemption` flow and
+the reason. Their context carries the connection, its tenant and protocol, the application, the
 purpose, the request's public reference (`request_reference`, the only flow identifier events and logs carry), the
-identity and, for a `reauthenticate`, the session. Never the code, the verifier, the subject or an attribute. A
-refusal before the code is found carries only the purpose your endpoint asked for.
+identity the flow concerns and, for a `reauthenticate`, the session. Never the code, the verifier, the subject or an
+attribute, and never the caller or the identity holding the subject. A refusal before the code is found carries only the
+purpose your endpoint asked for. All of them wait for your commit, and none is reported when your transaction rolls
+back.
 
 ## Errors
 

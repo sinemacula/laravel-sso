@@ -438,6 +438,34 @@ return [
 
     /*
     |---------------------------------------------------------------------------
+    | Linking, provisioning and evidence
+    |---------------------------------------------------------------------------
+    |
+    | - `verified_result_max_age_seconds`: how long a verified response may keep
+    |   finishing, across a provisioning listener, 5 to 300 seconds (default
+    |   120). It never extends the authorisation request's own expiry.
+    | - `evidence_max_age_seconds`: the longest time since the provider's
+    |   authentication that a connection's evidence may be accepted, 60 to 3600
+    |   seconds (default 900).
+    | - `shared_issuers`: issuers shared by many organisations, each mapped to
+    |   the claim naming the organisation. Linking by a verified domain through
+    |   one needs that claim and its expected value. It adds to the issuers the
+    |   package knows, and can never change or remove one of those.
+    |
+    | Whether linking by a verified domain is on at all is the `domain_linking`
+    | feature and each connection's own setting; how recent a domain's check must
+    | be is `domains.linking_max_age_seconds`.
+    |
+    */
+
+    'linking' => [
+        'verified_result_max_age_seconds' => env('SSO_LINKING_VERIFIED_RESULT_MAX_AGE_SECONDS', 120),
+        'evidence_max_age_seconds'        => env('SSO_LINKING_EVIDENCE_MAX_AGE_SECONDS', 900),
+        'shared_issuers'                  => [],
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
     | Authorisation requests
     |---------------------------------------------------------------------------
     |

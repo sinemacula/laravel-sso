@@ -10,6 +10,13 @@ namespace SineMacula\Laravel\Sso\Protocols;
  * by many organisations, the claim or attribute naming the organisation a
  * result belongs to, which linking by a verified domain requires (SSO-8.8).
  *
+ * A connection is recognised as such a provider's by its issuer: exactly the
+ * one the preset's settings fill in, or one matching the preset's issuer
+ * pattern for a provider whose issuer names a directory (`names()`). Whatever
+ * an administrator gives, a connection with such an issuer cannot enable
+ * linking without the claim and its expected value
+ * (`Connections\LinkingPolicyService`).
+ *
  * A preset is never a code path of its own: it fills in a connection's
  * settings, and what an administrator gives replaces what it fills in, setting
  * by setting, so every check of the protocol applies as it does to settings
@@ -33,6 +40,7 @@ final readonly class Preset
      * @param  array<string, mixed>  $settings
      * @param  array<string, string>  $attributeMapping
      * @param  ?string  $organizationClaim
+     * @param  ?string  $issuerPattern
      *
      * @throws \InvalidArgumentException
      */
@@ -52,6 +60,9 @@ final readonly class Preset
 
         /** For an issuer shared by many organisations, the claim or attribute naming the organisation. */
         public ?string $organizationClaim = null,
+
+        /** For a provider whose issuer names a directory, the pattern each of its issuers matches. */
+        public ?string $issuerPattern = null,
     ) {
         if (preg_match(self::NAME_PATTERN, $name) !== 1 || preg_match(self::NAME_PATTERN, $protocol) !== 1) {
             throw new \InvalidArgumentException('A preset\'s name and protocol are lower case: a letter, then up to 63 letters, digits or underscores.');
@@ -95,5 +106,19 @@ final readonly class Preset
     public function isSharedIssuer(): bool
     {
         return $this->organizationClaim !== null;
+    }
+
+    /**
+     * Whether the issuer is this provider's: exactly the one the preset's
+     * settings fill in, or one matching its issuer pattern.
+     *
+     * @param  string  $issuer
+     * @return bool
+     */
+    public function names(string $issuer): bool
+    {
+        $filled = $this->settings['issuer'] ?? $this->settings['idp_entity_id'] ?? null;
+
+        return $filled === $issuer || ($this->issuerPattern !== null && preg_match($this->issuerPattern, $issuer) === 1);
     }
 }

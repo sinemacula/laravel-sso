@@ -80,4 +80,25 @@ interface SsoConnection
      * @return bool
      */
     public function hasCompletedSignIn(): bool;
+
+    /**
+     * The connection's settings for linking by a verified domain (SSO-8.8),
+     * apart from its protocol settings: whether it is on, the issuer's
+     * classification, the organisation claim and its expected value, the SAML
+     * attribute's exact `Name` and `NameFormat`, whether the administrator
+     * acknowledged that the provider decides who holds each address, and the
+     * version a change raises.
+     *
+     * @return array<string, bool|int|string|null>
+     */
+    public function getLinkingSettings(): array;
+
+    /**
+     * The authentication context the connection accepts as evidence (SSO-8.7):
+     * the accepted `amr`, `acr` and `AuthnContextClassRef` values and their
+     * combinations, empty when it accepts nothing.
+     *
+     * @return array<string, mixed>
+     */
+    public function getEvidencePolicy(): array;
 }

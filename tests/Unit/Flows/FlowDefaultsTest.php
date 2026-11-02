@@ -7,9 +7,7 @@ namespace Tests\Unit\Flows;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Completion\CompletionState;
-use SineMacula\Laravel\Sso\Completion\Stages\DomainReservation;
 use SineMacula\Laravel\Sso\Completion\Stages\Provisioning;
-use SineMacula\Laravel\Sso\Completion\Stages\UnbuiltStage;
 use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
 use SineMacula\Laravel\Sso\Flows\NoReauthenticationSessions;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
@@ -36,9 +34,7 @@ use Tests\Fixtures\Results\ExampleResults;
 #[CoversClass(SessionStanding::class)]
 #[CoversClass(NoLinks::class)]
 #[CoversClass(OneLinkPerConnection::class)]
-#[CoversClass(DomainReservation::class)]
 #[CoversClass(Provisioning::class)]
-#[CoversClass(UnbuiltStage::class)]
 #[CoversClass(LinkState::class)]
 #[CoversClass(LinkOrigin::class)]
 final class FlowDefaultsTest extends TestCase
@@ -66,30 +62,27 @@ final class FlowDefaultsTest extends TestCase
      */
     public function testNothingIsLinkedAndOneLinkIsAllowed(): void
     {
-        self::assertNull((new NoLinks)->resolve(ExampleResults::full()));
+        self::assertTrue((new NoLinks)->resolve(ExampleResults::full())->isAbsent());
         self::assertSame(1, (new OneLinkPerConnection)->maxLinks(new IdentityReference('user', '1'), new ExampleConnection));
         self::assertSame(1, OneLinkPerConnection::MAX_LINKS);
-        self::assertSame(['active', 'reserved'], array_column(LinkState::cases(), 'value'));
+        self::assertSame(['active', 'reserved', 'suspended'], array_column(LinkState::cases(), 'value'));
         self::assertSame(['link_purpose', 'provisioning', 'verified_domain', 'migration'], array_column(LinkOrigin::cases(), 'value'));
     }
 
     /**
-     * The domain reservation and provisioning seams pass the state on
-     * unchanged.
+     * The provisioning step passes on a state that is not a genuinely unlinked
+     * `sign_in`.
      *
      * @return void
      */
-    public function testTheSeamsPassEveryResultOn(): void
+    public function testProvisioningPassesOnAStateNotUnlinked(): void
     {
         $state = CompletionState::arrived('01jbexampleconnection00000', new CompletionRequest('POST', '', []))->withResult(ExampleResults::full());
 
-        foreach ([new DomainReservation, new Provisioning] as $stage) {
+        $outcome = (new Provisioning)->run($state);
 
-            $outcome = $stage->run($state);
-
-            self::assertTrue($outcome->isProceeding());
-            self::assertSame($state, $outcome->state);
-            self::assertNull($outcome->reason);
-        }
+        self::assertTrue($outcome->isProceeding());
+        self::assertSame($state, $outcome->state);
+        self::assertNull($outcome->reason);
     }
 }

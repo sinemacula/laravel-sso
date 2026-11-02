@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Handoffs;
 
 use SineMacula\Laravel\Sso\Enforcement\LockedEnforcement;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
@@ -14,9 +15,10 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * connection and an application: under the package's default enforcement
  * contract with the `enforcement` feature on, the enforcing tenant's rule and
  * then the connection and the rule's connections, in id order; otherwise the
- * connection alone. `HandoffRecheck::recheck()` and `acknowledgeSignIn()` take
- * one, so neither is reached without the locks taken first, in the package's
- * lock order.
+ * connection alone; then, for a handoff bound to a reservation, its domain
+ * claim. `HandoffRecheck::recheck()` and `acknowledgeSignIn()` take one, so
+ * neither is reached without the locks taken first, in the package's lock
+ * order.
  *
  * It holds the connection's row as locked (`null` when it is gone, or of
  * another tenant) and the locked enforcement, and lives only for the
@@ -39,6 +41,7 @@ final readonly class RecheckLock
      * @param  string  $application
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Enforcement\LockedEnforcement  $enforcement
+     * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $domain
      */
     private function __construct(
 
@@ -56,6 +59,9 @@ final readonly class RecheckLock
 
         /** The enforcing tenant's rule and its connections, locked, when the default contract applies. */
         public ?LockedEnforcement $enforcement,
+
+        /** The domain claim a reservation is bound to, locked, or `null` when there is none. */
+        public ?Domain $domain = null,
     ) {}
 
     /**
@@ -66,13 +72,14 @@ final readonly class RecheckLock
      * @param  string  $application
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Enforcement\LockedEnforcement  $enforcement
+     * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $domain
      * @return self
      *
      * @internal
      */
-    public static function held(string $tenantId, string $connectionId, string $application, ?Connection $connection, ?LockedEnforcement $enforcement): self
+    public static function held(string $tenantId, string $connectionId, string $application, ?Connection $connection, ?LockedEnforcement $enforcement, ?Domain $domain = null): self
     {
-        return new self($tenantId, $connectionId, $application, $connection, $enforcement);
+        return new self($tenantId, $connectionId, $application, $connection, $enforcement, $domain);
     }
 
     /**

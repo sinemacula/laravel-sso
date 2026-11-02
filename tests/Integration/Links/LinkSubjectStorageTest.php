@@ -117,7 +117,7 @@ final class LinkSubjectStorageTest extends TestCase
 
             $resolved = $this->store()->resolve($this->resultFor($subject));
 
-            self::assertSame(['user', (string) $index], [$resolved?->type, $resolved?->id], bin2hex($subject));
+            self::assertSame(['user', (string) $index], [$resolved->identity?->type, $resolved->identity?->id], bin2hex($subject));
         }
     }
 

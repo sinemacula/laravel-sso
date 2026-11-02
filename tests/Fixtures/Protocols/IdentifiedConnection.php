@@ -24,6 +24,7 @@ final readonly class IdentifiedConnection implements SsoConnection
      * @param  string  $tenantId
      * @param  string  $protocol
      * @param  array<string, mixed>  $settings
+     * @param  bool  $linking
      */
     public function __construct(
 
@@ -38,6 +39,9 @@ final readonly class IdentifiedConnection implements SsoConnection
 
         /** The settings. */
         private array $settings = [],
+
+        /** Whether linking by a verified domain is on. */
+        private bool $linking = false,
     ) {}
 
     /**
@@ -126,5 +130,37 @@ final readonly class IdentifiedConnection implements SsoConnection
     public function hasCompletedSignIn(): bool
     {
         return false;
+    }
+
+    /**
+     * The settings for linking by a verified domain: off unless given, with
+     * nothing else set.
+     *
+     * @return array<string, bool|int|string|null>
+     */
+    #[\Override]
+    public function getLinkingSettings(): array
+    {
+        return [
+            'enabled'               => $this->linking,
+            'issuer_class'          => null,
+            'organization_claim'    => null,
+            'organization_value'    => null,
+            'saml_attribute'        => null,
+            'saml_attribute_format' => null,
+            'acknowledged'          => false,
+            'version'               => 0,
+        ];
+    }
+
+    /**
+     * Nothing is accepted as evidence.
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function getEvidencePolicy(): array
+    {
+        return [];
     }
 }

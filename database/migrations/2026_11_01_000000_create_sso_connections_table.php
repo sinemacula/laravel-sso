@@ -80,6 +80,32 @@ return new class extends Migration {
             // the lock, so a change made meanwhile refuses them.
             $blueprint->unsignedBigInteger('trust_version')->default(0);
 
+            // Linking by a verified domain (SSO-8.8), off by default: whether
+            // it is on; the administrator's classification of the issuer,
+            // shared or single_organization, unset until it is given; the
+            // organisation claim and its expected value; the SAML attribute's
+            // exact Name and NameFormat, and when the administrator
+            // acknowledged that the provider decides who holds each address.
+            $blueprint->boolean('linking_enabled')->default(false);
+            $blueprint->string('linking_issuer_class', 32)->nullable();
+            $blueprint->string('linking_organization_claim', 255)->nullable();
+            $blueprint->string('linking_organization_value', 255)->nullable();
+            $blueprint->string('linking_saml_attribute', 1024)->nullable();
+            $blueprint->string('linking_saml_attribute_format', 255)->nullable();
+            $blueprint->dateTime('linking_acknowledged_at', 0)->nullable();
+
+            // Raised under the connection's lock by every change to the
+            // settings above, which is no protocol trust change, so it voids
+            // reservations and no flow. A completion compares the version its
+            // evidence was accepted under; a reservation carries the version it
+            // was made under, and its redemption compares it.
+            $blueprint->unsignedBigInteger('linking_version')->default(0);
+
+            // The authentication context this connection accepts as evidence
+            // (SSO-8.7): accepted amr, acr and AuthnContextClassRef values and
+            // their combinations. Unset accepts nothing.
+            $blueprint->json('evidence_policy')->nullable();
+
             // The metadata refresh (SSO-2.8), of a SAML connection's metadata
             // or an OIDC connection's discovery document and JWKS: raised by
             // every refresh that writes, so two refreshes compare and set; the

@@ -20,13 +20,14 @@ use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
  * the code is bound to: the result's purpose, application, connection and
  * request's public reference, the S256 challenge of the client's verifier, the
  * identity a `link` or `reauthenticate` flow was started for, the session a
- * `reauthenticate` flow was started on, and the identity the result's link
- * resolved to; the verified result, as the JSON of `VerifiedResult::toArray()`
- * encrypted through `Contracts\SecretEncrypter`, since it carries personal
- * data; the enforcement version and the session's latest end (SSO-9.10); and
- * the expiry. Times are kept to the whole second, so a code expires at most a
- * second before its grant says; the issued handoff carries the expiry as
- * stored.
+ * `reauthenticate` flow was started on, the identity the result's link resolved
+ * to, the link itself, and the reservation it holds (SSO-8.8); the verified
+ * result, as the JSON of `VerifiedResult::toArray()` encrypted through
+ * `Contracts\SecretEncrypter`, since it carries personal data; the enforcement
+ * version and the session's latest end (SSO-9.10); and the expiry. Times are
+ * kept to the whole second, so a code expires at most a second before its grant
+ * says; the issued handoff carries the expiry as stored, and the row's id as
+ * its opaque reference.
  *
  * The completion holds the connection's row lock when it asks, and the issue
  * raises the connection's flows version by one under it, so the code's insert
@@ -88,6 +89,8 @@ final readonly class DatabaseHandoffStore implements HandoffIssuer
             'session_id'           => $grant->sessionId,
             'linked_identity_type' => $grant->linkedIdentity?->type,
             'linked_identity_id'   => $grant->linkedIdentity?->id,
+            'link_id'              => $grant->linkId,
+            'reservation_id'       => $grant->reservationId,
             'result'               => $this->encrypter->encrypt(json_encode($result->toArray(), JSON_THROW_ON_ERROR)),
             'enforcement_version'  => $grant->enforcementVersion,
             'session_not_after'    => $grant->sessionNotAfter,
@@ -96,7 +99,7 @@ final readonly class DatabaseHandoffStore implements HandoffIssuer
 
         self::raiseFlowsVersion($result->connectionId);
 
-        return new IssuedHandoff($code, $row->expires_at);
+        return new IssuedHandoff($code, $row->expires_at, $row->id);
     }
 
     /**

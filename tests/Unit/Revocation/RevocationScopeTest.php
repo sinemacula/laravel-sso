@@ -14,9 +14,9 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * Unit tests for the scope of a session revocation (SSO-4.5): the three scopes,
- * each with its reason and only the fields it needs, the reasons a connection's
- * sessions may be revoked for, and the stable enum values.
+ * Unit tests for the scope of a session revocation (SSO-4.5, SSO-8.8): the four
+ * scopes, each with its reason and only the fields it needs, the reasons a
+ * connection's sessions may be revoked for, and the stable enum values.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -86,6 +86,39 @@ final class RevocationScopeTest extends TestCase
     }
 
     /**
+     * The link scope names the identity, the connection and the one link, for a
+     * widened scope.
+     *
+     * @return void
+     */
+    public function testTheLinkScopeNamesTheIdentityAndTheLink(): void
+    {
+        $identity = new IdentityReference('App\Models\User', '7');
+        $scope    = RevocationScope::identityLink('tenant-1', 'c-1', $identity, 'link-1');
+
+        self::assertSame(RevocationScopeKind::IDENTITY_LINK, $scope->kind);
+        self::assertSame(RevocationReason::SCOPE_WIDENED, $scope->reason);
+        self::assertSame('tenant-1', $scope->tenantId);
+        self::assertSame('c-1', $scope->connectionId);
+        self::assertSame($identity, $scope->identity);
+        self::assertSame('link-1', $scope->linkId);
+        self::assertNull($scope->policy);
+    }
+
+    /**
+     * A link scope needs its link.
+     *
+     * @return void
+     */
+    public function testALinkScopeNeedsItsLink(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('A revocation scope of a link names the link.');
+
+        RevocationScope::identityLink('tenant-1', 'c-1', new IdentityReference('App\Models\User', '7'), '');
+    }
+
+    /**
      * Rows of `[build]`: each connection scope with an empty tenant, and with
      * an empty connection.
      *
@@ -102,6 +135,10 @@ final class RevocationScopeTest extends TestCase
         yield 'identity, no tenant' => [static fn (): RevocationScope => RevocationScope::identityInConnection('', 'c-1', $identity)];
 
         yield 'identity, no connection' => [static fn (): RevocationScope => RevocationScope::identityInConnection('tenant-1', '', $identity)];
+
+        yield 'link, no tenant' => [static fn (): RevocationScope => RevocationScope::identityLink('', 'c-1', $identity, 'link-1')];
+
+        yield 'link, no connection' => [static fn (): RevocationScope => RevocationScope::identityLink('tenant-1', '', $identity, 'link-1')];
     }
 
     /**
@@ -127,7 +164,7 @@ final class RevocationScopeTest extends TestCase
      */
     public function testTheValuesAreStable(): void
     {
-        self::assertSame(['tenant', 'connection', 'identity_connection'], array_column(RevocationScopeKind::cases(), 'value'));
-        self::assertSame(['enforcement_changed', 'connection_disabled', 'connection_deleted', 'link_removed'], array_column(RevocationReason::cases(), 'value'));
+        self::assertSame(['tenant', 'connection', 'identity_connection', 'identity_link'], array_column(RevocationScopeKind::cases(), 'value'));
+        self::assertSame(['enforcement_changed', 'connection_disabled', 'connection_deleted', 'link_removed', 'scope_widened'], array_column(RevocationReason::cases(), 'value'));
     }
 }

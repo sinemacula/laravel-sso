@@ -7,6 +7,7 @@ namespace SineMacula\Laravel\Sso\Completion\Stages;
 use SineMacula\Laravel\Sso\Completion\CompletionState;
 use SineMacula\Laravel\Sso\Completion\ResultBuilder;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
+use SineMacula\Laravel\Sso\Completion\VerifiedDeadlines;
 use SineMacula\Laravel\Sso\Contracts\CompletionStage;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -28,10 +29,12 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  * (recorded by the `replay_recording` step under the completion's locks), the
  * `Protocols\TransitionReceipt` of a key rotation its own validation made, if
  * any (judged under the completion's locks), and the `Results\VerifiedResult`
- * built from them by `Completion\ResultBuilder`.
+ * built from them by `Completion\ResultBuilder`, with the linking policy
+ * version of the connection the driver was given, and the deadline by which the
+ * verified response must have finished (`Completion\VerifiedDeadlines`).
  *
- * It holds the drivers' registry and the builder, neither of which keeps
- * anything of one completion for the next (SSO-11.2).
+ * It holds the drivers' registry, the builder and the deadlines, none of which
+ * keeps anything of one completion for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,6 +48,7 @@ final readonly class ValidateResponse implements CompletionStage
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\ProtocolManager  $protocols
      * @param  \SineMacula\Laravel\Sso\Completion\ResultBuilder  $results
+     * @param  \SineMacula\Laravel\Sso\Completion\VerifiedDeadlines  $deadlines
      */
     public function __construct(
 
@@ -53,6 +57,9 @@ final readonly class ValidateResponse implements CompletionStage
 
         /** Builds the verified result from what the driver verified. */
         private ResultBuilder $results,
+
+        /** When a verified response stops being valid. */
+        private VerifiedDeadlines $deadlines,
     ) {}
 
     /**
@@ -81,7 +88,9 @@ final readonly class ValidateResponse implements CompletionStage
             return StageOutcome::refuse($state, $completion->reason ?? throw new \LogicException('A refused completion holds its reason.'));
         }
 
-        $verified = $state->withClaims($claims)->withResult($this->results->build($claims, $connection, $consumed));
+        $verified = $state->withClaims($claims)
+            ->withResult($this->results->build($claims, $connection, $consumed))
+            ->withValidation($connection->linking_version, $this->deadlines->until($state->authorizationRequest?->expires_at));
         $replayed = $completion->replay === null ? $verified : $verified->withReplay($completion->replay);
 
         return StageOutcome::proceed($completion->receipt === null ? $replayed : $replayed->withTransitionReceipt($completion->receipt));

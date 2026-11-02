@@ -9,8 +9,11 @@ use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\LinkResolution;
+use SineMacula\Laravel\Sso\Links\ReservedCandidate;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
@@ -29,8 +32,11 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * driver verified, what records them against replay, and the result built from
  * them; the identity the result's link resolved to; the enforcement version
  * checked; the latest end of the application's session the provider's deadline
- * sets; the handoff issued; and the receipt of a key rotation the response's
- * own validation made.
+ * sets; the handoff issued; the receipt of a key rotation the response's own
+ * validation made; how the result's link resolved; the candidate a reservation
+ * holds, which is never the resolved identity; the domain claim locked for
+ * linking; the linking policy version the response was validated under; and
+ * when the verified response stops being valid, which no continuation extends.
  *
  * An unsolicited SAML response handed to re-initiation (SSO-5.8) only ever
  * holds the connection, its correlation and, under the connection's lock, its
@@ -68,6 +74,11 @@ final readonly class CompletionState
      * @param  ?\SineMacula\Laravel\Sso\Handoffs\IssuedHandoff  $handoff
      * @param  ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay
      * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $transitionReceipt
+     * @param  ?\SineMacula\Laravel\Sso\Links\LinkResolution  $resolution
+     * @param  ?\SineMacula\Laravel\Sso\Links\ReservedCandidate  $reservedCandidate
+     * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $linkingDomain
+     * @param  ?int  $linkingVersion
+     * @param  ?\Carbon\CarbonImmutable  $verifiedUntil
      *
      * @SuppressWarnings("php:S107")
      */
@@ -120,6 +131,21 @@ final readonly class CompletionState
 
         /** What lets the request finish across the key rotation its own validation made. */
         public ?TransitionReceipt $transitionReceipt = null,
+
+        /** How the result's link resolved, as last asked. */
+        public ?LinkResolution $resolution = null,
+
+        /** The identity a reservation holds a link for; never a resolved identity. */
+        public ?ReservedCandidate $reservedCandidate = null,
+
+        /** The connection's claim of the linking email's domain, locked. */
+        public ?Domain $linkingDomain = null,
+
+        /** The linking policy version the response was validated under. */
+        public ?int $linkingVersion = null,
+
+        /** When the verified response stops being valid. */
+        public ?CarbonImmutable $verifiedUntil = null,
     ) {}
 
     /**
@@ -138,6 +164,8 @@ final readonly class CompletionState
             'linked'              => $this->linkedIdentity !== null,
             'enforcement_version' => $this->enforcementVersion,
             'handed_off'          => $this->handoff !== null,
+            'resolution'          => $this->resolution?->status->value,
+            'reserved'            => $this->reservedCandidate !== null,
         ];
     }
 
@@ -185,14 +213,16 @@ final readonly class CompletionState
     }
 
     /**
-     * With the connection, read from the write connection.
+     * With the connection, read from the write connection, and its claim of the
+     * linking email's domain when that was locked with it.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $linkingDomain
      * @return self
      */
-    public function withConnection(Connection $connection): self
+    public function withConnection(?Connection $connection, ?Domain $linkingDomain = null): self
     {
-        return $this->with(['connection' => $connection]);
+        return $this->with(['connection' => $connection, 'linkingDomain' => $linkingDomain]);
     }
 
     /**
@@ -210,12 +240,12 @@ final readonly class CompletionState
      * With the consumed authorisation request, what the driver is given of it
      * and its registered application.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
-     * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
-     * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
+     * @param  ?\SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+     * @param  ?\SineMacula\Laravel\Sso\Applications\Application  $application
      * @return self
      */
-    public function withAuthorizationRequest(AuthorizationRequest $request, ConsumedRequest $consumed, Application $application): self
+    public function withAuthorizationRequest(?AuthorizationRequest $request, ?ConsumedRequest $consumed, ?Application $application): self
     {
         return $this->with(['authorizationRequest' => $request, 'consumed' => $consumed, 'application' => $application]);
     }
@@ -277,14 +307,31 @@ final readonly class CompletionState
     }
 
     /**
-     * With the identity the result's link resolved to.
+     * With how the result's link resolved, as last asked: the identity it
+     * resolved to replaces any earlier one, and a resolution that resolves
+     * nothing clears it; and with the candidate a reservation holds a link for,
+     * if any, which is never the resolved identity.
      *
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $resolution
+     * @param  ?\SineMacula\Laravel\Sso\Links\ReservedCandidate  $candidate
      * @return self
      */
-    public function withLinkedIdentity(IdentityReference $identity): self
+    public function withResolution(LinkResolution $resolution, ?ReservedCandidate $candidate = null): self
     {
-        return $this->with(['linkedIdentity' => $identity]);
+        return $this->with(['resolution' => $resolution, 'linkedIdentity' => $resolution->identity, 'reservedCandidate' => $candidate]);
+    }
+
+    /**
+     * With what the validation was based on: the linking policy version, and
+     * when the verified response stops being valid.
+     *
+     * @param  int  $linkingVersion
+     * @param  \Carbon\CarbonImmutable  $verifiedUntil
+     * @return self
+     */
+    public function withValidation(int $linkingVersion, CarbonImmutable $verifiedUntil): self
+    {
+        return $this->with(['linkingVersion' => $linkingVersion, 'verifiedUntil' => $verifiedUntil]);
     }
 
     /**

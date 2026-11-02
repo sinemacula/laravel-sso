@@ -101,6 +101,11 @@ Distrusting an identity provider certificate, and changing a metadata signing an
 [Keys and certificates](keys.md)); trusting another identity provider certificate, and rotating a key of your own, do
 not. See [what voiding does to people signing in](#what-voiding-does-to-people-signing-in).
 
+A connection's [linking settings](linking-by-domain.md) and [evidence policy](evidence.md) have services of their own,
+`Connections\LinkingPolicyService` and `Connections\EvidenceSettingsService`. Both ask `sso.connection.trust`, and
+neither is a trust change: a linking change deletes open reservations and voids nothing else, and raises
+`linking_version` rather than the trust version.
+
 ### Settings that change what subjects mean
 
 The OIDC `issuer` and `client_id`, and the SAML `idp_entity_id`, `subject_source`, `subject_attribute` and
@@ -108,6 +113,11 @@ The OIDC `issuer` and `client_id`, and the SAML `idp_entity_id`, `subject_source
 point at someone else, so `update()` refuses it with `connection_has_links` while the connection has a link (active, or
 reserved for a sign-in that has not expired). Freshness is asked first, so a stale caller is told `freshness_required`.
 Make such a change with the [subject migration](#migrating-subjects) instead.
+
+Changing the `issuer` or the `idp_entity_id`, by whichever route, also turns the connection's
+[linking by a verified domain](linking-by-domain.md) off, and clears its classification, its organisation and its
+acknowledgement, since they were stated about the old issuer. It raises `linking_version` and names each as `linking.*`
+in `changedSettings`.
 
 ## Reading and listing connections
 
@@ -191,7 +201,9 @@ $result = $migration->migrate($tenant->id, $connectionId, ['settings' => [
 Each relink is a list: the subject, then optionally the SAML NameID format and the issuer. A format left out or `null`
 is none; an issuer left out or `null` is the link's own, so give the new issuer when the change moves to one. Each link
 you list for removal is removed, and its person's sessions through the connection are revoked; a person whose link you
-relink keeps signing in.
+relink keeps signing in. A relinked link that stands on a [verified domain](linking-by-domain.md) keeps that provenance,
+so it is still judged by the person's principals, and its person's sessions through the connection are revoked; they
+sign in again through the new subject.
 
 The disposition must be exhaustive: every link the connection has when the migration runs must be either relinked or
 removed, and not both. If a link is left out, named in both, or an id is not one of this connection's links, the

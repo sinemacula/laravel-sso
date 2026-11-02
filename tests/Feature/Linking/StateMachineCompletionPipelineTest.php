@@ -1,0 +1,853 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace Tests\Feature\Linking;
+
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
+use SineMacula\Laravel\Sso\Applications\Application;
+use SineMacula\Laravel\Sso\Applications\Enums\ExternalSignIn;
+use SineMacula\Laravel\Sso\Completion\CompletionLocks;
+use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
+use SineMacula\Laravel\Sso\Completion\ProvisioningOffer;
+use SineMacula\Laravel\Sso\Completion\Rules\LinkRules;
+use SineMacula\Laravel\Sso\Completion\Rules\ReauthenticationRules;
+use SineMacula\Laravel\Sso\Completion\Rules\SignInRules;
+use SineMacula\Laravel\Sso\Completion\Stages\CheckPurpose;
+use SineMacula\Laravel\Sso\Completion\Stages\DomainReservation;
+use SineMacula\Laravel\Sso\Completion\Stages\Provisioning;
+use SineMacula\Laravel\Sso\Completion\VerifiedDeadlines;
+use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
+use SineMacula\Laravel\Sso\Contracts\ApplicationPolicy;
+use SineMacula\Laravel\Sso\Contracts\DnsResolver;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
+use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Domains\DomainService;
+use SineMacula\Laravel\Sso\Domains\DomainWithdrawal;
+use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
+use SineMacula\Laravel\Sso\Domains\Enums\DomainStatus;
+use SineMacula\Laravel\Sso\Events\AuthorizationRequestStarted;
+use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Events\Enums\Flow;
+use SineMacula\Laravel\Sso\Events\HandoffIssued;
+use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
+use SineMacula\Laravel\Sso\Events\LinkActivated;
+use SineMacula\Laravel\Sso\Events\LinkConfirmed;
+use SineMacula\Laravel\Sso\Events\LinkCreated;
+use SineMacula\Laravel\Sso\Events\LinkSuspended;
+use SineMacula\Laravel\Sso\Events\ReauthenticationCompleted;
+use SineMacula\Laravel\Sso\Events\ResultUnlinked;
+use SineMacula\Laravel\Sso\Events\ResultVerified;
+use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
+use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
+use SineMacula\Laravel\Sso\Handoffs\Redemption\ReauthenticationBranch;
+use SineMacula\Laravel\Sso\Handoffs\Redemption\SignInBranch;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Linking\DomainLinkEligibility;
+use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
+use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
+use SineMacula\Laravel\Sso\Linking\ReservationActivation;
+use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
+use SineMacula\Laravel\Sso\Links\Enums\LinkState;
+use SineMacula\Laravel\Sso\Links\LinkReservations;
+use SineMacula\Laravel\Sso\Links\LinkStore;
+use SineMacula\Laravel\Sso\Links\LinkSubject;
+use SineMacula\Laravel\Sso\Links\ReservationWithdrawal;
+use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
+use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
+use SineMacula\Laravel\Sso\Models\Link;
+use SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant;
+use SineMacula\Laravel\Sso\Results\AuthenticationContext;
+use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
+use SineMacula\Laravel\Sso\Results\LinkingEmail;
+use SineMacula\Laravel\Sso\Results\VerifiedClaims;
+use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
+use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Linking\RecordingSessions;
+use Tests\Fixtures\Protocols\VerifyingDriver;
+
+/**
+ * Feature tests of the frozen state machine (`docs/design/linking.md`), through
+ * the
+ * public completion and redemption paths: the reserved finish and its activation;
+ * the provisioning boundary, with what it commits, the grant it offers and the
+ * final continuation; a suspended link and another flow's reservation, neither
+ * of which is an unlinked subject; a confirming `link`; the exact-link
+ * `reauthenticate`; a refusal that cleans its reservation up; a withdrawal; and
+ * the standalone path that refuses what must commit with a session. The
+ * adversarial and race tests of each are BL-60 to BL-64's.
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ *
+ * @internal
+ */
+#[CoversClass(CheckPurpose::class)]
+#[CoversClass(CompletionPipeline::class)]
+#[CoversClass(CompletionLocks::class)]
+#[CoversClass(ProvisioningOffer::class)]
+#[CoversClass(VerifiedDeadlines::class)]
+#[CoversClass(SignInRules::class)]
+#[CoversClass(LinkRules::class)]
+#[CoversClass(ReauthenticationRules::class)]
+#[CoversClass(DomainReservation::class)]
+#[CoversClass(Provisioning::class)]
+#[CoversClass(DomainLinkEligibility::class)]
+#[CoversClass(ReservationActivation::class)]
+#[CoversClass(LinkReservations::class)]
+#[CoversClass(ReservationWithdrawal::class)]
+#[CoversClass(LinkStore::class)]
+#[CoversClass(HandoffRedemption::class)]
+#[CoversClass(HandoffRecheck::class)]
+#[CoversClass(SignInBranch::class)]
+#[CoversClass(LinkBranch::class)]
+#[CoversClass(ReauthenticationBranch::class)]
+#[CoversClass(ProvisioningGrant::class)]
+final class StateMachineCompletionPipelineTest extends LinkingTestCase
+{
+    /**
+     * An eligible unlinked `sign_in` reserves in T2 and is not offered for
+     * provisioning: the reservation and its handoff expire together, it
+     * resolves nothing, and it names no resolved identity. Its redemption
+     * activates it, with verified domain provenance and every reservation field
+     * cleared, establishes the identity, and reports the frozen sequence.
+     *
+     * @return void
+     */
+    public function testAReservationFinishesInItsTransactionAndItsRedemptionActivatesIt(): void
+    {
+        $start      = $this->start();
+        $completion = $this->complete();
+        $row        = Link::query()->sole();
+
+        self::assertTrue($completion->isCompleted());
+        self::assertSame(LinkState::RESERVED, $row->state);
+        self::assertSame($this->domain->id, $row->reservation_domain_id);
+        self::assertSame(1, $row->reservation_domain_generation);
+        self::assertSame(0, $row->reservation_linking_version);
+        self::assertSame($this->person->id, $row->identity_id);
+        self::assertSame($completion->handoff?->expiresAt->toIso8601String(), $row->reservation_expires_at?->toIso8601String());
+        self::assertNotSame('', $row->reservation_id);
+        self::assertSame(hash('sha256', "sso-reservation-email-v1\0" . $row->reservation_id . "\0" . self::EMAIL), $row->reservation_email_digest);
+
+        $this->assertEventSequence([AuthorizationRequestStarted::class, ResultVerified::class, HandoffIssued::class]);
+
+        $answer = $this->admit($completion, $start);
+        $active = Link::query()->sole();
+
+        self::assertTrue($answer->isRedeemed());
+        self::assertTrue($answer->isAdmitted());
+        self::assertSame($this->person->id, $answer->linkedIdentity?->id);
+        self::assertSame($row->id, $answer->linkId);
+        self::assertSame(LinkState::ACTIVE, $active->state);
+        self::assertSame(LinkOrigin::VERIFIED_DOMAIN, $active->provenance);
+        self::assertTrue($active->domain_provenance);
+        self::assertNull($active->reservation_id);
+        self::assertNull($active->reservation_expires_at);
+        self::assertNull($active->reservation_email_digest);
+
+        $this->assertEventSequence([
+            AuthorizationRequestStarted::class,
+            ResultVerified::class,
+            HandoffIssued::class,
+            LinkCreated::class,
+            LinkActivated::class,
+            HandoffRedeemed::class,
+        ]);
+    }
+
+    /**
+     * A refusal once the code is consumed deletes that code's reservation and
+     * leaves the code spent: a verifier that does not match, here.
+     *
+     * @return void
+     */
+    public function testARefusalAfterConsumptionDeletesTheReservation(): void
+    {
+        $start      = $this->start();
+        $completion = $this->complete();
+
+        $other = str_repeat('a', 43);
+        $code  = (string) $completion->handoff?->code->reveal();
+        $spent = DB::connection(StorageConnection::name())->transaction(
+            fn () => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $other),
+        );
+
+        self::assertSame(FailureReason::VERIFIER_MISMATCH, $spent->reason);
+        self::assertSame(0, Link::query()->count());
+        self::assertSame(FailureReason::REPLAYED, $this->admit($completion, $start)->reason);
+    }
+
+    /**
+     * A condition failing at redemption is `reservation_invalid`, for each
+     * condition, and no link is left: never a fallback to another identity.
+     *
+     * @return void
+     */
+    public function testARecheckThatFailsActivatesNothing(): void
+    {
+        $changes = [
+            fn (): LinkEmailMatch => $this->matcher->match = LinkEmailMatch::exactlyOne(new IdentityReference('App\Models\User', '8')),
+            fn (): LinkEmailMatch => $this->matcher->match = LinkEmailMatch::ambiguous(),
+            fn (): ScopeVerdict => $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT,
+            fn (): bool => $this->domain->forceFill(['verification_generation' => 2])->save(),
+            fn (): bool => $this->domain->forceFill(['linking_suspended_at' => $this->clock->now()])->save(),
+        ];
+
+        foreach ($changes as $index => $change) {
+
+            $this->resetFor($index);
+
+            $start      = $this->start();
+            $completion = $this->complete();
+
+            self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
+
+            $change();
+
+            self::assertSame(FailureReason::RESERVATION_INVALID, $this->admit($completion, $start)->reason, (string) $index);
+            self::assertSame(0, Link::query()->count(), (string) $index);
+        }
+    }
+
+    /**
+     * A genuinely unlinked `sign_in` stops at the boundary: T2 commits its
+     * bookkeeping with `completed_at` unset and no transaction is open at
+     * dispatch; the grant is usable once, for the exact result, and void
+     * afterwards; the link the helper's caller makes resolves in T3; replay is
+     * not recorded again, and the result is reported verified once.
+     *
+     * @return void
+     */
+    public function testAnUnlinkedSignInCrossesTheProvisioningBoundary(): void
+    {
+        $this->matcher->match = LinkEmailMatch::none();
+
+        $start    = $this->start();
+        $request  = AuthorizationRequest::query()->sole();
+        $seen     = [];
+        $captured = null;
+
+        Event::listen(ResultUnlinked::class, function (ResultUnlinked $event) use (&$seen, &$captured, $request): void {
+
+            $stored = AuthorizationRequest::query()->whereKey($request->id)->sole();
+
+            $seen = [
+                DB::connection(StorageConnection::name())->transactionLevel(),
+                $stored->verified_at !== null,
+                $stored->completed_at === null,
+                $event->grant->isUsable(),
+                $event->grant->claim($event->result) === $request->id,
+                $event->grant->claim($event->result) === null,
+            ];
+
+            $captured = $event->grant;
+
+            app(LinkStore::class)->create($this->connection, LinkSubject::of($event->result), $this->person, LinkOrigin::PROVISIONING);
+        });
+
+        $completion = $this->complete();
+
+        self::assertSame([0, true, true, true, true, true], $seen);
+        self::assertFalse($captured?->isUsable());
+        self::assertTrue($completion->isCompleted());
+        self::assertNotNull(AuthorizationRequest::query()->sole()->completed_at);
+
+        $answer = $this->admit($completion, $start);
+
+        self::assertSame($this->person->id, $answer->linkedIdentity?->id);
+        self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
+        self::assertCount(1, array_filter($this->recordedEvents(), static fn ($event): bool => $event instanceof ResultVerified));
+    }
+
+    /**
+     * A listener's exception ends the completion and nothing resumes it: the
+     * grant is closed, the request consumed and unfinished, no handoff is kept.
+     *
+     * @return void
+     */
+    public function testAListenerExceptionTerminatesTheCompletion(): void
+    {
+        $this->matcher->match = LinkEmailMatch::none();
+
+        $this->start();
+
+        $captured = null;
+
+        Event::listen(ResultUnlinked::class, static function (ResultUnlinked $event) use (&$captured): void {
+
+            $captured = $event->grant;
+
+            throw new \RuntimeException('The listener failed.');
+        });
+
+        try {
+            $this->complete();
+            self::fail('The completion went on.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('The listener failed.', $exception->getMessage());
+        }
+
+        self::assertFalse($captured?->isUsable());
+        self::assertNull(AuthorizationRequest::query()->sole()->completed_at);
+        self::assertSame(0, DB::table(StorageConnection::table('handoff_codes.table'))->count());
+    }
+
+    /**
+     * A listener that leaves its transaction open is a `LogicException`, and
+     * what it opened is rolled back.
+     *
+     * @return void
+     */
+    public function testAListenerLeavingATransactionOpenIsALogicException(): void
+    {
+        $this->matcher->match = LinkEmailMatch::none();
+
+        $this->start();
+
+        Event::listen(ResultUnlinked::class, static function (): void {
+            DB::connection(StorageConnection::name())->beginTransaction();
+        });
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('A provisioning listener must commit or roll back its transaction before it returns (SSO-8.6).');
+
+        try {
+            $this->complete();
+        } finally {
+            self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
+        }
+    }
+
+    /**
+     * A listener that outlasts the verified response's validity is
+     * `request_expired` in T3: no continuation extends the authority.
+     *
+     * @return void
+     */
+    public function testTheVerifiedDeadlineIsCheckedInTheFinalContinuation(): void
+    {
+        $this->matcher->match = LinkEmailMatch::none();
+
+        config()->set('sso.applications.web.unlinked_handoffs', true);
+
+        $this->start();
+
+        Event::listen(ResultUnlinked::class, function (): void {
+            $this->clock->advance(120);
+        });
+
+        $completion = $this->complete();
+
+        self::assertSame(FailureReason::REQUEST_EXPIRED, $completion->reason);
+        self::assertNull($completion->handoff);
+    }
+
+    /**
+     * Rows of `[what the principal scope contract answers]`: anything but
+     * `within_tenant`.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict}>
+     */
+    public static function provideRefusingVerdicts(): iterable
+    {
+        yield 'outside the tenant' => [ScopeVerdict::OUTSIDE_TENANT];
+        yield 'unknown' => [ScopeVerdict::UNKNOWN];
+    }
+
+    /**
+     * A link found outside the tenant is suspended for good: it is
+     * `link_suspended`, reported, never provisioned, and a later narrowing does
+     * not restore it. A confirming `link` by the same identity clears the
+     * suspension and the provenance. A verdict of `unknown` latches exactly as
+     * one of `outside_tenant` does: the package cannot tell them apart from a
+     * principal it cannot rule out.
+     *
+     * @param  \SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict  $verdict
+     * @return void
+     */
+    #[DataProvider('provideRefusingVerdicts')]
+    public function testASuspendedLinkStaysSuspendedUntilAConfirmingLink(ScopeVerdict $verdict): void
+    {
+        $this->linkByDomain();
+
+        $version = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
+
+        $this->scope->verdict = $verdict;
+
+        $offered = 0;
+
+        Event::listen(ResultUnlinked::class, static function () use (&$offered): void {
+            $offered++;
+        });
+
+        $this->start();
+
+        self::assertSame(FailureReason::LINK_SUSPENDED, $this->complete()->reason);
+        self::assertSame(0, $offered);
+        self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
+        self::assertNotNull(Link::query()->sole()->suspended_at);
+        self::assertSame($version + 1, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
+        self::assertNotEmpty(array_filter($this->recordedEvents(), static fn ($event): bool => $event instanceof LinkSuspended));
+
+        $this->scope->verdict = ScopeVerdict::WITHIN_TENANT;
+
+        $this->start();
+
+        self::assertSame(FailureReason::LINK_SUSPENDED, $this->complete()->reason);
+
+        $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+
+        self::assertTrue($completion->isCompleted());
+        self::assertTrue($this->admit($completion, $start, Purpose::LINK, $this->person)->isRedeemed());
+
+        $link = Link::query()->sole();
+
+        self::assertSame(LinkState::ACTIVE, $link->state);
+        self::assertSame(LinkOrigin::LINK_PURPOSE, $link->provenance);
+        self::assertNull($link->suspended_at);
+        self::assertNotEmpty(array_filter($this->recordedEvents(), static fn ($event): bool => $event instanceof LinkConfirmed));
+    }
+
+    /**
+     * Another flow's live reservation is not an unlinked subject: a second
+     * `sign_in` of the subject is `link_reserved`, offered nothing; a `link` is
+     * refused as busy.
+     *
+     * @return void
+     */
+    public function testALiveReservationHoldsTheSubject(): void
+    {
+        $this->start();
+        $this->complete();
+
+        $this->start();
+
+        self::assertSame(FailureReason::LINK_RESERVED, $this->complete()->reason);
+
+        $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
+        $this->start(Purpose::LINK, $this->person);
+
+        self::assertSame(FailureReason::LINK_RESERVED, $this->complete()->reason);
+        self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
+    }
+
+    /**
+     * An expired reservation is logically absent: the next eligible completion
+     * replaces it with another identity. The old handoff, expired with it, is
+     * refused for its own expiry, before any reservation is looked at, and
+     * leaves the replacement exactly as it was. That the binding refuses a
+     * handoff outliving its reservation is
+     * `DomainLinkEligibilityTest::testAnExpiredReservationIsReplacedAndTheOldHandoffNeverActivatesTheNewRow`.
+     *
+     * @return void
+     */
+    public function testAnExpiredReservationIsReplacedAndItsExpiredHandoffLeavesTheNewOne(): void
+    {
+        $old      = $this->start();
+        $first    = $this->complete();
+        $reserved = Link::query()->sole()->reservation_id;
+
+        $this->clock->advance(61);
+        $this->domain->forceFill(['last_successful_check_at' => $this->clock->now()])->save();
+
+        $this->start();
+        $second = $this->complete();
+
+        $row = Link::query()->sole();
+
+        self::assertTrue($second->isCompleted());
+        self::assertNotSame($reserved, $row->reservation_id);
+        self::assertSame(FailureReason::HANDOFF_EXPIRED, $this->admit($first, $old)->reason);
+
+        $kept = Link::query()->sole();
+
+        self::assertSame(LinkState::RESERVED, $kept->state);
+        self::assertSame($row->reservation_id, $kept->reservation_id);
+    }
+
+    /**
+     * A claim that lapsed and was verified again through the service is at a
+     * new generation, so a reservation made under the old one activates
+     * nothing. The lapse is forced here: through the rechecker its withdrawal
+     * deletes the reservation first, and the generation is the second line of
+     * defence behind it.
+     *
+     * @return void
+     */
+    public function testAReverificationThroughTheServiceActivatesNothing(): void
+    {
+        $start      = $this->start();
+        $completion = $this->complete();
+        $dns        = new FakeDnsResolver;
+
+        self::assertSame(1, Link::query()->sole()->reservation_domain_generation);
+
+        $this->app?->instance(DnsResolver::class, $dns);
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
+        $this->domain->forceFill(['state' => DomainState::LAPSED, 'verified_domain' => null, 'lapsed_at' => $this->clock->now()])->save();
+
+        $dns->found('_sso-verification.example.com', $this->domain->verification_token);
+
+        $verified = app(DomainService::class)->verify('tenant-1', $this->connection->id, 'example.com');
+
+        self::assertSame(DomainStatus::VERIFIED, $verified->status, (string) $verified->reason?->value);
+        self::assertSame(2, $this->domain->refresh()->verification_generation);
+        self::assertSame(1, Link::query()->sole()->reservation_domain_generation);
+
+        self::assertSame(FailureReason::RESERVATION_INVALID, $this->admit($completion, $start)->reason);
+        self::assertSame(0, Link::query()->count());
+    }
+
+    /**
+     * A change of the organisation's value, on a connection classified one
+     * organisation's, is a real change of the policy, which needs no new
+     * acknowledgement and leaves eligibility alone: it raises the linking
+     * version and deletes the open reservation. It is what the race tests
+     * change the settings with.
+     *
+     * @return void
+     */
+    public function testAnOrganizationValueChangeWithdrawsTheReservation(): void
+    {
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
+        $start      = $this->start();
+        $completion = $this->complete();
+
+        self::assertSame(1, Link::query()->count());
+
+        $changed = app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['organization_value' => 'changed.example']);
+
+        self::assertTrue($changed->isChanged());
+        self::assertSame(['linking.organization_value'], $changed->changedSettings);
+
+        $connection = Connection::query()->whereKey($this->connection->id)->sole();
+
+        self::assertSame(1, $connection->linking_version);
+        self::assertSame(0, $connection->trust_version);
+        self::assertTrue($connection->linking_enabled);
+        self::assertSame(0, Link::query()->count());
+        self::assertSame(FailureReason::RESERVATION_INVALID, $this->admit($completion, $start)->reason);
+    }
+
+    /**
+     * A completion that refuses after it reserved leaves no reservation, and no
+     * code: the application refused at issuance, the last step. The
+     * reservation's creation and its discard each raise the connection's links
+     * version; the request is finished; and one failure is reported. The
+     * application is turned off once the flow has started, since its gate asks
+     * too, and before the completion, which takes it at consumption.
+     *
+     * @return void
+     */
+    public function testARefusalAfterTheReservationDiscardsIt(): void
+    {
+        $this->start();
+
+        config()->set('sso.applications.web.external_sign_in', false);
+
+        $completion = $this->complete();
+
+        self::assertTrue($completion->isFailed());
+        self::assertSame(FailureReason::APPLICATION_NOT_ALLOWED, $completion->reason);
+        self::assertNull($completion->handoff);
+        self::assertSame(0, Link::query()->count());
+        self::assertSame(2, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
+        self::assertSame(0, StoredCode::query()->count());
+        self::assertNotNull(AuthorizationRequest::query()->sole()->completed_at);
+        $this->assertExactlyOneFailure(Flow::CALLBACK, FailureReason::APPLICATION_NOT_ALLOWED);
+    }
+
+    /**
+     * A policy bound to refuse, asked at issuance, discards the reservation the
+     * same way, and leaves another subject's untouched.
+     *
+     * @return void
+     */
+    public function testARefusingPolicyDiscardsOnlyItsOwnReservation(): void
+    {
+        $this->start();
+        $this->complete();
+
+        $other = Link::query()->sole();
+
+        $email   = new LinkingEmail(self::EMAIL, LinkingEmailSource::ID_TOKEN);
+        $context = new AuthenticationContext($this->clock->now());
+
+        $this->verifying->claims = new VerifiedClaims(VerifyingDriver::ISSUER, 'another-subject', null, ['mail' => self::EMAIL], $context, $email);
+
+        $this->matcher->match = LinkEmailMatch::exactlyOne(new IdentityReference('App\Models\User', '9'));
+
+        $this->start();
+
+        $this->app?->instance(ApplicationPolicy::class, new readonly class implements ApplicationPolicy {
+            /**
+             * Refuse every application.
+             *
+             * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
+             * @return \SineMacula\Laravel\Sso\Applications\Enums\ExternalSignIn
+             */
+            #[\Override]
+            public function externalSignIn(Application $application): ExternalSignIn
+            {
+                unset($application);
+
+                return ExternalSignIn::NOT_ALLOWED;
+            }
+        });
+
+        self::assertSame(FailureReason::APPLICATION_NOT_ALLOWED, $this->complete()->reason);
+
+        $kept = Link::query()->sole();
+
+        self::assertSame($other->id, $kept->id);
+        self::assertSame($other->reservation_id, $kept->reservation_id);
+    }
+
+    /**
+     * A row of the same key whose subject is not this result's, held by another
+     * identity, cannot be replaced: resolution compares it byte for byte and
+     * finds the subject absent, the unique index refuses the insert, and the
+     * completion goes on with no reservation, to `unlinked`, leaving that row
+     * and the links version as they were.
+     *
+     * @return void
+     */
+    public function testAReservationTheUniqueIndexRefusesGoesOnWithNone(): void
+    {
+        $subject = new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT);
+        $forged  = $this->makeLink($this->connection, 'not-the-subject', [
+            'issuer'        => VerifyingDriver::ISSUER,
+            'subject_key'   => $subject->key(),
+            'identity_type' => 'App\Models\User',
+            'identity_id'   => 'another',
+            'state'         => LinkState::ACTIVE,
+            'provenance'    => LinkOrigin::PROVISIONING,
+        ]);
+        $version = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
+
+        $this->start();
+
+        $completion = $this->complete();
+
+        self::assertSame(FailureReason::UNLINKED, $completion->reason);
+
+        $kept = Link::query()->sole();
+
+        self::assertSame($forged->id, $kept->id);
+        self::assertSame(LinkState::ACTIVE, $kept->state);
+        self::assertSame('another', $kept->identity_id);
+        self::assertSame($version, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
+    }
+
+    /**
+     * A `link` by a caller who is not the code's identity is refused, and links
+     * nothing; a `link` by the bound identity creates the link, and makes no
+     * session.
+     *
+     * @return void
+     */
+    public function testALinkNeedsTheBoundCaller(): void
+    {
+        $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+        $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+        $stranger   = new IdentityReference('App\Models\User', '8');
+
+        self::assertSame(FailureReason::IDENTITY_MISMATCH, $this->admit($completion, $start, Purpose::LINK, $stranger)->reason);
+        self::assertSame(0, Link::query()->count());
+
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+        $answer     = $this->admit($completion, $start, Purpose::LINK, $this->person);
+
+        self::assertTrue($answer->isRedeemed());
+        self::assertSame(LinkOrigin::LINK_PURPOSE, Link::query()->sole()->provenance);
+        self::assertSame($answer->linkId, Link::query()->sole()->id);
+    }
+
+    /**
+     * A `reauthenticate` accepts only the exact link that established the
+     * session, renews its authentication time inside the transaction, and is
+     * refused through the standalone path with its code unconsumed.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAReauthenticationNeedsTheExactLink(): void
+    {
+        $this->linkByProvisioning();
+
+        $link     = Link::query()->sole();
+        $sessions = new RecordingSessions('another-link');
+
+        $this->app?->instance(ReauthenticationSessions::class, $sessions);
+
+        $start      = $this->start(Purpose::REAUTHENTICATE, $this->person, 'session-1');
+        $completion = $this->complete();
+
+        self::assertSame(FailureReason::SESSION_INELIGIBLE, $this->admit($completion, $start, Purpose::REAUTHENTICATE)->reason);
+        self::assertSame(0, $sessions->renewals());
+
+        $sessions->boundLink = $link->id;
+
+        $start      = $this->start(Purpose::REAUTHENTICATE, $this->person, 'session-1');
+        $completion = $this->complete();
+        $code       = (string) $completion->handoff?->code->reveal();
+        $verifier   = (string) $start->verifier?->reveal();
+
+        try {
+            app(HandoffRedemption::class)->redeem(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier);
+            self::fail('The standalone path redeemed a reauthentication.');
+        } catch (\LogicException $exception) {
+            self::assertStringContainsString('admit()', $exception->getMessage());
+        }
+
+        $answer = $this->admit($completion, $start, Purpose::REAUTHENTICATE);
+
+        self::assertTrue($answer->isAdmitted());
+        self::assertSame($link->id, $answer->linkId);
+        self::assertSame(1, $sessions->renewals());
+        self::assertNotEmpty(array_filter($this->recordedEvents(), static fn ($event): bool => $event instanceof ReauthenticationCompleted));
+    }
+
+    /**
+     * The standalone path refuses a code bound to a reservation, leaving it
+     * unconsumed, and `admit()` refuses to run with no transaction open.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testTheStandalonePathIsNotAnAdmission(): void
+    {
+        $start      = $this->start();
+        $completion = $this->complete();
+        $code       = (string) $completion->handoff?->code->reveal();
+        $verifier   = (string) $start->verifier?->reveal();
+
+        try {
+            app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier);
+            self::fail('A session was admitted with no transaction open.');
+        } catch (\LogicException $exception) {
+            self::assertSame('A session is admitted inside the caller\'s transaction on the package\'s storage connection (decision D5).', $exception->getMessage());
+        }
+
+        try {
+            app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier);
+            self::fail('The standalone path activated a reservation.');
+        } catch (\LogicException $exception) {
+            self::assertStringContainsString('admit()', $exception->getMessage());
+        }
+
+        self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
+        self::assertTrue($this->admit($completion, $start)->isRedeemed());
+    }
+
+    /**
+     * A domain's withdrawal deletes its reservations and raises the links
+     * version; a reservation's creation raises it too, so a change whose
+     * snapshot predates it fails to serialise.
+     *
+     * @return void
+     */
+    public function testAWithdrawalDeletesTheDomainsReservations(): void
+    {
+        $this->start();
+        $this->complete();
+
+        $before = $this->connection->refresh()->links_version;
+
+        self::assertSame(1, $before);
+
+        app(DomainWithdrawal::class)->linkingWithdrawn($this->connection, $this->domain);
+
+        self::assertSame(0, Link::query()->count());
+        self::assertSame(2, $this->connection->refresh()->links_version);
+    }
+
+    /**
+     * The evidence the response was validated under must be the locked
+     * connection's policy: a linking version changed after validation reserves
+     * nothing.
+     *
+     * @return void
+     */
+    public function testALinkingVersionChangedAfterValidationReservesNothing(): void
+    {
+        config()->set('sso.applications.web.unlinked_handoffs', true);
+
+        $this->start();
+
+        $this->verifying->onComplete = function (): void {
+            $this->connection->forceFill(['linking_version' => 1])->save();
+        };
+
+        self::assertTrue($this->complete()->isCompleted());
+        self::assertSame(0, Link::query()->count());
+    }
+
+    /**
+     * Make an active link with verified domain provenance, through the machine.
+     *
+     * @return void
+     */
+    private function linkByDomain(): void
+    {
+        $start = $this->start();
+
+        self::assertTrue($this->admit($this->complete(), $start)->isRedeemed());
+    }
+
+    /**
+     * Make an active link with provisioning provenance.
+     *
+     * @return void
+     */
+    private function linkByProvisioning(): void
+    {
+        app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            LinkOrigin::PROVISIONING,
+        );
+    }
+
+    /**
+     * Put the machine back to where one case of a repeated test starts.
+     *
+     * @param  int  $index
+     * @return void
+     */
+    private function resetFor(int $index): void
+    {
+        unset($index);
+
+        Link::query()->delete();
+
+        $this->matcher->match = LinkEmailMatch::exactlyOne($this->person);
+        $this->scope->verdict = ScopeVerdict::WITHIN_TENANT;
+        $this->domain->forceFill(['verification_generation' => 1, 'linking_suspended_at' => null])->save();
+    }
+}

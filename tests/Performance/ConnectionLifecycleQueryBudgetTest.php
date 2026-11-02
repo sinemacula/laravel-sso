@@ -90,14 +90,14 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
-     * Disabling is two reads and four writes, however much is in flight; a
+     * Disabling is two reads and five writes, however much is in flight; a
      * disabled connection is the two reads alone.
      *
      * @return void
      */
-    public function testDisablingIsTwoReadsAndFourWrites(): void
+    public function testDisablingIsTwoReadsAndFiveWrites(): void
     {
-        $disabled = $this->assertQueryBudget(2, 4, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id));
+        $disabled = $this->assertQueryBudget(2, 5, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id));
         $again    = $this->assertQueryBudget(2, 0, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id));
 
         self::assertSame(ConnectionStatus::DISABLED, $disabled->status);
@@ -107,15 +107,15 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
-     * Deleting is three reads and nine writes, however many rows go.
+     * Deleting is three reads and ten writes, however many rows go.
      *
      * @return void
      */
-    public function testDeletingIsThreeReadsAndNineWrites(): void
+    public function testDeletingIsThreeReadsAndTenWrites(): void
     {
         $this->makeLinks();
 
-        $result = $this->assertQueryBudget(3, 9, fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->connection->id));
+        $result = $this->assertQueryBudget(3, 10, fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->connection->id));
 
         self::assertSame(ConnectionStatus::DELETED, $result->status);
         self::assertSame(0, Link::query()->count());
@@ -123,13 +123,13 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
-     * A trust change that alters no subject is the locked read and four writes.
+     * A trust change that alters no subject is the locked read and five writes.
      *
      * @return void
      */
-    public function testATrustChangeIsOneReadAndFourWrites(): void
+    public function testATrustChangeIsOneReadAndFiveWrites(): void
     {
-        $result = $this->assertQueryBudget(1, 4, fn (): ConnectionResult => $this->updateSettings(['token_endpoint' => 'https://idp.example.com/oauth2/token']));
+        $result = $this->assertQueryBudget(1, 5, fn (): ConnectionResult => $this->updateSettings(['token_endpoint' => 'https://idp.example.com/oauth2/token']));
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame(0, HandoffCode::query()->whereNull('voided_at')->count());
@@ -143,7 +143,7 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
      */
     public function testASubjectChangeAddsTheReadOfTheLinks(): void
     {
-        $updated = $this->assertQueryBudget(2, 4, fn (): ConnectionResult => $this->updateSettings(['client_id' => 'client-456']));
+        $updated = $this->assertQueryBudget(2, 5, fn (): ConnectionResult => $this->updateSettings(['client_id' => 'client-456']));
 
         $this->makeLinks();
 

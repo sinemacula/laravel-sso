@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Completion\CompletionState;
 use SineMacula\Laravel\Sso\Completion\ResultBuilder;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
 use SineMacula\Laravel\Sso\Completion\Stages\ValidateResponse;
+use SineMacula\Laravel\Sso\Completion\VerifiedDeadlines;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\CompletionStage;
@@ -335,7 +336,7 @@ final class SamlTrustChangeRaceTest extends TestCase
      */
     private function holdAfterValidation(\Closure $change): void
     {
-        $validation = static fn (): ValidateResponse => new ValidateResponse(app(ProtocolManager::class), app(ResultBuilder::class));
+        $validation = static fn (): ValidateResponse => new ValidateResponse(app(ProtocolManager::class), app(ResultBuilder::class), app(VerifiedDeadlines::class));
 
         app()->bind(ValidateResponse::class, static fn (): CompletionStage => new readonly class ($validation(), $change) implements CompletionStage {
             /**

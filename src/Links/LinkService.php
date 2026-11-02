@@ -171,6 +171,8 @@ final readonly class LinkService
 
         $locked->delete();
 
+        $connection->increment('links_version');
+
         $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($connection->tenant_id, $connection->id, $identity));
 
         $this->events->removed($connection, $identity, $actor);

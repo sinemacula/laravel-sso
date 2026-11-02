@@ -6,10 +6,10 @@ namespace SineMacula\Laravel\Sso\Completion;
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Applications\ApplicationGate;
 use SineMacula\Laravel\Sso\Completion\Enums\CompletionStep;
 use SineMacula\Laravel\Sso\Completion\Stages\CheckEnforcement;
+use SineMacula\Laravel\Sso\Completion\Stages\CheckPurpose;
 use SineMacula\Laravel\Sso\Completion\Stages\ConsumeRequest;
 use SineMacula\Laravel\Sso\Completion\Stages\CorrelateResponse;
 use SineMacula\Laravel\Sso\Completion\Stages\DecideUnlinked;
@@ -21,66 +21,55 @@ use SineMacula\Laravel\Sso\Completion\Stages\ResolveLink;
 use SineMacula\Laravel\Sso\Completion\Stages\ValidateResponse;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\CompletionStage;
-use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
-use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
-use SineMacula\Laravel\Sso\Enforcement\LockedEnforcement;
-use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
-use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
-use SineMacula\Laravel\Sso\Metadata\TransitionReceipts;
-use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
-use SineMacula\Laravel\Sso\Models\Connection;
-use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
-use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
+use SineMacula\Laravel\Sso\Links\LinkReservations;
 
 /**
  * Runs a completion's steps in `Enums\CompletionStep`'s fixed order (SSO-5.6,
- * SSO-8.6), each through the stage registered for it (`stageClass()`), and
- * answers how the completion ended (SSO-5.7).
+ * SSO-8.6), each through the stage registered for it (`stageClass()`), through
+ * the frozen state machine of `docs/design/linking.md`, and answers how the
+ * completion ended (SSO-5.7).
  *
- * 1. Correlation, consumption and validation run outside any transaction the
- *    pipeline opens: the consumption opens its own, so the request is consumed
- *    whether the response then passes or fails, and the validation may fetch.
- * 2. Once a request is consumed, one transaction on the storage connection
- *    takes the package's lock order (`flows.md`). For a completion still going
- *    on, under the default `Contracts\Enforcement` with the `enforcement`
- *    feature on, it first locks the enforcing tenant's rule (the tenant the
- *    inheritance contract names; its row inserted unconfigured when it has
- *    none) and then, in one statement in id order, the connection and the
- *    connections the rule names (`DatabaseEnforcement::lock()`); otherwise, and
- *    for a completion already refused, the connection's row alone. Then the
- *    request's row. Each is a locking read on the write connection (SSO-11.3),
- *    so none answers from an older snapshot. A completion still going on is
- *    refused with `connection_unavailable` when the connection is gone or no
- *    longer usable (`Protocols\ProtocolManager::isUsable()`), when the request
- *    is gone, a change to its connection voided it since it was consumed or the
- *    trust version it was started with is no longer the locked connection's
- *    (unless the response's own key refetch made exactly that change, and its
- *    `Protocols\TransitionReceipt` says so: `Metadata\TransitionReceipts`), or
- *    when the inheritance contract, asked again, no longer names the tenant
- *    whose rule is locked; it is refused with `metadata_expired` when what a
- *    metadata refresh applied to the locked connection has expired by now
- *    (`Metadata\MetadataExpiry`), so metadata that lapses while the response is
- *    validated is never used; otherwise the policy judged from the locked rows
- *    goes on with the state, for the enforcement step, and every locked step
- *    runs, in order, in that transaction. A change to the rule waits for it,
- *    and its revocation then sees the session the handoff leads to only once
- *    that is redeemed; the redemption locks the rule again. On PostgreSQL under
- *    `REPEATABLE READ`, a completion that waited on a change may fail to
+ * 1. Correlation, consumption (T1, a transaction of its own that commits before
+ *    validation) and validation run outside any transaction the pipeline opens,
+ *    so the request is consumed whether the response then passes or fails, and
+ *    the validation may fetch.
+ * 2. T2, one transaction on the storage connection, takes the package's lock
+ *    order (`Completion\CompletionLocks`) and, for a completion still going on,
+ *    refuses what no longer stands, then runs every locked step, in order, on
+ *    the rows as locked, with the policy the locked rule gives. On PostgreSQL
+ *    under `REPEATABLE READ`, a completion that waited on a change may fail to
  *    serialise instead: the error propagates as a server error.
- * 3. The request's `completed_at` is set in that same transaction, whether the
- *    completion completed or was refused, and the completion is reported
- *    (`Completion\CompletionEvents`), so its events reach listeners once that
- *    commits and never on a rollback (SSO-10.5).
+ * 3. A linked result, an eligible `link` or `reauthenticate` and a successful
+ *    reservation finish in T2: the handoff is issued, the request's
+ *    `completed_at` is set, whether it completed or was refused, a reservation
+ *    made by a completion that then refused is discarded, and the completion is
+ *    reported (`Completion\CompletionEvents`), so its events reach listeners
+ *    once that commits and never on a rollback (SSO-10.5).
+ * 4. A genuinely unlinked `sign_in` holding no reservation stops at the
+ *    provisioning boundary: T2 commits its replay record and its `verified_at`,
+ *    leaves `completed_at` unset, issues no handoff and reports
+ *    `ResultVerified` once; what lets it go on stays only in memory, so a crash
+ *    leaves a request consumed and unfinished that nothing resumes.
+ * 5. The unlinked-result event is dispatched with no package transaction open
+ *    and the grant closed in `finally` (`Completion\ProvisioningOffer`). A
+ *    listener's exception ends the completion as a server error, and nothing
+ *    dispatches again.
+ * 6. T3 takes the lock order again, without a domain, refuses what no longer
+ *    stands and runs only the steps of the final continuation
+ *    (`CompletionStep::isInContinuation()`): the link is resolved anew, and
+ *    neither replay nor provisioning is repeated. It sets `completed_at` and
+ *    reports only how the completion ended.
  *
  * An unsolicited SAML response is handed to re-initiation by the correlation
  * step (`StageOutcome::reinitiate()`, SSO-5.8): no further step runs, no
  * request is consumed, and `Completion\UnsolicitedReinitiation` answers it,
  * recording its assertion through the stage registered for `replay_recording`
  * under the connection's lock alone. Any other step handing a completion to
- * re-initiation is a misconfiguration, a `LogicException`.
+ * re-initiation, or any but the provisioning step stopping at its boundary, is
+ * a misconfiguration, a `LogicException`.
  *
  * The first stage that refuses ends the completion. A refusal with a trusted
  * redirect target (the request was consumed, its application is registered and
@@ -92,15 +81,15 @@ use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
  *
  * A database error, a stage's or a contract's exception (a handoff issuer that
  * cannot issue, a misconfigured redirect URI resolver) propagates and is never
- * answered as `failed` or `rejected` (SSO-11.4); thrown inside the transaction,
- * it rolls the completion back, so no code is kept, nothing is reported and
- * `completed_at` stays unset.
+ * answered as `failed` or `rejected` (SSO-11.4); thrown inside a transaction,
+ * it rolls that transaction back, so no code is kept, nothing it held is
+ * reported and `completed_at` stays unset.
  *
  * Each stage is resolved from the container per completion, so an application
- * or a test may bind its own for a step. It holds the container, the drivers'
- * registry, the application gate, the clock, the reporter, the enforcement
- * contract, the re-initiation and the metadata expiry, none of which keeps
- * anything of one completion for the next (SSO-11.2).
+ * or a test may bind its own for a step. It holds the container, the
+ * application gate, the clock, the reporter, the re-initiation, the locks, the
+ * reservations and the offer, none of which keeps anything of one completion
+ * for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -117,6 +106,7 @@ final readonly class CompletionPipeline
         'replay_recording'   => RecordReplay::class,
         'link_resolution'    => ResolveLink::class,
         'enforcement'        => CheckEnforcement::class,
+        'purpose_rules'      => CheckPurpose::class,
         'domain_reservation' => DomainReservation::class,
         'provisioning'       => Provisioning::class,
         'unlinked_decision'  => DecideUnlinked::class,
@@ -136,21 +126,18 @@ final readonly class CompletionPipeline
      * Constructor.
      *
      * @param  \Illuminate\Contracts\Container\Container  $container
-     * @param  \SineMacula\Laravel\Sso\Protocols\ProtocolManager  $protocols
      * @param  \SineMacula\Laravel\Sso\Applications\ApplicationGate  $gate
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionEvents  $events
-     * @param  \SineMacula\Laravel\Sso\Contracts\Enforcement  $enforcement
      * @param  \SineMacula\Laravel\Sso\Completion\UnsolicitedReinitiation  $reinitiation
-     * @param  \SineMacula\Laravel\Sso\Metadata\MetadataExpiry  $metadata
+     * @param  \SineMacula\Laravel\Sso\Completion\CompletionLocks  $locks
+     * @param  \SineMacula\Laravel\Sso\Links\LinkReservations  $reservations
+     * @param  \SineMacula\Laravel\Sso\Completion\ProvisioningOffer  $offer
      */
     public function __construct(
 
         /** The container each stage is resolved from, per completion. */
         private Container $container,
-
-        /** Whether the connection is still usable under its lock. */
-        private ProtocolManager $protocols,
 
         /** The application's exact redirect URI. */
         private ApplicationGate $gate,
@@ -161,14 +148,17 @@ final readonly class CompletionPipeline
         /** Reports how the completion ended. */
         private CompletionEvents $events,
 
-        /** Locks the enforcement of the connection's tenant, when it is the default. */
-        private Enforcement $enforcement,
-
         /** Answers an unsolicited response the correlation step handed over. */
         private UnsolicitedReinitiation $reinitiation,
 
-        /** Whether what was fetched for the locked connection has expired. */
-        private MetadataExpiry $metadata,
+        /** Takes the completion's locks and judges what it may do under them. */
+        private CompletionLocks $locks,
+
+        /** Discards a reservation a completion made before it refused. */
+        private LinkReservations $reservations,
+
+        /** Offers an unlinked result to the unlinked-result event's listeners. */
+        private ProvisioningOffer $offer,
     ) {}
 
     /**
@@ -196,7 +186,7 @@ final readonly class CompletionPipeline
      */
     public function run(Flow $flow, CompletionState $state): CompletionResult
     {
-        $outcome = $this->steps($state, false);
+        $outcome = $this->steps($state, static fn (CompletionStep $step): bool => !$step->isLocked());
 
         if ($outcome->isReinitiating()) {
             return $this->reinitiation->run($flow, $outcome->state, $this->stage(CompletionStep::REPLAY_RECORDING));
@@ -209,7 +199,9 @@ final readonly class CompletionPipeline
             return self::rejected($outcome);
         }
 
-        return DB::connection(StorageConnection::name())->transaction(fn (): CompletionResult => $this->finish($flow, $outcome));
+        $finished = DB::connection(StorageConnection::name())->transaction(fn (): CompletionResult|StageOutcome => $this->prepared($flow, $outcome));
+
+        return $finished instanceof CompletionResult ? $finished : $this->continued($flow, $finished);
     }
 
     /**
@@ -226,22 +218,22 @@ final readonly class CompletionPipeline
     }
 
     /**
-     * Run the steps that are locked, or those that are not, in order, until one
-     * refuses or the correlation step hands the completion to re-initiation.
+     * Run the steps the filter names, in order, until one refuses or stops the
+     * completion.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
-     * @param  bool  $locked
+     * @param  \Closure(\SineMacula\Laravel\Sso\Completion\Enums\CompletionStep): bool  $runs
      * @return \SineMacula\Laravel\Sso\Completion\StageOutcome
      *
      * @throws \LogicException
      */
-    private function steps(CompletionState $state, bool $locked): StageOutcome
+    private function steps(CompletionState $state, \Closure $runs): StageOutcome
     {
         $outcome = StageOutcome::proceed($state);
 
         foreach (CompletionStep::cases() as $step) {
 
-            if ($step->isLocked() !== $locked) {
+            if (!$runs($step)) {
                 continue;
             }
 
@@ -257,7 +249,8 @@ final readonly class CompletionPipeline
 
     /**
      * What the step's stage answered, once it is known that only the
-     * correlation step hands a completion to re-initiation.
+     * correlation step hands a completion to re-initiation, and only the
+     * provisioning step stops at its boundary.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionStep  $step
      * @param  \SineMacula\Laravel\Sso\Completion\StageOutcome  $outcome
@@ -269,6 +262,10 @@ final readonly class CompletionPipeline
     {
         if ($outcome->isReinitiating() && $step !== CompletionStep::CORRELATION) {
             throw new \LogicException(sprintf('Only the correlation step hands a completion to re-initiation, not the [%s] step.', $step->value));
+        }
+
+        if ($outcome->isProvisioning() && $step !== CompletionStep::PROVISIONING) {
+            throw new \LogicException(sprintf('Only the provisioning step stops at its boundary, not the [%s] step.', $step->value));
         }
 
         return $outcome;
@@ -294,148 +291,118 @@ final readonly class CompletionPipeline
     }
 
     /**
-     * In the transaction: lock the enforcement of a completion still going on
-     * and its connections, or else the connection's row, then the request's;
-     * run the locked steps of a completion still going on, mark the request
-     * completed, report the completion and answer it.
+     * T2: lock in order, run the locked steps of a completion still going on,
+     * and finish it, or stop it at the provisioning boundary with what it
+     * recorded.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
      * @param  \SineMacula\Laravel\Sso\Completion\StageOutcome  $outcome
+     * @return \SineMacula\Laravel\Sso\Completion\CompletionResult|\SineMacula\Laravel\Sso\Completion\StageOutcome
+     *
+     * @throws \Throwable
+     */
+    private function prepared(Flow $flow, StageOutcome $outcome): CompletionResult|StageOutcome
+    {
+        $lock = $this->locks->take($outcome->state, $outcome->isProceeding(), true);
+        $ran  = $outcome->isProceeding() ? $this->locked($outcome->state, $lock, static fn (CompletionStep $step): bool => $step->isLocked()) : $outcome;
+
+        if (!$ran->isProvisioning()) {
+            return $this->finished($flow, $ran, $lock, false);
+        }
+
+        $this->stamp($lock, 'verified_at');
+
+        $this->events->verified($ran->state);
+
+        return $ran;
+    }
+
+    /**
+     * The final continuation: offer the result with no transaction open, then,
+     * in T3, lock in order again, run its steps and finish.
+     *
+     * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
+     * @param  \SineMacula\Laravel\Sso\Completion\StageOutcome  $boundary
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
      *
      * @throws \Throwable
      */
-    private function finish(Flow $flow, StageOutcome $outcome): CompletionResult
+    private function continued(Flow $flow, StageOutcome $boundary): CompletionResult
     {
-        $state       = $outcome->state;
-        $enforcement = $outcome->isProceeding() ? $this->lockedEnforcement($state) : null;
-        $connection  = $enforcement === null ? self::lockedConnection($state) : self::lockedWith($enforcement, $state);
-        $request     = self::lockedRequest($state);
+        $this->offer->dispatch($boundary->state);
 
-        if ($outcome->isProceeding()) {
-            $outcome = $this->locked($state, $connection, $request, $enforcement);
+        return DB::connection(StorageConnection::name())->transaction(function () use ($flow, $boundary): CompletionResult {
+
+            $lock = $this->locks->take($boundary->state, true, false);
+            $ran  = $this->locked($boundary->state, $lock, static fn (CompletionStep $step): bool => $step->isInContinuation());
+
+            return $this->finished($flow, $ran, $lock, true);
+        });
+    }
+
+    /**
+     * Refuse what no longer stands under the locks, and run the steps the
+     * filter names otherwise, on the rows as locked, with the policy the locked
+     * rule gives.
+     *
+     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
+     * @param  \SineMacula\Laravel\Sso\Completion\CompletionLock  $lock
+     * @param  \Closure(\SineMacula\Laravel\Sso\Completion\Enums\CompletionStep): bool  $runs
+     * @return \SineMacula\Laravel\Sso\Completion\StageOutcome
+     *
+     * @throws \LogicException
+     */
+    private function locked(CompletionState $state, CompletionLock $lock, \Closure $runs): StageOutcome
+    {
+        $reason = $this->locks->refusal($lock, $state);
+
+        if ($reason !== null) {
+            return StageOutcome::refuse($state, $reason);
         }
 
-        $request?->forceFill(['completed_at' => $this->clock->now()])->save();
+        $held = $state->withConnection($lock->connection, $lock->domain)->withAuthorizationRequest($lock->request, $state->consumed, $state->application);
 
-        $this->events->report($flow, $outcome);
+        return $this->steps($lock->enforcement === null ? $held : $held->withEnforcementPolicy($lock->enforcement->policy()), $runs);
+    }
+
+    /**
+     * Discard the reservation of a completion that refused, mark the request
+     * completed, report how it ended and answer it.
+     *
+     * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
+     * @param  \SineMacula\Laravel\Sso\Completion\StageOutcome  $outcome
+     * @param  \SineMacula\Laravel\Sso\Completion\CompletionLock  $lock
+     * @param  bool  $verifiedReported
+     * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     */
+    private function finished(Flow $flow, StageOutcome $outcome, CompletionLock $lock, bool $verifiedReported): CompletionResult
+    {
+        $candidate = $outcome->state->reservedCandidate;
+
+        if ($outcome->isRefused() && $candidate !== null && $lock->connection !== null) {
+            $this->reservations->discard($lock->connection, $candidate);
+        }
+
+        $this->stamp($lock, 'completed_at');
+
+        $this->events->report($flow, $outcome, $verifiedReported);
 
         return $this->answer($outcome);
     }
 
     /**
-     * Refuse a connection gone or no longer usable, a request gone or voided,
-     * since consumption, and an enforcing tenant that moved since its rule was
-     * locked, then a connection whose fetched metadata has expired; run the
-     * locked steps otherwise, on the rows as locked, with the policy the locked
-     * rule gives.
+     * Stamp the locked request's column with now, when its row is still there.
      *
-     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
-     * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @param  ?\SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
-     * @param  ?\SineMacula\Laravel\Sso\Enforcement\LockedEnforcement  $enforcement
-     * @return \SineMacula\Laravel\Sso\Completion\StageOutcome
-     *
-     * @throws \LogicException
+     * @param  \SineMacula\Laravel\Sso\Completion\CompletionLock  $lock
+     * @param  string  $column
+     * @return void
      */
-    private function locked(CompletionState $state, ?Connection $connection, ?AuthorizationRequest $request, ?LockedEnforcement $enforcement): StageOutcome
+    private function stamp(CompletionLock $lock, string $column): void
     {
-        if (!$this->isGoingOn($connection, $request, $enforcement, $state->transitionReceipt)) {
-            return StageOutcome::refuse($state, FailureReason::CONNECTION_UNAVAILABLE);
-        }
-
-        if ($this->metadata->isExpired($connection)) {
-            return StageOutcome::refuse($state, FailureReason::METADATA_EXPIRED);
-        }
-
-        $consumed    = $state->consumed    ?? throw new \LogicException(self::NO_REQUEST);
-        $application = $state->application ?? throw new \LogicException(self::NO_APPLICATION);
-        $locked      = $state->withConnection($connection)->withAuthorizationRequest($request, $consumed, $application);
-
-        return $this->steps($enforcement === null ? $locked : $locked->withEnforcementPolicy($enforcement->policy()), true);
-    }
-
-    /**
-     * Whether the completion may go on under its locks: the connection still
-     * there and usable, the request still there, not voided and of the
-     * connection's trust version, or across exactly the transition the receipt
-     * names, and the locked rule, if any, still the enforcing tenant's.
-     *
-     * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @param  ?\SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
-     * @param  ?\SineMacula\Laravel\Sso\Enforcement\LockedEnforcement  $enforcement
-     * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
-     * @return bool
-     *
-     * @phpstan-assert-if-true !null $connection
-     * @phpstan-assert-if-true !null $request
-     */
-    private function isGoingOn(?Connection $connection, ?AuthorizationRequest $request, ?LockedEnforcement $enforcement, ?TransitionReceipt $receipt): bool
-    {
-        $usable = $connection !== null && $this->protocols->isUsable($connection);
-        $live   = $connection !== null && $request !== null && self::isLive($connection, $request, $receipt);
-
-        return $usable && $live && ($enforcement?->isCurrent() ?? true);
-    }
-
-    /**
-     * Whether the locked request is not voided and is of the locked
-     * connection's trust version, or crosses exactly the transition the receipt
-     * names.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
-     * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
-     * @return bool
-     */
-    private static function isLive(Connection $connection, AuthorizationRequest $request, ?TransitionReceipt $receipt): bool
-    {
-        if ($request->voided_at !== null) {
-            return false;
-        }
-
-        return $request->trust_version === $connection->trust_version || TransitionReceipts::permits($receipt, $connection, $request);
-    }
-
-    /**
-     * The enforcement of the connection's tenant on the request's application,
-     * locked with the connection, under the default contract with the feature
-     * on; `null`, with nothing locked or asked, otherwise.
-     *
-     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
-     * @return ?\SineMacula\Laravel\Sso\Enforcement\LockedEnforcement
-     *
-     * @throws \InvalidArgumentException
-     * @throws \LogicException
-     * @throws \UnexpectedValueException
-     * @throws \Illuminate\Contracts\Container\BindingResolutionException
-     */
-    private function lockedEnforcement(CompletionState $state): ?LockedEnforcement
-    {
-        if (!$this->enforcement instanceof DatabaseEnforcement) {
-            return null;
-        }
-
-        $connection = self::connectionOf($state);
-
-        return $this->enforcement->lock($connection->tenant_id, self::applicationOf($state)->name, [$connection->id]);
-    }
-
-    /**
-     * The connection's row as the enforcement's lock locked it, or `null` when
-     * it is gone.
-     *
-     * @param  \SineMacula\Laravel\Sso\Enforcement\LockedEnforcement  $enforcement
-     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
-     * @return ?\SineMacula\Laravel\Sso\Models\Connection
-     *
-     * @throws \LogicException
-     */
-    private static function lockedWith(LockedEnforcement $enforcement, CompletionState $state): ?Connection
-    {
-        $connection = self::connectionOf($state);
-
-        return $enforcement->connection($connection->tenant_id, $connection->id);
+        $lock->request?->forceFill([$column => $this->clock->now()])->save();
     }
 
     /**
@@ -451,9 +418,9 @@ final readonly class CompletionPipeline
     private function answer(StageOutcome $outcome): CompletionResult
     {
         $state       = $outcome->state;
-        $application = self::applicationOf($state);
+        $application = $state->application          ?? throw new \LogicException(self::NO_APPLICATION);
         $request     = $state->authorizationRequest ?? throw new \LogicException(self::NO_REQUEST);
-        $connection  = self::connectionOf($state);
+        $connection  = $state->connection           ?? throw new \LogicException(self::NO_CONNECTION);
         $redirectUri = $this->gate->redirectUri($application, $connection);
         $reference   = RequestReference::fromString($request->reference);
 
@@ -464,63 +431,5 @@ final readonly class CompletionPipeline
         $handoff = $state->handoff ?? throw new \LogicException('A completion that ran every step holds its handoff.');
 
         return CompletionResult::completed($redirectUri, $application->delivery, $reference, $handoff);
-    }
-
-    /**
-     * The connection's row, locked for update on the write connection, or
-     * `null` when it is gone.
-     *
-     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
-     * @return ?\SineMacula\Laravel\Sso\Models\Connection
-     *
-     * @throws \LogicException
-     */
-    private static function lockedConnection(CompletionState $state): ?Connection
-    {
-        $connection = self::connectionOf($state);
-
-        return Connection::query()->useWritePdo()->lockForUpdate()->whereKey($connection->id)->first();
-    }
-
-    /**
-     * The connection a consumed completion holds.
-     *
-     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
-     * @return \SineMacula\Laravel\Sso\Models\Connection
-     *
-     * @throws \LogicException
-     */
-    private static function connectionOf(CompletionState $state): Connection
-    {
-        return $state->connection ?? throw new \LogicException(self::NO_CONNECTION);
-    }
-
-    /**
-     * The registered application a consumed completion holds.
-     *
-     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
-     * @return \SineMacula\Laravel\Sso\Applications\Application
-     *
-     * @throws \LogicException
-     */
-    private static function applicationOf(CompletionState $state): Application
-    {
-        return $state->application ?? throw new \LogicException(self::NO_APPLICATION);
-    }
-
-    /**
-     * The request's row, locked for update on the write connection, or `null`
-     * when it is gone.
-     *
-     * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
-     * @return ?\SineMacula\Laravel\Sso\Models\AuthorizationRequest
-     *
-     * @throws \LogicException
-     */
-    private static function lockedRequest(CompletionState $state): ?AuthorizationRequest
-    {
-        $request = $state->authorizationRequest ?? throw new \LogicException(self::NO_REQUEST);
-
-        return AuthorizationRequest::query()->useWritePdo()->lockForUpdate()->whereKey($request->id)->first();
     }
 }

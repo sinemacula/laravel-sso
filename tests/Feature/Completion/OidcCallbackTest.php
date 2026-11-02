@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\HandoffIssued;
+use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
 use SineMacula\Laravel\Sso\Fetching\Enums\CredentialKind;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
@@ -211,7 +212,7 @@ final class OidcCallbackTest extends TestCase
         $result        = $this->receiveCallback($authorization->query());
 
         self::assertSame(['completed', null, self::REDIRECT_URI, $request->reference], [$result->status->value, $result->reason, $result->redirectUri, $result->reference?->value]);
-        $this->assertEventSequence([ResultVerified::class, HandoffIssued::class]);
+        $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class, HandoffIssued::class]);
         $this->assertNoFailure();
         self::assertCount(1, $this->tokenRequests());
         self::assertCount(1, $this->validated);
@@ -415,7 +416,7 @@ final class OidcCallbackTest extends TestCase
 
         if ($reason === null) {
             self::assertTrue($result->isCompleted());
-            $this->assertEventSequence([ResultVerified::class, HandoffIssued::class]);
+            $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class, HandoffIssued::class]);
 
             return;
         }

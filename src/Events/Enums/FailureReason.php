@@ -38,7 +38,8 @@ enum FailureReason: string
     // already consumed (SSO-5.1, SSO-6.6, SSO-7.1)
     case REQUEST_UNKNOWN = 'request_unknown';
 
-    // The authorisation request has expired
+    // The authorisation request has expired, or the bounded validity of its
+    // verified response has passed while it was being finished
     case REQUEST_EXPIRED = 'request_expired';
 
     // A signature is missing where one is required, does not verify, is not
@@ -133,6 +134,36 @@ enum FailureReason: string
     // another identity (SSO-8.5, SSO-9.9)
     case LINK_CHANGED = 'link_changed';
 
+    // The subject's link stands on a verified domain and its identity was found
+    // to hold a principal outside the connection's tenant; it resolves nothing
+    // until a confirming `link` (SSO-8.8)
+    case LINK_SUSPENDED = 'link_suspended';
+
+    // The subject is held by a live reservation another flow made (SSO-8.8)
+    case LINK_RESERVED = 'link_reserved';
+
+    // The link eligibility contract does not let the identity link through the
+    // connection (SSO-8.5)
+    case LINK_INELIGIBLE = 'link_ineligible';
+
+    // The identity redeeming a `link` code holds a link of verified domain
+    // provenance, and `Contracts\LinkConfirmation` does not answer that the
+    // caller authenticated independently of it (SSO-8.8)
+    case INDEPENDENT_AUTHENTICATION_REQUIRED = 'independent_authentication_required';
+
+    // The caller redeeming a `link` code, or the identity a result resolves to
+    // on a `reauthenticate` flow, is not the identity the flow was started for
+    // (SSO-5.10, SSO-5.11)
+    case IDENTITY_MISMATCH = 'identity_mismatch';
+
+    // A reservation is gone, expired, or some condition it was made under no
+    // longer holds for that same identity; no link is activated (SSO-8.8)
+    case RESERVATION_INVALID = 'reservation_invalid';
+
+    // A provisioning grant is used, closed or was not issued for that result
+    // (SSO-8.6)
+    case PROVISIONING_GRANT_INVALID = 'provisioning_grant_invalid';
+
     // A SAML response is too large, not base64, unparseable, declares a
     // document type, is invalid against the SAML 2.0 schema, repeats an `ID`,
     // holds a signature or an assertion anywhere but its schema position, or
@@ -162,8 +193,9 @@ enum FailureReason: string
     case REQUEST_MISMATCH = 'request_mismatch';
 
     // The provider's authentication is too old for the connection's maximum
-    // authentication age or earlier than a `reauthenticate` request, or its
-    // session has already ended (SSO-5.10, SSO-6.10)
+    // authentication age or earlier than a `reauthenticate` request, its
+    // session has already ended, or a `reauthenticate` result from any driver
+    // states no authentication time (SSO-5.10, SSO-6.10)
     case AUTHENTICATION_EXPIRED = 'authentication_expired';
 
     // The provider's authentication context class is not one the connection

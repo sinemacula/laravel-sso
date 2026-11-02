@@ -1,0 +1,37 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace SineMacula\Laravel\Sso\Linking;
+
+use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
+use SineMacula\Laravel\Sso\Contracts\SsoConnection;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
+
+/**
+ * The default link eligibility contract (SSO-8.5): no identity may link through
+ * any connection until the application binds its own.
+ *
+ * It holds nothing between calls (SSO-11.2).
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ */
+final readonly class RefusingLinkEligibility implements LinkEligibility
+{
+    /**
+     * Refuse every identity.
+     *
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict
+     */
+    #[\Override]
+    public function judge(IdentityReference $identity, SsoConnection $connection): LinkEligibilityVerdict
+    {
+        unset($identity, $connection);
+
+        return LinkEligibilityVerdict::INELIGIBLE;
+    }
+}

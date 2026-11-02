@@ -74,6 +74,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
         self::assertSame('2026-11-01T10:30:00+00:00', $summary->lastSuccessfulCheckAt?->toAtomString());
         self::assertNull($summary->pendingExpiresAt);
         self::assertSame('example.com', Domain::query()->findOrFail($claimed->id)->verified_domain);
+        self::assertSame(1, Domain::query()->findOrFail($claimed->id)->verification_generation);
         self::assertSame([[FreshnessOperation::DOMAIN_VERIFY, 300]], $this->freshness->asked());
         $this->dns->assertLookedUp(self::RECORD, 1);
 
@@ -216,11 +217,12 @@ final class DomainVerificationTest extends DomainServiceTestCase
      */
     public function testAVerifiedDomainIsUnchanged(): void
     {
-        $claim = $this->makeDomain($this->connection, 'example.com', ['state' => DomainState::VERIFIED]);
+        $claim = $this->makeDomain($this->connection, 'example.com', ['state' => DomainState::VERIFIED, 'verification_generation' => 1]);
 
         $result = $this->verifyDomain();
 
         self::assertSame(DomainStatus::UNCHANGED, $result->status);
+        self::assertSame(1, Domain::query()->findOrFail($claim->id)->verification_generation);
         self::assertTrue($result->isSucceeded());
         self::assertFalse($result->isChanged());
         self::assertSame($claim->id, $result->domain?->id);
@@ -270,6 +272,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
             'pending_expires_at'       => null,
             'last_successful_check_at' => CarbonImmutable::parse('2026-10-29T09:30:00Z'),
             'lapsed_at'                => $this->clock->now()->subDay(),
+            'verification_generation'  => 1,
         ]);
 
         $this->clock->advance(3600);
@@ -277,6 +280,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
 
         $summary = self::summaryOf($this->verifyDomain());
 
+        self::assertSame(2, Domain::query()->findOrFail($claim->id)->verification_generation);
         self::assertSame(DomainState::VERIFIED, $summary->state);
         self::assertSame('2026-11-01T10:30:00+00:00', $summary->verifiedAt?->toAtomString());
         self::assertSame('2026-11-01T10:30:00+00:00', $summary->lastSuccessfulCheckAt?->toAtomString());
@@ -431,6 +435,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
         self::assertSame(FailureReason::DOMAIN_UNAVAILABLE, $result->reason);
         self::assertStringNotContainsString('tenant-2', (string) json_encode($result));
         self::assertSame(DomainState::PENDING, Domain::query()->findOrFail($claimed->id)->state);
+        self::assertSame(0, Domain::query()->findOrFail($claimed->id)->verification_generation);
         $this->assertNoEvents();
     }
 
