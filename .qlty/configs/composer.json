@@ -21,7 +21,8 @@
         "simplesamlphp/xml-security": "~2.3.1",
         "sinemacula/coding-standards-laravel": "^1.6.2",
         "slevomat/coding-standard": "^8.28",
-        "symfony/polyfill-intl-idn": "^1.31"
+        "symfony/polyfill-intl-idn": "^1.31",
+        "web-token/jwt-library": "^4.2.4"
     },
     "conflict": {
         "symfony/clock": ">=8.0",
