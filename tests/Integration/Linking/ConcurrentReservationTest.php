@@ -604,6 +604,8 @@ final class ConcurrentReservationTest extends LinkingTestCase
             $outcomes[] = (string) file_get_contents($this->signal("outcome-{$process}"));
         }
 
+        $this->reported = $outcomes;
+
         return $outcomes;
     }
 

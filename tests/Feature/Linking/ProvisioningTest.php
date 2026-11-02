@@ -966,7 +966,7 @@ final class ProvisioningTest extends LinkingTestCase
             TenantEnforcement::query()->where('tenant_id', 'tenant-1')->sole()->forceFill([
                 'enabled'        => true,
                 'connection_ids' => [$other->id],
-                'version'        => 'tightened-during-the-listener',
+                'version'        => '01tighteneddurngthelistenr',
                 'changed_at'     => $this->clock->now(),
             ])->save();
         });

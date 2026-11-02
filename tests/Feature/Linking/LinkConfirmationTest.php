@@ -350,9 +350,11 @@ final class LinkConfirmationTest extends LinkingTestCase
         $other      = $this->anotherConnection();
         $inserted   = false;
 
-        $this->connection->getConnection()->listen(function (QueryExecuted $query) use ($other, &$inserted): void {
+        $provenance = $this->connection->getConnection()->getQueryGrammar()->wrap('provenance');
 
-            if ($inserted || !str_contains($query->sql, '"provenance"') || !str_starts_with(strtolower($query->sql), 'select')) {
+        $this->connection->getConnection()->listen(function (QueryExecuted $query) use ($other, $provenance, &$inserted): void {
+
+            if ($inserted || !str_contains($query->sql, $provenance) || !str_starts_with(strtolower($query->sql), 'select')) {
                 return;
             }
 
@@ -534,7 +536,7 @@ final class LinkConfirmationTest extends LinkingTestCase
         $begin = (int) array_search('begin', $sequence, true);
 
         self::assertMatchesRegularExpression('/^select ["`]?tenant_id["`]? from/', $sequence[$begin - 1]);
-        self::assertStringStartsWith('insert into "' . StorageConnection::table('identity_guards.table') . '"', $sequence[$begin + 1]);
+        self::assertStringStartsWith('insert into ' . $database->getQueryGrammar()->wrapTable(StorageConnection::table('identity_guards.table')), $sequence[$begin + 1]);
     }
 
     /**
@@ -552,15 +554,19 @@ final class LinkConfirmationTest extends LinkingTestCase
         $inserted   = false;
         $guards     = 0;
 
-        $this->connection->getConnection()->listen(function (QueryExecuted $query) use ($other, &$inserted, &$guards): void {
+        $grammar    = $this->connection->getConnection()->getQueryGrammar();
+        $guardTable = 'insert into ' . $grammar->wrapTable(StorageConnection::table('identity_guards.table'));
+        $provenance = $grammar->wrap('provenance');
+
+        $this->connection->getConnection()->listen(function (QueryExecuted $query) use ($other, $guardTable, $provenance, &$inserted, &$guards): void {
 
             $sql = strtolower($query->sql);
 
-            if (str_starts_with($sql, 'insert into "' . StorageConnection::table('identity_guards.table') . '"')) {
+            if (str_starts_with($sql, $guardTable)) {
                 $guards++;
             }
 
-            if ($inserted || !str_contains($sql, '"provenance"') || !str_starts_with($sql, 'select')) {
+            if ($inserted || !str_contains($sql, $provenance) || !str_starts_with($sql, 'select')) {
                 return;
             }
 

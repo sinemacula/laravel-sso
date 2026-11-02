@@ -529,17 +529,24 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * Bind a principal scope that answers `within_tenant`, stopping until the
-     * signal exists.
+     * Bind a principal scope that answers `within_tenant`: it marks `holding`,
+     * since it is asked only once its caller holds the identity's guard, then
+     * stops until the signal exists.
      *
      * @param  string  $signal
      * @return void
      */
     private function stopInTheScopeUntil(string $signal): void
     {
-        $path = "{$this->signals}/{$signal}";
+        $path    = "{$this->signals}/{$signal}";
+        $holding = "{$this->signals}/holding";
 
-        $this->app?->instance(PrincipalScope::class, new readonly class (static fn () => self::await($path)) implements PrincipalScope {
+        $wait = static function () use ($path, $holding): void {
+            touch($holding);
+            self::await($path);
+        };
+
+        $this->app?->instance(PrincipalScope::class, new readonly class ($wait) implements PrincipalScope {
             /**
              * Constructor.
              *
@@ -572,17 +579,19 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
 
     /**
      * Touch the signal just before this process sends the statement that takes
-     * an identity's guard, on its own connection.
+     * an identity's guard, on its own connection, once the other racer marks
+     * `holding`, so this process always reaches the guard while it is held.
      *
      * @param  string  $signal
      * @return void
      */
     private function signalBeforeTheGuard(string $signal): void
     {
-        $table = StorageConnection::table('identity_guards.table');
-        $path  = "{$this->signals}/{$signal}";
+        $table   = StorageConnection::table('identity_guards.table');
+        $path    = "{$this->signals}/{$signal}";
+        $holding = "{$this->signals}/holding";
 
-        DB::connection(StorageConnection::name())->beforeExecuting(static function (string $query) use ($table, $path): void {
+        DB::connection(StorageConnection::name())->beforeExecuting(static function (string $query) use ($table, $path, $holding): void {
 
             $sql = strtolower($query);
 
@@ -590,6 +599,7 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
                 return;
             }
 
+            self::await($holding);
             touch($path);
         });
     }
