@@ -333,6 +333,9 @@ final class ConcurrentMetadataRefreshTest extends TestCase
 
         $published = [self::idp()->certificate(), Certificates::distinct(9), Certificates::distinct(10)];
 
+        // Generated before the fork, so every process holds the same one.
+        Certificates::distinct(11);
+
         $this->serveWhen(self::metadata()->with(['signing_certificates' => $published]), static function () use ($fetched, $changed): void {
             touch($fetched);
             self::await($changed);
@@ -354,7 +357,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
         $failed   = $inTransaction && DB::connection()->getDriverName() === 'pgsql';
 
         self::assertSame($failed ? self::SERIALIZATION_FAILURE : ($change === 'distrust' ? 'distrusted' : 'trusted'), $administrator['status'] ?? null, $reported);
-        self::assertSame($failed || $change !== 'distrust' ? 0 : 1, $this->row()->trust_version, $reported);
+        self::assertSame($failed || $change === 'add' ? 0 : 1, $this->row()->trust_version, $reported);
         self::assertSame($failed ? ['refreshed', null] : ['conflict', 'metadata_conflict'], [$refresh['status'] ?? null, $refresh['reason'] ?? null], $reported);
         self::assertSame(self::expectedKeys($change, $failed), $this->keys(), $reported);
         self::assertSame($failed ? 1 : 0, $this->row()->metadata_version, $reported);
