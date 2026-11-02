@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
 use SineMacula\Laravel\Sso\Protocols\ReplayRecord;
+use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
@@ -28,7 +29,8 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * driver verified, what records them against replay, and the result built from
  * them; the identity the result's link resolved to; the enforcement version
  * checked; the latest end of the application's session the provider's deadline
- * sets; and the handoff issued.
+ * sets; the handoff issued; and the receipt of a key rotation the response's
+ * own validation made.
  *
  * An unsolicited SAML response handed to re-initiation (SSO-5.8) only ever
  * holds the connection, its correlation and, under the connection's lock, its
@@ -65,6 +67,7 @@ final readonly class CompletionState
      * @param  ?\Carbon\CarbonImmutable  $sessionNotAfter
      * @param  ?\SineMacula\Laravel\Sso\Handoffs\IssuedHandoff  $handoff
      * @param  ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $transitionReceipt
      *
      * @SuppressWarnings("php:S107")
      */
@@ -114,6 +117,9 @@ final readonly class CompletionState
 
         /** What records the verified response against replay, when the driver asks for it. */
         public ?ReplayRecord $replay = null,
+
+        /** What lets the request finish across the key rotation its own validation made. */
+        public ?TransitionReceipt $transitionReceipt = null,
     ) {}
 
     /**
@@ -246,6 +252,17 @@ final readonly class CompletionState
     public function withReplay(ReplayRecord $replay): self
     {
         return $this->with(['replay' => $replay]);
+    }
+
+    /**
+     * With the receipt of the key rotation the response's own validation made.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
+     * @return self
+     */
+    public function withTransitionReceipt(TransitionReceipt $receipt): self
+    {
+        return $this->with(['transitionReceipt' => $receipt]);
     }
 
     /**

@@ -9,8 +9,10 @@ use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\ConnectionSummary;
 use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
+use SineMacula\Laravel\Sso\Connections\ImportSaver;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Metadata\ValidatedFetch;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 
 /**
@@ -22,11 +24,14 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
  * - `update()` reads once, the connection locked for update, and writes once,
  *   the update, when something changed; nothing changed, it writes nothing. A
  *   change to a subject setting (the issuer) also reads the connection's links
- *   with a locking read, and a trust change also voids the connection's
- *   requests and handoff codes in flight and raises its trust version, one
- *   update each;
+ *   with a locking read, a change of `client_assertion_algorithm` also reads
+ *   the connection's published keys with a locking read, and a trust change
+ *   also voids the connection's requests and handoff codes in flight and raises
+ *   its trust version, one update each;
  * - `enable()` reads once and writes once, or writes nothing for an enabled
  *   connection;
+ * - `ImportSaver::save()` reads as `update()` does and writes one more, the
+ *   stamp of its fetch; a save that changed nothing writes the stamp alone;
  * - `get()` and `list()` read once, and write nothing.
  *
  * Masking the secrets and judging whether the connection is usable read nothing
@@ -38,6 +43,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
  * @internal
  */
 #[CoversClass(ConnectionService::class)]
+#[CoversClass(ImportSaver::class)]
 final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
 {
     /** @var string The tenant the connections belong to. */
@@ -115,6 +121,68 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
         ]));
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
+    }
+
+    /**
+     * An update that changes the client assertion algorithm is the locked read,
+     * the locking read of the keys, the update, the two voiding updates and the
+     * trust version.
+     *
+     * @return void
+     */
+    public function testAClientAssertionAlgorithmChangeIsTwoReadsAndFourUpdates(): void
+    {
+        $id = $this->createdId();
+
+        $result = $this->assertQueryBudget(2, 4, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, ['settings' => ['client_assertion_algorithm' => 'RS256']]));
+
+        self::assertSame(ConnectionStatus::UPDATED, $result->status);
+    }
+
+    /**
+     * A fetched import's save that changes a setting asking no freshness is the
+     * locked read, the update and the stamp.
+     *
+     * @return void
+     */
+    public function testAnImportSaveIsOneReadAndTwoUpdates(): void
+    {
+        $id = $this->createdId();
+
+        $result = $this->assertQueryBudget(1, 2, fn (): ConnectionResult => $this->saveImport($id, 'Renamed'));
+
+        self::assertSame(ConnectionStatus::UPDATED, $result->status);
+    }
+
+    /**
+     * A fetched import's save that changes nothing is the locked read and the
+     * stamp.
+     *
+     * @return void
+     */
+    public function testAnUnchangedImportSaveIsOneReadAndOneUpdate(): void
+    {
+        $id = $this->createdId();
+
+        $result = $this->assertQueryBudget(1, 1, fn (): ConnectionResult => $this->saveImport($id, 'Acme'));
+
+        self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
+    }
+
+    /**
+     * A stale caller's import save is the locked read alone.
+     *
+     * @return void
+     */
+    public function testAStaleImportSaveIsOneRead(): void
+    {
+        $id = $this->createdId();
+
+        $this->freshness->answer(FreshnessOutcome::STALE);
+
+        $result = $this->assertQueryBudget(1, 0, fn (): ConnectionResult => $this->saveImport($id, 'Renamed'));
+
+        self::assertTrue($result->isRefused());
     }
 
     /**
@@ -200,6 +268,18 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
         self::assertTrue($result->isSucceeded());
 
         return (string) $result->connection?->id;
+    }
+
+    /**
+     * Save a fetched import of the display name given to the connection.
+     *
+     * @param  string  $id
+     * @param  string  $name
+     * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
+     */
+    private function saveImport(string $id, string $name): ConnectionResult
+    {
+        return app(ImportSaver::class)->save(self::TENANT, $id, ['display_name' => $name], new ValidatedFetch($this->clock->now()));
     }
 
     /**

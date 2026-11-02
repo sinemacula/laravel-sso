@@ -208,7 +208,7 @@ final class SamlStartTest extends TestCase
      */
     public function testExpiredMetadataRefusesTheStart(): void
     {
-        $connection = $this->saml([], [
+        $connection = $this->saml(['metadata_url' => 'https://idp.example.test/metadata.xml', 'metadata_refresh' => true], [
             'metadata_fetched_at'  => $this->clock->now()->subHours(2),
             'metadata_valid_until' => $this->clock->now(),
         ]);

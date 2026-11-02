@@ -32,7 +32,8 @@
         "psr/clock": "^1.0",
         "simplesamlphp/saml2": "~6.2.4",
         "simplesamlphp/xml-security": "~2.3.1",
-        "symfony/polyfill-intl-idn": "^1.31"
+        "symfony/polyfill-intl-idn": "^1.31",
+        "web-token/jwt-library": "^4.2.4"
     },
     "require-dev": {
         "brianium/paratest": "^7.20",

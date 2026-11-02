@@ -89,7 +89,8 @@ enum Saml2Setting: string
     case METADATA_URL = 'metadata_url';
 
     // Whether the connection's certificates and endpoints are refreshed from
-    // its metadata on a schedule (SSO-2.8)
+    // its metadata on a schedule (SSO-2.8); left unset, exactly while it has a
+    // `metadata_url` and a metadata signing anchor
     case METADATA_REFRESH = 'metadata_refresh';
 
     /**

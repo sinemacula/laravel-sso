@@ -9,10 +9,12 @@ package registers its settings and its check without editing another's (SSO-12.2
 ## Invariants
 
 - Every feature is off until the application turns it on in `sso.features` (`saml2`, `oidc`, `discovery`,
-  `enforcement`, `encrypted_assertions`, `metadata_refresh`, `idp_initiated`, `domain_linking`). A protocol is the
-  package in use; every other feature needs a protocol, and the SAML-only ones need `saml2` (`Config\Enums\Feature`).
-  A feature that is on lets an application or a connection opt into it, never opts in for them, and no setting turns
-  off a security check of a feature that is on.
+  `enforcement`, `encrypted_assertions`, `idp_initiated`, `domain_linking`), but for `metadata_refresh`, the scheduled
+  refresh, which is on until it is turned off (`Feature::isOnByDefault()`), so a fetched resource goes on being
+  refreshed before its stale limit. A protocol is the package in use; every other feature needs a protocol, and the
+  SAML-only ones need `saml2` (`Config\Enums\Feature`), but for the scheduled refresh, which simply has nothing to do
+  without one. A feature that is on lets an application or a connection opt into it, never opts in for them, and no
+  setting turns off a security check of a feature that is on.
 - `Config\Features::enabled()` is the answer a flow acts on, and a malformed switch fails it closed with an
   `InvalidArgumentException`. `requested()` and `isInUse()` are the answers the checks act on: a malformed switch counts
   as on there, so what it would enable is checked as well as the switch.

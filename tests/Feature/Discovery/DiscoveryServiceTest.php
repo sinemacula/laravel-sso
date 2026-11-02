@@ -382,7 +382,7 @@ final class DiscoveryServiceTest extends TestCase
      * @return void
      */
     #[DataProvider('countedSubjects')]
-    public function testTheAttemptIsCountedAgainstTheNormalisedDomain(string $email, array $counted): void
+    public function testTheAttemptIsCountedAgainstTheNormalizedDomain(string $email, array $counted): void
     {
         $subjects = $this->recordAttempts();
 

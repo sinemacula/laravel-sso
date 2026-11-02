@@ -113,7 +113,9 @@ Each call runs in a fixed order, and stops at the first step that refuses:
 | `rejected`     | refused with no trusted target: no request matched, or no connection | a `400`, no redirect                  |
 | `rate_limited` | a completion limit is full                                           | a `429` with `Retry-After`            |
 
-A `failed` result carries one of these codes (the protocol drivers add the validation codes of SAML and OIDC):
+A `failed` result carries one of these codes (the protocol drivers add the validation codes of SAML, in
+[Signing In with SAML](saml-sign-in.md), and of OIDC, in [The OIDC Callback](oidc-callback.md) and
+[OIDC ID Tokens](oidc-id-tokens.md)):
 
 | Code                      | Why                                                                                        |
 |---------------------------|--------------------------------------------------------------------------------------------|

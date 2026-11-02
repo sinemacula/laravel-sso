@@ -51,6 +51,9 @@ final class OidcSettingsTest extends TestCase
             'client_authentication' => 'client_secret_basic',
             'scopes'                => ['openid', 'email', 'profile'],
             'id_token_algorithms'   => ['RS256'],
+            'trusted_audiences'     => [],
+            'fetch_userinfo'        => false,
+            'metadata_refresh'      => true,
         ], $settings->toArray());
 
         self::assertSame([], $settings->violations());
@@ -81,6 +84,9 @@ final class OidcSettingsTest extends TestCase
             'scopes'                => ['openid', 'email', 'profile'],
             'id_token_algorithms'   => ['RS256'],
             'extra_parameters'      => ['prompt' => 'login'],
+            'trusted_audiences'     => [],
+            'fetch_userinfo'        => false,
+            'metadata_refresh'      => true,
         ], $stored);
     }
 
@@ -99,6 +105,10 @@ final class OidcSettingsTest extends TestCase
             'scopes'                 => ['openid', 'offline_access', 'https://graph.example.com/user.read', '!#[]~'],
             'id_token_algorithms'    => OidcSettings::ID_TOKEN_ALGORITHMS,
             'extra_parameters'       => array_fill_keys(OidcSettings::EXTRA_PARAMETERS, 'value with spaces'),
+            'trusted_audiences'      => ['https://api.example.com', str_repeat('a', 255), ...array_map(static fn (int $index): string => 'aud-' . $index, range(1, 8))],
+            'max_age'                => 604800,
+            'fetch_userinfo'         => true,
+            'metadata_refresh'       => false,
         ] + self::COMPLETE);
 
         self::assertSame([], $settings->violations());
@@ -111,6 +121,48 @@ final class OidcSettingsTest extends TestCase
         self::assertSame([], OidcSettings::fromArray(['scopes' => ['openid', ...array_map(static fn (int $index): string => 'scope' . $index, range(1, 19))]])->violations());
         self::assertSame([], OidcSettings::fromArray(['client_id' => str_repeat('c', 255)])->violations());
         self::assertSame([], OidcSettings::fromArray(['extra_parameters' => []])->violations());
+        self::assertSame([], OidcSettings::fromArray(['max_age' => 0, 'trusted_audiences' => []])->violations());
+    }
+
+    /**
+     * The refresh switch is a plain boolean: it is inert while the feature is
+     * off, never refused, so turning the schedule off leaves every connection
+     * able to change.
+     *
+     * @return void
+     */
+    public function testTheRefreshSwitchIsABooleanWhateverTheFeatureSays(): void
+    {
+        foreach ([false, true] as $feature) {
+            config()->set('sso.features.metadata_refresh', $feature);
+
+            self::assertSame([], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => true])));
+            self::assertSame([], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => false])));
+            self::assertSame([['metadata_refresh', 'invalid_type']], self::violationsOf(OidcSettings::fromArray(['metadata_refresh' => 1])));
+        }
+    }
+
+    /**
+     * A client assertion algorithm is one the package signs with, compared
+     * exactly; none is stored unless it is given, so each key keeps its
+     * default.
+     *
+     * @return void
+     */
+    public function testTheClientAssertionAlgorithmIsOneThePackageSignsWith(): void
+    {
+        foreach (['PS256', 'RS256', 'ES256'] as $algorithm) {
+            $settings = OidcSettings::fromArray(['client_assertion_algorithm' => $algorithm]);
+
+            self::assertSame([], self::violationsOf($settings));
+            self::assertSame($algorithm, $settings->toArray()['client_assertion_algorithm']);
+        }
+
+        self::assertSame([['client_assertion_algorithm', 'not_allowed']], self::violationsOf(OidcSettings::fromArray(['client_assertion_algorithm' => 'ES384'])));
+        self::assertSame([['client_assertion_algorithm', 'not_allowed']], self::violationsOf(OidcSettings::fromArray(['client_assertion_algorithm' => 'none'])));
+        self::assertSame([['client_assertion_algorithm', 'not_allowed']], self::violationsOf(OidcSettings::fromArray(['client_assertion_algorithm' => 'rs256'])));
+        self::assertSame([['client_assertion_algorithm', 'invalid_type']], self::violationsOf(OidcSettings::fromArray(['client_assertion_algorithm' => 1])));
+        self::assertArrayNotHasKey('client_assertion_algorithm', OidcSettings::fromArray([])->toArray());
     }
 
     /**
@@ -127,8 +179,9 @@ final class OidcSettingsTest extends TestCase
             $tooManyParameters['prompt' . $index] = 'x';
         }
 
-        $mostParameters = array_slice($tooManyParameters, 0, 10);
-        $eachRefused    = array_map(static fn (string $parameter): array => ['extra_parameters.' . $parameter, 'not_allowed'], array_keys($mostParameters));
+        $mostParameters   = array_slice($tooManyParameters, 0, 10);
+        $tooManyAudiences = array_map(static fn (int $index): string => 'a' . $index, range(1, 11));
+        $eachRefused      = array_map(static fn (string $parameter): array => ['extra_parameters.' . $parameter, 'not_allowed'], array_keys($mostParameters));
 
         yield from [
             'an issuer that is not a string'  => [['issuer' => true], [['issuer', 'invalid_type']]],
@@ -179,6 +232,20 @@ final class OidcSettingsTest extends TestCase
             'an overlong parameter'            => [['extra_parameters' => ['login_hint' => str_repeat('h', 513)]], [['extra_parameters.login_hint', 'too_long']]],
             'a parameter with a control'       => [['extra_parameters' => ['login_hint' => "a\r\nb"]], [['extra_parameters.login_hint', 'invalid_format']]],
             'an unnamed parameter'             => [['extra_parameters' => ['' => 'x']], [['extra_parameters', 'not_allowed']]],
+            'audiences as a string'            => [['trusted_audiences' => 'api'], [['trusted_audiences', 'invalid_type']]],
+            'audiences as a map'               => [['trusted_audiences' => ['a' => 'api']], [['trusted_audiences', 'invalid_type']]],
+            'too many audiences'               => [['trusted_audiences' => $tooManyAudiences], [['trusted_audiences', 'too_many']]],
+            'an audience twice'                => [['trusted_audiences' => ['api', 'web', 'api']], [['trusted_audiences.2', 'duplicate']]],
+            'an empty audience'                => [['trusted_audiences' => ['']], [['trusted_audiences.0', 'required']]],
+            'two bad audiences'                => [['trusted_audiences' => ['', 'a b']], [['trusted_audiences.0', 'required'], ['trusted_audiences.1', 'invalid_format']]],
+            'a bad audience twice'             => [['trusted_audiences' => ['a b', 'a b']], [['trusted_audiences.0', 'invalid_format'], ['trusted_audiences.1', 'invalid_format']]],
+            'an overlong audience'             => [['trusted_audiences' => [str_repeat('a', 256)]], [['trusted_audiences.0', 'too_long']]],
+            'an audience with a space'         => [['trusted_audiences' => ['a b']], [['trusted_audiences.0', 'invalid_format']]],
+            'an audience that is a number'     => [['trusted_audiences' => [1]], [['trusted_audiences.0', 'invalid_type']]],
+            'a max age as a string'            => [['max_age' => '0'], [['max_age', 'invalid_type']]],
+            'a negative max age'               => [['max_age' => -1], [['max_age', 'not_allowed']]],
+            'a max age past a week'            => [['max_age' => 604801], [['max_age', 'not_allowed']]],
+            'a string for fetch userinfo'      => [['fetch_userinfo' => 'yes'], [['fetch_userinfo', 'invalid_type']]],
             'an unknown setting'               => [['idp_entity_id' => 'https://idp.example.com'], [['idp_entity_id', 'unknown']]],
             'a known setting, then unknown'    => [['issuer' => 'https://idp.example.com', 'unknown' => 1], [['unknown', 'unknown']]],
             'scopes as a map'                  => [['scopes' => ['first' => 'openid']], [['scopes', 'invalid_type']]],
@@ -266,6 +333,9 @@ final class OidcSettingsTest extends TestCase
         }
 
         self::assertFalse(OidcSettings::fromArray(self::COMPLETE + ['scopes' => ['email']])->isComplete());
+        self::assertFalse(OidcSettings::fromArray(self::COMPLETE + ['fetch_userinfo' => true])->isComplete());
+        self::assertTrue(OidcSettings::fromArray(self::COMPLETE + ['fetch_userinfo' => true, 'userinfo_endpoint' => 'https://idp.example.com/userinfo'])->isComplete());
+        self::assertTrue(OidcSettings::fromArray(self::COMPLETE + ['fetch_userinfo' => false])->isComplete());
     }
 
     /**

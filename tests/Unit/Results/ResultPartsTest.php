@@ -263,7 +263,7 @@ final class ResultPartsTest extends TestCase
      *
      * @return void
      */
-    public function testClaimsCannotBeSerialised(): void
+    public function testClaimsCannotBeSerialized(): void
     {
         $this->expectExceptionObject(new \LogicException('Verified claims cannot be serialised.'));
 
@@ -275,7 +275,7 @@ final class ResultPartsTest extends TestCase
      *
      * @return void
      */
-    public function testClaimsCannotBeUnserialised(): void
+    public function testClaimsCannotBeUnserialized(): void
     {
         $this->expectExceptionObject(new \LogicException('Verified claims cannot be unserialised.'));
 

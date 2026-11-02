@@ -114,7 +114,7 @@ final class CorrelationTest extends TestCase
      *
      * @return void
      */
-    public function testCannotBeSerialised(): void
+    public function testCannotBeSerialized(): void
     {
         $this->expectException(\LogicException::class);
 

@@ -166,7 +166,8 @@ final class Saml2DriverTest extends TestCase
      */
     public function testAFlowIsRefusedOnceTheMetadataExpires(): void
     {
-        $connection = $this->saml(self::SETTINGS, ['metadata_fetched_at' => $this->clock->now(), 'metadata_valid_until' => $this->clock->now()->addHour()]);
+        $settings   = [...self::SETTINGS, 'metadata_url' => 'https://idp.example.test/metadata.xml', 'metadata_refresh' => true];
+        $connection = $this->saml($settings, ['metadata_fetched_at' => $this->clock->now(), 'metadata_valid_until' => $this->clock->now()->addHour()]);
 
         self::assertSame([false, false, false], $this->expiredAnswers($connection));
 

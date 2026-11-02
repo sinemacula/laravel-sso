@@ -25,6 +25,13 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
  * - `client_id`: at most 255 bytes; `client_authentication`:
  *   `client_secret_basic` (the default), `client_secret_post` or
  *   `private_key_jwt`.
+ * - `client_assertion_algorithm`: the algorithm `private_key_jwt` client
+ *   assertions are signed with, `PS256`, `RS256` or `ES256`; none by default,
+ *   each key then signing with its own default (`ClientAssertionAlgorithm`). It
+ *   is pinned, never negotiated from a response or discovery, and apart from
+ *   the allow-list of `id_token_algorithms`. Whether it fits the connection's
+ *   keys is judged where they are read: an update
+ *   (`Connections\ConnectionService`) and a key added (`Keys\KeyService`).
  * - `scopes`: up to twenty RFC 6749 scope tokens, always including `openid` (by
  *   default `openid`, `email` and `profile`).
  * - `id_token_algorithms`: asymmetric signature algorithms only (`RS256` by
@@ -34,6 +41,18 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
  *   `display`, `domain_hint`, `hd`), each a string of at most 512 bytes. A
  *   parameter the flow controls is `reserved`, whatever its case, so none can
  *   ever be set or overridden (SSO-2.4).
+ * - `trusted_audiences`: up to ten distinct audiences an ID token may name
+ *   beside the client id, each at most 255 bytes with no whitespace (none by
+ *   default, SSO-7.4).
+ * - `max_age`: the `max_age` every authorisation request sends, an integer from
+ *   0 to a week in seconds (none by default, SSO-7.4); a `reauthenticate` sends
+ *   0 whatever it is (SSO-5.10).
+ * - `fetch_userinfo`: whether the UserInfo endpoint is called (off by default);
+ *   while it is on, `userinfo_endpoint` is required (SSO-7.5).
+ * - `metadata_refresh`: whether the discovery document and the JWKS are
+ *   refreshed on a schedule (on by default), while
+ *   `sso.features.metadata_refresh` is on. Off leaves the stale limit in force
+ *   and an administrator's refresh available (SSO-2.8).
  *
  * The client secret is a secret: the management helpers take it out of what is
  * given before the settings see it, so a `client_secret` among the settings is
@@ -48,6 +67,9 @@ final readonly class OidcSettings implements ProtocolSettings
 {
     /** @var list<string> How the client may authenticate at the token endpoint. */
     public const array CLIENT_AUTHENTICATIONS = ['client_secret_basic', 'client_secret_post', 'private_key_jwt'];
+
+    /** @var list<string> The algorithms a client assertion may be pinned to (RFC 7523). */
+    public const array CLIENT_ASSERTION_ALGORITHMS = [ClientAssertionAlgorithm::PS256, ClientAssertionAlgorithm::RS256, ClientAssertionAlgorithm::ES256];
 
     /** @var list<string> The ID token signature algorithms accepted: asymmetric only (SSO-7.3). */
     public const array ID_TOKEN_ALGORITHMS = ['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512'];
@@ -82,6 +104,15 @@ final readonly class OidcSettings implements ProtocolSettings
     /** @var int The longest extra parameter value, in bytes. */
     public const int MAX_PARAMETER_LENGTH = 512;
 
+    /** @var int The most trusted audiences. */
+    public const int MAX_TRUSTED_AUDIENCES = 10;
+
+    /** @var int The longest trusted audience, in bytes. */
+    public const int MAX_AUDIENCE_LENGTH = 255;
+
+    /** @var int The longest `max_age`, in seconds (a week). */
+    public const int MAX_MAX_AGE_SECONDS = 604800;
+
     /** @var string The scope every request carries. */
     private const string OPENID = 'openid';
 
@@ -97,6 +128,9 @@ final readonly class OidcSettings implements ProtocolSettings
         'client_authentication' => 'client_secret_basic',
         'scopes'                => ['openid', 'email', 'profile'],
         'id_token_algorithms'   => ['RS256'],
+        'trusted_audiences'     => [],
+        'fetch_userinfo'        => false,
+        'metadata_refresh'      => true,
     ];
 
     /**
@@ -232,7 +266,8 @@ final readonly class OidcSettings implements ProtocolSettings
 
     /**
      * Whether the settings are valid, and name the issuer, the authorisation,
-     * token and JWKS endpoints, and the client id.
+     * token and JWKS endpoints, and the client id, and the UserInfo endpoint
+     * while UserInfo is fetched.
      *
      * @return bool
      */
@@ -240,6 +275,10 @@ final readonly class OidcSettings implements ProtocolSettings
     public function isComplete(): bool
     {
         $required = [OidcSetting::ISSUER, OidcSetting::AUTHORIZATION_ENDPOINT, OidcSetting::TOKEN_ENDPOINT, OidcSetting::JWKS_URI, OidcSetting::CLIENT_ID];
+
+        if (($this->values[OidcSetting::FETCH_USERINFO->value] ?? null) === true) {
+            $required[] = OidcSetting::USERINFO_ENDPOINT;
+        }
 
         foreach ($required as $setting) {
             if (!array_key_exists($setting->value, $this->values)) {
@@ -262,15 +301,32 @@ final readonly class OidcSettings implements ProtocolSettings
         $name = $setting->value;
 
         return match ($setting) {
-            OidcSetting::ISSUER                => SettingRules::at($name, SettingRules::url($value, false)),
-            OidcSetting::RETURNS_ISS           => SettingRules::at($name, SettingRules::boolean($value)),
-            OidcSetting::CLIENT_ID             => SettingRules::at($name, SettingRules::text($value, self::MAX_CLIENT_ID_LENGTH)),
-            OidcSetting::CLIENT_SECRET         => SettingRules::at($name, ViolationCode::RESERVED),
-            OidcSetting::CLIENT_AUTHENTICATION => SettingRules::at($name, SettingRules::choice($value, self::CLIENT_AUTHENTICATIONS)),
-            OidcSetting::SCOPES                => self::scopes($name, $value),
-            OidcSetting::ID_TOKEN_ALGORITHMS   => SettingRules::allowedList($name, $value, self::ID_TOKEN_ALGORITHMS),
-            OidcSetting::EXTRA_PARAMETERS      => self::extraParameters($name, $value),
-            default                            => SettingRules::at($name, SettingRules::url($value)),
+            OidcSetting::SCOPES              => self::scopes($name, $value),
+            OidcSetting::ID_TOKEN_ALGORITHMS => SettingRules::allowedList($name, $value, self::ID_TOKEN_ALGORITHMS),
+            OidcSetting::EXTRA_PARAMETERS    => self::extraParameters($name, $value),
+            OidcSetting::TRUSTED_AUDIENCES   => self::trustedAudiences($name, $value),
+            default                          => SettingRules::at($name, self::code($setting, $value)),
+        };
+    }
+
+    /**
+     * The problem with one setting of a single value, or `null`.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting  $setting
+     * @param  mixed  $value
+     * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
+     */
+    private static function code(OidcSetting $setting, mixed $value): ?ViolationCode
+    {
+        return match ($setting) {
+            OidcSetting::ISSUER                                                                  => SettingRules::url($value, false),
+            OidcSetting::RETURNS_ISS, OidcSetting::FETCH_USERINFO, OidcSetting::METADATA_REFRESH => SettingRules::boolean($value),
+            OidcSetting::CLIENT_ID                                                               => SettingRules::text($value, self::MAX_CLIENT_ID_LENGTH),
+            OidcSetting::CLIENT_SECRET                                                           => ViolationCode::RESERVED,
+            OidcSetting::CLIENT_AUTHENTICATION                                                   => SettingRules::choice($value, self::CLIENT_AUTHENTICATIONS),
+            OidcSetting::CLIENT_ASSERTION_ALGORITHM                                              => SettingRules::choice($value, self::CLIENT_ASSERTION_ALGORITHMS),
+            OidcSetting::MAX_AGE                                                                 => self::maxAge($value),
+            default                                                                              => SettingRules::url($value),
         };
     }
 
@@ -367,5 +423,51 @@ final readonly class OidcSettings implements ProtocolSettings
         }
 
         return $violations;
+    }
+
+    /**
+     * The trusted audiences: a list of at most ten distinct strings of at most
+     * 255 bytes with no whitespace.
+     *
+     * @param  string  $name
+     * @param  mixed  $value
+     * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
+     */
+    private static function trustedAudiences(string $name, mixed $value): array
+    {
+        if (SettingRules::list($value) !== null || !is_array($value)) {
+            return SettingRules::at($name, ViolationCode::INVALID_TYPE);
+        }
+
+        if (count($value) > self::MAX_TRUSTED_AUDIENCES) {
+            return SettingRules::at($name, ViolationCode::TOO_MANY);
+        }
+
+        $violations = [];
+
+        foreach ($value as $index => $audience) {
+
+            $code = SettingRules::text($audience, self::MAX_AUDIENCE_LENGTH, false)
+                ?? (array_search($audience, $value, true) !== $index ? ViolationCode::DUPLICATE : null);
+
+            array_push($violations, ...SettingRules::at($name . '.' . $index, $code));
+        }
+
+        return $violations;
+    }
+
+    /**
+     * The `max_age`: an integer from 0 to a week, in seconds.
+     *
+     * @param  mixed  $value
+     * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
+     */
+    private static function maxAge(mixed $value): ?ViolationCode
+    {
+        if (!is_int($value)) {
+            return ViolationCode::INVALID_TYPE;
+        }
+
+        return $value < 0 || $value > self::MAX_MAX_AGE_SECONDS ? ViolationCode::NOT_ALLOWED : null;
     }
 }

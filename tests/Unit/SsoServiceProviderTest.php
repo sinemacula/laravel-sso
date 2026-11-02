@@ -39,6 +39,11 @@ use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
+use SineMacula\Laravel\Sso\Metadata\OidcMetadataSource;
+use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
+use SineMacula\Laravel\Sso\Metadata\SamlMetadataSource;
+use SineMacula\Laravel\Sso\Protocols\Oidc\CallbackCompletion;
+use SineMacula\Laravel\Sso\Protocols\Oidc\ClaimsAssembler;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Protocols\Saml2\UnsolicitedResponses;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
@@ -228,7 +233,18 @@ final class SsoServiceProviderTest extends TestCase
         (new SsoServiceProvider($app))->register();
 
         self::assertSame(
-            [GuzzleFetcher::class, SystemDnsResolver::class, AssertionValidator::class, UnsolicitedResponses::class, MetadataRefresher::class],
+            [
+                GuzzleFetcher::class,
+                SystemDnsResolver::class,
+                AssertionValidator::class,
+                UnsolicitedResponses::class,
+                MetadataRefresher::class,
+                SamlMetadataSource::class,
+                OidcMetadataSource::class,
+                ProviderKeys::class,
+                CallbackCompletion::class,
+                ClaimsAssembler::class,
+            ],
             SsoServiceProvider::LOGGING_CLASSES,
         );
 
@@ -251,7 +267,7 @@ final class SsoServiceProviderTest extends TestCase
         self::assertSame(
             [
                 'features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits', 'freshness', 'keys',
-                'mapping', 'domains', 'flows', 'saml2', 'metadata',
+                'mapping', 'domains', 'flows', 'saml2', 'oidc', 'metadata',
             ],
             array_keys(SsoServiceProvider::CONFIGURATION_CHECKS),
         );

@@ -48,14 +48,21 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
  *   `sso.features.idp_initiated` is, and then needs `idp_initiated_start_url`,
  *   an `https` URL as `sso_url` (SSO-5.8).
  * - `metadata_url`: the `https` URL the provider's metadata is fetched from, as
- *   `sso_url`; `metadata_refresh` (off by default), which may be on only while
- *   `sso.features.metadata_refresh` is, and then needs `metadata_url`
- *   (SSO-2.8).
+ *   `sso_url`; `metadata_refresh`: left unset, the schedule refreshes a
+ *   connection with a `metadata_url` exactly while it has a metadata signing
+ *   anchor, so adding or removing the anchor needs no other change; `true`
+ *   refreshes it without one, delegating trust to the URL and its TLS, and
+ *   requires `metadata_url`; and `false` opts out (SSO-2.8,
+ *   `Metadata\SamlRefreshRule`). The schedule runs while
+ *   `sso.features.metadata_refresh` is on. An administrator's refresh stays
+ *   available; a connection with neither an anchor nor `true` has no stale limit,
+ *   and `false` on an anchored one leaves the limit in force.
  *
  * A missing setting is not a violation, so a connection may be saved before it
  * is complete; `isComplete()` says when it is. What is stored holds every
- * setting given or defaulted, defaults applied. It holds no secret: a SAML
- * connection's key pairs and trusted certificates are kept with its keys.
+ * setting given or defaulted, defaults applied, `metadata_refresh` only when it
+ * is given. It holds no secret: a SAML connection's key pairs and trusted
+ * certificates are kept with its keys.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -120,7 +127,6 @@ final readonly class Saml2Settings implements ProtocolSettings
     private const array GATES = [
         'require_encrypted_assertions' => Feature::ENCRYPTED_ASSERTIONS,
         'idp_initiated'                => Feature::IDP_INITIATED,
-        'metadata_refresh'             => Feature::METADATA_REFRESH,
     ];
 
     /** @var array<string, mixed> The value of each setting that has a default, by name. */
@@ -136,7 +142,6 @@ final readonly class Saml2Settings implements ProtocolSettings
         'force_authn'                  => false,
         'requested_authn_context'      => [],
         'idp_initiated'                => false,
-        'metadata_refresh'             => false,
     ];
 
     /** @var string An entity id that is a URN: `urn:`, a namespace identifier, `:` and the rest. */
@@ -326,13 +331,13 @@ final readonly class Saml2Settings implements ProtocolSettings
     private function code(Saml2Setting $setting, mixed $value): ?ViolationCode
     {
         return match ($setting) {
-            Saml2Setting::IDP_ENTITY_ID                                                                             => self::entityId($value),
-            Saml2Setting::SSO_URL, Saml2Setting::IDP_INITIATED_START_URL, Saml2Setting::METADATA_URL                => SettingRules::url($value),
-            Saml2Setting::SSO_BINDING, Saml2Setting::SUBJECT_SOURCE, Saml2Setting::NAME_ID_FORMAT                   => SettingRules::choice($value, self::CHOICES[$setting->value]),
-            Saml2Setting::SUBJECT_ATTRIBUTE                                                                         => $this->subjectAttribute($value),
-            Saml2Setting::MAX_AUTHENTICATION_AGE_SECONDS                                                            => self::authenticationAge($value),
-            Saml2Setting::REQUIRE_ENCRYPTED_ASSERTIONS, Saml2Setting::IDP_INITIATED, Saml2Setting::METADATA_REFRESH => self::gated($value, self::GATES[$setting->value]),
-            default                                                                                                 => SettingRules::boolean($value),
+            Saml2Setting::IDP_ENTITY_ID                                                              => self::entityId($value),
+            Saml2Setting::SSO_URL, Saml2Setting::IDP_INITIATED_START_URL, Saml2Setting::METADATA_URL => SettingRules::url($value),
+            Saml2Setting::SSO_BINDING, Saml2Setting::SUBJECT_SOURCE, Saml2Setting::NAME_ID_FORMAT    => SettingRules::choice($value, self::CHOICES[$setting->value]),
+            Saml2Setting::SUBJECT_ATTRIBUTE                                                          => $this->subjectAttribute($value),
+            Saml2Setting::MAX_AUTHENTICATION_AGE_SECONDS                                             => self::authenticationAge($value),
+            Saml2Setting::REQUIRE_ENCRYPTED_ASSERTIONS, Saml2Setting::IDP_INITIATED                  => self::gated($value, self::GATES[$setting->value]),
+            default                                                                                  => SettingRules::boolean($value),
         };
     }
 

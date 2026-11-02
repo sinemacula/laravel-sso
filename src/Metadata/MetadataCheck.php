@@ -33,20 +33,20 @@ final readonly class MetadataCheck implements ConfigurationCheck
     ) {}
 
     /**
-     * The settings are checked while the `saml2` or the `metadata_refresh`
-     * feature is on, or its switch is malformed.
+     * The settings are checked while the package is in use, since the stale
+     * limit and an administrator's refresh do not depend on the schedule.
      *
      * @return bool
      */
     #[\Override]
     public function applies(): bool
     {
-        return Features::requested(Feature::SAML2) || Features::requested(Feature::METADATA_REFRESH);
+        return Features::isInUse();
     }
 
     /**
-     * The size cap, then, while the refresh is on, the interval, the backoff,
-     * the stale limit, the claim and the queue.
+     * The size cap, the interval, the backoff, the stale limit and the claim,
+     * then, while the schedule is on, the queue its refreshes are sent to.
      *
      * @return list<\Closure(): mixed>
      */
@@ -54,19 +54,21 @@ final readonly class MetadataCheck implements ConfigurationCheck
     public function checks(): array
     {
         $settings = new MetadataSettings($this->config);
-        $size     = [static fn (): int => $settings->maxBytes()];
-
-        if (!Features::requested(Feature::METADATA_REFRESH)) {
-            return $size;
-        }
-
-        return [
-            ...$size,
+        $always   = [
+            static fn (): int => $settings->maxBytes(),
             static fn (): int => $settings->refreshIntervalSeconds(),
             static fn (): int => $settings->backoffInitialSeconds(),
             static fn (): int => $settings->backoffMaxSeconds(),
             static fn (): ?int => $settings->staleLimitSeconds(),
             static fn (): int => $settings->claimSeconds(),
+        ];
+
+        if (!Features::requested(Feature::METADATA_REFRESH)) {
+            return $always;
+        }
+
+        return [
+            ...$always,
             static fn (): ?string => $settings->queueConnection(),
             static fn (): ?string => $settings->queueName(),
             static fn (): int => $settings->timeoutSeconds(),

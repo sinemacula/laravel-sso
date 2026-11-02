@@ -395,7 +395,9 @@ final class SamlFixtureCompletionTest extends TestCase
             {
                 unset($connection);
 
-                return new ConnectionEndpoints($this->assertionConsumerService, 'https://sp.example.test/saml/callback', $this->entityId, $this->entityId);
+                $jwks = 'https://sp.example.test/saml/jwks';
+
+                return new ConnectionEndpoints($this->assertionConsumerService, 'https://sp.example.test/saml/callback', $this->entityId, $this->entityId, $jwks);
             }
         };
     }

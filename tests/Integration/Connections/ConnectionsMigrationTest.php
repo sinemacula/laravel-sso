@@ -62,8 +62,9 @@ final class ConnectionsMigrationTest extends TestCase
     }
 
     /**
-     * The table has exactly these columns, only the secrets and the metadata
-     * refresh's instants nullable, with the id as its primary key.
+     * The table has exactly these columns, only the secrets, the metadata
+     * refresh's instants and token, and the JWKS, its instants and token
+     * nullable, with the id as its primary key.
      *
      * @return void
      */
@@ -81,6 +82,12 @@ final class ConnectionsMigrationTest extends TestCase
             'flows_version'             => false,
             'has_completed_sign_in'     => false,
             'id'                        => false,
+            'jwks'                      => true,
+            'jwks_claim_token'          => true,
+            'jwks_fetched_at'           => true,
+            'jwks_refetch_at'           => true,
+            'jwks_refetch_suppressed'   => false,
+            'jwks_version'              => false,
             'links_version'             => false,
             'metadata_claim_token'      => true,
             'metadata_claimed_until'    => true,
@@ -124,8 +131,8 @@ final class ConnectionsMigrationTest extends TestCase
 
     /**
      * A row written with only what the table requires is disabled, has
-     * completed no sign-in, has every version and the refresh failures at zero
-     * and no metadata refresh instant.
+     * completed no sign-in, has every version and the refresh failures at zero,
+     * no metadata refresh instant and no JWKS.
      *
      * @return void
      */
@@ -151,6 +158,8 @@ final class ConnectionsMigrationTest extends TestCase
         self::assertSame(0, (int) $row->flows_version);
         self::assertSame([0, 0, 0], [(int) $row->trust_version, (int) $row->metadata_version, (int) $row->metadata_refresh_failures]);
         self::assertSame([null, null, null, null], [$row->metadata_fetched_at, $row->metadata_valid_until, $row->metadata_refresh_at, $row->metadata_claimed_until]);
+        self::assertSame([null, 0, null, null, null], [$row->jwks, (int) $row->jwks_version, $row->jwks_fetched_at, $row->jwks_refetch_at, $row->jwks_claim_token]);
+        self::assertSame(0, (int) $row->jwks_refetch_suppressed);
         self::assertNull($row->secrets);
     }
 

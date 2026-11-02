@@ -41,11 +41,14 @@ return [
     | Features
     |---------------------------------------------------------------------------
     |
-    | Every feature is off until the application turns it on. A protocol
-    | (`saml2`, `oidc`) is the package in use: with neither on, nothing runs
-    | and nothing but these switches is checked. Every other feature needs a
-    | protocol on, and `encrypted_assertions` and `idp_initiated` need `saml2`.
-    | A feature that is on lets an application or a connection opt into it; it
+    | Every feature is off until the application turns it on, but for
+    | `metadata_refresh`, the scheduled refresh, which is on: it does nothing
+    | until a protocol is, and turning it off stops the schedule, never the
+    | stale limit. A protocol (`saml2`, `oidc`) is the package in use: with
+    | neither on, nothing runs and nothing but these switches is checked.
+    | `discovery`, `enforcement`, `domain_linking` and the rest need a protocol
+    | on, and `encrypted_assertions` and `idp_initiated` need `saml2`. A
+    | feature that is on lets an application or a connection opt into it; it
     | never opts in for them, and the security checks of a feature that is on
     | are always on, with no setting to turn them off.
     |
@@ -60,7 +63,7 @@ return [
         'discovery'            => env('SSO_DISCOVERY', false),
         'enforcement'          => env('SSO_ENFORCEMENT', false),
         'encrypted_assertions' => env('SSO_ENCRYPTED_ASSERTIONS', false),
-        'metadata_refresh'     => env('SSO_METADATA_REFRESH', false),
+        'metadata_refresh'     => env('SSO_METADATA_REFRESH', true),
         'idp_initiated'        => env('SSO_IDP_INITIATED', false),
         'domain_linking'       => env('SSO_DOMAIN_LINKING', false),
     ],
@@ -71,12 +74,14 @@ return [
     |---------------------------------------------------------------------------
     |
     | What the default endpoint resolver builds each connection's assertion
-    | consumer service, OIDC callback, metadata URL and service provider
-    | entity id from: the base URL (`https`, or `http` on 127.0.0.1 or [::1]
-    | for development; no query or fragment) and a path pattern holding
-    | `{connection}` once. Nothing is ever built from the request's host or
-    | headers. Required while a protocol is on; an application with another
-    | layout binds its own resolver.
+    | consumer service, OIDC callback, metadata URL, service provider entity
+    | id and public JWKS URL from: the base URL (`https`, or `http` on
+    | 127.0.0.1 or [::1] for development; no query or fragment) and a path
+    | pattern holding `{connection}` once. Nothing is ever built from the
+    | request's host or headers. Required while a protocol is on; an
+    | application with another layout binds its own resolver. The package adds
+    | no route: the application serves these URLs, the JWKS URL with the body
+    | `ServiceProviderDescriptions::publicKeys()` answers.
     |
     */
 
@@ -87,6 +92,7 @@ return [
             'assertion_consumer_service' => '/auth/sso/connections/{connection}/assertions',
             'callback'                   => '/auth/sso/connections/{connection}/callback',
             'metadata'                   => '/auth/sso/connections/{connection}/metadata',
+            'jwks'                       => '/auth/sso/connections/{connection}/jwks',
         ],
     ],
 
@@ -172,6 +178,58 @@ return [
 
     /*
     |---------------------------------------------------------------------------
+    | OpenID Connect
+    |---------------------------------------------------------------------------
+    |
+    | The caps, windows and timeouts every OIDC connection is held to; every
+    | check is always on, and a cap can be lowered, never raised past its
+    | ceiling. An ID token longer than `max_id_token_bytes` (2 KiB to 16 KiB,
+    | default 16 KiB) is refused before it is read. A JWKS larger than
+    | `max_jwks_bytes` (4 KiB to 64 KiB, default 64 KiB) or holding more than
+    | `max_jwks_keys` keys (1 to 50, default 50) is refused whole. A discovery
+    | document, token response or UserInfo response larger than its
+    | `max_*_bytes` (4 KiB to 1 MiB, default 64 KiB) fails as it arrives.
+    |
+    | A callback is refused before anything in it is read when a parameter is
+    | repeated or given as an array, when a name or value is longer than
+    | `max_callback_parameter_bytes` (256 bytes to 2 KiB, default 2 KiB), when
+    | the raw query is longer than `max_callback_query_bytes` (1 KiB to 16 KiB,
+    | default 8 KiB), or when it holds more than `max_callback_parameters`
+    | parameters (4 to 32, default 16).
+    |
+    | An ID token whose `kid` the stored JWKS does not hold refetches the JWKS
+    | once, at most once per `jwks_refetch_cooldown_seconds` per connection (a
+    | minute to an hour, default 300), whether the refetch succeeds or not, so
+    | a flood of unknown `kid`s cannot make the package fetch. An ID token's
+    | `iat` may be at most `id_token_max_age_seconds` old (30 to 3600, default
+    | 300), with the clock skew on top. A token request and a UserInfo request
+    | each take at most `token_timeout_seconds` and `userinfo_timeout_seconds`
+    | (1 to 60, default 10) and are never retried.
+    |
+    | The scheduled refresh of a connection's discovery document and JWKS
+    | follows the `metadata` section's cadence, backoff, claim, queue and stale
+    | limit.
+    |
+    */
+
+    'oidc' => [
+        'max_id_token_bytes'            => env('SSO_OIDC_MAX_ID_TOKEN_BYTES', 16384),
+        'max_jwks_bytes'                => env('SSO_OIDC_MAX_JWKS_BYTES', 65536),
+        'max_jwks_keys'                 => env('SSO_OIDC_MAX_JWKS_KEYS', 50),
+        'max_discovery_bytes'           => env('SSO_OIDC_MAX_DISCOVERY_BYTES', 65536),
+        'max_token_response_bytes'      => env('SSO_OIDC_MAX_TOKEN_RESPONSE_BYTES', 65536),
+        'max_userinfo_bytes'            => env('SSO_OIDC_MAX_USERINFO_BYTES', 65536),
+        'max_callback_parameter_bytes'  => env('SSO_OIDC_MAX_CALLBACK_PARAMETER_BYTES', 2048),
+        'max_callback_query_bytes'      => env('SSO_OIDC_MAX_CALLBACK_QUERY_BYTES', 8192),
+        'max_callback_parameters'       => env('SSO_OIDC_MAX_CALLBACK_PARAMETERS', 16),
+        'jwks_refetch_cooldown_seconds' => env('SSO_OIDC_JWKS_REFETCH_COOLDOWN_SECONDS', 300),
+        'id_token_max_age_seconds'      => env('SSO_OIDC_ID_TOKEN_MAX_AGE_SECONDS', 300),
+        'token_timeout_seconds'         => env('SSO_OIDC_TOKEN_TIMEOUT_SECONDS', 10),
+        'userinfo_timeout_seconds'      => env('SSO_OIDC_USERINFO_TIMEOUT_SECONDS', 10),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
     | Metadata
     |---------------------------------------------------------------------------
     |
@@ -187,16 +245,25 @@ return [
     | instead. An import from a URL fetches while it is called, so import a
     | large aggregate from the console or a queued job, never a web request.
     |
-    | How the scheduled refresh of a SAML connection's metadata runs, for the
-    | connections that opt in while `features.metadata_refresh` is on. After a
-    | success the next refresh is due `refresh_interval_seconds` later (an
-    | hour to a week, default a day); after a failure it waits
-    | `backoff_initial_seconds` (a minute to an hour, default 5 minutes),
-    | doubling with each failure in a row up to `backoff_max_seconds` (5
-    | minutes to a day, default 6 hours). What a refresh applied stops being
-    | used `stale_limit_seconds` after its last validated fetch (a day to a
-    | year, default 30 days, or 0 for no limit, which you must set
-    | explicitly), or at its metadata's `validUntil`, whichever comes first.
+    | How the scheduled refresh runs of a SAML connection's metadata, and of an
+    | OIDC connection's discovery document and JWKS, while
+    | `features.metadata_refresh` is on: every OIDC connection refreshes unless
+    | its `metadata_refresh` setting is off, and a SAML connection with a
+    | `metadata_url` refreshes when its setting is `true`, or is unset and it
+    | has a metadata signing anchor. After a success the next refresh is due
+    | `refresh_interval_seconds` later (an hour to a week, default a day);
+    | after a failure it waits `backoff_initial_seconds` (a minute to an hour,
+    | default 5 minutes), doubling with each failure in a row up to
+    | `backoff_max_seconds` (5 minutes to a day, default 6 hours).
+    |
+    | Whatever was fetched and validated stops being used `stale_limit_seconds`
+    | after its own last validated fetch (a day to a year, default 30 days, or
+    | 0 for no limit, which you must set explicitly), or at its metadata's
+    | `validUntil`, whichever comes first, scheduled or not: turning the
+    | schedule off never means unlimited trust. An expired connection recovers
+    | through the schedule or an administrator's refresh, never by itself.
+    | Settings saved from a fetched import count from that fetch. Settings and
+    | keys saved by hand, with nothing fetched, have no deadline.
     | A server's claim on a refresh holds for `claim_seconds` (30 to 3600,
     | default 300), so racing servers refresh a connection once. Run the
     | refresh command more often than the initial backoff.

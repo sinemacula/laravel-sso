@@ -4,8 +4,10 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Metadata;
 
+use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Connections\ConnectionFinder;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
+use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
@@ -29,7 +31,8 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * event. While the SAML protocol is not available (`sso.features.saml2` off),
  * every import is refused as `protocol_unavailable` before anything is looked
  * up, read or fetched. What it proposes is saved, if the administrator accepts
- * it, through `Connections\ConnectionService::update()` and
+ * it, through `Connections\ImportSaver::save()` (or
+ * `Connections\ConnectionService::update()` for metadata given as XML) and
  * `Keys\KeyService::trustCertificate()`, each with its own freshness check.
  *
  * The administrator names the entity, which is chosen from aggregate metadata
@@ -52,9 +55,14 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * connection's settings would be (an `https` single sign-on URL, an entity id
  * that is a URL or a URN), and refused as `metadata_invalid` otherwise.
  *
- * It holds the reader, the lookup, the key ring, the fetcher, the limiter and
- * the protocols, none of which keeps anything of one request for the next
- * (SSO-11.2).
+ * A proposal from a fetched document carries the moment it was validated
+ * (`ProposedSettings::fetch()`), for `ImportSaver::save()` to stamp, so the
+ * stale limit counts from that fetch; metadata given as XML came from no fetch
+ * and carries none, so it is saved as by hand.
+ *
+ * It holds the reader, the lookup, the key ring, the fetcher, the limiter, the
+ * protocols and the clock, none of which keeps anything of one request for the
+ * next (SSO-11.2).
  *
  * @api
  *
@@ -72,6 +80,9 @@ final readonly class MetadataImporter
      * @param  \SineMacula\Laravel\Sso\Contracts\Fetcher  $fetcher
      * @param  \SineMacula\Laravel\Sso\Contracts\AttemptLimiter  $limiter
      * @param  \SineMacula\Laravel\Sso\Protocols\ProtocolManager  $protocols
+     * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
+     *
+     * @SuppressWarnings("php:S107")
      */
     public function __construct(
 
@@ -92,6 +103,9 @@ final readonly class MetadataImporter
 
         /** Whether the SAML protocol is available. */
         private ProtocolManager $protocols,
+
+        /** The clock the moment a fetched document validated is read from. */
+        private Clock $clock,
     ) {}
 
     /**
@@ -146,7 +160,7 @@ final readonly class MetadataImporter
 
         $body = $fetched->isSuccessful() ? $fetched->body() : null;
 
-        return $body === null ? ImportResult::refused($fetched->reason ?? FailureReason::FETCH_FAILED) : $this->proposal($connection, $body, $entityId);
+        return $body === null ? ImportResult::refused($fetched->reason ?? FailureReason::FETCH_FAILED) : $this->proposal($connection, $body, $entityId, true);
     }
 
     /**
@@ -203,16 +217,18 @@ final readonly class MetadataImporter
 
     /**
      * The settings the document proposes for the entity, read with the
-     * connection's anchors and binding when there is a connection.
+     * connection's anchors and binding when there is a connection, noting the
+     * moment it validated when it was fetched.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $xml
      * @param  string  $entityId
+     * @param  bool  $wasFetched
      * @return \SineMacula\Laravel\Sso\Metadata\ImportResult
      *
      * @throws \InvalidArgumentException
      */
-    private function proposal(?Connection $connection, #[\SensitiveParameter] string $xml, string $entityId): ImportResult
+    private function proposal(?Connection $connection, #[\SensitiveParameter] string $xml, string $entityId, bool $wasFetched = false): ImportResult
     {
         $anchors  = $connection === null ? [] : $this->keys->trustedCertificates($connection->id, KeyUse::METADATA_SIGNING);
         $binding  = $connection?->settings[Saml2Setting::SSO_BINDING->value] ?? null;
@@ -224,7 +240,8 @@ final readonly class MetadataImporter
             is_string($binding) ? $binding : null,
         );
 
-        return self::proposed($metadata);
+        // The moment the document was validated, read once the reader is done
+        return self::proposed($metadata, $wasFetched ? $this->clock->now() : null);
     }
 
     /**
@@ -232,18 +249,19 @@ final readonly class MetadataImporter
      * refused, or what it proposes not settings a connection may hold.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
+     * @param  ?\Carbon\CarbonImmutable  $fetchedAt
      * @return \SineMacula\Laravel\Sso\Metadata\ImportResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private static function proposed(IdpMetadata $metadata): ImportResult
+    private static function proposed(IdpMetadata $metadata, ?CarbonImmutable $fetchedAt): ImportResult
     {
         if (!$metadata->isRead()) {
             return ImportResult::refused($metadata->reason ?? FailureReason::METADATA_INVALID, $metadata->detail);
         }
 
-        $proposed = ProposedSettings::of($metadata);
+        $proposed = ProposedSettings::of($metadata, $fetchedAt);
 
         if (Saml2Settings::fromArray($proposed->settings())->violations() !== []) {
             return ImportResult::refused(FailureReason::METADATA_INVALID, 'settings');

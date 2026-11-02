@@ -11,17 +11,20 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
  * The settings an import of an identity provider's metadata proposes for a SAML
  * connection (SSO-2.8), for an administrator to review: nothing in it is
  * written or trusted until it is saved through
- * `Connections\ConnectionService::update()` and
+ * `Connections\ImportSaver::save()`, or
+ * `Connections\ConnectionService::update()` for metadata given as XML, and
  * `Keys\KeyService::trustCertificate()`.
  *
  * - `settings()`: `idp_entity_id`, `sso_url` and `sso_binding`, as the
- *   connection's settings name them, ready to give `update()`;
+ *   connection's settings name them, ready to save;
  * - `signingCertificates()` and `encryptionCertificates()`: each certificate's
  *   PEM and lower-case hex SHA-256 fingerprint, the fingerprint an
  *   administrator compares with the one the provider gave them out of band;
  * - `nameIdFormats()`: the NameID formats the provider offers, for choosing
  *   the connection's `name_id_format`, which the import never proposes;
- * - `validUntil()`: the earliest `validUntil` of the metadata, or `null`.
+ * - `validUntil()`: the earliest `validUntil` of the metadata, or `null`;
+ * - `fetch()`: the fetch it came from, to give `ImportSaver::save()` so the
+ *   stale limit counts from it, or `null` for metadata given as XML.
  *
  * Everything in it came from the metadata, which whoever serves its URL
  * controls, so it is held in a `\SensitiveParameterValue`: a dump and
@@ -39,7 +42,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
  *     settings: array{idp_entity_id: string, sso_url: string, sso_binding: string},
  *     signing_certificates: list<array{certificate: string, fingerprint: string}>,
  *     encryption_certificates: list<array{certificate: string, fingerprint: string}>,
- *     name_id_formats: list<string>, valid_until: ?\Carbon\CarbonImmutable
+ *     name_id_formats: list<string>, valid_until: ?\Carbon\CarbonImmutable,
+ *     fetched_at: ?\Carbon\CarbonImmutable
  * }
  */
 final readonly class ProposedSettings implements \JsonSerializable
@@ -109,14 +113,16 @@ final readonly class ProposedSettings implements \JsonSerializable
     }
 
     /**
-     * What the read metadata proposes.
+     * What the read metadata proposes, with the moment it was validated when it
+     * was fetched.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
+     * @param  ?\Carbon\CarbonImmutable  $fetchedAt
      * @return self
      *
      * @throws \LogicException
      */
-    public static function of(IdpMetadata $metadata): self
+    public static function of(IdpMetadata $metadata, ?CarbonImmutable $fetchedAt = null): self
     {
         return new self([
             'settings' => [
@@ -128,6 +134,7 @@ final readonly class ProposedSettings implements \JsonSerializable
             'encryption_certificates' => $metadata->encryptionCertificates(),
             'name_id_formats'         => $metadata->nameIdFormats(),
             'valid_until'             => $metadata->validUntil(),
+            'fetched_at'              => $fetchedAt,
         ]);
     }
 
@@ -180,6 +187,18 @@ final readonly class ProposedSettings implements \JsonSerializable
     public function validUntil(): ?CarbonImmutable
     {
         return $this->all()['valid_until'];
+    }
+
+    /**
+     * The fetch the metadata came from, or `null` for metadata given as XML.
+     *
+     * @return ?\SineMacula\Laravel\Sso\Metadata\ValidatedFetch
+     */
+    public function fetch(): ?ValidatedFetch
+    {
+        $fetchedAt = $this->all()['fetched_at'];
+
+        return $fetchedAt === null ? null : new ValidatedFetch($fetchedAt, $this->validUntil());
     }
 
     /**

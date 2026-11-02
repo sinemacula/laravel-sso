@@ -22,12 +22,16 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * code issued through it raises under its lock, so either insert also writes
  * this row (`Connections\InFlightVoider`); its trust version, which every
  * change that voids what is in flight through it, and enabling it, raises under
- * its lock; and its SAML metadata refresh state: the metadata version every
- * refresh that writes raises, the last validated fetch, the earliest
- * `validUntil` it applied, when the next refresh is due, how many failed in a
- * row, and until when a refresh in progress holds its claim and the random
- * token that claim was made with, which only its owner's write matches
- * (SSO-2.8).
+ * its lock; its metadata refresh state: the metadata version every refresh that
+ * writes raises, the last validated fetch, the earliest `validUntil` it
+ * applied, when the next refresh is due, how many failed in a row, and until
+ * when a refresh in progress holds its claim and the random token that claim
+ * was made with, which only its owner's write matches (SSO-2.8), whether of a
+ * SAML connection's metadata or an OIDC connection's discovery document and
+ * JWKS; and an OIDC connection's JWKS (SSO-7.3): the public keys the package
+ * admitted, the version every write of them raises, their last validated fetch,
+ * until when no unknown-`kid` refetch may start, and the random token of the
+ * refetch in progress.
  *
  * Its key is a lower-case ULID, the `{connection}` of its endpoints, and its
  * timestamps come from the package's clock (see `SsoModel`). Changing its
@@ -63,6 +67,12 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property int $metadata_refresh_failures
  * @property ?\Carbon\CarbonImmutable $metadata_claimed_until
  * @property ?string $metadata_claim_token
+ * @property ?string $jwks
+ * @property int $jwks_version
+ * @property ?\Carbon\CarbonImmutable $jwks_fetched_at
+ * @property ?\Carbon\CarbonImmutable $jwks_refetch_at
+ * @property ?string $jwks_claim_token
+ * @property int $jwks_refetch_suppressed
  * @property \Carbon\CarbonImmutable $created_at
  * @property \Carbon\CarbonImmutable $updated_at
  */
@@ -226,6 +236,10 @@ final class Connection extends SsoModel implements SsoConnection
             'metadata_refresh_at'       => UtcDateTime::class,
             'metadata_refresh_failures' => 'integer',
             'metadata_claimed_until'    => UtcDateTime::class,
+            'jwks_version'              => 'integer',
+            'jwks_fetched_at'           => UtcDateTime::class,
+            'jwks_refetch_at'           => UtcDateTime::class,
+            'jwks_refetch_suppressed'   => 'integer',
             'created_at'                => UtcDateTime::class,
             'updated_at'                => UtcDateTime::class,
         ];

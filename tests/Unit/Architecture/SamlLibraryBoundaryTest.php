@@ -7,6 +7,7 @@ namespace Tests\Unit\Architecture;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Tests\Concerns\ScansLibraryNames;
 
 /**
  * Holds the package to the conditions its SAML library was chosen under
@@ -38,6 +39,8 @@ use PHPUnit\Framework\TestCase;
 #[CoversNothing]
 final class SamlLibraryBoundaryTest extends TestCase
 {
+    use ScansLibraryNames;
+
     /** @var string The adapter's directory, relative to the package. */
     private const string ADAPTER = 'src/Protocols/Saml2/Library/';
 
@@ -62,9 +65,6 @@ final class SamlLibraryBoundaryTest extends TestCase
         'SimpleSAML\SAML2\HTTPPost',
     ];
 
-    /** @var ?array<string, string> Every PHP file the package ships, by its path relative to the package, read once. */
-    private static ?array $sources = null;
-
     /**
      * Rows of `[path]`: every PHP file the package ships outside the adapter.
      *
@@ -72,7 +72,7 @@ final class SamlLibraryBoundaryTest extends TestCase
      */
     public static function provideSourcesOutsideTheAdapter(): iterable
     {
-        foreach (array_keys(self::sources()) as $path) {
+        foreach (array_keys(self::shippedSources()) as $path) {
 
             if (str_starts_with($path, self::ADAPTER)) {
                 continue;
@@ -91,7 +91,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     #[DataProvider('provideSourcesOutsideTheAdapter')]
     public function testOnlyTheAdapterNamesTheLibrary(string $path): void
     {
-        self::assertSame([], self::libraryNames(self::sources()[$path]), "{$path} names the SAML library outside the adapter.");
+        self::assertSame([], self::libraryNames(self::shippedSources()[$path]), "{$path} names the SAML library outside the adapter.");
     }
 
     /**
@@ -102,7 +102,7 @@ final class SamlLibraryBoundaryTest extends TestCase
      */
     public function testTheAdapterNamesTheLibrary(): void
     {
-        self::assertNotSame([], self::libraryNames(self::sources()[self::VERIFIER]));
+        self::assertNotSame([], self::libraryNames(self::shippedSources()[self::VERIFIER]));
     }
 
     /**
@@ -112,7 +112,7 @@ final class SamlLibraryBoundaryTest extends TestCase
      */
     public static function provideSources(): iterable
     {
-        foreach (array_keys(self::sources()) as $path) {
+        foreach (array_keys(self::shippedSources()) as $path) {
             yield $path => [$path];
         }
     }
@@ -126,7 +126,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     #[DataProvider('provideSources')]
     public function testNothingNamesTheHighLevelProcessorsValidatorsOrBindings(string $path): void
     {
-        self::assertSame([], self::forbidden(self::sources()[$path]), "{$path} names a part of the SAML library the package never uses.");
+        self::assertSame([], self::forbidden(self::shippedSources()[$path]), "{$path} names a part of the SAML library the package never uses.");
     }
 
     /**
@@ -139,7 +139,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     #[DataProvider('provideSources')]
     public function testVerifyIsCalledOnlyByThePinnedVerifierAndAlwaysWithAVerifier(string $path): void
     {
-        $calls = self::verifyCalls(self::sources()[$path]);
+        $calls = self::verifyCalls(self::shippedSources()[$path]);
 
         self::assertNotContains(0, $calls, "{$path} calls verify() without a verifier.");
 
@@ -159,7 +159,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     #[DataProvider('provideSources')]
     public function testOnlyTheAdapterContainerSetsTheLibraryContainer(string $path): void
     {
-        $sets = str_contains(self::sources()[$path], 'setContainer(') && str_contains(self::sources()[$path], 'ContainerSingleton');
+        $sets = str_contains(self::shippedSources()[$path], 'setContainer(') && str_contains(self::shippedSources()[$path], 'ContainerSingleton');
 
         self::assertSame($path === self::CONTAINER, $sets, "{$path} and the library's container.");
     }
@@ -172,7 +172,7 @@ final class SamlLibraryBoundaryTest extends TestCase
      */
     public function testThePinnedVerifierCallsVerifyWithAVerifier(): void
     {
-        $source = self::sources()[self::VERIFIER];
+        $source = self::shippedSources()[self::VERIFIER];
 
         self::assertSame([1], self::verifyCalls($source));
         self::assertStringContainsString('->verify((new SignatureAlgorithmFactory)->getAlgorithm($algorithm, $key))', $source);
@@ -243,7 +243,7 @@ final class SamlLibraryBoundaryTest extends TestCase
      */
     private static function libraryNames(string $source): array
     {
-        return array_column(self::scanned($source), 0);
+        return array_column(self::scannedNames($source, self::LIBRARY), 0);
     }
 
     /**
@@ -255,7 +255,7 @@ final class SamlLibraryBoundaryTest extends TestCase
      */
     private static function forbidden(string $source): array
     {
-        $found = array_filter(self::scanned($source), static fn (array $scanned): bool => self::isForbidden(...$scanned));
+        $found = array_filter(self::scannedNames($source, self::LIBRARY), static fn (array $scanned): bool => self::isForbidden(...$scanned));
 
         return array_column($found, 0);
     }
@@ -283,109 +283,6 @@ final class SamlLibraryBoundaryTest extends TestCase
         }
 
         return false;
-    }
-
-    /**
-     * Every library name in the source, in order, and whether a `use` imports
-     * it.
-     *
-     * @param  string  $source
-     * @return list<array{0: string, 1: bool}>
-     */
-    private static function scanned(string $source): array
-    {
-        $tokens = array_values(array_filter(token_get_all($source), static fn ($token): bool => !is_array($token) || $token[0] !== T_WHITESPACE));
-        $found  = [];
-        $state  = ['use' => false, 'group' => null];
-
-        foreach ($tokens as $index => $token) {
-
-            $state = self::stateAfter($state, $token, $tokens[$index + 1] ?? null);
-            $name  = self::nameOf($token, $state, $tokens[$index - 1] ?? null, $tokens[$index + 1] ?? null);
-
-            if ($name === null || preg_match(self::LIBRARY, $name) !== 1) {
-                continue;
-            }
-
-            $found[] = [$name, $state['use']];
-        }
-
-        return $found;
-    }
-
-    /**
-     * Where the scan is once the token is read: inside a `use` statement until
-     * its `;`, and inside a group `use`'s braces, with its prefix, until `}`.
-     *
-     * @param  array{use: bool, group: ?string}  $state
-     * @param  array{0: int, 1: string, 2: int}|string  $token
-     * @param  array{0: int, 1: string, 2: int}|string|null  $next
-     * @return array{use: bool, group: ?string}
-     */
-    private static function stateAfter(array $state, array|string $token, array|string|null $next): array
-    {
-        return match (true) {
-            self::opensUse($token, $next)                    => ['use' => true, 'group' => null],
-            $token === ';'                                   => ['use' => false, 'group' => null],
-            $token === '}'                                   => [...$state, 'group' => null],
-            $state['use'] && self::opensGroup($token, $next) => [...$state, 'group' => ltrim($token[1], '\\')],
-            default                                          => $state,
-        };
-    }
-
-    /**
-     * Whether the token opens a `use` statement: an import or a trait's, never
-     * a closure's `use (`.
-     *
-     * @param  array{0: int, 1: string, 2: int}|string  $token
-     * @param  array{0: int, 1: string, 2: int}|string|null  $next
-     * @return bool
-     */
-    private static function opensUse(array|string $token, array|string|null $next): bool
-    {
-        return is_array($token) && $token[0] === T_USE && $next !== '(';
-    }
-
-    /**
-     * Whether the token is a group `use`'s prefix: a name followed by `\` and
-     * an opening brace.
-     *
-     * @param  array{0: int, 1: string, 2: int}|string  $token
-     * @param  array{0: int, 1: string, 2: int}|string|null  $next
-     * @return bool
-     *
-     * @phpstan-assert-if-true array{0: int, 1: string, 2: int} $token
-     */
-    private static function opensGroup(array|string $token, array|string|null $next): bool
-    {
-        return is_array($token) && is_array($next) && $next[0] === T_NS_SEPARATOR && in_array($token[0], [T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_STRING], true);
-    }
-
-    /**
-     * The name the token writes, or `null` when it writes none: a qualified
-     * name as written, unless it is a group `use`'s prefix; a member of a group
-     * joined to its prefix, never its alias; and a quoted string unquoted.
-     *
-     * @param  array{0: int, 1: string, 2: int}|string  $token
-     * @param  array{use: bool, group: ?string}  $state
-     * @param  array{0: int, 1: string, 2: int}|string|null  $previous
-     * @param  array{0: int, 1: string, 2: int}|string|null  $next
-     * @return ?string
-     */
-    private static function nameOf(array|string $token, array $state, array|string|null $previous, array|string|null $next): ?string
-    {
-        if (!is_array($token) || self::opensGroup($token, $next)) {
-            return null;
-        }
-
-        $member = $state['group'] !== null && !(is_array($previous) && $previous[0] === T_AS);
-
-        return match (true) {
-            $member && in_array($token[0], [T_NAME_QUALIFIED, T_STRING], true)    => $state['group'] . '\\' . $token[1],
-            in_array($token[0], [T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true) => $token[1],
-            $token[0] === T_CONSTANT_ENCAPSED_STRING                              => str_replace('\\\\', '\\', substr($token[1], 1, -1)),
-            default                                                               => null,
-        };
     }
 
     /**
@@ -467,35 +364,5 @@ final class SamlLibraryBoundaryTest extends TestCase
         }
 
         return $arguments;
-    }
-
-    /**
-     * Every PHP file the package ships, by its path relative to the package.
-     *
-     * @return array<string, string>
-     */
-    private static function sources(): array
-    {
-        if (self::$sources !== null) {
-            return self::$sources;
-        }
-
-        $root  = dirname(__DIR__, 3) . '/';
-        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root . 'src', \FilesystemIterator::SKIP_DOTS));
-
-        self::$sources = [];
-
-        foreach ($files as $file) {
-
-            if (!$file instanceof \SplFileInfo || $file->getExtension() !== 'php') {
-                continue;
-            }
-
-            self::$sources[substr($file->getPathname(), strlen($root))] = (string) file_get_contents($file->getPathname());
-        }
-
-        ksort(self::$sources);
-
-        return self::$sources;
     }
 }

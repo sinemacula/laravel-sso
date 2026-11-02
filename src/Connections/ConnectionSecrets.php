@@ -7,6 +7,7 @@ namespace SineMacula\Laravel\Sso\Connections;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 use SineMacula\Laravel\Sso\Contracts\ProtocolSettings;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
+use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
@@ -22,12 +23,15 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
  * Which secrets are set is read from the names alone, so a read masks them
  * without decrypting one. Only `reveal()` decrypts, for the flow that must send
  * the secret, and hands it on as a `Secrets\Secret`, which never shows it in a
- * dump, a log or a serialisation. Nothing here logs a secret, echoes one or
- * puts one in an exception, and every parameter that carries a secret given in
- * plaintext is `#[\SensitiveParameter]`, so a trace shows it redacted: a column
- * that is not such an object is an `UnexpectedValueException` that names
- * neither its content nor a secret, and the encrypter's own failure propagates
- * as a server error (SSO-11.4).
+ * dump, a log or a serialisation. `isSet()` and `revealFor()` answer the same
+ * for a connection a protocol driver holds only through its contract, reading
+ * its row again on the write connection when it is not one already. Nothing
+ * here logs a secret, echoes one or puts one in an exception, and every
+ * parameter that carries a secret given in plaintext is
+ * `#[\SensitiveParameter]`, so a trace shows it redacted: a column that is not
+ * such an object is an `UnexpectedValueException` that names neither its
+ * content nor a secret, and the encrypter's own failure propagates as a server
+ * error (SSO-11.4).
  *
  * It also judges the secrets a change gives and names those the change alters,
  * so every management helper treats a secret alike.
@@ -111,6 +115,43 @@ final readonly class ConnectionSecrets
         }
 
         return self::secret($this->encrypter->decrypt($ciphertext));
+    }
+
+    /**
+     * Whether the secret under the name is set on the connection, read from
+     * its row on the write connection when it is given only through its
+     * contract; never for a connection that is gone.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @param  string  $name
+     * @return bool
+     *
+     * @throws \UnexpectedValueException
+     */
+    public function isSet(SsoConnection $connection, string $name): bool
+    {
+        $row = self::row($connection);
+
+        return $row !== null && in_array($name, $this->names($row), true);
+    }
+
+    /**
+     * The secret under the name, decrypted for the flow that must send it, of a
+     * connection given through its contract; `null` when it is not set or the
+     * connection is gone.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @param  string  $name
+     * @return ?\SineMacula\Laravel\Sso\Secrets\Secret
+     *
+     * @throws \UnexpectedValueException
+     * @throws \RuntimeException
+     */
+    public function revealFor(SsoConnection $connection, string $name): ?Secret
+    {
+        $row = self::row($connection);
+
+        return $row === null ? null : $this->reveal($row, $name);
     }
 
     /**
@@ -272,5 +313,24 @@ final readonly class ConnectionSecrets
         }
 
         return $secrets;
+    }
+
+    /**
+     * The connection's row: the connection itself when it is one, or read again
+     * by its id on the write connection; `null` when it is gone.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @return ?\SineMacula\Laravel\Sso\Models\Connection
+     */
+    private static function row(SsoConnection $connection): ?Connection
+    {
+        if ($connection instanceof Connection) {
+            return $connection;
+        }
+
+        $id    = $connection->getConnectionId();
+        $found = Connection::query()->useWritePdo()->whereKey($id)->first();
+
+        return $found?->id === $id ? $found : null;
     }
 }

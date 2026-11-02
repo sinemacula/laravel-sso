@@ -19,8 +19,9 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * Builds the verified result of a completion (SSO-8.1), the only place one is
  * made from what a driver verified: never from client input.
  *
- * - The issuer, subject, NameID format, authentication context and linking
- *   email are the claims', exactly as the driver verified them (SSO-6.9).
+ * - The issuer, subject, NameID format, authentication context, linking email
+ *   and asserted email are the claims', exactly as the driver verified them
+ *   (SSO-6.9, SSO-7.7), and neither email is ever read from the attributes.
  * - The connection, its tenant and its protocol are the connection's the
  *   response arrived for, read from the write connection.
  * - The application, purpose and public reference are the consumed request's.
@@ -93,6 +94,7 @@ final readonly class ResultBuilder
             emailDomainVerified: $this->isVerifiedEmail($attributes['email'] ?? null, $connection),
             authenticationContext: $claims->authenticationContext,
             linkingEmail: $claims->linkingEmail,
+            assertedEmail: $claims->assertedEmail,
         );
     }
 

@@ -78,10 +78,9 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
 - A connection is usable (SSO-2.1) only while it is enabled, its protocol is available, and its driver finds it complete
   (`ProtocolManager::isUsable()`). The caller deciding whether a flow may run reads the connection from the write
   connection first (SSO-11.3).
-- Until P4 and P5 land, the `saml2` and `oidc` drivers are placeholders (`Protocols\PlaceholderDriver`): they read their
-  protocol's settings through `Protocols\Saml2\Saml2Settings` and `Protocols\Oidc\OidcSettings`, find no connection
-  complete, refuse every start and completion with `connection_unavailable`, and describe nothing. Nothing can sign in
-  through them, however they are configured.
+- The `saml2` and `oidc` drivers are `Protocols\Saml2\Saml2Driver` (`saml-driver.md`) and `Protocols\Oidc\OidcDriver`
+  (`oidc-driver.md`). Each reads its protocol's settings through `Protocols\Saml2\Saml2Settings` and
+  `Protocols\Oidc\OidcSettings`, and judges by its own rule whether a connection is complete.
 - The settings' names, and how a change to each is classified, are fixed in `Protocols\Saml2\Enums\Saml2Setting` and
   `Protocols\Oidc\Enums\OidcSetting`: the freshness operation a change needs (`sso.connection.trust` for trust,
   endpoints, subject, signature and algorithm settings and the client's credentials; `sso.connection.idp_initiated`
@@ -134,8 +133,7 @@ $this->callAfterResolving(ProtocolManager::class, fn (ProtocolManager $protocols
 - `database/migrations/2026_11_01_000000_create_sso_connections_table.php`; `src/Database/StorageConnection.php`
   (`TABLES`).
 - `src/Contracts/SsoConnection.php`, `src/Contracts/ProtocolDriver.php`, `src/Contracts/ProtocolSettings.php`.
-- `src/Protocols/ProtocolManager.php`, `src/Protocols/PlaceholderDriver.php`, `src/Protocols/Saml2/Saml2Driver.php`,
-  `src/Protocols/Oidc/OidcDriver.php`.
+- `src/Protocols/ProtocolManager.php`, `src/Protocols/Saml2/Saml2Driver.php`, `src/Protocols/Oidc/OidcDriver.php`.
 - `src/Protocols/Saml2/Enums/Saml2Setting.php`, `src/Protocols/Oidc/Enums/OidcSetting.php`.
 - `src/Protocols/Preset.php`, `src/Protocols/Presets.php`.
 - `src/Protocols/StartRequest.php`, `Start.php`, `Navigation.php`, `CompletionRequest.php`, `Completion.php`,
@@ -146,7 +144,6 @@ $this->callAfterResolving(ProtocolManager::class, fn (ProtocolManager $protocols
 ## Authoritative Tests
 
 - `tests/Feature/Protocols/ProtocolManagerTest.php`
-- `tests/Unit/Protocols/PlaceholderDriverTest.php`
 - `tests/Feature/Models/ConnectionTest.php`, `tests/Feature/Models/Casts/UtcDateTimeTest.php`
 - `tests/Integration/Connections/ConnectionsMigrationTest.php`, `tests/Integration/Connections/ConnectionUsabilityTest.php`
 - `tests/Unit/Protocols/PresetTest.php`, `tests/Unit/Protocols/PresetsTest.php`

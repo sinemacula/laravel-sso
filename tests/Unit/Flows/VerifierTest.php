@@ -87,7 +87,7 @@ final class VerifierTest extends TestCase
      *
      * @throws \Random\RandomException
      */
-    public function testCannotBeSerialised(): void
+    public function testCannotBeSerialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A verifier cannot be serialised.'));
 
@@ -99,7 +99,7 @@ final class VerifierTest extends TestCase
      *
      * @return void
      */
-    public function testCannotBeUnserialised(): void
+    public function testCannotBeUnserialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A verifier cannot be unserialised.'));
 

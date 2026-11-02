@@ -178,6 +178,9 @@ final class ConnectionServiceTest extends TestCase
             'client_authentication'  => 'client_secret_basic',
             'scopes'                 => ['openid', 'email', 'profile'],
             'id_token_algorithms'    => ['RS256'],
+            'trusted_audiences'      => [],
+            'fetch_userinfo'         => false,
+            'metadata_refresh'       => true,
         ], $summary->settings);
         self::assertSame(
             ['email' => 'email', 'given_name' => 'given_name', 'family_name' => 'family_name', 'display_name' => 'name', 'groups' => 'groups', 'department' => 'dept'],
@@ -1255,6 +1258,22 @@ final class ConnectionServiceTest extends TestCase
 
         self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed', 'settings' => ['scopes' => ['openid']]])->status);
         self::assertNull(AuthorizationRequest::query()->findOrFail($request->id)->voided_at);
+    }
+
+    /**
+     * A change under a lock its caller holds, as a subject migration makes it,
+     * is applied through the same rules.
+     *
+     * @return void
+     */
+    public function testAChangeUnderACallersLockIsApplied(): void
+    {
+        $id = $this->createOidc();
+
+        $result = DB::transaction(fn (): ConnectionResult => $this->service()->changeLocked(Connection::query()->lockForUpdate()->findOrFail($id), ['display_name' => 'Renamed']));
+
+        self::assertTrue($result->isChanged());
+        self::assertSame('Renamed', Connection::query()->findOrFail($id)->display_name);
     }
 
     /**

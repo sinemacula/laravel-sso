@@ -5,14 +5,10 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Metadata;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
-use SineMacula\Laravel\Sso\Administration\MetadataEvents;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
-use SineMacula\Laravel\Sso\Contracts\Clock;
-use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
@@ -23,20 +19,21 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
 
 /**
- * Writes what a metadata refresh found (SSO-2.8, SSO-2.13), each write in one
- * transaction on the storage connection that locks the connection's row first,
- * the only lock a refresh takes, and decides from what that locking read gives.
+ * Writes what a SAML metadata refresh found (SSO-2.8, SSO-2.13), through the
+ * shared `RefreshWriter`: each write in one transaction on the storage
+ * connection that locks the connection's row first, the only lock a refresh
+ * takes, and decides from what that locking read gives.
  *
  * `apply()` and `fail()` each compare and set against the refresh's claim
- * (`RefreshClaim`): the connection must still be there, still hold the claim's
- * token (no other server took the claim over once it expired), and have the
- * metadata version and the trust version the refresh read before it claimed;
- * and its identity provider signing certificates and metadata signing anchors,
- * read again with a locking read, must be exactly the claim's. Anything else is
+ * (`RefreshClaim`, `RefreshWriter::locked()`): the connection must still be
+ * there, still hold the claim's token, and have the metadata version and the
+ * trust version the refresh read before it claimed; and its identity provider
+ * signing certificates and metadata signing anchors, read again with a locking
+ * read (`trustedOf()`), must be exactly the claim's. Anything else is
  * `conflict` (`metadata_conflict`): a change of the connection's trust, a
  * certificate or anchor added or removed (additive or not), another refresh won
- * meanwhile, or the claim lost, and the refresh writes nothing; the connection
- * as the winner left it is what the failure event reports. Then, for `apply()`:
+ * meanwhile, or the claim lost, and the refresh writes nothing. Then, for
+ * `apply()`:
  *
  * - metadata of another entity than the pinned `idp_entity_id`, or whose
  *   endpoint would not be a valid setting, is refused `metadata_invalid`, and
@@ -53,12 +50,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
  *   with any removal, and is reported as `ConnectionUpdated`. Nothing else a
  *   connection holds (its entity id, subject settings, mapping or
  *   enforcement) is ever written;
- * - the metadata version is raised, `metadata_fetched_at` set to the moment the
- *   fetched document was validated (never the later moment it commits),
- *   `metadata_valid_until` to its `validUntil`, the failures reset, the claim
- *   and its token released, and the next refresh due after the refresh
- *   interval, never after the `validUntil`; `MetadataRefreshed` names the
- *   settings changed, in the order the connection's settings name them, then
+ * - the refresh's bookkeeping is written with the endpoints
+ *   (`RefreshWriter::succeeded()`), and `MetadataRefreshed` names the settings
+ *   changed, in the order the connection's settings name them, then
  *   `idp_signing_certificates` when the certificates changed.
  *
  * Adding a certificate alone voids nothing and leaves the trust version as it
@@ -66,13 +60,10 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
  * package encrypts nothing to an identity provider, so there is nothing to keep
  * them for.
  *
- * `fail()`, and a refusal above, record a failure: under the same lock and the
- * same comparison, the failures in a row are raised, the next refresh is due
- * after the backoff for that many, the claim and its token are released and the
- * last good settings are kept; `MetadataRefreshFailed` reports it. Every event
- * is dispatched after the transaction commits (SSO-10.5). A database error
- * propagates (SSO-11.4). It holds the key helpers, the voider, the reporters,
- * the settings, the expiry and the clock, none of which keeps anything of one
+ * `fail()`, and a refusal above, record a failure (`RefreshWriter::failed()`).
+ * Every event is dispatched after the transaction commits (SSO-10.5). A
+ * database error propagates (SSO-11.4). It holds the key helpers, the voider,
+ * the reporter, the expiry and the writer, none of which keeps anything of one
  * refresh for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -94,12 +85,8 @@ final readonly class MetadataApplier
      * @param  \SineMacula\Laravel\Sso\Keys\KeyService  $keys
      * @param  \SineMacula\Laravel\Sso\Connections\InFlightVoider  $voider
      * @param  \SineMacula\Laravel\Sso\Administration\AdministrationEvents  $administration
-     * @param  \SineMacula\Laravel\Sso\Administration\MetadataEvents  $events
-     * @param  \SineMacula\Laravel\Sso\Metadata\MetadataSettings  $settings
      * @param  \SineMacula\Laravel\Sso\Metadata\MetadataExpiry  $expiry
-     * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
-     *
-     * @SuppressWarnings("php:S107")
+     * @param  \SineMacula\Laravel\Sso\Metadata\RefreshWriter  $writer
      */
     public function __construct(
 
@@ -112,17 +99,11 @@ final readonly class MetadataApplier
         /** Reports an endpoint change. */
         private AdministrationEvents $administration,
 
-        /** Reports the refresh or its failure. */
-        private MetadataEvents $events,
-
-        /** The refresh interval and the backoff. */
-        private MetadataSettings $settings,
-
         /** Whether the metadata has expired by the commit. */
         private MetadataExpiry $expiry,
 
-        /** The clock every time is read from. */
-        private Clock $clock,
+        /** Locks, compares and sets, and records the refresh or its failure. */
+        private RefreshWriter $writer,
     ) {}
 
     /**
@@ -140,18 +121,12 @@ final readonly class MetadataApplier
      */
     public function apply(RefreshClaim $claim, IdpMetadata $metadata, CarbonImmutable $validatedAt, ?ActingIdentity $actor = null): RefreshResult
     {
-        return $this->transaction(function () use ($claim, $metadata, $validatedAt, $actor): RefreshResult {
-
-            $locked = self::locked($claim);
-
-            if ($locked === null || !self::isUnchanged($locked, $claim)) {
-                return $this->conflict($claim, $locked, $actor);
-            }
+        return $this->writer->locked($claim, self::trustedOf(...), function (Connection $locked) use ($metadata, $validatedAt, $actor): RefreshResult {
 
             $refusal = $this->refusal($locked, $metadata, $validatedAt);
 
-            return $refusal === null ? $this->written($locked, $metadata, $validatedAt, $actor) : $this->failure($locked, $refusal, $actor);
-        });
+            return $refusal === null ? $this->written($locked, $metadata, $validatedAt, $actor) : $this->writer->failed($locked, $refusal, $actor);
+        }, $actor);
     }
 
     /**
@@ -168,16 +143,34 @@ final readonly class MetadataApplier
      */
     public function fail(RefreshClaim $claim, FailureReason $reason, ?ActingIdentity $actor = null): RefreshResult
     {
-        return $this->transaction(function () use ($claim, $reason, $actor): RefreshResult {
+        return $this->writer->locked($claim, self::trustedOf(...), fn (Connection $locked): RefreshResult => $this->writer->failed($locked, $reason, $actor), $actor);
+    }
 
-            $locked = self::locked($claim);
+    /**
+     * The sorted fingerprints of the connection's identity provider signing
+     * certificates and metadata signing anchors, by use, read with a locking
+     * read: the snapshot a SAML refresh compares under the lock.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @return array<string, list<string>>
+     */
+    public static function trustedOf(Connection $locked): array
+    {
+        $rows = ConnectionKey::query()->useWritePdo()
+            ->where('connection_id', $locked->id)
+            ->whereIn('use', [KeyUse::IDP_SIGNING->value, KeyUse::METADATA_SIGNING->value])
+            ->orderBy('fingerprint')
+            ->lockForUpdate()
+            ->toBase()
+            ->get(['use', 'fingerprint']);
 
-            if ($locked === null || !self::isUnchanged($locked, $claim)) {
-                return $this->conflict($claim, $locked, $actor);
-            }
+        $trusted = [KeyUse::IDP_SIGNING->value => [], KeyUse::METADATA_SIGNING->value => []];
 
-            return $this->failure($locked, $reason, $actor);
-        });
+        foreach ($rows as $row) {
+            $trusted[(string) $row->use][] = (string) $row->fingerprint;
+        }
+
+        return $trusted;
     }
 
     /**
@@ -230,7 +223,7 @@ final readonly class MetadataApplier
         $changes = $this->keys->replaceTrustedCertificatesLocked($locked, array_column($metadata->signingCertificates(), 'certificate'), $actor);
 
         if ($changes['violations'] !== []) {
-            return $this->failure($locked, FailureReason::METADATA_INVALID, $actor);
+            return $this->writer->failed($locked, FailureReason::METADATA_INVALID, $actor);
         }
 
         $removed   = $changes['retired'] !== [];
@@ -241,108 +234,14 @@ final readonly class MetadataApplier
             $this->voider->voidFor($locked);
         }
 
-        $now        = $this->clock->now();
-        $validUntil = $metadata->validUntil();
-
-        $locked->forceFill([
-            'settings'                  => array_replace($locked->settings, $endpoints),
-            'metadata_version'          => $locked->metadata_version + 1,
-            'metadata_fetched_at'       => $validatedAt,
-            'metadata_valid_until'      => $validUntil,
-            'metadata_refresh_at'       => $this->nextRefreshAt($now, $validUntil),
-            'metadata_refresh_failures' => 0,
-            'metadata_claimed_until'    => null,
-            'metadata_claim_token'      => null,
-        ])->save();
+        $this->writer->succeeded($locked, ['settings' => array_replace($locked->settings, $endpoints)], $validatedAt, $metadata->validUntil());
 
         $certificates = $changes['added'] !== [] || $removed;
         $changed      = [...array_keys($endpoints), ...($certificates ? [self::SIGNING_CERTIFICATES] : [])];
-        $trustChanged = $removed || $endpoints !== [];
 
         $this->administration->connectionUpdated($locked, array_keys($endpoints), $actor);
-        $this->events->refreshed($locked, $changed, $locked->metadata_version, $trustChanged, $actor);
 
-        return RefreshResult::refreshed($locked->id, $changed, $locked->metadata_version, $trustChanged);
-    }
-
-    /**
-     * Record a failed refresh of the locked connection: one more failure in a
-     * row, the next refresh after the backoff, the claim and its token
-     * released.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
-     * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
-     * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
-     *
-     * @throws \InvalidArgumentException
-     */
-    private function failure(Connection $locked, FailureReason $reason, ?ActingIdentity $actor): RefreshResult
-    {
-        $failures = $locked->metadata_refresh_failures + 1;
-        $next     = $this->clock->now()->addSeconds($this->settings->backoffSeconds($failures));
-
-        $locked->forceFill([
-            'metadata_refresh_failures' => $failures,
-            'metadata_refresh_at'       => $next,
-            'metadata_claimed_until'    => null,
-            'metadata_claim_token'      => null,
-        ])->save();
-
-        $this->events->refreshFailed($locked, $reason, $failures, $next, $actor);
-
-        return RefreshResult::failed($locked->id, $reason, $failures, $next);
-    }
-
-    /**
-     * The refresh lost its claim or to a change made while it fetched, and
-     * writes nothing; the failure is reported with the connection as the winner
-     * left it.
-     *
-     * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
-     * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $locked
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
-     * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
-     *
-     * @throws \InvalidArgumentException
-     */
-    private function conflict(RefreshClaim $claim, ?Connection $locked, ?ActingIdentity $actor): RefreshResult
-    {
-        if ($locked !== null) {
-            $this->events->refreshFailed($locked, FailureReason::METADATA_CONFLICT, $locked->metadata_refresh_failures, $locked->metadata_refresh_at, $actor);
-        }
-
-        return RefreshResult::conflict($claim->connection->id);
-    }
-
-    /**
-     * When the next refresh is due after one that succeeded now: after the
-     * refresh interval, or at the `validUntil` when that comes first.
-     *
-     * @param  \Carbon\CarbonImmutable  $now
-     * @param  ?\Carbon\CarbonImmutable  $validUntil
-     * @return \Carbon\CarbonImmutable
-     *
-     * @throws \InvalidArgumentException
-     */
-    private function nextRefreshAt(CarbonImmutable $now, ?CarbonImmutable $validUntil): CarbonImmutable
-    {
-        $next = $now->addSeconds($this->settings->refreshIntervalSeconds());
-
-        return $validUntil === null ? $next : $next->min($validUntil);
-    }
-
-    /**
-     * Run the work in one transaction on the storage connection.
-     *
-     * @param  \Closure(): \SineMacula\Laravel\Sso\Metadata\RefreshResult  $work
-     * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
-     *
-     * @throws \Throwable
-     */
-    private function transaction(\Closure $work): RefreshResult
-    {
-        return DB::connection(StorageConnection::name())->transaction($work);
+        return $this->writer->refreshed($locked, $changed, $removed || $endpoints !== [], $actor);
     }
 
     /**
@@ -357,68 +256,5 @@ final readonly class MetadataApplier
     private static function endpointsOf(IdpMetadata $metadata): array
     {
         return [Saml2Setting::SSO_URL->value => $metadata->ssoUrl(), Saml2Setting::SSO_BINDING->value => $metadata->ssoBinding()];
-    }
-
-    /**
-     * Whether the locked connection is still the one the refresh claimed: the
-     * claim's token, the same metadata and trust versions, and exactly the same
-     * trusted certificates and anchors.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
-     * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
-     * @return bool
-     */
-    private static function isUnchanged(Connection $locked, RefreshClaim $claim): bool
-    {
-        $claimed  = $claim->connection;
-        $owned    = $locked->metadata_claim_token === $claim->token;
-        $versions = $locked->metadata_version     === $claimed->metadata_version && $locked->trust_version === $claimed->trust_version;
-
-        return $owned && $versions && self::trustedOf($locked) === $claim->trusted;
-    }
-
-    /**
-     * The sorted fingerprints of the locked connection's identity provider
-     * signing certificates and metadata signing anchors, by use, read with a
-     * locking read.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
-     * @return array<string, list<string>>
-     */
-    private static function trustedOf(Connection $locked): array
-    {
-        $rows = ConnectionKey::query()->useWritePdo()
-            ->where('connection_id', $locked->id)
-            ->whereIn('use', [KeyUse::IDP_SIGNING->value, KeyUse::METADATA_SIGNING->value])
-            ->lockForUpdate()
-            ->toBase()
-            ->get(['use', 'fingerprint']);
-
-        $trusted = [KeyUse::IDP_SIGNING->value => [], KeyUse::METADATA_SIGNING->value => []];
-
-        foreach ($rows as $row) {
-            $trusted[(string) $row->use][] = (string) $row->fingerprint;
-        }
-
-        return array_map(static function (array $fingerprints): array {
-            sort($fingerprints);
-
-            return $fingerprints;
-        }, $trusted);
-    }
-
-    /**
-     * The connection the claim holds read again, locked for update until the
-     * transaction ends, or `null` when it is gone.
-     *
-     * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
-     * @return ?\SineMacula\Laravel\Sso\Models\Connection
-     */
-    private static function locked(RefreshClaim $claim): ?Connection
-    {
-        $id    = $claim->connection->id;
-        $found = Connection::query()->useWritePdo()->whereKey($id)->lockForUpdate()->first();
-
-        return $found?->id === $id ? $found : null;
     }
 }

@@ -16,7 +16,10 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Keys\ClientAssertionKeys;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
+use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
+use SineMacula\Laravel\Sso\Metadata\SamlRefreshRule;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
@@ -69,7 +72,20 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
  * lock, the requests and handoff codes in flight through the connection
  * (`Connections\InFlightVoider`) and raises its trust version; a change that
  * asks only another operation, or none, voids nothing. Enabling a connection
- * raises its trust version too, under its lock.
+ * raises its trust version too, under its lock. An update of an OIDC
+ * connection's `issuer` or `jwks_uri` also clears, in the same save, the keys
+ * fetched for it and their cooldown, and for an `issuer` the discovery
+ * document's refresh dates too (`Metadata\ProviderKeys::resetFor()`), so keys
+ * fetched for another issuer or URL are never used; so does an endpoint changed
+ * with `metadata_refresh` off clear when the document was last validated, since
+ * the endpoints are then saved by hand. A change of an OIDC connection's
+ * `client_assertion_algorithm` is refused as `unsupported` when its current or
+ * next key cannot sign under it (`Keys\ClientAssertionKeys`), read under the
+ * lock, and is a trust change like any other. Setting a SAML connection's
+ * `metadata_refresh` is one too: `true` delegates trust to its metadata URL and
+ * its TLS, and a change that brings it to hold a stale deadline clears what was
+ * stamped before and makes its first refresh due
+ * (`Metadata\SamlRefreshRule::resetForSettings()`).
  *
  * It holds the registry, the lookup, the freshness gate, the secrets, the
  * reporter, the mapping's caps, the voider and the clock, none of which keeps
@@ -381,16 +397,19 @@ final readonly class ConnectionService
      */
     public function changeLocked(Connection $locked, #[\SensitiveParameter] array $changes, ?ActingIdentity $actor = null, ?array $relinkViolations = null): ConnectionResult
     {
-        $asked       = $changes + self::NO_CHANGES;
-        $migrating   = $relinkViolations !== null;
-        $secretNames = $this->secretNamesOf($locked->protocol);
-        $given       = self::keyed($asked[self::SETTINGS]);
-        $secrets     = array_intersect_key($given, array_flip($secretNames));
-        $values      = self::merged($locked->settings, array_diff_key($given, $secrets));
-        $mapping     = self::merged($locked->attribute_mapping, self::keyed($asked[self::ATTRIBUTE_MAPPING]));
-        $name        = is_string($asked[self::DISPLAY_NAME]) ? trim($asked[self::DISPLAY_NAME]) : $locked->display_name;
-        $typed       = $this->protocols->protocol($locked->protocol)->settings($values);
-        $map         = AttributeMapping::fromArray($locked->protocol, $mapping, $this->limits);
+        $asked           = $changes + self::NO_CHANGES;
+        $migrating       = $relinkViolations !== null;
+        $secretNames     = $this->secretNamesOf($locked->protocol);
+        $given           = self::keyed($asked[self::SETTINGS]);
+        $secrets         = array_intersect_key($given, array_flip($secretNames));
+        $values          = self::merged($locked->settings, array_diff_key($given, $secrets));
+        $name            = is_string($asked[self::DISPLAY_NAME]) ? trim($asked[self::DISPLAY_NAME]) : $locked->display_name;
+        $typed           = $this->protocols->protocol($locked->protocol)->settings($values);
+        $map             = AttributeMapping::fromArray($locked->protocol, self::merged($locked->attribute_mapping, self::keyed($asked[self::ATTRIBUTE_MAPPING])), $this->limits);
+        $stored          = $typed->toArray();
+        $changedSettings = self::changedSettings($typed, $locked->settings, $stored);
+        $changedSecrets  = ConnectionSecrets::changedNames($secretNames, $secrets, $this->secrets->names($locked));
+        $operations      = self::operations($typed, [...$changedSettings, ...$changedSecrets], $migrating ? self::MIGRATION_OPERATIONS : []);
 
         $violations = [
             ...self::changeViolations($changes),
@@ -399,21 +418,15 @@ final readonly class ConnectionService
             ...ConnectionSecrets::violations($typed, $secretNames, $secrets),
             ...$map->violations(),
             ...(array) $relinkViolations,
+            ...ClientAssertionKeys::changeViolations($locked, $stored, $changedSettings),
         ];
 
-        $stored          = $typed->toArray();
-        $changedSettings = self::changedSettings($typed, $locked->settings, $stored);
-        $changedSecrets  = ConnectionSecrets::changedNames($secretNames, $secrets, $this->secrets->names($locked));
-        $operations      = self::operations($typed, [...$changedSettings, ...$changedSecrets], $migrating ? self::MIGRATION_OPERATIONS : []);
+        $fields = array_filter([
+            self::DISPLAY_NAME      => $name !== $locked->display_name,
+            self::ATTRIBUTE_MAPPING => !SettingRules::isSame($map->toArray(), $locked->attribute_mapping),
+        ]);
 
-        $changed = [
-            ...$changedSettings,
-            ...$changedSecrets,
-            ...array_keys(array_filter([
-                self::DISPLAY_NAME      => $name !== $locked->display_name,
-                self::ATTRIBUTE_MAPPING => !SettingRules::isSame($map->toArray(), $locked->attribute_mapping),
-            ])),
-        ];
+        $changed = [...$changedSettings, ...$changedSecrets, ...array_keys($fields)];
 
         $refusal = match (true) {
             $violations !== [] => ConnectionResult::invalid($violations),
@@ -430,6 +443,8 @@ final readonly class ConnectionService
             'settings'          => $stored,
             'secrets'           => $this->secrets->apply($locked->secrets, ConnectionSecrets::changes($secrets)),
             'attribute_mapping' => $map->toArray(),
+            ...ProviderKeys::resetFor($locked, $changedSettings, $stored),
+            ...SamlRefreshRule::resetForSettings($locked, $changedSettings, $stored),
         ]);
 
         CiphertextWrite::save($locked, self::SECRETS, self::SECRETS_NOT_WRITTEN);

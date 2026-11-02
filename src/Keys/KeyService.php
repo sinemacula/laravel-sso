@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Metadata\SamlRefreshRule;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 
@@ -56,13 +57,19 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
  * connection's lock, it voids the authorisation requests and handoff codes in
  * flight through the connection and raises its trust version
  * (`Connections\InFlightVoider`), so none completes or is redeemed against the
- * certificates it was started under. Adding an identity provider signing
- * certificate is additive: every response a flow in flight could verify before
- * still verifies, so it voids nothing and leaves the trust version as it was,
- * and a provider rotating its key never voids its own flows. Only RSA
- * certificates are trusted for SAML, the only keys its library verifies.
- * Rotating a key of the service provider's own keeps what subjects mean and
- * voids nothing.
+ * certificates it was started under. A connection's first anchor also brings it
+ * to hold a stale deadline and, unless it is off, to refresh, so it clears what
+ * was stamped before and makes its first refresh due
+ * (`Metadata\SamlRefreshRule::resetForAnchor()`); removing its last anchor
+ * stops that, with what was stamped no longer holding a deadline. Adding an
+ * identity provider signing certificate is additive: every response a flow in
+ * flight could verify before still verifies, so it voids nothing and leaves the
+ * trust version as it was, and a provider rotating its key never voids its own
+ * flows. Only RSA certificates are trusted for SAML, the only keys its library
+ * verifies. Rotating a key of the service provider's own keeps what subjects
+ * mean and voids nothing. A client assertion key that does not fit the
+ * connection's `client_assertion_algorithm` (`ClientAssertionKeys`) is refused
+ * as `key_type` `not_allowed`, before it is generated and again under the lock.
  *
  * A metadata refresh replaces the identity provider signing certificates
  * exactly, under the connection's lock it already holds, through
@@ -296,10 +303,10 @@ final readonly class KeyService
      * (`Connections\InFlightVoider`), and the certificates added are inserted
      * and reported added. Adding alone is additive and voids nothing.
      *
-     * For the metadata refresh, which asks no freshness (no caller acts):
-     * called inside the transaction on the storage connection that holds the
-     * connection's row lock. It answers what it added and removed, each as it
-     * was, and the violations.
+     * For the metadata refresh, which asks no freshness here, having asked any
+     * it needs before it fetched: called inside the transaction on the storage
+     * connection that holds the connection's row lock. It answers what it added
+     * and removed, each as it was, and the violations.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  list<string>  $pems
@@ -386,8 +393,9 @@ final readonly class KeyService
 
     /**
      * The connection a key pair of the use and type may be added to, or why
-     * not: no such connection, a use or type it does not allow, a `next` key of
-     * the use already, or a caller who is not fresh enough.
+     * not: no such connection, a use or type it does not allow, a type its
+     * pinned client assertion algorithm does not fit, a `next` key of the use
+     * already, or a caller who is not fresh enough.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -405,10 +413,11 @@ final readonly class KeyService
             return KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND);
         }
 
-        $useAllowed = $use->isOwnKey() && $use->protocol() === $connection->protocol;
-        $violations = array_values(array_filter([
+        $useAllowed  = $use->isOwnKey()                            && $use->protocol() === $connection->protocol;
+        $typeAllowed = in_array($type, $use->allowedTypes(), true) && ClientAssertionKeys::fits($connection, $use, $type);
+        $violations  = array_values(array_filter([
             $useAllowed ? null : new SettingViolation('use', ViolationCode::NOT_ALLOWED),
-            in_array($type, $use->allowedTypes(), true) ? null : new SettingViolation('key_type', ViolationCode::NOT_ALLOWED),
+            $typeAllowed ? null : new SettingViolation('key_type', ViolationCode::NOT_ALLOWED),
         ], static fn (?SettingViolation $violation): bool => $violation !== null));
 
         return match (true) {
@@ -523,7 +532,8 @@ final readonly class KeyService
     /**
      * Insert the generated key pair for the locked connection: `current` when
      * it has no current key of the use, else `next`; refused when a `next` key
-     * of the use was added meanwhile. A failed insert propagates as a
+     * of the use was added meanwhile, or its pinned client assertion algorithm
+     * changed meanwhile and no longer fits. A failed insert propagates as a
      * `RuntimeException` that quotes nothing of the encrypted private key.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
@@ -538,6 +548,10 @@ final readonly class KeyService
      */
     private function insertOwnKey(Connection $locked, KeyUse $use, GeneratedKey $generated, #[\SensitiveParameter] string $encrypted, ?ActingIdentity $actor): KeyResult
     {
+        if (!ClientAssertionKeys::fits($locked, $use, $generated->type)) {
+            return KeyResult::invalid([new SettingViolation('key_type', ViolationCode::NOT_ALLOWED)]);
+        }
+
         $states = self::query($locked, true)->where('use', $use->value)->whereNotNull('state')->toBase()->pluck('state')->all();
 
         if (in_array(KeyState::NEXT->value, $states, true)) {
@@ -596,7 +610,9 @@ final readonly class KeyService
             return KeyResult::invalid([$violation]);
         }
 
-        $key = new ConnectionKey;
+        $anchor = $use === KeyUse::METADATA_SIGNING;
+        $reset  = $anchor ? SamlRefreshRule::resetForAnchor($locked) : [];
+        $key    = new ConnectionKey;
 
         $key->forceFill([
             'connection_id' => $locked->id,
@@ -612,7 +628,8 @@ final readonly class KeyService
             'not_after'     => $facts['not_after'],
         ])->save();
 
-        if ($use === KeyUse::METADATA_SIGNING) {
+        if ($anchor) {
+            $locked->forceFill($reset)->save();
             $this->voider->voidFor($locked);
         }
 

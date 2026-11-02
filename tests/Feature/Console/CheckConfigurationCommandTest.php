@@ -109,6 +109,7 @@ final class CheckConfigurationCommandTest extends TestCase
         $this->checkEverything();
         $this->useThePackage();
 
+        config()->set('sso.features.oidc', true);
         config()->set('sso.features.metadata_refresh', true);
 
         [$code, $output] = $this->check();
@@ -127,6 +128,7 @@ final class CheckConfigurationCommandTest extends TestCase
         config()->set('sso.domains.recheck_grace_seconds', -1);
         config()->set('sso.authorization_requests.ttl_seconds', 901);
         config()->set('sso.saml2.max_response_bytes', 16383);
+        config()->set('sso.oidc.max_id_token_bytes', 16385);
         config()->set('sso.metadata.claim_seconds', 3601);
 
         $this->app?->forgetInstance('encrypter');
@@ -152,6 +154,7 @@ final class CheckConfigurationCommandTest extends TestCase
             '[domains] sso.domains.recheck_grace_seconds must be an integer from 0 to 2592000.',
             '[flows] sso.authorization_requests.ttl_seconds must be an integer from 60 to 900.',
             '[saml2] sso.saml2.max_response_bytes must be an integer from 16384 to 1048576.',
+            '[oidc] sso.oidc.max_id_token_bytes must be an integer from 2048 to 16384.',
             '[metadata] sso.metadata.claim_seconds must be an integer from 30 to 3600.',
         ], $output);
     }

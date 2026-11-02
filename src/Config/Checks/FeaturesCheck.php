@@ -100,7 +100,7 @@ final readonly class FeaturesCheck implements ConfigurationCheck
      */
     private function feature(Feature $feature): void
     {
-        if (!BooleanSetting::read($this->config, $feature->key(), false)) {
+        if (!BooleanSetting::read($this->config, $feature->key(), $feature->isOnByDefault())) {
             return;
         }
 

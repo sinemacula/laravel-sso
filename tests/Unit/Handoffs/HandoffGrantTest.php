@@ -185,7 +185,7 @@ final class HandoffGrantTest extends TestCase
      *
      * @return void
      */
-    public function testAnIssuedHandoffCannotBeUnserialised(): void
+    public function testAnIssuedHandoffCannotBeUnserialized(): void
     {
         $this->expectExceptionObject(new \LogicException('An issued handoff cannot be unserialised.'));
 

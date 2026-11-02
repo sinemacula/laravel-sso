@@ -83,7 +83,7 @@ final class ResultPartsLoggingTest extends TestCase
      *
      * @return void
      */
-    public function testMonologsNormaliserShowsNoProviderValue(): void
+    public function testMonologsNormalizerShowsNoProviderValue(): void
     {
         $formatters = ['line' => new LineFormatter, 'json' => new JsonFormatter, 'normalizer' => new NormalizerFormatter];
 

@@ -21,6 +21,10 @@ $lifecycle   = app(ConnectionLifecycle::class);
 $migration   = app(SubjectMigration::class);
 ```
 
+To save what an import fetched, use `Connections\ImportSaver` in place of `ConnectionService::update()`, so the stale
+limit counts from that fetch (see [SAML metadata](saml-metadata.md#importing-metadata) and
+[OIDC connections](oidc-connections.md#save-with-freshness)).
+
 > [!IMPORTANT]
 > Creating, changing a trust setting, enabling, disabling, deleting and migrating a connection each ask the freshness
 > contract whether the caller authenticated recently enough, and the default contract refuses every operation. Bind
@@ -265,26 +269,26 @@ Each violation names a setting by its dotted path (`issuer`, `signature_algorith
 
 ## SAML settings
 
-| Setting                          | Allowed                                                                       | Default                    |
-|----------------------------------|-------------------------------------------------------------------------------|----------------------------|
-| `idp_entity_id`                  | An `https:`, `http:` or `urn:` URI, at most 1024 bytes, no whitespace         | none (required)            |
-| `sso_url`                        | An `https` URL, no userinfo or fragment, at most 2048 bytes                   | none (required)            |
-| `sso_binding`                    | `http_redirect`, `http_post`                                                  | `http_redirect`            |
-| `subject_source`                 | `name_id`, `attribute`                                                        | `name_id`                  |
-| `subject_attribute`              | An attribute name, at most 1024 bytes; only with `attribute`, and then needed | none                       |
-| `name_id_format`                 | `persistent`, `email`, `unspecified` (never `transient`)                      | `persistent`               |
-| `sign_authn_requests`            | `true`, `false`                                                               | `false`                    |
-| `want_assertions_signed`         | `true`, `false`                                                               | `true`                     |
-| `require_encrypted_assertions`   | `true` (with `sso.features.encrypted_assertions` on), `false`                 | `false`                    |
-| `signature_algorithms`           | RSA over SHA-256, SHA-384 or SHA-512; no SHA-1                                | all three                  |
-| `encryption_algorithms`          | RSA-OAEP key transport; AES-128-GCM or AES-192-GCM, or AES-CBC when listed    | RSA-OAEP and both AES-GCM  |
-| `force_authn`                    | `true`, `false`                                                               | `false`                    |
-| `requested_authn_context`        | Up to 10 context class URIs, each at most 1024 bytes                          | none                       |
-| `max_authentication_age_seconds` | 60 to 604800 (a week)                                                         | none                       |
-| `idp_initiated`                  | `true` (with `sso.features.idp_initiated` on), `false`                        | `false`                    |
-| `idp_initiated_start_url`        | An `https` URL, as `sso_url`; needed when `idp_initiated` is on               | none                       |
-| `metadata_url`                   | An `https` URL, as `sso_url`; needed when `metadata_refresh` is on            | none                       |
-| `metadata_refresh`               | `true` (with `sso.features.metadata_refresh` on), `false`                     | `false`                    |
+| Setting                          | Allowed                                                                       | Default                   |
+|----------------------------------|-------------------------------------------------------------------------------|---------------------------|
+| `idp_entity_id`                  | An `https:`, `http:` or `urn:` URI, at most 1024 bytes, no whitespace         | none (required)           |
+| `sso_url`                        | An `https` URL, no userinfo or fragment, at most 2048 bytes                   | none (required)           |
+| `sso_binding`                    | `http_redirect`, `http_post`                                                  | `http_redirect`           |
+| `subject_source`                 | `name_id`, `attribute`                                                        | `name_id`                 |
+| `subject_attribute`              | An attribute name, at most 1024 bytes; only with `attribute`, and then needed | none                      |
+| `name_id_format`                 | `persistent`, `email`, `unspecified` (never `transient`)                      | `persistent`              |
+| `sign_authn_requests`            | `true`, `false`                                                               | `false`                   |
+| `want_assertions_signed`         | `true`, `false`                                                               | `true`                    |
+| `require_encrypted_assertions`   | `true` (with `sso.features.encrypted_assertions` on), `false`                 | `false`                   |
+| `signature_algorithms`           | RSA over SHA-256, SHA-384 or SHA-512; no SHA-1                                | all three                 |
+| `encryption_algorithms`          | RSA-OAEP key transport; AES-128-GCM or AES-192-GCM, or AES-CBC when listed    | RSA-OAEP and both AES-GCM |
+| `force_authn`                    | `true`, `false`                                                               | `false`                   |
+| `requested_authn_context`        | Up to 10 context class URIs, each at most 1024 bytes                          | none                      |
+| `max_authentication_age_seconds` | 60 to 604800 (a week)                                                         | none                      |
+| `idp_initiated`                  | `true` (with `sso.features.idp_initiated` on), `false`                        | `false`                   |
+| `idp_initiated_start_url`        | An `https` URL, as `sso_url`; needed when `idp_initiated` is on               | none                      |
+| `metadata_url`                   | An `https` URL, as `sso_url`; needed when `metadata_refresh` is `true`        | none                      |
+| `metadata_refresh`               | `true`, `false`; left unset, on while it has a `metadata_url` and an anchor   | unset                     |
 
 The algorithms are given by their XML Signature and XML Encryption URIs, for example
 `http://www.w3.org/2001/04/xmldsig-more#rsa-sha256` and `http://www.w3.org/2009/xmlenc11#aes128-gcm`; an encryption list
@@ -298,24 +302,33 @@ connection from start to finish is described in [Setting up a SAML connection](s
 
 ## OIDC settings
 
-| Setting                  | Allowed                                                                                                                                  | Default                      |
-|--------------------------|------------------------------------------------------------------------------------------------------------------------------------------|------------------------------|
-| `issuer`                 | An `https` URL, no query, userinfo or fragment, at most 2048 bytes; kept exactly as given                                                | none (required)              |
-| `authorization_endpoint` | An `https` URL, no userinfo or fragment, at most 2048 bytes                                                                              | none (required)              |
-| `token_endpoint`         | As `authorization_endpoint`                                                                                                              | none (required)              |
-| `jwks_uri`               | As `authorization_endpoint`                                                                                                              | none (required)              |
-| `userinfo_endpoint`      | As `authorization_endpoint`                                                                                                              | none                         |
-| `returns_iss`            | `true`, `false`                                                                                                                          | `false`                      |
-| `client_id`              | At most 255 bytes                                                                                                                        | none (required)              |
-| `client_secret`          | A secret, at most 1024 bytes; not with `private_key_jwt`                                                                                 | none                         |
-| `client_authentication`  | `client_secret_basic`, `client_secret_post`, `private_key_jwt`                                                                           | `client_secret_basic`        |
-| `scopes`                 | Up to 20 distinct scope tokens, including `openid`                                                                                       | `openid`, `email`, `profile` |
-| `id_token_algorithms`    | `RS256` to `RS512`, `PS256` to `PS512`, `ES256` to `ES512`; never `none` or `HS*`                                                        | `RS256`                      |
-| `extra_parameters`       | Up to 10 of `prompt`, `acr_values`, `login_hint`, `ui_locales`, `claims_locales`, `display`, `domain_hint`, `hd`, each at most 512 bytes | none                         |
+| Setting                      | Allowed                                                                                                                                  | Default                      |
+|------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|------------------------------|
+| `issuer`                     | An `https` URL, no query, userinfo or fragment, at most 2048 bytes; kept exactly as given                                                | none (required)              |
+| `authorization_endpoint`     | An `https` URL, no userinfo or fragment, at most 2048 bytes                                                                              | none (required)              |
+| `token_endpoint`             | As `authorization_endpoint`                                                                                                              | none (required)              |
+| `jwks_uri`                   | As `authorization_endpoint`                                                                                                              | none (required)              |
+| `userinfo_endpoint`          | As `authorization_endpoint`                                                                                                              | none                         |
+| `returns_iss`                | `true`, `false`                                                                                                                          | `false`                      |
+| `client_id`                  | At most 255 bytes                                                                                                                        | none (required)              |
+| `client_secret`              | A secret, at most 1024 bytes; not with `private_key_jwt`                                                                                 | none                         |
+| `client_authentication`      | `client_secret_basic`, `client_secret_post`, `private_key_jwt`                                                                           | `client_secret_basic`        |
+| `client_assertion_algorithm` | `PS256` or `RS256` for an RSA key, `ES256` for a P-256 key, with `private_key_jwt`; pinned, never negotiated                             | each key's default           |
+| `scopes`                     | Up to 20 distinct scope tokens, including `openid`                                                                                       | `openid`, `email`, `profile` |
+| `id_token_algorithms`        | `RS256` to `RS512`, `PS256` to `PS512`, `ES256` to `ES512`; never `none` or `HS*`                                                        | `RS256`                      |
+| `extra_parameters`           | Up to 10 of `prompt`, `acr_values`, `login_hint`, `ui_locales`, `claims_locales`, `display`, `domain_hint`, `hd`, each at most 512 bytes | none                         |
+| `trusted_audiences`          | Up to 10 distinct audiences an ID token may name beside the client id, each at most 255 bytes, no whitespace                             | none                         |
+| `max_age`                    | An integer from 0 to 604800 seconds, sent as `max_age`; the ID token must then satisfy it with `auth_time`                               | none                         |
+| `fetch_userinfo`             | `true`, `false`; while `true`, `userinfo_endpoint` is required and UserInfo must answer                                                  | `false`                      |
+| `metadata_refresh`           | `true`, `false`; whether the schedule refreshes it, while `features.metadata_refresh` is on                                              | `true`                       |
 
-The issuer must be exactly the one your provider's ID tokens carry, trailing slash and case included. An extra
-parameter the flow controls (`response_type`, `response_mode`, `client_id`, `redirect_uri`, `scope`, `state`, `nonce`,
-`code_challenge`, `code_challenge_method`, `request`, `request_uri`) is refused as `reserved`, whatever its case.
+The issuer must be exactly the one your provider's ID tokens carry, trailing slash and case included. A change to
+`trusted_audiences`, `max_age`, `fetch_userinfo`, `client_assertion_algorithm` or `metadata_refresh` is a trust change,
+as a change to an endpoint or the client's credentials is: it needs fresh authentication (`sso.connection.trust`) and
+voids the flows in flight. An extra parameter the flow controls (`response_type`, `response_mode`, `client_id`,
+`redirect_uri`, `scope`, `state`, `nonce`, `code_challenge`, `code_challenge_method`, `request`, `request_uri`) is
+refused as `reserved`, whatever its case. Setting up an OIDC connection from start to finish is described in [Setting Up
+An OIDC Connection](oidc-connections.md), and the flow in [Signing In with OIDC](oidc-sign-in.md).
 
 ## Attribute mapping
 

@@ -23,7 +23,8 @@ use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
  *   connection's metadata limit, with the seconds until the window ends.
  * - `conflict` (`metadata_conflict`), `in_progress`
  *   (`metadata_refresh_in_progress`), `skipped`, and `refused`
- *   (`connection_not_found` or `feature_disabled`), with nothing else.
+ *   (`connection_not_found`, `feature_disabled` or `freshness_required`), with
+ *   nothing else.
  *
  * It holds no certificate, URL or other value of the metadata.
  *

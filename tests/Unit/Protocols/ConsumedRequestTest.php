@@ -181,7 +181,7 @@ final class ConsumedRequestTest extends TestCase
      *
      * @throws \Random\RandomException
      */
-    public function testCannotBeSerialised(): void
+    public function testCannotBeSerialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A consumed authorisation request cannot be serialised.'));
 
@@ -193,7 +193,7 @@ final class ConsumedRequestTest extends TestCase
      *
      * @return void
      */
-    public function testCannotBeUnserialised(): void
+    public function testCannotBeUnserialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A consumed authorisation request cannot be unserialised.'));
 

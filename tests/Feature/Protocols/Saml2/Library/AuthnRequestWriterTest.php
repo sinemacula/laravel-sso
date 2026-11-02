@@ -257,7 +257,7 @@ final class AuthnRequestWriterTest extends TestCase
      *
      * @return void
      */
-    public function testTheOutgoingRequestRefusesSerialisation(): void
+    public function testTheOutgoingRequestRefusesSerialization(): void
     {
         $outgoing = new OutgoingRequest(self::ID, OutgoingRequest::HTTP_POST, ['SAMLRequest' => 'x', 'RelayState' => self::STATE]);
 
@@ -271,7 +271,7 @@ final class AuthnRequestWriterTest extends TestCase
      *
      * @return void
      */
-    public function testTheOutgoingRequestRefusesUnserialisation(): void
+    public function testTheOutgoingRequestRefusesUnserialization(): void
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage(sprintf('A %s cannot be unserialised.', OutgoingRequest::class));
@@ -326,6 +326,7 @@ final class AuthnRequestWriterTest extends TestCase
             'https://api.example.com/auth/sso/connections/c1/callback',
             'https://api.example.com/auth/sso/connections/c1/metadata',
             'https://api.example.com/auth/sso/connections/c1/metadata',
+            'https://api.example.com/auth/sso/connections/c1/jwks',
         );
 
         $issuedAt ??= CarbonImmutable::parse('2026-11-01T09:30:00Z');

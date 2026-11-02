@@ -23,6 +23,7 @@ final readonly class IdentifiedConnection implements SsoConnection
      * @param  string  $id
      * @param  string  $tenantId
      * @param  string  $protocol
+     * @param  array<string, mixed>  $settings
      */
     public function __construct(
 
@@ -34,6 +35,9 @@ final readonly class IdentifiedConnection implements SsoConnection
 
         /** The protocol. */
         private string $protocol = 'oidc',
+
+        /** The settings. */
+        private array $settings = [],
     ) {}
 
     /**
@@ -81,14 +85,14 @@ final readonly class IdentifiedConnection implements SsoConnection
     }
 
     /**
-     * No settings.
+     * The settings given, none by default.
      *
      * @return array<string, mixed>
      */
     #[\Override]
     public function getSettings(): array
     {
-        return [];
+        return $this->settings;
     }
 
     /**

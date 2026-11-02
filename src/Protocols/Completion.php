@@ -17,8 +17,10 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
  * `VerifiedResult` from the claims. A verified SAML response also carries the
  * `ReplayRecord` of its assertion, which the completion records in its locked
  * transaction before any downstream effect, refusing a repeat with `replayed`
- * (SSO-6.6). Every refusal is a value: a malformed, unsigned, expired or
- * replayed response, an unsuccessful SAML status or an OIDC `error` response.
+ * (SSO-6.6). A verified OIDC response whose own key refetch removed a key
+ * carries the `TransitionReceipt` that lets it finish across that one trust
+ * change. Every refusal is a value: a malformed, unsigned, expired or replayed
+ * response, an unsuccessful SAML status or an OIDC `error` response.
  *
  * @api
  *
@@ -33,6 +35,7 @@ final readonly class Completion
      * @param  ?\SineMacula\Laravel\Sso\Results\VerifiedClaims  $claims
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
      */
     private function __construct(
 
@@ -44,6 +47,9 @@ final readonly class Completion
 
         /** What the completion records against replay, for a verified response that carries one. */
         public ?ReplayRecord $replay = null,
+
+        /** What lets a verified response finish across the trust change its own validation made, if any. */
+        public ?TransitionReceipt $receipt = null,
     ) {}
 
     /**
@@ -68,6 +74,18 @@ final readonly class Completion
     public static function refused(FailureReason $reason): self
     {
         return new self(null, $reason);
+    }
+
+    /**
+     * The completion with the receipt of the trust change its validation made,
+     * if any; a refusal holds none, so it is answered as it is.
+     *
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
+     * @return self
+     */
+    public function withReceipt(?TransitionReceipt $receipt): self
+    {
+        return $this->claims === null || $receipt === null ? $this : new self($this->claims, null, $this->replay, $receipt);
     }
 
     /**

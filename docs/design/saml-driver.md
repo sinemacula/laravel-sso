@@ -29,7 +29,9 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
 - `start()`, `complete()` and `reinitiate()` are refused with `metadata_expired`, before their collaborator is asked,
   while what a metadata refresh applied to the connection has expired (`Metadata\MetadataExpiry`, SSO-2.8). The
   completion and the re-initiation check expiry again on the locked connection, so metadata that lapses while the
-  response is validated is refused there too, recording nothing.
+  response is validated is refused there too, recording nothing. A connection that does not follow its metadata URL
+  (no metadata signing anchor and `metadata_refresh` not `true`, or no URL) holds no such deadline, whatever was stamped
+  on it (`Metadata\SamlRefreshRule`, `metadata-refresh.md`).
 - `startUrl()` answers the start URL re-initiation sends the browser to, naming the connection, or `null` when the
   connection does not allow IdP-initiated sign-in; the re-initiation asks it again of the locked connection.
 - SAML is RSA only on PHP 8.3 and saml2 v6, a known limit of SSO-6.7 decided by the owner: RSA signatures with

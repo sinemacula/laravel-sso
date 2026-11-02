@@ -366,6 +366,7 @@ final class SamlReinitiationTest extends TestCase
      */
     public function testExpiredMetadataRejectsWithMetadataExpired(): void
     {
+        $this->optInToRefresh();
         $this->connection->forceFill(['metadata_fetched_at' => $this->clock->now()->subHours(2), 'metadata_valid_until' => $this->clock->now()->subHour()])->save();
 
         $this->assertRejected(FailureReason::METADATA_EXPIRED, $this->complete($this->response()));
@@ -488,6 +489,7 @@ final class SamlReinitiationTest extends TestCase
     {
         $clock = $this->clock;
 
+        $this->optInToRefresh();
         $this->connection->forceFill(['metadata_fetched_at' => $clock->now()->subHour(), 'metadata_valid_until' => $clock->now()->addMinute()])->save();
         $this->afterValidation(static function () use ($clock, $seconds): void {
             $clock->advance($seconds);
@@ -640,6 +642,17 @@ final class SamlReinitiationTest extends TestCase
             'not_on_or_after' => CarbonImmutable::parse('2026-11-01T09:35:00Z'),
             'in_response_to'  => null,
         ];
+    }
+
+    /**
+     * Have the connection follow its metadata URL, so that what was fetched
+     * holds a deadline.
+     *
+     * @return void
+     */
+    private function optInToRefresh(): void
+    {
+        $this->settings(['metadata_url' => 'https://idp.example.test/metadata.xml', 'metadata_refresh' => true]);
     }
 
     /**

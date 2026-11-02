@@ -9,19 +9,21 @@ use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * One server's claim on a connection's metadata refresh, and the configuration
- * snapshot the refresh is judged against when it writes (SSO-2.8, SSO-2.13):
- * the connection as it was read before the claim (its metadata and trust
- * versions), the random token the claim wrote with `metadata_claimed_until`,
- * and the sorted fingerprints of the connection's identity provider signing
- * certificates and metadata signing anchors, read before the claim too, with
- * the anchors' certificates the fetched metadata is read with.
+ * One server's claim on a connection's refresh, and the configuration snapshot
+ * the refresh is judged against when it writes (SSO-2.8, SSO-2.13): the
+ * connection as it was read before the claim (its metadata and trust versions),
+ * the random token the claim wrote with `metadata_claimed_until`, and the
+ * snapshot of the connection's trust its source read before the claim too: for
+ * SAML, the sorted fingerprints of the connection's identity provider signing
+ * certificates and metadata signing anchors (`trustedOf()`), with the anchors'
+ * certificates the fetched metadata is read with; for OIDC, its JWKS version
+ * and the settings a refresh may change.
  *
- * `MetadataApplier` writes, success or failure, only while the locked
- * connection still holds this token (no other server took the claim over once
- * it expired), the same versions and exactly these fingerprints, so a refresh
- * never removes a certificate an administrator added while it fetched, and a
- * refresh whose claim was taken over writes nothing.
+ * `RefreshWriter` writes, success or failure, only while the locked connection
+ * still holds this token (no other server took the claim over once it expired),
+ * the same versions and exactly this snapshot, so a refresh never removes a
+ * certificate or key an administrator or a refetch added while it fetched, and
+ * a refresh whose claim was taken over writes nothing.
  *
  * It lives only while its refresh runs, in one process, and is never
  * serialised: the token is a random value of no use beyond its claim.
@@ -41,7 +43,7 @@ final readonly class RefreshClaim
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $token
-     * @param  array<string, list<string>>  $trusted
+     * @param  array<string, mixed>  $trusted
      * @param  list<string>  $anchors
      */
     public function __construct(
@@ -52,10 +54,10 @@ final readonly class RefreshClaim
         /** The token the claim was written with. */
         public string $token,
 
-        /** The sorted fingerprints of the connection's trusted certificates, by use. */
+        /** The snapshot of the connection's trust, as its source reads it: comparable with `===`. */
         public array $trusted,
 
-        /** The PEM certificates of the connection's metadata signing anchors. */
+        /** The PEM certificates the fetched document is verified with: a SAML connection's metadata signing anchors. */
         public array $anchors = [],
     ) {}
 
@@ -100,7 +102,7 @@ final readonly class RefreshClaim
             static fn (?string $fingerprint): bool => $fingerprint !== null,
         ));
 
-        sort($fingerprints);
+        sort($fingerprints, SORT_STRING);
 
         return $fingerprints;
     }

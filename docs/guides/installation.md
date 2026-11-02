@@ -43,9 +43,32 @@ To override the package's consumer-facing messages, publish its translations to 
 php artisan vendor:publish --tag=sso-lang
 ```
 
-Every feature is off until you turn it on. Turn on a protocol, set the base URL the package builds its endpoints
-from, and register the applications people sign into (see [Configuration](configuration.md)), then check:
+Every feature is off until you turn it on, but for the scheduled refresh of what connections fetch from their identity
+providers. Turn on a protocol, set the base URL the package builds its endpoints from, and register the applications
+people sign into (see [Configuration](configuration.md)), then check:
 
 ```bash
 php artisan sso:check
 ```
+
+Connections keep what they fetch from their identity providers fresh on a schedule, so run the refresh command and a
+queue worker:
+
+```php
+// bootstrap/app.php
+use Illuminate\Console\Scheduling\Schedule;
+
+->withSchedule(function (Schedule $schedule): void {
+    $schedule->command('sso:metadata:refresh')->everyFiveMinutes();
+})
+```
+
+```bash
+php artisan queue:work
+```
+
+Without them, nothing refreshes, and anything a connection that follows its provider fetched stops being used 30 days
+after it was fetched: see
+[SAML metadata](saml-metadata.md#refreshing-on-a-schedule) and
+[Setting up an OIDC connection](oidc-connections.md#scheduled-refresh). `SSO_METADATA_REFRESH=false` stops the schedule,
+though not the 30 days, and an administrator's refresh still works.

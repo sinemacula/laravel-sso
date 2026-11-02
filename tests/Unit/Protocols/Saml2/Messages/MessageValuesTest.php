@@ -101,7 +101,7 @@ final class MessageValuesTest extends TestCase
      * @return void
      */
     #[DataProvider('provideHolders')]
-    public function testAValueRefusesToBeSerialised(object $value): void
+    public function testAValueRefusesToBeSerialized(object $value): void
     {
         $this->expectExceptionObject(new \LogicException(sprintf('A %s cannot be serialised.', $value::class)));
 
@@ -115,7 +115,7 @@ final class MessageValuesTest extends TestCase
      * @return void
      */
     #[DataProvider('provideHolders')]
-    public function testAValueRefusesToBeUnserialised(object $value): void
+    public function testAValueRefusesToBeUnserialized(object $value): void
     {
         $this->expectExceptionObject(new \LogicException(sprintf('A %s cannot be unserialised.', $value::class)));
 
@@ -272,7 +272,7 @@ final class MessageValuesTest extends TestCase
      *
      * @return void
      */
-    public function testAResponsePolicyRefusesToBeUnserialised(): void
+    public function testAResponsePolicyRefusesToBeUnserialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A response policy cannot be unserialised.'));
 

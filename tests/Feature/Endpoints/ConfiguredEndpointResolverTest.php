@@ -61,6 +61,7 @@ final class ConfiguredEndpointResolverTest extends TestCase
             'callback'                   => 'https://api.example.com/auth/sso/connections/' . self::ID . '/callback',
             'entity_id'                  => 'https://api.example.com/auth/sso/connections/' . self::ID . '/metadata',
             'metadata'                   => 'https://api.example.com/auth/sso/connections/' . self::ID . '/metadata',
+            'jwks'                       => 'https://api.example.com/auth/sso/connections/' . self::ID . '/jwks',
         ], $endpoints->jsonSerialize());
     }
 
@@ -98,6 +99,7 @@ final class ConfiguredEndpointResolverTest extends TestCase
             'assertion_consumer_service' => '/saml/{connection}/acs',
             'callback'                   => '/oidc/{connection}',
             'metadata'                   => '/saml/{connection}.xml',
+            'jwks'                       => '/oidc/{connection}/keys.json',
         ]);
 
         $endpoints = app(EndpointResolver::class)->endpoints(new ExampleConnection);
@@ -106,6 +108,7 @@ final class ConfiguredEndpointResolverTest extends TestCase
         self::assertSame('https://api.example.com/oidc/' . self::ID, $endpoints->url(Endpoint::CALLBACK));
         self::assertSame('https://api.example.com/saml/' . self::ID . '.xml', $endpoints->url(Endpoint::METADATA));
         self::assertSame('https://api.example.com/saml/' . self::ID . '.xml', $endpoints->entityId);
+        self::assertSame('https://api.example.com/oidc/' . self::ID . '/keys.json', $endpoints->url(Endpoint::JWKS));
     }
 
     /**
