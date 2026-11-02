@@ -117,6 +117,10 @@ with the SAML and OIDC drivers (P4, P5), not here.
 - A stale caller is `freshness_required`, with nothing generated, written or reported.
 - Removing the last trusted certificate is allowed: the SAML driver (P4) then finds the connection incomplete, so no
   sign-in runs through it until another is trusted.
+- A connection's first metadata signing anchor brings it to hold a stale deadline and, unless `metadata_refresh` is
+  `false`, to refresh from its `metadata_url`, and clears what was stamped before, in the same transaction; removing its
+  last ends both
+  (`Metadata\SamlRefreshRule`, `metadata-refresh.md`).
 - Distrusting a certificate, and trusting a metadata signing anchor, is a trust change (SSO-2.13): in its
   transaction, under the connection's lock, it voids the connection's unfinished authorisation requests and unredeemed
   handoff codes and raises its trust version (`Connections\InFlightVoider`; see

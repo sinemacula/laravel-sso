@@ -247,9 +247,10 @@ return [
     |
     | How the scheduled refresh runs of a SAML connection's metadata, and of an
     | OIDC connection's discovery document and JWKS, while
-    | `features.metadata_refresh` is on: every OIDC connection and every SAML
-    | connection with a `metadata_url` refreshes unless its `metadata_refresh`
-    | setting is off. After a success the next refresh is due
+    | `features.metadata_refresh` is on: every OIDC connection refreshes unless
+    | its `metadata_refresh` setting is off, and a SAML connection with a
+    | `metadata_url` refreshes when its setting is `true`, or is unset and it
+    | has a metadata signing anchor. After a success the next refresh is due
     | `refresh_interval_seconds` later (an hour to a week, default a day);
     | after a failure it waits `backoff_initial_seconds` (a minute to an hour,
     | default 5 minutes), doubling with each failure in a row up to

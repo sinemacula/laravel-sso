@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Metadata\SamlRefreshRule;
 use SineMacula\Laravel\Sso\Metadata\ValidatedFetch;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -35,6 +36,15 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  * an expired connection on the record. The next refresh's due date is left as
  * it is.
  *
+ * A SAML connection that, as the change leaves it, has not opted in to
+ * following its metadata URL holds no stale deadline
+ * (`Metadata\SamlRefreshRule`), and nothing would refresh it before one passed,
+ * so the save starts no clock: the import counts as certificates entered by
+ * hand, and any stamp from before is cleared, on the record when that is all
+ * the save changed. An explicit `metadata_refresh` of `false` on an anchored
+ * connection still stamps, the validated fetch counting as it does with any
+ * schedule turned off.
+ *
  * Metadata given as XML came from no fetch: it has no `ValidatedFetch`, and is
  * saved through `ConnectionService::update()`, as by hand. So is anything an
  * administrator typed in place of a proposal.
@@ -52,6 +62,9 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  */
 final readonly class ImportSaver
 {
+    /** @var array<string, null> What a connection that holds no deadline keeps of a fetch. */
+    private const array NOTHING_STAMPED = ['metadata_fetched_at' => null, 'metadata_valid_until' => null];
+
     /**
      * Constructor.
      *
@@ -118,8 +131,8 @@ final readonly class ImportSaver
     }
 
     /**
-     * Stamp the fetch on the locked connection, and report it when it is all
-     * the save changed.
+     * Stamp the fetch on the locked connection, or clear what is stamped where
+     * it holds no deadline, and report it when it is all the save changed.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Metadata\ValidatedFetch  $fetch
@@ -131,8 +144,14 @@ final readonly class ImportSaver
      */
     private function stamped(Connection $locked, ValidatedFetch $fetch, ConnectionResult $result, ?ActingIdentity $actor): void
     {
-        $locked->forceFill(['metadata_fetched_at' => $fetch->validatedAt, 'metadata_valid_until' => $fetch->validUntil])->save();
+        $holds = SamlRefreshRule::holdsDeadline($locked);
 
-        $this->events->connectionUpdated($locked, $result->isChanged() ? [] : ['metadata_fetched_at'], $actor);
+        $locked->forceFill($holds ? ['metadata_fetched_at' => $fetch->validatedAt, 'metadata_valid_until' => $fetch->validUntil] : self::NOTHING_STAMPED);
+
+        $renewed = $holds || $locked->isDirty(array_keys(self::NOTHING_STAMPED));
+
+        $locked->save();
+
+        $this->events->connectionUpdated($locked, $result->isChanged() || !$renewed ? [] : ['metadata_fetched_at'], $actor);
     }
 }

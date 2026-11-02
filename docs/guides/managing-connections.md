@@ -288,7 +288,7 @@ Each violation names a setting by its dotted path (`issuer`, `signature_algorith
 | `idp_initiated`                  | `true` (with `sso.features.idp_initiated` on), `false`                        | `false`                   |
 | `idp_initiated_start_url`        | An `https` URL, as `sso_url`; needed when `idp_initiated` is on               | none                      |
 | `metadata_url`                   | An `https` URL, as `sso_url`; needed when `metadata_refresh` is `true`        | none                      |
-| `metadata_refresh`               | `true`, `false`; left unset, it follows `metadata_url`                        | follows `metadata_url`    |
+| `metadata_refresh`               | `true`, `false`; left unset, on while it has a `metadata_url` and an anchor   | unset                     |
 
 The algorithms are given by their XML Signature and XML Encryption URIs, for example
 `http://www.w3.org/2001/04/xmldsig-more#rsa-sha256` and `http://www.w3.org/2009/xmlenc11#aes128-gcm`; an encryption list

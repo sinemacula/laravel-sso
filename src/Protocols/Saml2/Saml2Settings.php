@@ -49,11 +49,14 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
  *   an `https` URL as `sso_url` (SSO-5.8).
  * - `metadata_url`: the `https` URL the provider's metadata is fetched from, as
  *   `sso_url`; `metadata_refresh`: left unset, the schedule refreshes a
- *   connection exactly while it has a `metadata_url`, so adding or removing the
- *   URL needs no other change; `false` opts out; and `true` also requires
- *   `metadata_url` (SSO-2.8). The schedule runs while
- *   `sso.features.metadata_refresh` is on. Off leaves the stale limit in force
- *   and an administrator's refresh available.
+ *   connection with a `metadata_url` exactly while it has a metadata signing
+ *   anchor, so adding or removing the anchor needs no other change; `true`
+ *   refreshes it without one, delegating trust to the URL and its TLS, and
+ *   requires `metadata_url`; and `false` opts out (SSO-2.8,
+ *   `Metadata\SamlRefreshRule`). The schedule runs while
+ *   `sso.features.metadata_refresh` is on. An administrator's refresh stays
+ *   available; a connection with neither an anchor nor `true` has no stale limit,
+ *   and `false` on an anchored one leaves the limit in force.
  *
  * A missing setting is not a violation, so a connection may be saved before it
  * is complete; `isComplete()` says when it is. What is stored holds every

@@ -56,8 +56,12 @@ JWKS is fetched and written is `oidc-discovery.md`.
   `exp` 60 seconds later. A fresh assertion is signed for each attempt, and it is answered as a `Secrets\Secret`.
   Anything the library throws while it signs becomes a `\InvalidArgumentException` with a fixed message and no previous
   exception, since the library's frames hold the private JWK.
-- `CompactToken` and `ClientKey` hold what they carry in a `\SensitiveParameterValue`: a dump shows no token, claim,
-  signature or private member, and each refuses to be serialised (SSO-7.6).
+- `CompactToken` and `ClientKey` hold what they carry in a `\SensitiveParameterValue`: a dump shows no token, header
+  value, claim, signature or private member, and each refuses to be serialised (SSO-7.6). A `CompactToken`'s dump and
+  JSON encoding show its `alg` only when it is one of `AlgorithmAllowList::ALGORITHMS`, and `[unknown]` otherwise, and
+  whether a `kid` is present; its header is read through `header()`, for the signature check.
+- `StrictJson` refuses a document whose names it cannot compare because PCRE failed on one of its limits while reading
+  them, so a failure to look for a repeated member is never taken for finding none.
 
 ## Success Path
 

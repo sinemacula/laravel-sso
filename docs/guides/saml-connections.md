@@ -97,8 +97,19 @@ $keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $actor);
 ```
 
 A signature is valid when any trusted certificate verifies it; a certificate carried in a response is never trusted for
-itself. To keep the certificates and the sign-on endpoint up to date from the identity provider's metadata, save its
-`metadata_url`, run the refresh command, and optionally trust a metadata signing anchor (see
+itself.
+
+Left at that, the certificates are yours to keep: an administrator installs a new certificate before the provider
+switches to it, and the connection never expires. To keep the certificates and the sign-on endpoint up to date from the
+identity provider's metadata instead, save its `metadata_url`, run the refresh command, and either:
+
+- trust a metadata signing anchor, the provider's or the federation's, which makes the connection refresh by default;
+  removing it stops that; or
+- set `metadata_refresh` to `true`, which refreshes it with no anchor by delegating trust to that URL and its TLS. It
+  suits a provider whose metadata has no independent anchor: whoever controls the URL then decides which certificates
+  you trust.
+
+A `metadata_url` alone refreshes nothing, and `metadata_refresh` set `false` stays off with an anchor too (see
 [SAML metadata](saml-metadata.md#refreshing-on-a-schedule)).
 
 ### Large federation metadata

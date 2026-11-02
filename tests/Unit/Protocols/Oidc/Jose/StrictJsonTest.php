@@ -182,4 +182,65 @@ final class StrictJsonTest extends TestCase
         self::assertIsArray(StrictJson::decodeObject($json));
         self::assertSame(32, StrictJson::MAX_DEPTH);
     }
+
+    /**
+     * Rows of `[json]`: valid JSON, one document repeating no member and one
+     * repeating a member PHP's decoder would keep the last of.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideDocumentsAtALimit(): iterable
+    {
+        yield from [
+            'repeating no member' => ['{"a":"b","c":["d",{"e":"f"}]}'],
+            'repeating a member'  => ['{"iss":"https://good.test","iss":"https://evil.test"}'],
+        ];
+    }
+
+    /**
+     * Every reading refuses a document when PCRE cannot tokenise it, whether or
+     * not it repeats a member, for the failure itself; with the limit back, the
+     * document is judged on what it holds.
+     *
+     * @param  string  $json
+     * @return void
+     */
+    #[DataProvider('provideDocumentsAtALimit')]
+    public function testADocumentPcreCannotTokenizeIsRefused(string $json): void
+    {
+        $jit       = ini_get('pcre.jit');
+        $backtrack = ini_get('pcre.backtrack_limit');
+
+        self::assertIsString($jit);
+        self::assertIsString($backtrack);
+
+        ini_set('pcre.jit', '0');
+        ini_set('pcre.backtrack_limit', '1');
+
+        try {
+            $readings = [StrictJson::decodeObject($json), StrictJson::decodeMembers($json), StrictJson::decodeAsWritten($json)];
+            $failure  = preg_last_error();
+        } finally {
+            ini_set('pcre.jit', $jit);
+            ini_set('pcre.backtrack_limit', $backtrack);
+        }
+
+        self::assertSame([null, null, null], $readings);
+        self::assertSame(PREG_BACKTRACK_LIMIT_ERROR, $failure);
+    }
+
+    /**
+     * With its limits as they were, the document that repeats no member is read
+     * by each reading again, so the refusal above was the limit's alone.
+     *
+     * @return void
+     */
+    public function testADocumentIsReadOnceTheLimitIsBack(): void
+    {
+        $json = '{"a":"b","c":["d",{"e":"f"}]}';
+
+        self::assertSame(['a' => 'b', 'c' => ['d', ['e' => 'f']]], StrictJson::decodeObject($json));
+        self::assertSame(['a' => 'b', 'c' => ['d', ['e' => 'f']]], StrictJson::decodeMembers($json));
+        self::assertSame('b', StrictJson::decodeAsWritten($json)?->a);
+    }
 }

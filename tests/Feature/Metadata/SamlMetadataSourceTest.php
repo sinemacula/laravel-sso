@@ -113,7 +113,7 @@ final class SamlMetadataSourceTest extends TestCase
             'its switch on and an https URL' => [[], [], true],
             'its switch off'                 => [[], ['metadata_refresh' => false], false],
             'its switch not true'            => [[], ['metadata_refresh' => 'true'], false],
-            'no switch and an https URL'     => [[], ['metadata_refresh' => null], true],
+            'no switch and an https URL'     => [[], ['metadata_refresh' => null], false],
             'no switch and no URL'           => [[], ['metadata_refresh' => null, 'metadata_url' => null], false],
             'an http URL'                    => [[], ['metadata_url' => 'http://idp.example.test/metadata.xml'], false],
             'no URL'                         => [[], ['metadata_url' => null], false],
@@ -124,8 +124,8 @@ final class SamlMetadataSourceTest extends TestCase
 
     /**
      * The schedule refreshes a connection that is SAML with a URL the package
-     * may fetch, unless its switch says otherwise; left unset, it follows the
-     * URL.
+     * may fetch and an explicit switch on; left unset with no anchor, it does
+     * not.
      *
      * @param  array<string, mixed>  $attributes
      * @param  array<string, mixed>  $settings
@@ -137,6 +137,67 @@ final class SamlMetadataSourceTest extends TestCase
     {
         self::assertSame('saml2', $this->source()->protocol());
         self::assertSame($refreshes, $this->source()->refreshes($this->saml($settings, $attributes)));
+    }
+
+    /**
+     * Rows of `[anchored, switch, refreshes]`: with a URL, an anchor makes an
+     * unset switch on, and `false` is off whatever the anchor.
+     *
+     * @return iterable<string, array{0: bool, 1: mixed, 2: bool}>
+     */
+    public static function provideAnchorsAndSwitches(): iterable
+    {
+        yield from [
+            'an anchor, unset'    => [true, null, true],
+            'an anchor, true'     => [true, true, true],
+            'an anchor, false'    => [true, false, false],
+            'no anchor, unset'    => [false, null, false],
+            'no anchor, true'     => [false, true, true],
+            'no anchor, false'    => [false, false, false],
+            'an anchor, not true' => [true, 'true', false],
+        ];
+    }
+
+    /**
+     * Whether the schedule refreshes the connection, one at a time and as a due
+     * listing judges it at once, for each anchor and switch.
+     *
+     * @param  bool  $anchored
+     * @param  mixed  $switch
+     * @param  bool  $refreshes
+     * @return void
+     */
+    #[DataProvider('provideAnchorsAndSwitches')]
+    public function testAnAnchorDecidesAnUnsetSwitch(bool $anchored, mixed $switch, bool $refreshes): void
+    {
+        $connection = $this->saml(['metadata_refresh' => $switch]);
+
+        if ($anchored) {
+            $this->trust($connection, Certificates::distinct(3), KeyUse::METADATA_SIGNING);
+        }
+
+        self::assertSame($refreshes, $this->source()->refreshes($connection));
+        self::assertSame($refreshes ? [$connection->id] : [], array_map(static fn (Connection $listed): string => $listed->id, $this->source()->refreshing([$connection])));
+    }
+
+    /**
+     * An anchor alone refreshes nothing with no URL, a certificate of another
+     * use is no anchor, and a connection of another protocol is never judged.
+     *
+     * @return void
+     */
+    public function testAnAnchorNeedsAUrlAndToBeAnAnchor(): void
+    {
+        $noUrl = $this->saml(['metadata_refresh' => null, 'metadata_url' => null]);
+        $idp   = $this->saml(['metadata_refresh' => null]);
+        $oidc  = $this->saml(['metadata_refresh' => null], ['protocol' => 'oidc']);
+
+        $this->trust($noUrl, Certificates::distinct(3), KeyUse::METADATA_SIGNING);
+        $this->trust($idp, Certificates::distinct(4), KeyUse::IDP_SIGNING);
+        $this->trust($oidc, Certificates::distinct(5), KeyUse::METADATA_SIGNING);
+
+        self::assertSame([false, false, false], [$this->source()->refreshes($noUrl), $this->source()->refreshes($idp), $this->source()->refreshes($oidc)]);
+        self::assertSame([], $this->source()->refreshing([$noUrl, $idp, $oidc]));
     }
 
     /**

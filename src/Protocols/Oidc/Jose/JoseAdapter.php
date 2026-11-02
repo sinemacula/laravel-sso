@@ -100,7 +100,7 @@ final readonly class JoseAdapter
         try {
             $jws = (new CompactSerializer)->unserialize($token->compact());
 
-            return $jws->getSignature(0)->getProtectedHeader() === $token->header
+            return $jws->getSignature(0)->getProtectedHeader() === $token->header()
                 && (new JWSVerifier(self::manager($allowed->names)))->verifyWithKey($jws, new JWK($key->toArray()), 0);
             // The library declares no @throws, though a value it cannot read
             // throws.

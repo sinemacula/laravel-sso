@@ -285,6 +285,7 @@ final class SamlCompletionTest extends TestCase
      */
     public function testExpiredMetadataRefusesTheCompletion(): void
     {
+        $this->optInToRefresh();
         $this->connection->forceFill(['metadata_fetched_at' => $this->clock->now()->subHours(2), 'metadata_valid_until' => $this->clock->now()->subHour()])->save();
         $this->request();
 
@@ -324,6 +325,7 @@ final class SamlCompletionTest extends TestCase
     {
         $clock = $this->clock;
 
+        $this->optInToRefresh();
         $this->connection->forceFill(['metadata_fetched_at' => $clock->now()->subHour(), 'metadata_valid_until' => $clock->now()->addMinute()])->save();
         $this->request();
 
@@ -470,6 +472,17 @@ final class SamlCompletionTest extends TestCase
         ];
 
         return self::idp()->response($endpoints->entityId, $endpoints->assertionConsumerService, $now)->with(['authn_statements' => [$statement]])->inResponseTo(self::REQUEST_ID);
+    }
+
+    /**
+     * Have the connection follow its metadata URL, so that what was fetched
+     * holds a deadline.
+     *
+     * @return void
+     */
+    private function optInToRefresh(): void
+    {
+        $this->settings(['metadata_url' => 'https://idp.example.test/metadata.xml', 'metadata_refresh' => true]);
     }
 
     /**

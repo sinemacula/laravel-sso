@@ -18,9 +18,11 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * ownership token; `RefreshWriter` writes under the connection's lock, compares
  * and sets, backs off and reports. A source supplies what differs:
  *
- * - `refreshes()`: whether the schedule refreshes the connection: its own
- *   switch is on, or the source would otherwise leave what it fetched to
- *   expire, and what it fetches is a URL the package may fetch;
+ * - `refreshes()`: whether the schedule refreshes the connection: the source's
+ *   own rule on its switch holds, and what it fetches is a URL the package may
+ *   fetch;
+ * - `refreshing()`: the same of the connections of a due listing at once, which
+ *   a source whose rule reads more than the row answers in one read;
  * - `isRefreshable()`: whether what it fetches is a URL the package may fetch,
  *   whatever the switch and whatever has expired, which is what an
  *   administrator's refresh asks, so it can recover a connection;
@@ -60,6 +62,17 @@ abstract readonly class MetadataSource
      * @return bool
      */
     abstract public function refreshes(Connection $connection): bool;
+
+    /**
+     * Those of the connections the schedule refreshes, in the order given.
+     *
+     * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $connections
+     * @return list<\SineMacula\Laravel\Sso\Models\Connection>
+     */
+    public function refreshing(array $connections): array
+    {
+        return array_values(array_filter($connections, $this->refreshes(...)));
+    }
 
     /**
      * Whether the connection can be refreshed at all: it is the source's

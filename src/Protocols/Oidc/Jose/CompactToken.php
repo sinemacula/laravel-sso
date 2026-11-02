@@ -28,8 +28,9 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
  * `jku`, `x5u`, `jwk` and `x5c` are never read: a key comes only from the JWKS
  * stored with the connection.
  *
- * The token, its claims and its signature are a provider's token (SSO-7.6), so
- * they are held in `\SensitiveParameterValue`: a dump shows the algorithm and
+ * The token, its header, its claims and its signature are a provider's token
+ * (SSO-7.6), so they are held in `\SensitiveParameterValue`: a dump and JSON
+ * encoding show the algorithm, only once it is one the package knows, and
  * whether a `kid` is present, never a value, and it refuses to be serialised.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -37,13 +38,19 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
  *
  * @internal
  */
-final readonly class CompactToken
+final readonly class CompactToken implements \JsonSerializable
 {
     /** @var list<string> Header parameters whose presence refuses the token. */
     public const array REFUSED_HEADERS = ['crit', 'b64', 'enc', 'zip'];
 
+    /** @var string What a dump shows for an algorithm the package does not know. */
+    private const string UNKNOWN_ALGORITHM = '[unknown]';
+
     /** @var \SensitiveParameterValue The token as given. */
     private \SensitiveParameterValue $token;
+
+    /** @var \SensitiveParameterValue The protected header's members. */
+    private \SensitiveParameterValue $header;
 
     /** @var \SensitiveParameterValue The payload's members. */
     private \SensitiveParameterValue $claims;
@@ -61,26 +68,31 @@ final readonly class CompactToken
         #[\SensitiveParameter]
         string $token,
 
-        /** The protected header's members. */
-        public array $header,
+        // The protected header's members; held wrapped
+        #[\SensitiveParameter]
+        array $header,
 
         // The payload's members; held wrapped
         #[\SensitiveParameter]
         array $claims,
     ) {
         $this->token  = new \SensitiveParameterValue($token);
+        $this->header = new \SensitiveParameterValue($header);
         $this->claims = new \SensitiveParameterValue($claims);
     }
 
     /**
-     * What a dump shows: the algorithm and whether the header names a key,
-     * never the token or a claim.
+     * What a dump shows: a known algorithm and whether the header names a key,
+     * never the token, another header value or a claim.
      *
      * @return array<string, mixed>
      */
     public function __debugInfo(): array
     {
-        return ['alg' => $this->algorithm(), 'kid' => $this->keyId() === null ? null : '[present]', 'token' => '[redacted]'];
+        $algorithm = $this->algorithm();
+        $known     = array_key_exists($algorithm, AlgorithmAllowList::ALGORITHMS);
+
+        return ['alg' => $known ? $algorithm : self::UNKNOWN_ALGORITHM, 'kid' => $this->keyId() === null ? null : '[present]', 'token' => '[redacted]'];
     }
 
     /**
@@ -112,6 +124,17 @@ final readonly class CompactToken
     public function __unserialize(array $data): void
     {
         throw new \LogicException('A provider token cannot be unserialised.');
+    }
+
+    /**
+     * What JSON encoding shows: the same as a dump, never a value.
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function jsonSerialize(): array
+    {
+        return $this->__debugInfo();
     }
 
     /**
@@ -148,7 +171,7 @@ final readonly class CompactToken
      */
     public function algorithm(): string
     {
-        $algorithm = $this->header['alg'] ?? null;
+        $algorithm = $this->header()['alg'] ?? null;
 
         return is_string($algorithm) ? $algorithm : '';
     }
@@ -160,9 +183,20 @@ final readonly class CompactToken
      */
     public function keyId(): ?string
     {
-        $kid = $this->header['kid'] ?? null;
+        $kid = $this->header()['kid'] ?? null;
 
         return is_string($kid) ? $kid : null;
+    }
+
+    /**
+     * The protected header's members, for the signature check and nothing else.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function header(): array
+    {
+        /** @var array<array-key, mixed> */
+        return $this->header->getValue();
     }
 
     /**
@@ -243,7 +277,7 @@ final readonly class CompactToken
      * @param  string  $segment
      * @return bool
      */
-    private static function isHeader(string $segment): bool
+    private static function isHeader(#[\SensitiveParameter] string $segment): bool
     {
         $header  = StrictJson::decodeMembers((string) Base64Url::decode($segment)) ?? [];
         $alg     = $header['alg']                                                  ?? null;

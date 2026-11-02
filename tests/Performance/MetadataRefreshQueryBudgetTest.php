@@ -46,6 +46,10 @@ use Tests\Fixtures\Keys\Certificates;
  * - a scheduled refresh of one connection that changes nothing: 6 reads (the
  *   listing, the anchors, the certificates, then the three locked reads) and 2
  *   writes (the claim, the refresh), the schedule counting nothing;
+ * - listing connections with a URL and no switch, however many: 2 reads (the
+ *   listing, then the anchors of all of them at once), and with a switch set,
+ *   1,
+ *   since a connection that never refreshes stays due and is read on every run;
  * - a failed refresh: 5 reads (the connection, the anchors, the certificates,
  *   the connection and the fingerprints locked) and 4 writes (the counter's
  *   two, the claim, the failure);
@@ -111,6 +115,37 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
         $result = $this->assertQueryBudget(7, 5, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['idp_signing_certificates'], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
+    }
+
+    /**
+     * Listing connections whose refresh depends on an anchor reads the anchors
+     * once, however many there are, and only the one that has one is due.
+     *
+     * @return void
+     */
+    public function testListingManyConnectionsReadsTheirAnchorsOnce(): void
+    {
+        $connections = array_map(fn (): Connection => $this->switched(null), range(1, 5));
+
+        $this->trust($connections[2], self::idp()->certificate(), KeyUse::METADATA_SIGNING);
+
+        $due = $this->assertQueryBudget(2, 0, fn (): array => $this->refresher()->dueConnectionIds());
+
+        self::assertSame([$connections[2]->id], $due);
+    }
+
+    /**
+     * Listing connections whose switch decides for them reads no anchor.
+     *
+     * @return void
+     */
+    public function testListingConnectionsWithASwitchSetReadsNoAnchor(): void
+    {
+        $on = $this->switched(true);
+
+        $this->switched(false);
+
+        self::assertSame([$on->id], $this->assertQueryBudget(1, 0, fn (): array => $this->refresher()->dueConnectionIds()));
     }
 
     /**
@@ -219,23 +254,46 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
         ], ...$attributes]);
 
         foreach ($certificates as $certificate) {
-
-            $masked = MaskedKey::fromCertificate($certificate);
-
-            (new ConnectionKey)->forceFill([
-                'connection_id' => $connection->id,
-                'use'           => KeyUse::IDP_SIGNING,
-                'state'         => null,
-                'key_type'      => KeyType::RSA,
-                'key_bits'      => 2048,
-                'certificate'   => $masked->certificate,
-                'public_key'    => $masked->publicKey,
-                'private_key'   => null,
-                'fingerprint'   => $masked->fingerprint,
-            ])->save();
+            $this->trust($connection, $certificate, KeyUse::IDP_SIGNING);
         }
 
         return $connection;
+    }
+
+    /**
+     * A SAML connection with a URL and the switch given, trusting nothing.
+     *
+     * @param  ?bool  $switch
+     * @return \SineMacula\Laravel\Sso\Models\Connection
+     */
+    private function switched(?bool $switch): Connection
+    {
+        return $this->saml([], ['settings' => array_filter(['metadata_url' => self::URL, 'metadata_refresh' => $switch], static fn (mixed $value): bool => $value !== null)]);
+    }
+
+    /**
+     * Trust the certificate for the connection and the use.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  string  $certificate
+     * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
+     * @return void
+     */
+    private function trust(Connection $connection, string $certificate, KeyUse $use): void
+    {
+        $masked = MaskedKey::fromCertificate($certificate);
+
+        (new ConnectionKey)->forceFill([
+            'connection_id' => $connection->id,
+            'use'           => $use,
+            'state'         => null,
+            'key_type'      => KeyType::RSA,
+            'key_bits'      => 2048,
+            'certificate'   => $masked->certificate,
+            'public_key'    => $masked->publicKey,
+            'private_key'   => null,
+            'fingerprint'   => $masked->fingerprint,
+        ])->save();
     }
 
     /**

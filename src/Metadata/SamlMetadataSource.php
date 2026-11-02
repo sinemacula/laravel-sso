@@ -6,7 +6,6 @@ namespace SineMacula\Laravel\Sso\Metadata;
 
 use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
-use SineMacula\Laravel\Sso\Connections\SettingRules;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -24,10 +23,12 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
  * What a SAML connection refreshes (SSO-2.8, SSO-11.12): its identity
  * provider's metadata, from the `metadata_url` the administrator saved.
  *
- * - The schedule refreshes it when its `metadata_url` is a valid `https` URL,
- *   unless its `metadata_refresh` setting is off: the URL the administrator
- *   saved is the only one ever fetched. An administrator may refresh it
- *   whatever the setting says.
+ * - The schedule refreshes it when its `metadata_url` is a valid `https` URL
+ *   and `metadata_refresh` is `true`, or is unset on a connection with a
+ *   metadata signing anchor (`SamlRefreshRule`): HTTPS proves only who served
+ *   the file, so a URL alone never replaces trusted certificates by itself. The
+ *   URL the administrator saved is the only one ever fetched. An administrator
+ *   may refresh it whatever the setting says.
  * - Its snapshot is the connection's metadata signing anchors and identity
  *   provider signing certificates, read after the connection itself: the sorted
  *   fingerprints of both sets (`RefreshClaim::trustedOf()`), with the anchors'
@@ -105,8 +106,8 @@ final readonly class SamlMetadataSource extends MetadataSource
 
     /**
      * Whether the schedule refreshes the connection's metadata: a SAML
-     * connection with an `https` `metadata_url` and `metadata_refresh` not
-     * switched off.
+     * connection with an `https` `metadata_url` that has opted in, or that has
+     * a metadata signing anchor and has not switched it off.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
@@ -114,7 +115,23 @@ final readonly class SamlMetadataSource extends MetadataSource
     #[\Override]
     public function refreshes(Connection $connection): bool
     {
-        return ($connection->settings[Saml2Setting::METADATA_REFRESH->value] ?? true) === true && $this->isRefreshable($connection);
+        return $connection->protocol === Saml2Driver::NAME && SamlRefreshRule::refreshes($connection);
+    }
+
+    /**
+     * Those of the connections the schedule refreshes, in the order given,
+     * their anchors read once.
+     *
+     * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $connections
+     * @return list<\SineMacula\Laravel\Sso\Models\Connection>
+     */
+    #[\Override]
+    public function refreshing(array $connections): array
+    {
+        $saml     = array_values(array_filter($connections, $this->isRefreshable(...)));
+        $anchored = SamlRefreshRule::anchoredAmong($saml);
+
+        return array_values(array_filter($saml, static fn (Connection $connection): bool => SamlRefreshRule::refreshes($connection, isset($anchored[$connection->id]))));
     }
 
     /**
@@ -127,7 +144,7 @@ final readonly class SamlMetadataSource extends MetadataSource
     #[\Override]
     public function isRefreshable(Connection $connection): bool
     {
-        return $connection->protocol === Saml2Driver::NAME && SettingRules::url($connection->settings[Saml2Setting::METADATA_URL->value] ?? null) === null;
+        return $connection->protocol === Saml2Driver::NAME && SamlRefreshRule::hasUrl($connection->settings);
     }
 
     /**

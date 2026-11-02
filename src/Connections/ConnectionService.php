@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Keys\ClientAssertionKeys;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
+use SineMacula\Laravel\Sso\Metadata\SamlRefreshRule;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
@@ -80,7 +81,11 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
  * the endpoints are then saved by hand. A change of an OIDC connection's
  * `client_assertion_algorithm` is refused as `unsupported` when its current or
  * next key cannot sign under it (`Keys\ClientAssertionKeys`), read under the
- * lock, and is a trust change like any other.
+ * lock, and is a trust change like any other. Setting a SAML connection's
+ * `metadata_refresh` is one too: `true` delegates trust to its metadata URL and
+ * its TLS, and a change that brings it to hold a stale deadline clears what was
+ * stamped before and makes its first refresh due
+ * (`Metadata\SamlRefreshRule::resetForSettings()`).
  *
  * It holds the registry, the lookup, the freshness gate, the secrets, the
  * reporter, the mapping's caps, the voider and the clock, none of which keeps
@@ -439,6 +444,7 @@ final readonly class ConnectionService
             'secrets'           => $this->secrets->apply($locked->secrets, ConnectionSecrets::changes($secrets)),
             'attribute_mapping' => $map->toArray(),
             ...ProviderKeys::resetFor($locked, $changedSettings, $stored),
+            ...SamlRefreshRule::resetForSettings($locked, $changedSettings, $stored),
         ]);
 
         CiphertextWrite::save($locked, self::SECRETS, self::SECRETS_NOT_WRITTEN);

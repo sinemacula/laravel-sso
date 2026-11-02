@@ -8,6 +8,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken;
+use Symfony\Component\VarDumper\Cloner\VarCloner;
+use Symfony\Component\VarDumper\Dumper\CliDumper;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
@@ -42,7 +44,7 @@ final class CompactTokenTest extends TestCase
         $token   = CompactToken::parse($compact, 16384);
 
         self::assertNotNull($token);
-        self::assertSame(['alg' => 'RS256', 'kid' => 'k1', 'typ' => 'JWT'], $token->header);
+        self::assertSame(['alg' => 'RS256', 'kid' => 'k1', 'typ' => 'JWT'], $token->header());
         self::assertSame('RS256', $token->algorithm());
         self::assertSame('k1', $token->keyId());
         self::assertSame(['sub' => 'a', 'exp' => 1], $token->claims());
@@ -166,7 +168,7 @@ final class CompactTokenTest extends TestCase
         $token = CompactToken::parse(self::compact('{"alg":"RS256","kid":"99999999999999999999","x":99999999999999999999}', '{}'), 16384);
 
         self::assertSame('99999999999999999999', $token?->keyId());
-        self::assertSame(['alg' => 'RS256', 'kid' => '99999999999999999999', 'x' => '99999999999999999999'], $token->header);
+        self::assertSame(['alg' => 'RS256', 'kid' => '99999999999999999999', 'x' => '99999999999999999999'], $token->header());
     }
 
     /**
@@ -187,21 +189,119 @@ final class CompactTokenTest extends TestCase
     }
 
     /**
-     * A dump shows the algorithm and whether a `kid` is present, never the
-     * token, its `kid` or a claim.
+     * A dump shows a known algorithm and whether a `kid` is present, never the
+     * token, its `kid` or a claim, and JSON encoding shows the same.
      *
      * @return void
      */
     public function testADumpShowsNothingOfTheToken(): void
     {
         $token = CompactToken::parse(self::compact('{"alg":"RS256","kid":"secret-kid"}', '{"sub":"secret-subject"}'), 16384);
+        $shown = ['alg' => 'RS256', 'kid' => '[present]', 'token' => '[redacted]'];
 
-        self::assertSame(['alg' => 'RS256', 'kid' => '[present]', 'token' => '[redacted]'], $token?->__debugInfo());
+        self::assertSame($shown, $token?->__debugInfo());
+        self::assertSame($shown, $token->jsonSerialize());
         self::assertSame(['alg' => 'RS256', 'kid' => null, 'token' => '[redacted]'], CompactToken::parse(self::compact('{"alg":"RS256"}', '{}'), 16384)?->__debugInfo());
+    }
 
-        $printed = print_r($token, true) . var_export((array) $token, true);
+    /**
+     * Rows of `[algorithm, shown]`: every algorithm the package knows shown
+     * verbatim, and anything else, an algorithm it refuses included, never.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideAlgorithmsShown(): iterable
+    {
+        foreach (['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512'] as $algorithm) {
+            yield $algorithm => [$algorithm, $algorithm];
+        }
 
-        self::assertStringNotContainsString('secret-subject', $printed);
+        yield from [
+            'none'             => ['none', '[unknown]'],
+            'an HMAC'          => ['HS256', '[unknown]'],
+            'another case'     => ['rs256', '[unknown]'],
+            'a sensitive text' => ['secret-algorithm', '[unknown]'],
+        ];
+    }
+
+    /**
+     * The algorithm is shown verbatim only once it is one the package knows,
+     * while `algorithm()` still answers what the header holds.
+     *
+     * @param  string  $algorithm
+     * @param  string  $shown
+     * @return void
+     */
+    #[DataProvider('provideAlgorithmsShown')]
+    public function testADumpShowsOnlyAKnownAlgorithm(string $algorithm, string $shown): void
+    {
+        $token = CompactToken::parse(self::compact((string) json_encode(['alg' => $algorithm]), '{}'), 16384);
+
+        self::assertSame($shown, $token?->__debugInfo()['alg']);
+        self::assertSame($shown, $token->jsonSerialize()['alg']);
+        self::assertSame($algorithm, $token->algorithm());
+    }
+
+    /**
+     * Rows of `[what shows the token]`: every way a value leaves the object.
+     *
+     * @return iterable<string, array{0: \Closure(\SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken): string}>
+     */
+    public static function provideChannels(): iterable
+    {
+        yield from [
+            'json_encode' => [static fn (CompactToken $token): string => (string) json_encode($token)],
+            'var_dump'    => [static function (CompactToken $token): string {
+
+                ob_start();
+                var_dump($token); // @phpcs:ignore
+
+                return (string) ob_get_clean();
+            }],
+            'print_r'        => [static fn (CompactToken $token): string => print_r($token, true)],
+            'var_export'     => [static fn (CompactToken $token): string => var_export($token, true)],
+            'an array cast'  => [static fn (CompactToken $token): string => var_export((array) $token, true)],
+            'an array print' => [static fn (CompactToken $token): string => print_r((array) $token, true)],
+            'VarDumper'      => [static fn (CompactToken $token): string => (string) (new CliDumper)->dump((new VarCloner)->cloneVar($token), true)],
+        ];
+    }
+
+    /**
+     * No way of showing a token shows a marker of its header or its claims: an
+     * algorithm the package does not know, a `kid`, a `typ`, or an extension.
+     *
+     * @param  \Closure(\SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken): string  $show
+     * @return void
+     */
+    #[DataProvider('provideChannels')]
+    public function testNoChannelShowsTheHeaderOrTheClaims(\Closure $show): void
+    {
+        $header = '{"alg":"marker-alg","kid":"marker-kid","typ":"marker-typ","marker-name":"marker-value"}';
+        $token  = CompactToken::parse(self::compact($header, '{"sub":"marker-subject"}'), 16384);
+
+        self::assertNotNull($token);
+
+        $shown = $show($token);
+
+        self::assertStringNotContainsString('marker', $shown);
+        self::assertStringNotContainsString(self::segment($header), $shown);
+    }
+
+    /**
+     * What the marker test reads shows the token itself, so its silence is the
+     * redaction's rather than a channel that shows nothing.
+     *
+     * @return void
+     */
+    public function testEachChannelShowsTheToken(): void
+    {
+        $token = CompactToken::parse(self::compact('{"alg":"RS256"}', '{}'), 16384);
+
+        self::assertNotNull($token);
+        self::assertSame('{"alg":"RS256","kid":null,"token":"[redacted]"}', json_encode($token));
+        self::assertStringContainsString('[redacted]', print_r($token, true));
+        self::assertStringContainsString(\SensitiveParameterValue::class, var_export($token, true));
+        self::assertStringContainsString(\SensitiveParameterValue::class, var_export((array) $token, true));
     }
 
     /**

@@ -40,8 +40,8 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
   transaction, since step 2 may fetch; only the refetch's own claim and write touch a row.
 - It logs nothing: `ProviderKeys` logs how a refetch ended. Nothing it throws holds the token, and every array of claims
   it passes along is `#[\SensitiveParameter]` (SSO-7.6, SSO-11.9). `TokenResponse`, `CompactToken` and
-  `ValidatedIdToken` keep the tokens and claims in `\SensitiveParameterValue`, so a dump, a stack trace or a log record
-  cannot show them.
+  `ValidatedIdToken` keep the tokens, headers and claims in `\SensitiveParameterValue`, so a dump, a stack trace or a
+  log record cannot show them.
 
 ### Algorithm and key (steps 1 to 3)
 

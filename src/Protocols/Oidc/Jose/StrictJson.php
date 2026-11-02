@@ -14,7 +14,9 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
  * its top level, nested deeper than `MAX_DEPTH`, or holding a member name twice
  * in any object at any depth. Names are compared once their escapes are read,
  * so `"a"` and `"\u0061"` are the same name: PHP's decoder would keep the last
- * of two silently, and two readers of one document could disagree about it. An
+ * of two silently, and two readers of one document could disagree about it. A
+ * document whose names cannot be compared, the expression that reads them
+ * having failed on a PCRE limit, is refused as one that repeats a name. An
  * integer too large for PHP's is kept as its digits, a string, so a numeric
  * date refuses it rather than reading a finite float; a string-typed reader
  * must not read that form, or it would take the number for its digits.
@@ -65,7 +67,7 @@ final class StrictJson
             return null;
         }
 
-        return self::hasRepeatedMember($json) ? null : $decoded;
+        return self::mayRepeatMember($json) ? null : $decoded;
     }
 
     /**
@@ -116,19 +118,23 @@ final class StrictJson
 
     /**
      * Whether any object in the valid JSON text names a member twice, its names
-     * compared once their escapes are read.
+     * compared once their escapes are read, or that cannot be ruled out because
+     * the text could not be read as tokens.
      *
      * The text is valid JSON, so its strings and structural characters are read
      * as tokens in order, and a member name is a string followed by `:`. Each
      * open object and array keeps the names seen in it; an array never gains
-     * one.
+     * one. PCRE failing on one of its limits leaves no token list to trust, so
+     * the text is refused rather than taken to repeat nothing.
      *
      * @param  string  $json
      * @return bool
      */
-    private static function hasRepeatedMember(#[\SensitiveParameter] string $json): bool
+    private static function mayRepeatMember(#[\SensitiveParameter] string $json): bool
     {
-        preg_match_all(self::TOKENS, $json, $matches);
+        if (preg_match_all(self::TOKENS, $json, $matches) === false) {
+            return true;
+        }
 
         $tokens = $matches[0];
         $open   = new \SplStack;

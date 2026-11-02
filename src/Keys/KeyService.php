@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Metadata\SamlRefreshRule;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 
@@ -56,15 +57,19 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
  * connection's lock, it voids the authorisation requests and handoff codes in
  * flight through the connection and raises its trust version
  * (`Connections\InFlightVoider`), so none completes or is redeemed against the
- * certificates it was started under. Adding an identity provider signing
- * certificate is additive: every response a flow in flight could verify before
- * still verifies, so it voids nothing and leaves the trust version as it was,
- * and a provider rotating its key never voids its own flows. Only RSA
- * certificates are trusted for SAML, the only keys its library verifies.
- * Rotating a key of the service provider's own keeps what subjects mean and
- * voids nothing. A client assertion key that does not fit the connection's
- * `client_assertion_algorithm` (`ClientAssertionKeys`) is refused as `key_type`
- * `not_allowed`, before it is generated and again under the lock.
+ * certificates it was started under. A connection's first anchor also brings it
+ * to hold a stale deadline and, unless it is off, to refresh, so it clears what
+ * was stamped before and makes its first refresh due
+ * (`Metadata\SamlRefreshRule::resetForAnchor()`); removing its last anchor
+ * stops that, with what was stamped no longer holding a deadline. Adding an
+ * identity provider signing certificate is additive: every response a flow in
+ * flight could verify before still verifies, so it voids nothing and leaves the
+ * trust version as it was, and a provider rotating its key never voids its own
+ * flows. Only RSA certificates are trusted for SAML, the only keys its library
+ * verifies. Rotating a key of the service provider's own keeps what subjects
+ * mean and voids nothing. A client assertion key that does not fit the
+ * connection's `client_assertion_algorithm` (`ClientAssertionKeys`) is refused
+ * as `key_type` `not_allowed`, before it is generated and again under the lock.
  *
  * A metadata refresh replaces the identity provider signing certificates
  * exactly, under the connection's lock it already holds, through
@@ -605,7 +610,9 @@ final readonly class KeyService
             return KeyResult::invalid([$violation]);
         }
 
-        $key = new ConnectionKey;
+        $anchor = $use === KeyUse::METADATA_SIGNING;
+        $reset  = $anchor ? SamlRefreshRule::resetForAnchor($locked) : [];
+        $key    = new ConnectionKey;
 
         $key->forceFill([
             'connection_id' => $locked->id,
@@ -621,7 +628,8 @@ final readonly class KeyService
             'not_after'     => $facts['not_after'],
         ])->save();
 
-        if ($use === KeyUse::METADATA_SIGNING) {
+        if ($anchor) {
+            $locked->forceFill($reset)->save();
             $this->voider->voidFor($locked);
         }
 

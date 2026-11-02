@@ -37,14 +37,16 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * The schedule refreshes a connection while `sso.features.metadata_refresh` is
  * on, its protocol is available (`ProtocolManager::isAvailable()`, so a
  * protocol switched off fetches nothing and writes nothing) and has a source,
- * and its source finds it refreshes (`MetadataSource::refreshes()`: its own
- * switch is on and what it fetches is a URL the package may fetch). It is due
- * while its `metadata_refresh_at` is unset or not after now and no claim on it
- * holds (`metadata_claimed_until` unset or not after now), expired or not, so
- * the schedule recovers a connection past its stale limit; the due connections
- * are read on the write connection in chunks of `CHUNK_SIZE`, by keyset on
- * their id. A queued refresh reads its connection again and is `skipped` when
- * it is no longer due, refreshes or exists.
+ * and its source finds it refreshes (`MetadataSource::refreshes()`: the
+ * source's rule on its own switch holds, which for a SAML connection without a
+ * metadata signing anchor means an explicit opt-in, and what it fetches is a
+ * URL the package may fetch). It is due while its `metadata_refresh_at` is
+ * unset or not after now and no claim on it holds (`metadata_claimed_until`
+ * unset or not after now), expired or not, so the schedule recovers a
+ * connection past its stale limit; the due connections are read on the write
+ * connection in chunks of `CHUNK_SIZE`, by keyset on their id. A queued refresh
+ * reads its connection again and is `skipped` when it is no longer due,
+ * refreshes or exists.
  *
  * An administrator's refresh is what recovers a connection the schedule does
  * not, so it depends on neither `sso.features.metadata_refresh` nor the
@@ -52,12 +54,14 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * protocol available and what it fetches to be a URL the package may fetch
  * (`MetadataSource::isRefreshable()`), or it is `feature_disabled`, with
  * nothing fetched. Where the schedule would not refresh the connection, its
- * switch or the feature being off, the refresh changes what the schedule was
- * told to leave alone, so `sso.connection.trust` is asked first, and `stale` is
- * `freshness_required` (SSO-2.12). It skips the backoff, never a claim another
- * server holds, and counts against the connection's metadata limit
- * (`sso.rate_limits.metadata`) before anything is claimed or fetched: past it,
- * it is `rate_limited` with the seconds until the window ends.
+ * switch or the feature being off or its not having opted in, the refresh
+ * changes what the schedule was told to leave alone, so `sso.connection.trust`
+ * is asked first, and `stale` is `freshness_required` (SSO-2.12). A connection
+ * that has not opted in gains no stale deadline from it (`SamlRefreshRule`). It
+ * skips the backoff, never a claim another server holds, and counts against the
+ * connection's metadata limit (`sso.rate_limits.metadata`) before anything is
+ * claimed or fetched: past it, it is `rate_limited` with the seconds until the
+ * window ends.
  *
  * Each refresh, outside any transaction, has its source:
  *
@@ -323,11 +327,37 @@ final readonly class MetadataRefresher
         do {
 
             $chunk = $this->dueAfter($after);
-            $due   = [...$due, ...array_filter($chunk, $this->refreshes(...))];
+            $due   = [...$due, ...$this->refreshing($chunk)];
             $after = $chunk === [] ? null : $chunk[count($chunk) - 1]->id;
         } while (count($chunk) === self::CHUNK_SIZE);
 
         return $due;
+    }
+
+    /**
+     * Those of the connections of a listing that refresh, in the order given:
+     * each available protocol's source judges its own at once, since a
+     * connection that never refreshes stays due and is read on every run.
+     *
+     * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $chunk
+     * @return list<\SineMacula\Laravel\Sso\Models\Connection>
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function refreshing(array $chunk): array
+    {
+        $refreshing = [];
+
+        foreach (array_filter($this->sources->protocols(), $this->protocols->isAvailable(...)) as $protocol) {
+
+            $own = array_filter($chunk, static fn (Connection $connection): bool => $connection->protocol === $protocol);
+
+            foreach ($this->sources->for($protocol)?->refreshing(array_values($own)) ?? [] as $connection) {
+                $refreshing[$connection->id] = true;
+            }
+        }
+
+        return array_values(array_filter($chunk, static fn (Connection $connection): bool => isset($refreshing[$connection->id])));
     }
 
     /**

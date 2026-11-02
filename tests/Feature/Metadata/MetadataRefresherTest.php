@@ -927,6 +927,7 @@ final class MetadataRefresherTest extends TestCase
             'the switch off'                => [true, false],
             'both off'                      => [false, false],
             'the switch unset, feature off' => [false, null],
+            'the switch unset, no anchor'   => [true, null],
         ];
     }
 
@@ -988,18 +989,40 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Where the schedule would refresh the connection anyway, an
-     * administrator's refresh writes no more than it would, so no freshness is
-     * asked and a stale one is no refusal.
+     * Rows of `[switch, anchored]`: connections the schedule refreshes.
      *
+     * @return iterable<string, array{0: ?bool, 1: bool}>
+     */
+    public static function provideScheduled(): iterable
+    {
+        yield from [
+            'opted in, no anchor'        => [true, false],
+            'opted in, an anchor'        => [true, true],
+            'the switch unset, anchored' => [null, true],
+        ];
+    }
+
+    /**
+     * Where the schedule would refresh the connection anyway, opted in or
+     * anchored, an administrator's refresh writes no more than it would, so no
+     * freshness is asked and a stale one is no refusal.
+     *
+     * @param  ?bool  $switch
+     * @param  bool  $anchored
      * @return void
      */
-    public function testARefreshTheScheduleWouldMakeAsksNoFreshness(): void
+    #[DataProvider('provideScheduled')]
+    public function testARefreshTheScheduleWouldMakeAsksNoFreshness(?bool $switch, bool $anchored): void
     {
-        $connection = $this->saml(['metadata_refresh' => null]);
+        $connection = $this->saml(['metadata_refresh' => $switch]);
         $freshness  = FakeFreshness::stale();
 
         $this->app?->instance(Freshness::class, $freshness);
+
+        if ($anchored) {
+            $this->trust($connection, self::idp()->certificate(), KeyUse::METADATA_SIGNING);
+            $this->serve(self::metadata()->with(['aggregate' => ['https://other.example.test/saml'], 'sign' => 'aggregate']));
+        }
 
         self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
         self::assertSame([], $freshness->asked());
@@ -1034,6 +1057,8 @@ final class MetadataRefresherTest extends TestCase
         $expiry     = app(MetadataExpiry::class);
 
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
+        $this->trust($connection, self::idp()->certificate(), KeyUse::METADATA_SIGNING);
+        $this->serve(self::metadata()->with(['aggregate' => ['https://other.example.test/saml'], 'sign' => 'aggregate']));
 
         self::assertTrue($expiry->isExpired($connection));
 
@@ -1045,17 +1070,23 @@ final class MetadataRefresherTest extends TestCase
      * The schedule leaves a connection whose switch is off, and with the
      * feature off leaves every one, though each still expires and an
      * administrator can still refresh it; a connection whose switch is unset
-     * refreshes exactly while it has a URL.
+     * refreshes exactly while it has a URL and an anchor.
      *
      * @return void
      */
     public function testTheScheduleFollowsTheSwitchAndTheFeature(): void
     {
-        $unset = $this->saml(['metadata_refresh' => null]);
-        $off   = $this->saml(['metadata_refresh' => false]);
-        $noUrl = $this->saml(['metadata_refresh' => null, 'metadata_url' => null]);
+        $unset      = $this->saml(['metadata_refresh' => null]);
+        $off        = $this->saml(['metadata_refresh' => false]);
+        $noUrl      = $this->saml(['metadata_refresh' => null, 'metadata_url' => null]);
+        $unanchored = $this->saml(['metadata_refresh' => null]);
 
-        self::assertSame([$unset->id], array_values(array_intersect([$unset->id, $off->id, $noUrl->id], $this->refresher()->dueConnectionIds())));
+        foreach ([$unset, $off, $noUrl] as $anchored) {
+            $this->trust($anchored, self::idp()->certificate(), KeyUse::METADATA_SIGNING);
+        }
+
+        self::assertSame([$unset->id], $this->refresher()->dueConnectionIds());
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($unanchored->id)->outcome);
 
         config()->set('sso.features.metadata_refresh', false);
 

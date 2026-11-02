@@ -7,6 +7,7 @@ namespace Tests\Feature\Connections;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ImportSaver;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -16,6 +17,8 @@ use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
+use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Metadata\DiscoveryImporter;
 use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
 use SineMacula\Laravel\Sso\Metadata\MetadataImporter;
@@ -23,7 +26,10 @@ use SineMacula\Laravel\Sso\Metadata\ProposedOidcSettings;
 use SineMacula\Laravel\Sso\Metadata\ProposedSettings;
 use SineMacula\Laravel\Sso\Metadata\ValidatedFetch;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
+use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
+use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
@@ -34,13 +40,15 @@ use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
  * Feature tests for saving a fetched import (SSO-2.8, SSO-2.11): the stale
  * limit counts from the fetch a proposal came from, whether or not a refresh
  * has run, so an imported connection with its schedule off never has unlimited
- * trust; metadata given as XML, from no fetch, is saved as by hand; a save that
+ * trust, but for a SAML connection that has not opted in, which starts no clock;
+ * metadata given as XML, from no fetch, is saved as by hand; a save that
  * changed nothing still stamps, on the record, voiding nothing; and a refusal
  * stamps nothing.
  *
@@ -131,16 +139,18 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * An import from a URL, saved with its schedule off, counts from its fetch,
-     * and its `validUntil` is enforced.
+     * An import from a URL, saved to an anchored connection with its schedule
+     * off, counts from its fetch, and its `validUntil` is enforced.
      *
      * @return void
      */
     public function testAFetchedSamlImportCountsFromItsFetch(): void
     {
-        $connection = $this->saml(['metadata_refresh' => false]);
+        $connection = $this->saml(['metadata_url' => self::URL, 'metadata_refresh' => false]);
         $proposed   = $this->samlProposal(CarbonImmutable::parse('2026-11-10T00:00:00Z'));
         $fetch      = $proposed->fetch();
+
+        $this->anchor($connection);
 
         self::assertNotNull($fetch);
         self::assertSame([self::NOW, '2026-11-10T00:00:00+00:00'], [$fetch->validatedAt->toIso8601String(), $fetch->validUntil?->toIso8601String()]);
@@ -156,6 +166,157 @@ final class ImportSaverTest extends TestCase
         $this->clock->advance(9 * 86400);
 
         self::assertTrue(app(MetadataExpiry::class)->isExpired($this->row($connection)));
+    }
+
+    /**
+     * Rows of `[anchored, settings, stamped, expiry]`: what saving an import
+     * stamps on a SAML connection, and when that connection then expires.
+     *
+     * @return iterable<string, array{0: bool, 1: array<string, mixed>, 2: bool, 3: ?string}>
+     */
+    public static function provideSamlImports(): iterable
+    {
+        $url = ['metadata_url' => self::URL];
+
+        yield from [
+            'an anchor, unset'         => [true, $url, true, self::LIMIT],
+            'an anchor, true'          => [true, [...$url, 'metadata_refresh' => true], true, self::LIMIT],
+            'an anchor, false'         => [true, [...$url, 'metadata_refresh' => false], true, self::LIMIT],
+            'no anchor, unset'         => [false, $url, false, null],
+            'no anchor, true'          => [false, [...$url, 'metadata_refresh' => true], true, self::LIMIT],
+            'no anchor, false'         => [false, [...$url, 'metadata_refresh' => false], false, null],
+            'no anchor, no URL'        => [false, [], false, null],
+            'an anchor, unset, no URL' => [true, [], false, null],
+        ];
+    }
+
+    /**
+     * A reviewed import starts a clock only where the connection holds a
+     * deadline: one that will not refresh, its certificates as good as entered
+     * by hand, never expires for having been imported.
+     *
+     * @param  bool  $anchored
+     * @param  array<string, mixed>  $settings
+     * @param  bool  $stamped
+     * @param  ?string  $expiry
+     * @return void
+     */
+    #[DataProvider('provideSamlImports')]
+    public function testASamlImportStartsAClockOnlyWhereItHoldsADeadline(bool $anchored, array $settings, bool $stamped, ?string $expiry): void
+    {
+        $connection = $this->saml($settings);
+        $proposed   = $this->samlProposal(CarbonImmutable::parse('2027-01-01T00:00:00Z'));
+
+        if ($anchored) {
+            $this->anchor($connection);
+        }
+
+        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed));
+        $row    = $this->row($connection);
+
+        self::assertTrue($result->isChanged());
+        self::assertSame($stamped ? self::NOW : null, $row->metadata_fetched_at?->toIso8601String());
+        self::assertSame($stamped ? '2027-01-01T00:00:00+00:00' : null, $row->metadata_valid_until?->toIso8601String());
+        self::assertSame($expiry, app(MetadataExpiry::class)->expiresAt($row)?->toIso8601String());
+
+        $this->clock->advance(31 * 86400);
+
+        self::assertSame($expiry !== null, app(MetadataExpiry::class)->isExpired($this->row($connection)));
+    }
+
+    /**
+     * The save judges the connection as its own change leaves it: an import
+     * that opts in stamps, and one that opts out starts no clock and clears the
+     * one that was running.
+     *
+     * @return void
+     */
+    public function testASamlImportIsJudgedAfterItsChange(): void
+    {
+        $proposed = $this->samlProposal(CarbonImmutable::parse('2027-01-01T00:00:00Z'));
+        $optedIn  = $this->saml(['metadata_url' => self::URL]);
+        $optedOut = $this->saml(['metadata_url' => self::URL, 'metadata_refresh' => true], ['metadata_fetched_at' => $this->clock->now()->subDays(40)]);
+
+        $this->saver()->save(self::TENANT, $optedIn->id, ['settings' => [...$proposed->settings(), 'metadata_refresh' => true]], $this->fetchOf($proposed));
+        $this->saver()->save(self::TENANT, $optedOut->id, ['settings' => [...$proposed->settings(), 'metadata_refresh' => null]], $this->fetchOf($proposed));
+
+        self::assertSame(self::NOW, $this->row($optedIn)->metadata_fetched_at?->toIso8601String());
+        self::assertSame([null, null], [$this->row($optedOut)->metadata_fetched_at, $this->row($optedOut)->metadata_valid_until]);
+        self::assertFalse(app(MetadataExpiry::class)->isExpired($this->row($optedOut)));
+    }
+
+    /**
+     * A save that changed nothing on a connection that holds no deadline clears
+     * a stamp left from before, on the record, and with none to clear it
+     * reports nothing, since it did nothing.
+     *
+     * @return void
+     */
+    public function testAnUnchangedSamlSaveWithNoDeadlineReportsOnlyAClearedStamp(): void
+    {
+        $proposed = $this->samlProposal(CarbonImmutable::parse('2027-01-01T00:00:00Z'));
+        $settings = ['metadata_url' => self::URL, ...$proposed->settings()];
+        $stamped  = $this->saml($settings, ['metadata_fetched_at' => $this->clock->now()->subDays(40), 'metadata_valid_until' => $this->clock->now()->subDay()]);
+        $clean    = $this->saml($settings);
+
+        $this->startRecordingEvents();
+
+        self::assertFalse($this->saver()->save(self::TENANT, $stamped->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed))->isChanged());
+
+        $events = $this->recordedEvents();
+
+        self::assertCount(1, $events);
+        self::assertInstanceOf(ConnectionUpdated::class, $events[0]);
+        self::assertSame(['metadata_fetched_at'], $events[0]->changedSettings);
+        self::assertSame([null, null], [$this->row($stamped)->metadata_fetched_at, $this->row($stamped)->metadata_valid_until]);
+
+        $this->startRecordingEvents();
+
+        self::assertFalse($this->saver()->save(self::TENANT, $clean->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed))->isChanged());
+        self::assertSame([], $this->recordedEvents());
+        self::assertSame(0, $this->row($clean)->trust_version);
+    }
+
+    /**
+     * Saving an import of the same settings renews an expired connection that
+     * holds a deadline, on the record.
+     *
+     * @return void
+     */
+    public function testAnUnchangedSamlSaveWithADeadlineRenews(): void
+    {
+        $proposed   = $this->samlProposal(CarbonImmutable::parse('2027-01-01T00:00:00Z'));
+        $connection = $this->saml(['metadata_url' => self::URL, 'metadata_refresh' => true, ...$proposed->settings()], ['metadata_fetched_at' => $this->clock->now()->subDays(40)]);
+
+        self::assertTrue(app(MetadataExpiry::class)->isExpired($this->row($connection)));
+
+        $this->startRecordingEvents();
+
+        self::assertFalse($this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed))->isChanged());
+
+        $events = $this->recordedEvents();
+
+        self::assertCount(1, $events);
+        self::assertInstanceOf(ConnectionUpdated::class, $events[0]);
+        self::assertFalse(app(MetadataExpiry::class)->isExpired($this->row($connection)));
+    }
+
+    /**
+     * A stale caller stamps nothing on a SAML connection and clears nothing.
+     *
+     * @return void
+     */
+    public function testAStaleCallerLeavesASamlConnectionAlone(): void
+    {
+        $proposed   = $this->samlProposal(CarbonImmutable::parse('2027-01-01T00:00:00Z'));
+        $connection = $this->saml(['metadata_url' => self::URL], ['metadata_fetched_at' => $this->clock->now()->subDays(40)]);
+
+        $this->app?->instance(Freshness::class, FakeFreshness::stale());
+
+        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed));
+
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
+        self::assertSame('2026-09-22T09:30:00+00:00', $this->row($connection)->metadata_fetched_at?->toIso8601String());
     }
 
     /**
@@ -378,14 +539,51 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * A SAML connection of the tenant, with the settings given.
+     * The fetch a SAML proposal carries.
+     *
+     * @param  \SineMacula\Laravel\Sso\Metadata\ProposedSettings  $proposed
+     * @return \SineMacula\Laravel\Sso\Metadata\ValidatedFetch
+     */
+    private function fetchOf(ProposedSettings $proposed): ValidatedFetch
+    {
+        $fetch = $proposed->fetch();
+
+        self::assertNotNull($fetch);
+
+        return $fetch;
+    }
+
+    /**
+     * A SAML connection of the tenant, with the settings and attributes given.
      *
      * @param  array<string, mixed>  $settings
+     * @param  array<string, mixed>  $attributes
      * @return \SineMacula\Laravel\Sso\Models\Connection
      */
-    private function saml(array $settings = []): Connection
+    private function saml(array $settings = [], array $attributes = []): Connection
     {
-        return $this->makeConnection(['tenant_id' => self::TENANT, 'protocol' => 'saml2', 'settings' => $settings]);
+        return $this->makeConnection(['tenant_id' => self::TENANT, 'protocol' => 'saml2', 'settings' => Saml2Settings::fromArray($settings)->toArray(), ...$attributes]);
+    }
+
+    /**
+     * Give the connection a metadata signing anchor.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return void
+     */
+    private function anchor(Connection $connection): void
+    {
+        $masked = MaskedKey::fromCertificate(Certificates::distinct(0));
+
+        (new ConnectionKey)->forceFill([
+            'connection_id' => $connection->id,
+            'use'           => KeyUse::METADATA_SIGNING,
+            'key_type'      => KeyType::RSA,
+            'key_bits'      => 2048,
+            'certificate'   => $masked->certificate,
+            'public_key'    => $masked->publicKey,
+            'fingerprint'   => $masked->fingerprint,
+        ])->save();
     }
 
     /**
