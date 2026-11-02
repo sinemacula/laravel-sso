@@ -437,7 +437,13 @@ final class OidcStartTest extends TestCase
             ['openid email', '600', 'en-GB fr', 'consent'],
             [$parameters['scope'], $parameters['max_age'], $parameters['ui_locales'], $parameters['prompt']],
         );
-        self::assertSame(['max_age', 'ui_locales', 'prompt'], array_slice(array_keys($parameters), 8));
+
+        $added = array_slice(array_keys($parameters), 8);
+
+        // MySQL keeps a JSON object's keys in its own order, not as written.
+        sort($added);
+
+        self::assertSame(['max_age', 'prompt', 'ui_locales'], $added);
     }
 
     /**
