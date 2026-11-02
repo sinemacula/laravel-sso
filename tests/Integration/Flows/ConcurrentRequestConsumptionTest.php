@@ -57,6 +57,9 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     /** @var string The SAML request id the request was started with. */
     private const string SAML_REQUEST_ID = '_raced-request';
 
+    /** @var string What the one racer that consumes a request with no RelayState reports. */
+    private const string MISMATCH = 'refused:request_mismatch';
+
     /** @var \SineMacula\Laravel\Sso\Models\Connection The connection the request was started through. */
     private Connection $connection;
 
@@ -155,14 +158,15 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     }
 
     /**
-     * Processes racing to consume the request by its SAML request id: exactly
-     * one consumes it.
+     * Processes racing to consume the request by its SAML request id with no
+     * RelayState: exactly one consumes it, and is refused for the missing
+     * RelayState.
      *
      * @return void
      */
-    public function testExactlyOneOfTheRacersBySamlRequestIdConsumesTheRequest(): void
+    public function testExactlyOneOfTheRacersWithoutRelayStateConsumesTheRequest(): void
     {
-        $this->assertConsumedOnce($this->race(Correlation::solicited(null, self::SAML_REQUEST_ID)));
+        $this->assertConsumedOnce($this->race(Correlation::solicited(null, self::SAML_REQUEST_ID)), self::MISMATCH);
     }
 
     /**
@@ -171,23 +175,25 @@ final class ConcurrentRequestConsumptionTest extends TestCase
      *
      * @return void
      */
-    public function testExactlyOneOfTheRacersBySamlRequestIdInsideACallersTransactionConsumesTheRequest(): void
+    public function testExactlyOneOfTheRacersWithoutRelayStateInsideACallersTransactionConsumesTheRequest(): void
     {
-        $this->assertConsumedOnce($this->race(Correlation::solicited(null, self::SAML_REQUEST_ID), true));
+        $this->assertConsumedOnce($this->race(Correlation::solicited(null, self::SAML_REQUEST_ID), true), self::MISMATCH);
     }
 
     /**
-     * Assert exactly one process consumed the request, every other found it
-     * replayed, the request is marked consumed, and the store holds it once.
+     * Assert exactly one process consumed the request, answered as given, every
+     * other found it replayed, the request is marked consumed, and the store
+     * holds it once.
      *
      * @param  list<string>  $outcomes
+     * @param  string  $first
      * @return void
      */
-    private function assertConsumedOnce(array $outcomes): void
+    private function assertConsumedOnce(array $outcomes, string $first = 'consumed'): void
     {
         $listed = implode(', ', $outcomes);
 
-        self::assertCount(1, array_keys($outcomes, ConsumptionStatus::CONSUMED->value, true), $listed);
+        self::assertCount(1, array_keys($outcomes, $first, true), $listed);
         self::assertCount(self::PROCESSES - 1, array_keys($outcomes, ConsumptionStatus::REPLAYED->value, true), $listed);
         self::assertNotNull(AuthorizationRequest::query()->whereKey($this->request->id)->sole()->consumed_at);
         self::assertSame(1, DB::table(StorageConnection::table('single_use.table'))->where('namespace', RequestConsumption::NAMESPACE)->count());
