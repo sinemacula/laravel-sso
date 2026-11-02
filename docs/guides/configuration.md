@@ -26,6 +26,19 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `saml2.max_xml_bytes`                                | `196608`                                        | `SSO_SAML2_MAX_XML_BYTES`                     | [Signing in with SAML](saml-sign-in.md)         |
 | `saml2.max_decrypted_bytes`                          | `131072`                                        | `SSO_SAML2_MAX_DECRYPTED_BYTES`               | [Signing in with SAML](saml-sign-in.md)         |
 | `saml2.issue_instant_max_age_seconds`                | `300`                                           | `SSO_SAML2_ISSUE_INSTANT_MAX_AGE_SECONDS`     | [Signing in with SAML](saml-sign-in.md)         |
+| `oidc.max_id_token_bytes`                            | `16384`                                         | `SSO_OIDC_MAX_ID_TOKEN_BYTES`                 | [OIDC limits](#oidc-limits)                     |
+| `oidc.max_jwks_bytes`                                | `65536`                                         | `SSO_OIDC_MAX_JWKS_BYTES`                     | [OIDC limits](#oidc-limits)                     |
+| `oidc.max_jwks_keys`                                 | `50`                                            | `SSO_OIDC_MAX_JWKS_KEYS`                      | [OIDC limits](#oidc-limits)                     |
+| `oidc.max_discovery_bytes`                           | `65536`                                         | `SSO_OIDC_MAX_DISCOVERY_BYTES`                | [OIDC limits](#oidc-limits)                     |
+| `oidc.max_token_response_bytes`                      | `65536`                                         | `SSO_OIDC_MAX_TOKEN_RESPONSE_BYTES`           | [OIDC limits](#oidc-limits)                     |
+| `oidc.max_userinfo_bytes`                            | `65536`                                         | `SSO_OIDC_MAX_USERINFO_BYTES`                 | [OIDC limits](#oidc-limits)                     |
+| `oidc.max_callback_parameter_bytes`                  | `2048`                                          | `SSO_OIDC_MAX_CALLBACK_PARAMETER_BYTES`       | [OIDC limits](#oidc-limits)                     |
+| `oidc.max_callback_query_bytes`                      | `8192`                                          | `SSO_OIDC_MAX_CALLBACK_QUERY_BYTES`           | [OIDC limits](#oidc-limits)                     |
+| `oidc.max_callback_parameters`                       | `16`                                            | `SSO_OIDC_MAX_CALLBACK_PARAMETERS`            | [OIDC limits](#oidc-limits)                     |
+| `oidc.jwks_refetch_cooldown_seconds`                 | `300`                                           | `SSO_OIDC_JWKS_REFETCH_COOLDOWN_SECONDS`      | [OIDC limits](#oidc-limits)                     |
+| `oidc.id_token_max_age_seconds`                      | `300`                                           | `SSO_OIDC_ID_TOKEN_MAX_AGE_SECONDS`           | [OIDC limits](#oidc-limits)                     |
+| `oidc.token_timeout_seconds`                         | `10`                                            | `SSO_OIDC_TOKEN_TIMEOUT_SECONDS`              | [OIDC limits](#oidc-limits)                     |
+| `oidc.userinfo_timeout_seconds`                      | `10`                                            | `SSO_OIDC_USERINFO_TIMEOUT_SECONDS`           | [OIDC limits](#oidc-limits)                     |
 | `metadata.max_bytes`                                 | `1048576`                                       | `SSO_METADATA_MAX_BYTES`                      | [SAML metadata](saml-metadata.md)               |
 | `metadata.refresh_interval_seconds`                  | `86400`                                         | `SSO_METADATA_REFRESH_INTERVAL_SECONDS`       | [SAML metadata](saml-metadata.md)               |
 | `metadata.backoff_initial_seconds`                   | `300`                                           | `SSO_METADATA_BACKOFF_INITIAL_SECONDS`        | [SAML metadata](saml-metadata.md)               |
@@ -76,6 +89,32 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `rate_limits.redemption.per_ip`                      | 30 per 60 s                                     |                                               | [Rate limits](rate-limits.md)                   |
 | `rate_limits.metadata.per_connection`                | 10 per 3600 s                                   |                                               | [Rate limits](rate-limits.md)                   |
 | `rate_limits.domain_check.per_connection`            | 30 per 3600 s                                   |                                               | [Rate limits](rate-limits.md)                   |
+
+## OIDC limits
+
+Every OpenID Connect connection is held to the caps, windows and timeouts under `oidc`, checked at boot while
+`features.oidc` is on (see [Signing In with OIDC](oidc-sign-in.md), [The OIDC Callback](oidc-callback.md) and
+[Setting Up An OIDC Connection](oidc-connections.md)). Each can be lowered and none raised past its ceiling, the
+default:
+
+- an ID token is at most `max_id_token_bytes` (2 KiB to 16 KiB) and is refused before it is read; a JWE, a JSON
+  serialisation, a repeated JSON member, `crit` or `b64` is refused whatever its size;
+- a JWKS is at most `max_jwks_bytes` (4 KiB to 64 KiB) and `max_jwks_keys` keys (1 to 50), and a discovery document,
+  token response and UserInfo response at most their own `max_*_bytes` (4 KiB to 1 MiB, default 64 KiB); the fetcher
+  stops reading past the cap;
+- a callback is refused before anything in it is read when a parameter repeats or is an array, a name or value is
+  longer than `max_callback_parameter_bytes` (256 bytes to 2 KiB), the raw query is longer than
+  `max_callback_query_bytes` (1 KiB to 16 KiB, default 8 KiB) or holds more than `max_callback_parameters` (4 to 32,
+  default 16) parameters;
+- an ID token whose `kid` the stored JWKS lacks refetches it once, at most once per `jwks_refetch_cooldown_seconds` (a
+  minute to an hour, default 300) per connection, counted whether the refetch succeeds or not, so a flood of unknown
+  `kid`s cannot make the package fetch;
+- an ID token's `iat` is at most `id_token_max_age_seconds` old (30 to 3600, default 300), with the clock skew on top;
+- a token request and a UserInfo request each take at most `token_timeout_seconds` and `userinfo_timeout_seconds` (1 to
+  60, default 10) in place of `fetcher.timeout_seconds`, and are never retried.
+
+The scheduled refresh of a connection's discovery document and JWKS keeps the `metadata` cadence, backoff, claim, queue
+and stale limit, each resource counting from its own last validated fetch.
 
 ## Storage
 

@@ -160,7 +160,7 @@ final class ProtocolStateTest extends TestCase
      *
      * @throws \Random\RandomException
      */
-    public function testTheStateRefusesToBeSerialised(): void
+    public function testTheStateRefusesToBeSerialized(): void
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A protocol state cannot be serialised.');
@@ -173,7 +173,7 @@ final class ProtocolStateTest extends TestCase
      *
      * @return void
      */
-    public function testTheStateRefusesToBeUnserialised(): void
+    public function testTheStateRefusesToBeUnserialized(): void
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A protocol state cannot be unserialised.');

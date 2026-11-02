@@ -80,14 +80,16 @@ return new class extends Migration {
             // the lock, so a change made meanwhile refuses them.
             $blueprint->unsignedBigInteger('trust_version')->default(0);
 
-            // The SAML metadata refresh (SSO-2.8): raised by every refresh that
-            // writes, so two refreshes compare and set; the last validated
-            // fetch and the earliest validUntil of what it applied, from which
-            // the settings expire; when the next attempt is due, how many have
-            // failed in a row (the backoff), until when a server's claim on a
-            // refresh in progress holds, and the random token that claim was
-            // made with, which a refresh's write must match, so one whose claim
-            // expired and was taken over writes nothing.
+            // The metadata refresh (SSO-2.8), of a SAML connection's metadata
+            // or an OIDC connection's discovery document and JWKS: raised by
+            // every refresh that writes, so two refreshes compare and set; the
+            // last validated fetch and the earliest validUntil of what it
+            // applied, from which the settings expire; when the next attempt is
+            // due, how many have failed in a row (the backoff), until when a
+            // server's claim on a refresh in progress holds, and the random
+            // token that claim was made with, which a refresh's write must
+            // match, so one whose claim expired and was taken over writes
+            // nothing.
             $blueprint->unsignedBigInteger('metadata_version')->default(0);
             $blueprint->dateTime('metadata_fetched_at', 0)->nullable();
             $blueprint->dateTime('metadata_valid_until', 0)->nullable();
@@ -95,6 +97,21 @@ return new class extends Migration {
             $blueprint->unsignedInteger('metadata_refresh_failures')->default(0);
             $blueprint->dateTime('metadata_claimed_until', 0)->nullable();
             $blueprint->char('metadata_claim_token', 32)->nullable();
+
+            // An OIDC connection's JWKS (SSO-7.3), stored with it so no cache
+            // is needed: the public keys the package admitted, as a JSON list
+            // of their public members; the version every write of it raises, so
+            // a refetch and a refresh compare and set; when it was last
+            // validated, from which it expires once a refresh has written the
+            // connection; until when no unknown-kid refetch may start (the
+            // cooldown, claimed before the fetch and kept whether it succeeds
+            // or not); and the random token the refetch's claim was made with,
+            // which its write must match.
+            $blueprint->longText('jwks')->nullable();
+            $blueprint->unsignedBigInteger('jwks_version')->default(0);
+            $blueprint->dateTime('jwks_fetched_at', 0)->nullable();
+            $blueprint->dateTime('jwks_refetch_at', 0)->nullable();
+            $blueprint->char('jwks_claim_token', 32)->nullable();
 
             // Whole seconds in UTC, from the package's clock.
             $blueprint->dateTime('created_at', 0);

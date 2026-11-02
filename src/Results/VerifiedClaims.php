@@ -9,8 +9,9 @@ namespace SineMacula\Laravel\Sso\Results;
  * every check of SSO-6 or SSO-7 passed (SSO-8.1): the issuer, the subject and,
  * for a SAML `NameID`, its format; the raw attributes or claims the
  * connection's attribute mapping reads from, by the name the provider gave
- * them; the provider's authentication context; and, where linking by a verified
- * domain applies, the linking email the protocol asserted.
+ * them; the provider's authentication context; where linking by a verified
+ * domain applies, the linking email the protocol asserted; and, for OIDC, the
+ * email the provider asserted with its `email_verified`, whichever its value.
  *
  * Only a driver builds it, and only from its verified element (SSO-6.3); the
  * completion pipeline maps the attributes and adds the connection, tenant,
@@ -20,8 +21,9 @@ namespace SineMacula\Laravel\Sso\Results;
  * shows the names of the attributes and never their values; `json_encode()`,
  * and a logger's normaliser that falls back to it, write the issuer, the NameID
  * format, each attribute's name with its kind and the redacted forms of the
- * authentication context and the linking email, never the subject or a value
- * the provider asserted; and it refuses to be serialised or unserialised.
+ * authentication context, the linking email and, when there is one, the
+ * asserted email, never the subject or a value the provider asserted; and it
+ * refuses to be serialised or unserialised.
  *
  * The issuer and subject are 1 to 1024 bytes and kept exactly as received,
  * never trimmed or normalised (SSO-6.9); a NameID format is 1 to 255 bytes. A
@@ -45,6 +47,7 @@ final readonly class VerifiedClaims implements \JsonSerializable
      * @param  array<string, mixed>  $attributes
      * @param  \SineMacula\Laravel\Sso\Results\AuthenticationContext  $authenticationContext
      * @param  ?\SineMacula\Laravel\Sso\Results\LinkingEmail  $linkingEmail
+     * @param  ?\SineMacula\Laravel\Sso\Results\AssertedEmail  $assertedEmail
      *
      * @throws \InvalidArgumentException
      */
@@ -67,6 +70,9 @@ final readonly class VerifiedClaims implements \JsonSerializable
 
         /** The linking email the protocol asserted, where linking by a verified domain applies. */
         public ?LinkingEmail $linkingEmail = null,
+
+        /** The email and `email_verified` an OIDC provider asserted, from one source. */
+        public ?AssertedEmail $assertedEmail = null,
     ) {
         StoredValues::assertText('issuer', $issuer, VerifiedResult::MAX_ISSUER_LENGTH);
         StoredValues::assertText('subject', $subject, VerifiedResult::MAX_SUBJECT_LENGTH);
@@ -123,15 +129,15 @@ final readonly class VerifiedClaims implements \JsonSerializable
     /**
      * What `json_encode()` writes: the issuer, the NameID format, each
      * attribute's name with the kind of its value, and the redacted forms of
-     * the authentication context and the linking email; never the subject or an
-     * attribute's value.
+     * the authentication context, the linking email and, when there is one, the
+     * asserted email; never the subject or an attribute's value.
      *
      * @return array<string, mixed>
      */
     #[\Override]
     public function jsonSerialize(): array
     {
-        return [
+        $json = [
             'issuer'                 => $this->issuer,
             'subject'                => StoredValues::REDACTED,
             'name_id_format'         => $this->nameIdFormat,
@@ -139,5 +145,7 @@ final readonly class VerifiedClaims implements \JsonSerializable
             'authentication_context' => $this->authenticationContext->jsonSerialize(),
             'linking_email'          => $this->linkingEmail?->jsonSerialize(),
         ];
+
+        return $this->assertedEmail === null ? $json : [...$json, 'asserted_email' => $this->assertedEmail->jsonSerialize()];
     }
 }

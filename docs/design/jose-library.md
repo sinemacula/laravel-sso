@@ -165,8 +165,10 @@ The adapter, not the library, carries these rules:
   whatever the configuration says, and the configuration check refuses them.
 - **Key selection.** The `kid` must be a non-empty string. The key is the one stored JWK whose own `kid` is
   identical to it. A token with no `kid`, or an unknown `kid`, follows SSO-7.3's refetch-once path and is otherwise
-  refused. `verifyWithKeySet()`, `JWKSet::get()` and `JWKSet::has()` are never used. Whether a JWKS with a single key
-  may verify a token that has no `kid` is settled when the adapter is built.
+  refused. `verifyWithKeySet()`, `JWKSet::get()` and `JWKSet::has()` are never used. A token with no `kid` is verified
+  only when exactly one stored key is admissible for its algorithm (after `alg`, `kty` and curve, strength, `use` and
+  `key_ops`); none is an unknown key (the refetch-once path), two or more a refusal. An unknown supplied `kid` never
+  falls back to a key without one.
 - **Key admission, on import and again at use.** Public keys only (no `d`). `kty` `RSA` or `EC` (never `oct`).
   `use` `sig` when present. An `alg`, when present, must be in the allow-list. RSA keys of at least 2048 bits. A curve
   that matches the algorithm: P-256 for ES256, P-384 for ES384, P-521 for ES512. The header `alg` must equal the JWK's
@@ -186,10 +188,33 @@ The adapter, not the library, carries these rules:
 
 ## Implementation Anchors
 
-- The package's JOSE adapter wraps `JWSVerifier`, `JWSBuilder` and JWK import behind one package-owned class, so no
-  other class touches the library.
+- The adapter is recorded in `jose-adapter.md`. It is the namespace `Protocols\Oidc\Jose`, and `JoseAdapter` is the one
+  class in it that names the library: `verify()` (a `JWSVerifier` built per call over an `AlgorithmManager` of the
+  allow-list alone, then `verifyWithKey()` with the one stored key chosen) and `signClientAssertion()` (`JWSBuilder`
+  over the key's own algorithm, `CompactSerializer`).
+- Everything else the adapter carries is the package's own code: `StrictJson` (duplicate members refused after
+  unescaping, nested too, large integers kept as digits only where a time claim reads them), `Base64Url` (canonical
+  unpadded only), `CompactToken` (compact only, the size cap, no JWE, `crit`, `b64`, `enc` and `zip` refused, `kid` and
+  `typ` typed), `AlgorithmAllowList` (RS, PS and ES at 256 bits and above, never `none` or HMAC), `ProviderKey`
+  (admission and the check at use, the stored form, the RFC 7638 thumbprint), `PublicKeyEncoding` (the key read back by
+  OpenSSL, so a point off its curve is never admitted), `ProviderKeySet` (the JWKS caps, the duplicate admissible `kid`
+  refusal, exact `kid` selection and the missing-`kid` rule, what a replacement adds and removes), `KeySelection`,
+  `TimeClaims` (`exp`, `iat` and `nbf` against `Contracts\Clock` and `ClockSkew`, typed, at full precision) and
+  `ClientKey` (PS256 for an RSA key, ES256 for a P-256 key, the thumbprint as `kid`, the public JWK published).
 - Time and claim checks read `src/Contracts/Clock.php` and `src/Clock/ClockSkew.php`.
 - The JWKS is fetched through the package's fetcher (`src/Contracts/Fetcher.php`), never by the library.
+- The hostile tokens of this comparison are `src/Testing/Oidc/HostileIdTokens.php`, signed by hand with OpenSSL
+  (`JwsSigner`, `PssSignature`), never by the library.
+
+## Authoritative Tests
+
+- `tests/Unit/Protocols/Oidc/Jose/`: each part of the adapter, every algorithm verifying a hand-signed token, client
+  assertions verified without the library, two time checks in a row and two interleaved in fibres each keeping their
+  own clock and skew.
+- `tests/Unit/Testing/Oidc/HostileIdTokensTest.php`: every hostile token refused at the stage it names.
+- `tests/Unit/Architecture/JoseLibraryBoundaryTest.php`: only the adapter names the library, only `JoseAdapter` calls
+  it, nothing names `JWKSet`, `verifyWithKeySet()`, `None`, HMAC, the checkers, the loaders, encryption, nested tokens
+  or key management, and the adapter registers only the asymmetric algorithms.
 
 ## Change Triggers
 

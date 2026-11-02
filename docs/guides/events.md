@@ -169,6 +169,12 @@ with the operation's flow (`$event->flow`, a `Flow`) and a machine-readable reas
 | `metadata_entity_not_found`       | The metadata holds no entity with the connection's entity id                              |
 | `metadata_conflict`               | A metadata refresh lost to a change made while it fetched, and wrote nothing              |
 | `metadata_refresh_in_progress`    | Another server is refreshing the connection's metadata                                    |
+| `id_token_invalid`                | The ID token is missing, malformed, too large, or has a claim missing or wrongly typed    |
+| `token_response_invalid`          | The token endpoint's answer is not a JSON object with an access token of type `Bearer`    |
+| `at_hash_mismatch`                | The ID token's `at_hash` does not match the access token                                  |
+| `userinfo_invalid`                | The UserInfo answer is malformed, or its `sub` is not the ID token's                      |
+| `discovery_invalid`               | The OpenID provider's discovery document is malformed or names nothing usable             |
+| `jwks_invalid`                    | The OpenID provider's JWKS is malformed, too large, or holds no usable key                |
 
 The reasons and flows are stable: a value is never renamed or reused, so you can count failure modes by them.
 
@@ -223,26 +229,31 @@ connections](managing-connections.md) and [Keys and certificates](keys.md)) is r
 commits, so an audit trail can record who changed which identity provider's trust, and when. Each is in
 `SineMacula\Laravel\Sso\Events` and carries the context above, with the connection's id, its tenant and its protocol.
 
-| Event                   | Fields beyond the context                            | Dispatched when                                                                 |
-|-------------------------|------------------------------------------------------|---------------------------------------------------------------------------------|
-| `ConnectionCreated`     | none                                                 | `ConnectionService::create()` created a connection, disabled                    |
-| `ConnectionUpdated`     | `changedSettings`: the names of what changed         | `update()` or `SubjectMigration::migrate()` changed what the connection holds   |
-| `ConnectionEnabled`     | none                                                 | `enable()` enabled a disabled connection                                        |
-| `ConnectionDisabled`    | none                                                 | `ConnectionLifecycle::disable()` disabled an enabled connection                 |
-| `ConnectionDeleted`     | none                                                 | `ConnectionLifecycle::delete()` deleted a connection and everything it held     |
-| `KeyAdded`              | `keyId`, `use`, `state`, `fingerprint`, `notAfter`   | `KeyService::addNext()` added a key pair, or `trustCertificate()` a certificate |
-| `KeyMadeCurrent`        | `keyId`, `use`, `fingerprint`, `previousKeyId`       | `makeCurrent()` made a key current, or `addNext()` added a use's first key      |
-| `KeyRetired`            | `keyId`, `use`, `fingerprint`                        | `retire()` removed a key, or `distrustCertificate()` a certificate              |
-| `KeyNearingExpiry`      | `keyId`, `use`, `fingerprint`, `notAfter`            | `ExpiryReport::report()` found its validity ending within the warning, or ended |
-| `MetadataRefreshed`     | `changedSettings`, `metadataVersion`, `trustChanged` | A metadata refresh validated the identity provider's metadata and applied it    |
-| `MetadataRefreshFailed` | `reason`, `failures`, `nextAttemptAt`                | A metadata refresh failed; the last good metadata is kept                       |
+| Event                   | Fields beyond the context                                 | Dispatched when                                                                 |
+|-------------------------|-----------------------------------------------------------|---------------------------------------------------------------------------------|
+| `ConnectionCreated`     | none                                                      | `ConnectionService::create()` created a connection, disabled                    |
+| `ConnectionUpdated`     | `changedSettings`: the names of what changed              | `update()` or `SubjectMigration::migrate()` changed what the connection holds   |
+| `ConnectionEnabled`     | none                                                      | `enable()` enabled a disabled connection                                        |
+| `ConnectionDisabled`    | none                                                      | `ConnectionLifecycle::disable()` disabled an enabled connection                 |
+| `ConnectionDeleted`     | none                                                      | `ConnectionLifecycle::delete()` deleted a connection and everything it held     |
+| `KeyAdded`              | `keyId`, `use`, `state`, `fingerprint`, `notAfter`        | `KeyService::addNext()` added a key pair, or `trustCertificate()` a certificate |
+| `KeyMadeCurrent`        | `keyId`, `use`, `fingerprint`, `previousKeyId`            | `makeCurrent()` made a key current, or `addNext()` added a use's first key      |
+| `KeyRetired`            | `keyId`, `use`, `fingerprint`                             | `retire()` removed a key, or `distrustCertificate()` a certificate              |
+| `KeyNearingExpiry`      | `keyId`, `use`, `fingerprint`, `notAfter`                 | `ExpiryReport::report()` found its validity ending within the warning, or ended |
+| `MetadataRefreshed`     | `changedSettings`, `metadataVersion`, `trustChanged`      | A metadata refresh validated the identity provider's metadata and applied it    |
+| `MetadataRefreshFailed` | `reason`, `failures`, `nextAttemptAt`                     | A metadata refresh failed; the last good metadata is kept                       |
+| `JwksRefreshed`         | `jwksVersion`, `keysAdded`, `keysRemoved`, `trustChanged` | An ID token's unknown `kid` refetched the connection's JWKS and stored it       |
+| `JwksRefreshFailed`     | `reason`, `nextRefetchAt`                                 | That refetch failed; the stored keys are kept until the cooldown ends           |
 
-A metadata refresh's `changedSettings` names the settings it changed, such as `['sso_url', 'idp_signing_certificates']`,
-and none when nothing changed; `trustChanged` says whether it removed or replaced a trusted certificate or moved the
-single sign-on URL or binding, which voids every flow in flight through the connection, and `metadataVersion` is the
-connection's version after it. A failed refresh's `reason` is `fetch_refused`, `fetch_failed`, `metadata_invalid`,
-`metadata_signature_invalid`, `metadata_entity_not_found`, `metadata_conflict` or `metadata_expired`, `failures` the
-failures in a row, and `nextAttemptAt` when the next scheduled attempt is due.
+A metadata refresh, of a SAML connection's metadata or an OIDC connection's discovery document and JWKS, reports
+`MetadataRefreshed` or `MetadataRefreshFailed`; an OIDC connection's refetch of its JWKS on an unknown `kid` reports
+`JwksRefreshed` or `JwksRefreshFailed` instead, with no acting identity. A metadata refresh's `changedSettings` names
+the settings it changed, such as `['sso_url', 'idp_signing_certificates']`, and none when nothing changed;
+`trustChanged` says whether it removed or replaced a trusted certificate or moved the single sign-on URL or binding,
+which voids every flow in flight through the connection, and `metadataVersion` is the connection's version after it. A
+failed refresh's `reason` is `fetch_refused`, `fetch_failed`, `metadata_invalid`, `metadata_signature_invalid`,
+`metadata_entity_not_found`, `metadata_conflict` or `metadata_expired`, `failures` the failures in a row, and
+`nextAttemptAt` when the next scheduled attempt is due.
 
 `changedSettings` names what changed, never its value: the settings in the order the protocol lists them, then the
 secrets, then `display_name` and `attribute_mapping`, such as `['token_endpoint', 'client_secret', 'display_name']`. A

@@ -312,10 +312,18 @@ connection from start to finish is described in [Setting up a SAML connection](s
 | `scopes`                 | Up to 20 distinct scope tokens, including `openid`                                                                                       | `openid`, `email`, `profile` |
 | `id_token_algorithms`    | `RS256` to `RS512`, `PS256` to `PS512`, `ES256` to `ES512`; never `none` or `HS*`                                                        | `RS256`                      |
 | `extra_parameters`       | Up to 10 of `prompt`, `acr_values`, `login_hint`, `ui_locales`, `claims_locales`, `display`, `domain_hint`, `hd`, each at most 512 bytes | none                         |
+| `trusted_audiences`      | Up to 10 distinct audiences an ID token may name beside the client id, each at most 255 bytes, no whitespace                             | none                         |
+| `max_age`                | An integer from 0 to 604800 seconds, sent as `max_age`; the ID token must then satisfy it with `auth_time`                               | none                         |
+| `fetch_userinfo`         | `true`, `false`; while `true`, `userinfo_endpoint` is required and UserInfo must answer                                                  | `false`                      |
+| `metadata_refresh`       | `true` (only while `features.metadata_refresh` is on), `false`                                                                           | `false`                      |
 
-The issuer must be exactly the one your provider's ID tokens carry, trailing slash and case included. An extra
-parameter the flow controls (`response_type`, `response_mode`, `client_id`, `redirect_uri`, `scope`, `state`, `nonce`,
-`code_challenge`, `code_challenge_method`, `request`, `request_uri`) is refused as `reserved`, whatever its case.
+The issuer must be exactly the one your provider's ID tokens carry, trailing slash and case included. A change to
+`trusted_audiences`, `max_age`, `fetch_userinfo` or `metadata_refresh` is a trust change, as a change to an endpoint or
+the client's credentials is: it needs fresh authentication (`sso.connection.trust`) and voids the flows in flight. An
+extra parameter the flow controls (`response_type`, `response_mode`, `client_id`, `redirect_uri`, `scope`, `state`,
+`nonce`, `code_challenge`, `code_challenge_method`, `request`, `request_uri`) is refused as `reserved`, whatever its
+case. Setting up an OIDC connection from start to finish is described in
+[Setting Up An OIDC Connection](oidc-connections.md), and the flow in [Signing In with OIDC](oidc-sign-in.md).
 
 ## Attribute mapping
 

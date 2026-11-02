@@ -216,7 +216,7 @@ final class StartResultTest extends TestCase
      *
      * @return void
      */
-    public function testCannotBeUnserialised(): void
+    public function testCannotBeUnserialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A start result cannot be unserialised.'));
 

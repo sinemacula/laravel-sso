@@ -53,19 +53,28 @@ final class FetchRequestTest extends TestCase
     }
 
     /**
-     * A metadata request may carry a size cap of its own, of at least a byte,
-     * shown by a dump; every other request, and a metadata request given none,
-     * carries none.
+     * Every request may carry a size cap of its own, of at least a byte, shown
+     * by a dump; one given none carries none.
      *
      * @return void
      */
-    public function testOnlyAMetadataRequestCarriesItsOwnCap(): void
+    public function testARequestCarriesItsOwnCap(): void
     {
         $client = FetchCredentials::clientSecretBasic('client', 'secret');
+        $bearer = FetchCredentials::accessToken('token');
 
         self::assertSame(1, FetchRequest::metadata(self::URL, 1)->maxBytes);
         self::assertSame(268435456, FetchRequest::metadata(self::URL, 268435456)->maxBytes);
         self::assertSame(4096, FetchRequest::metadata(self::URL, 4096)->__debugInfo()['max_bytes']);
+        self::assertSame(
+            [2, 3, 4, 5],
+            [
+                FetchRequest::discovery(self::URL, 2)->maxBytes,
+                FetchRequest::jwks(self::URL, 3)->maxBytes,
+                FetchRequest::token(self::URL, [], $client, null, 4)->maxBytes,
+                FetchRequest::userInfo(self::URL, $bearer, null, 5)->maxBytes,
+            ],
+        );
         self::assertSame(
             [null, null, null, null, null],
             [
@@ -73,16 +82,51 @@ final class FetchRequestTest extends TestCase
                 FetchRequest::discovery(self::URL)->maxBytes,
                 FetchRequest::jwks(self::URL)->maxBytes,
                 FetchRequest::token(self::URL, [], $client)->maxBytes,
-                FetchRequest::userInfo(self::URL, FetchCredentials::accessToken('token'))->maxBytes,
+                FetchRequest::userInfo(self::URL, $bearer)->maxBytes,
             ],
         );
 
         foreach ([0, -1] as $maxBytes) {
             try {
-                FetchRequest::metadata(self::URL, $maxBytes);
+                FetchRequest::jwks(self::URL, $maxBytes);
                 self::fail("A cap of {$maxBytes} bytes was taken.");
             } catch (\InvalidArgumentException $exception) {
                 self::assertSame('A request\'s own size cap is at least one byte.', $exception->getMessage());
+            }
+        }
+    }
+
+    /**
+     * A token or UserInfo request may carry a timeout of its own, of at least a
+     * second, shown by a dump; every other request, and one given none, carries
+     * none.
+     *
+     * @return void
+     */
+    public function testATokenOrUserInfoRequestCarriesItsOwnTimeout(): void
+    {
+        $client = FetchCredentials::clientSecretBasic('client', 'secret');
+        $bearer = FetchCredentials::accessToken('token');
+
+        self::assertSame([1, 60], [FetchRequest::token(self::URL, [], $client, 1)->timeoutSeconds, FetchRequest::userInfo(self::URL, $bearer, 60)->timeoutSeconds]);
+        self::assertSame(7, FetchRequest::token(self::URL, [], $client, 7)->__debugInfo()['timeout']);
+        self::assertSame(
+            [null, null, null, null, null],
+            [
+                FetchRequest::metadata(self::URL)->timeoutSeconds,
+                FetchRequest::discovery(self::URL)->timeoutSeconds,
+                FetchRequest::jwks(self::URL)->timeoutSeconds,
+                FetchRequest::token(self::URL, [], $client)->timeoutSeconds,
+                FetchRequest::userInfo(self::URL, $bearer)->timeoutSeconds,
+            ],
+        );
+
+        foreach ([0, -1] as $seconds) {
+            try {
+                FetchRequest::userInfo(self::URL, $bearer, $seconds);
+                self::fail("A timeout of {$seconds} seconds was taken.");
+            } catch (\InvalidArgumentException $exception) {
+                self::assertSame('A request\'s own timeout is at least one second.', $exception->getMessage());
             }
         }
     }
@@ -174,10 +218,13 @@ final class FetchRequestTest extends TestCase
         $request = FetchRequest::token(self::URL, ['code' => 'the-code', 'code_verifier' => 'the-verifier'], FetchCredentials::clientSecretPost('client', 'the-secret'));
 
         self::assertSame(
-            ['purpose' => 'token', 'url' => self::URL, 'form' => ['code', 'code_verifier'], 'credentials' => 'client_secret_post', 'max_bytes' => null],
+            ['purpose' => 'token', 'url' => self::URL, 'form' => ['code', 'code_verifier'], 'credentials' => 'client_secret_post', 'max_bytes' => null, 'timeout' => null],
             $request->__debugInfo(),
         );
-        self::assertSame(['purpose' => 'jwks', 'url' => self::URL, 'form' => [], 'credentials' => null, 'max_bytes' => null], FetchRequest::jwks(self::URL)->__debugInfo());
+        self::assertSame(
+            ['purpose' => 'jwks', 'url' => self::URL, 'form' => [], 'credentials' => null, 'max_bytes' => null, 'timeout' => null],
+            FetchRequest::jwks(self::URL)->__debugInfo(),
+        );
 
         $printed = print_r($request, true);
 

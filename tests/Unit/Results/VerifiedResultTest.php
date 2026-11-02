@@ -9,15 +9,20 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Results\AssertedEmail;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
+use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
 use SineMacula\Laravel\Sso\Results\StoredValues;
+use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use Tests\Concerns\DumpsValues;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
  * Unit tests for the verified result: what it holds, its stored form, which
- * serialisation and JSON write, read back with every part checked again, and
- * the bounds on each part.
+ * serialisation and JSON write, read back with every part checked again, the
+ * bounds on each part, and the asserted email: stored and read back whole, and
+ * shown by the result's and the claims' JSON and dumps only without its email.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +31,18 @@ use Tests\Fixtures\Results\ExampleResults;
  */
 #[CoversClass(VerifiedResult::class)]
 #[CoversClass(StoredValues::class)]
+#[CoversClass(VerifiedClaims::class)]
+#[CoversClass(AssertedEmail::class)]
 final class VerifiedResultTest extends TestCase
 {
+    use DumpsValues;
+
+    /** @var string The email the provider asserted, exactly as received. */
+    private const string ASSERTED_EMAIL = ' Asserted+Tag@Example.COM ';
+
+    /** @var string A part of that email no class or property name shares. */
+    private const string ASSERTED_PART = 'Asserted+Tag';
+
     /**
      * The stored form holds every part, under its snake_case name, and nothing
      * else; the subject exactly as received.
@@ -115,6 +130,12 @@ final class VerifiedResultTest extends TestCase
         yield 'a linking email that is a string' => [static fn (array $stored): array => ['linking_email' => 'person@example.com'] + $stored];
         yield 'a linking email of no source' => [static fn (array $stored): array => ['linking_email' => ['email' => 'person@example.com', 'source' => 'header']] + $stored];
         yield 'a linking email with no @' => [static fn (array $stored): array => ['linking_email' => ['email' => 'person', 'source' => 'id_token']] + $stored];
+        yield 'an asserted email that is a string' => [static fn (array $stored): array => ['asserted_email' => 'person@example.com'] + $stored];
+        yield 'an asserted email with no email' => [static fn (array $stored): array => ['asserted_email' => ['verified' => true, 'source' => 'id_token']] + $stored];
+        yield 'an asserted email of no source' => [static fn (array $stored): array => ['asserted_email' => ['email' => 'person@example.com', 'source' => 'header']] + $stored];
+        yield 'an asserted email with a string flag' => [
+            static fn (array $stored): array => ['asserted_email' => ['email' => 'person@example.com', 'verified' => 'true', 'source' => 'id_token']] + $stored,
+        ];
     }
 
     /**
@@ -136,7 +157,7 @@ final class VerifiedResultTest extends TestCase
      *
      * @return void
      */
-    public function testRefusesACorruptSerialisation(): void
+    public function testRefusesACorruptSerialization(): void
     {
         $serialised = unserialize(str_replace('s:5:"saml2"', 's:5:"saml3"', serialize(ExampleResults::full())));
 
@@ -289,6 +310,173 @@ final class VerifiedResultTest extends TestCase
         $result     = new VerifiedResult('i', 's', null, 'c', 't', 'oidc', 'web', Purpose::SIGN_IN, RequestReference::generate(), $attributes, false, new AuthenticationContext);
 
         self::assertSame($attributes, $result->attributes);
+    }
+
+    /**
+     * A result with no asserted email stores no key for one, reads back with
+     * none, and may give it as `null` in what it stored.
+     *
+     * @return void
+     */
+    public function testAResultWithNoAssertedEmailStoresNone(): void
+    {
+        $result = ExampleResults::bare();
+
+        self::assertNull($result->assertedEmail);
+        self::assertArrayNotHasKey('asserted_email', $result->toArray());
+        self::assertArrayNotHasKey('asserted_email', $result->jsonSerialize());
+        self::assertNull(VerifiedResult::restore($result->toArray())->assertedEmail);
+        self::assertNull(VerifiedResult::restore(['asserted_email' => null] + $result->toArray())->assertedEmail);
+    }
+
+    /**
+     * Rows of `[verified]`: each thing `email_verified` may be.
+     *
+     * @return iterable<string, array{0: ?bool}>
+     */
+    public static function provideAssertions(): iterable
+    {
+        yield 'verified' => [true];
+        yield 'not verified' => [false];
+        yield 'unknown' => [null];
+    }
+
+    /**
+     * The asserted email is stored whole, last, its email and flag exact, and
+     * reads back the same through `restore()` and `unserialize()`.
+     *
+     * @param  ?bool  $verified
+     * @return void
+     */
+    #[DataProvider('provideAssertions')]
+    public function testStoresAndReadsBackTheAssertedEmail(?bool $verified): void
+    {
+        $result = self::aResultAsserting($verified);
+        $pair   = ['email' => self::ASSERTED_EMAIL, 'verified' => $verified, 'source' => 'userinfo'];
+        $stored = $result->toArray();
+
+        self::assertSame($pair, $stored['asserted_email']);
+        self::assertSame('asserted_email', array_key_last($stored));
+        self::assertSame($stored, $result->__serialize());
+        self::assertSame($pair, VerifiedResult::restore($stored)->assertedEmail?->toArray());
+        self::assertSame($stored, VerifiedResult::restore(json_decode((string) json_encode($stored), true))->toArray());
+
+        $unserialised = unserialize(serialize($result));
+
+        self::assertInstanceOf(VerifiedResult::class, $unserialised);
+        self::assertSame($pair, $unserialised->assertedEmail?->toArray());
+        self::assertSame($stored, $unserialised->toArray());
+    }
+
+    /**
+     * JSON is the stored form but for the asserted email, which it shows only
+     * as its source and flag, in its place.
+     *
+     * @return void
+     */
+    public function testJsonShowsTheAssertedEmailRedacted(): void
+    {
+        $result = self::aResultAsserting(false);
+
+        self::assertSame(array_replace($result->toArray(), ['asserted_email' => ['source' => 'userinfo', 'verified' => false]]), $result->jsonSerialize());
+        self::assertStringNotContainsString(self::ASSERTED_PART, (string) json_encode($result));
+    }
+
+    /**
+     * What JSON writes of an asserted email cannot be read back as one, so a
+     * result is never restored from JSON with its email lost.
+     *
+     * @return void
+     */
+    public function testTheRedactedJsonIsNotAStoredForm(): void
+    {
+        $this->expectExceptionObject(new \UnexpectedValueException('A stored verified result is not one the package wrote.'));
+
+        VerifiedResult::restore(json_decode((string) json_encode(self::aResultAsserting(true)), true));
+    }
+
+    /**
+     * No dump of a result shows the asserted email.
+     *
+     * @return void
+     */
+    public function testNoDumpOfAResultShowsTheAssertedEmail(): void
+    {
+        foreach (self::dumps(self::aResultAsserting(true)) as $name => $dump) {
+            self::assertStringNotContainsString(self::ASSERTED_PART, $dump, $name);
+        }
+    }
+
+    /**
+     * Claims take the asserted email last and optionally; their JSON adds its
+     * redacted form when they have one and no key when they have none, and
+     * their dump stays as it was.
+     *
+     * @return void
+     */
+    public function testTheClaimsCarryTheAssertedEmailRedacted(): void
+    {
+        $asserted = new AssertedEmail(self::ASSERTED_EMAIL, null, LinkingEmailSource::ID_TOKEN);
+        $bare     = new VerifiedClaims('https://op.example.com', 'sub-1', null, [], new AuthenticationContext);
+        $claims   = new VerifiedClaims('https://op.example.com', 'sub-1', null, [], new AuthenticationContext, null, $asserted);
+
+        self::assertNull($bare->assertedEmail);
+        self::assertSame($asserted, $claims->assertedEmail);
+        self::assertArrayNotHasKey('asserted_email', $bare->jsonSerialize());
+        self::assertSame([...$bare->jsonSerialize(), 'asserted_email' => ['source' => 'id_token', 'verified' => null]], $claims->jsonSerialize());
+        self::assertSame($bare->__debugInfo(), $claims->__debugInfo());
+        self::assertStringNotContainsString(self::ASSERTED_PART, (string) json_encode($claims));
+
+        foreach (self::dumps($claims) as $name => $dump) {
+            self::assertStringNotContainsString(self::ASSERTED_PART, $dump, $name);
+        }
+    }
+
+    /**
+     * What claims encode is exactly this: the issuer, the format and the kind
+     * of each attribute, never a subject or a value.
+     *
+     * @return void
+     */
+    public function testWhatClaimsEncodeIsExact(): void
+    {
+        $claims = new VerifiedClaims('https://op.example.com', 'sub-1', 'email', ['name' => 'Person'], new AuthenticationContext);
+
+        self::assertSame([
+            'issuer'                 => 'https://op.example.com',
+            'subject'                => '[redacted]',
+            'name_id_format'         => 'email',
+            'attributes'             => ['name' => 'string'],
+            'authentication_context' => (new AuthenticationContext)->jsonSerialize(),
+            'linking_email'          => null,
+        ], $claims->jsonSerialize());
+    }
+
+    /**
+     * An OIDC result with an asserted email and nothing else that holds it.
+     *
+     * @param  ?bool  $verified
+     * @return \SineMacula\Laravel\Sso\Results\VerifiedResult
+     *
+     * @throws \InvalidArgumentException
+     */
+    private static function aResultAsserting(?bool $verified): VerifiedResult
+    {
+        return new VerifiedResult(
+            issuer: 'https://op.example.com',
+            subject: 'sub-1',
+            nameIdFormat: null,
+            connectionId: 'c',
+            tenantId: 't',
+            protocol: 'oidc',
+            application: 'web',
+            purpose: Purpose::SIGN_IN,
+            requestReference: RequestReference::fromString(ExampleResults::REFERENCE),
+            attributes: ['given_name' => 'Ada'],
+            emailDomainVerified: false,
+            authenticationContext: new AuthenticationContext,
+            assertedEmail: new AssertedEmail(self::ASSERTED_EMAIL, $verified, LinkingEmailSource::USERINFO),
+        );
     }
 
     /**

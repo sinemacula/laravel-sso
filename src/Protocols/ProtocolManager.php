@@ -347,13 +347,16 @@ final class ProtocolManager extends Manager
     }
 
     /**
-     * Build the OpenID Connect driver.
+     * Build the OpenID Connect driver, with its collaborators, from the
+     * container the drivers are built with.
      *
      * @return \SineMacula\Laravel\Sso\Protocols\Oidc\OidcDriver
+     *
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
     protected function createOidcDriver(): OidcDriver
     {
-        return new OidcDriver;
+        return $this->container->make(OidcDriver::class);
     }
 
     /**

@@ -523,6 +523,34 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
+     * A request's own timeout replaces the configured one for its transfer, and
+     * leaves the next request to the configured one; the connect timeout is
+     * capped to it.
+     *
+     * @return void
+     */
+    public function testARequestsOwnTimeoutReplacesTheConfiguredOne(): void
+    {
+        config()->set('sso.fetcher.timeout_seconds', 20);
+        config()->set('sso.fetcher.connect_timeout_seconds', 7);
+
+        $credentials = FetchCredentials::clientSecretBasic('client', 'secret');
+        $fetcher     = $this->fetcher([new Response(200, [], 'ok'), new Response(200, [], 'ok'), new Response(200, [], 'ok')]);
+
+        $fetcher->fetch(FetchRequest::token(self::URL, ['grant_type' => 'authorization_code'], $credentials, 3));
+
+        self::assertSame([3.0, 3.0], [$this->sentOptions()['timeout'], $this->sentOptions()['connect_timeout']]);
+
+        $fetcher->fetch(FetchRequest::userInfo(self::URL, FetchCredentials::accessToken('token'), 12));
+
+        self::assertSame([12.0, 7.0], [$this->sentOptions(1)['timeout'], $this->sentOptions(1)['connect_timeout']]);
+
+        $fetcher->fetch(FetchRequest::jwks(self::URL));
+
+        self::assertSame([20.0, 7.0], [$this->sentOptions(2)['timeout'], $this->sentOptions(2)['connect_timeout']]);
+    }
+
+    /**
      * Rows of `[body bytes, fetched]`: a body one under, at and one over the
      * request's own cap.
      *

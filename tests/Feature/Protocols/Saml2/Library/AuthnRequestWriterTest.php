@@ -257,7 +257,7 @@ final class AuthnRequestWriterTest extends TestCase
      *
      * @return void
      */
-    public function testTheOutgoingRequestRefusesSerialisation(): void
+    public function testTheOutgoingRequestRefusesSerialization(): void
     {
         $outgoing = new OutgoingRequest(self::ID, OutgoingRequest::HTTP_POST, ['SAMLRequest' => 'x', 'RelayState' => self::STATE]);
 
@@ -271,7 +271,7 @@ final class AuthnRequestWriterTest extends TestCase
      *
      * @return void
      */
-    public function testTheOutgoingRequestRefusesUnserialisation(): void
+    public function testTheOutgoingRequestRefusesUnserialization(): void
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage(sprintf('A %s cannot be unserialised.', OutgoingRequest::class));

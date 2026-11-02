@@ -59,10 +59,12 @@ use Tests\TestCase;
  * database. Across processes, on PostgreSQL and MySQL, a change in a process of
  * its own waits for the completion to signal that it validated, and the
  * completion waits for the change to signal it committed; the change runs
- * plainly, and inside a transaction of its own that read first. On PostgreSQL
- * alone that change may instead fail to serialise (SQLSTATE `40001`), which
- * changes nothing, so the completion then completes. The cross-process race is
- * skipped on SQLite and without `pcntl`.
+ * plainly, and inside a `REPEATABLE READ` transaction of its own that read
+ * first, and the completion starts only once that read is signalled, so the
+ * change's snapshot is older than the consumed request. On PostgreSQL that
+ * change therefore fails to serialise (SQLSTATE `40001`), which changes
+ * nothing, so the completion then completes. The cross-process race is skipped
+ * on SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -242,8 +244,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * The same race, the distrust inside a transaction of its own that read the
-     * connection and the request before the race began.
+     * The same race, the distrust inside a `REPEATABLE READ` transaction of its
+     * own that read the connection and the request before the race began.
      *
      * @return void
      */
@@ -255,8 +257,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     /**
      * Race the completion against a distrust in another process, plain or in
      * its own transaction, and assert the completion was refused under the
-     * lock, or, on PostgreSQL only, that the distrust failed to serialise and
-     * the completion completed.
+     * lock, or, in a transaction on PostgreSQL, that the distrust failed to
+     * serialise and the completion completed.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -267,11 +269,14 @@ final class SamlTrustChangeRaceTest extends TestCase
             self::markTestSkipped('Racing processes need a shared database server and pcntl.');
         }
 
+        $read      = "{$this->outcomes}/read";
         $validated = "{$this->outcomes}/validated";
         $changed   = "{$this->outcomes}/changed";
 
         $outcomes = $this->race([
-            [function () use ($validated, $changed): string {
+            [function () use ($read, $validated, $changed): string {
+                self::await($read);
+
                 $this->holdAfterValidation(static function () use ($validated, $changed): bool {
                     touch($validated);
                     self::await($changed);
@@ -296,8 +301,9 @@ final class SamlTrustChangeRaceTest extends TestCase
             }, $inTransaction],
         ]);
 
-        if ($outcomes[1] === 'serialization') {
+        if ($inTransaction && DB::connection()->getDriverName() === 'pgsql') {
             self::assertSame(['completed:-:1', 'serialization'], $outcomes);
+            self::assertNull($this->request->fresh()?->voided_at);
 
             return;
         }
@@ -467,11 +473,11 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, wait for its start, do
-     * its work, report the outcome, and end without running the parent's
-     * shutdown. Racing inside a transaction, the process opens one and reads
-     * the connection and the request before the start, and commits after its
-     * work.
+     * In a forked process: open a connection of its own, signal it has read,
+     * wait for its start, do its work, report the outcome, and end without
+     * running the parent's shutdown. Racing inside a transaction, the process
+     * opens one at `REPEATABLE READ` and reads the connection and the request
+     * before it signals, and commits after its work.
      *
      * @param  int  $process
      * @param  float  $start
@@ -489,10 +495,13 @@ final class SamlTrustChangeRaceTest extends TestCase
             $database = DB::connection(StorageConnection::name());
 
             if ($inTransaction) {
+                $database->statement(self::repeatableReadStatement($database->getDriverName()));
                 $database->beginTransaction();
                 Connection::query()->whereKey($this->connection->id)->get();
                 AuthorizationRequest::query()->whereKey($this->request->id)->get();
             }
+
+            touch("{$this->outcomes}/read");
 
             $wait = $start - microtime(true);
 
@@ -514,6 +523,24 @@ final class SamlTrustChangeRaceTest extends TestCase
         posix_kill(posix_getpid(), SIGKILL);
 
         exit(1);
+    }
+
+    /**
+     * The statement that makes this session's transactions `REPEATABLE READ`,
+     * which on PostgreSQL pins the snapshot at the first read.
+     *
+     * @param  string  $driver
+     * @return string
+     *
+     * @throws \LogicException
+     */
+    private static function repeatableReadStatement(string $driver): string
+    {
+        return match ($driver) {
+            'pgsql' => 'set session characteristics as transaction isolation level repeatable read',
+            'mysql' => 'set session transaction isolation level repeatable read',
+            default => throw new \LogicException(sprintf('No statement sets the isolation on [%s].', $driver)),
+        };
     }
 
     /**

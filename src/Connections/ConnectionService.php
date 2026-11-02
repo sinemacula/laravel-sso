@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
+use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
@@ -69,7 +70,11 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
  * lock, the requests and handoff codes in flight through the connection
  * (`Connections\InFlightVoider`) and raises its trust version; a change that
  * asks only another operation, or none, voids nothing. Enabling a connection
- * raises its trust version too, under its lock.
+ * raises its trust version too, under its lock. An update of an OIDC
+ * connection's `issuer` or `jwks_uri` also clears, in the same save, the keys
+ * fetched for it and their cooldown, and for an `issuer` the discovery
+ * document's refresh dates too (`Metadata\ProviderKeys::resetFor()`), so keys
+ * fetched for another issuer or URL are never used.
  *
  * It holds the registry, the lookup, the freshness gate, the secrets, the
  * reporter, the mapping's caps, the voider and the clock, none of which keeps
@@ -387,10 +392,9 @@ final readonly class ConnectionService
         $given       = self::keyed($asked[self::SETTINGS]);
         $secrets     = array_intersect_key($given, array_flip($secretNames));
         $values      = self::merged($locked->settings, array_diff_key($given, $secrets));
-        $mapping     = self::merged($locked->attribute_mapping, self::keyed($asked[self::ATTRIBUTE_MAPPING]));
         $name        = is_string($asked[self::DISPLAY_NAME]) ? trim($asked[self::DISPLAY_NAME]) : $locked->display_name;
         $typed       = $this->protocols->protocol($locked->protocol)->settings($values);
-        $map         = AttributeMapping::fromArray($locked->protocol, $mapping, $this->limits);
+        $map         = AttributeMapping::fromArray($locked->protocol, self::merged($locked->attribute_mapping, self::keyed($asked[self::ATTRIBUTE_MAPPING])), $this->limits);
 
         $violations = [
             ...self::changeViolations($changes),
@@ -430,6 +434,7 @@ final readonly class ConnectionService
             'settings'          => $stored,
             'secrets'           => $this->secrets->apply($locked->secrets, ConnectionSecrets::changes($secrets)),
             'attribute_mapping' => $map->toArray(),
+            ...ProviderKeys::resetFor($locked, $changedSettings),
         ]);
 
         CiphertextWrite::save($locked, self::SECRETS, self::SECRETS_NOT_WRITTEN);

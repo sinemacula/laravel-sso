@@ -268,7 +268,7 @@ final class DomainRouterTest extends TestCase
      * @return void
      */
     #[DataProvider('equivalentEmails')]
-    public function testTheDomainIsNormalised(string $email): void
+    public function testTheDomainIsNormalized(string $email): void
     {
         $this->makeDomain($this->connection, 'xn--bcher-kva.example.com', ['state' => DomainState::VERIFIED]);
 

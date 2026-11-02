@@ -856,7 +856,7 @@ final class MetadataReaderTest extends TestCase
      *
      * @return void
      */
-    public function testTheMetadataRefusesSerialisation(): void
+    public function testTheMetadataRefusesSerialization(): void
     {
         $metadata = $this->read(self::metadata()->toXml());
 

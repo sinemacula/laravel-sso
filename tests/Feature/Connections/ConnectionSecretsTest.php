@@ -14,6 +14,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
 use SineMacula\Laravel\Sso\Secrets\MaskedSecret;
 use SineMacula\Laravel\Sso\Secrets\Secret;
+use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
@@ -30,11 +32,39 @@ use Tests\TestCase;
 #[CoversClass(ConnectionSecrets::class)]
 final class ConnectionSecretsTest extends TestCase
 {
+    use UsesConnections;
+
     /** @var string A client secret no output may show. */
     private const string SECRET = 'the-client-secret-value';
 
     /** @var string Another client secret. */
     private const string OTHER = 'another-client-secret';
+
+    /**
+     * Create the tables.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->createConnectionTables();
+    }
+
+    /**
+     * Drop the tables.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function tearDown(): void
+    {
+        $this->dropConnectionTables();
+
+        parent::tearDown();
+    }
 
     /**
      * Which secrets are set, and each declared secret masked, without one being
@@ -332,6 +362,49 @@ final class ConnectionSecretsTest extends TestCase
                 self::assertStringNotContainsString(self::SECRET, $exception->getMessage());
             }
         }
+    }
+
+    /**
+     * A secret set is found and revealed, from the row or through the
+     * contract; one not set, or a connection that is gone, has none.
+     *
+     * @return void
+     */
+    public function testASecretIsReadThroughTheContract(): void
+    {
+        $secrets    = app(ConnectionSecrets::class);
+        $connection = $this->makeConnection(['secrets' => $secrets->apply(null, ['client_secret' => new Secret('the-secret')])]);
+        $contract   = new IdentifiedConnection($connection->id);
+        $gone       = new IdentifiedConnection('01jbgoneconnection00000000');
+
+        self::assertSame([true, true, false, false], [
+            $secrets->isSet($connection, 'client_secret'),
+            $secrets->isSet($contract, 'client_secret'),
+            $secrets->isSet($contract, 'api_secret'),
+            $secrets->isSet($gone, 'client_secret'),
+        ]);
+        self::assertTrue($secrets->revealFor($connection, 'client_secret')?->equals('the-secret'));
+        self::assertTrue($secrets->revealFor($contract, 'client_secret')?->equals('the-secret'));
+        self::assertNull($secrets->revealFor($contract, 'api_secret'));
+        self::assertNull($secrets->revealFor($gone, 'client_secret'));
+        self::assertFalse($secrets->isSet($this->makeConnection(), 'client_secret'));
+    }
+
+    /**
+     * A row is read as it is given, never again from the table: what it holds
+     * unsaved is what is found.
+     *
+     * @return void
+     */
+    public function testARowIsReadAsItIsGiven(): void
+    {
+        $secrets    = app(ConnectionSecrets::class);
+        $connection = $this->makeConnection();
+
+        $connection->secrets = $secrets->apply(null, ['client_secret' => new Secret('the-secret')]);
+
+        self::assertTrue($secrets->isSet($connection, 'client_secret'));
+        self::assertFalse($secrets->isSet(new IdentifiedConnection($connection->id), 'client_secret'));
     }
 
     /**

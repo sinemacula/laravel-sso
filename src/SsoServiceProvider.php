@@ -64,6 +64,12 @@ use SineMacula\Laravel\Sso\Logging\LoggingCheck;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
 use SineMacula\Laravel\Sso\Metadata\MetadataCheck;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
+use SineMacula\Laravel\Sso\Metadata\OidcMetadataSource;
+use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
+use SineMacula\Laravel\Sso\Metadata\SamlMetadataSource;
+use SineMacula\Laravel\Sso\Protocols\Oidc\CallbackCompletion;
+use SineMacula\Laravel\Sso\Protocols\Oidc\ClaimsAssembler;
+use SineMacula\Laravel\Sso\Protocols\Oidc\OidcCheck;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Check;
 use SineMacula\Laravel\Sso\Protocols\Saml2\UnsolicitedResponses;
@@ -104,6 +110,7 @@ final class SsoServiceProvider extends ServiceProvider
         'domains'      => DomainsCheck::class,
         'flows'        => FlowsCheck::class,
         'saml2'        => Saml2Check::class,
+        'oidc'         => OidcCheck::class,
         'metadata'     => MetadataCheck::class,
     ];
 
@@ -114,6 +121,11 @@ final class SsoServiceProvider extends ServiceProvider
         AssertionValidator::class,
         UnsolicitedResponses::class,
         MetadataRefresher::class,
+        SamlMetadataSource::class,
+        OidcMetadataSource::class,
+        ProviderKeys::class,
+        CallbackCompletion::class,
+        ClaimsAssembler::class,
     ];
 
     /** @var list<string> The console commands that start long-running or scheduled work: the queue workers, Horizon, the scheduler and the Octane servers. Each is checked as it starts and refused on a problem, as a request is at boot (SSO-12.3); every other command runs, so a misconfigured application can still run `sso:check`, its migrations and the commands that repair it. */

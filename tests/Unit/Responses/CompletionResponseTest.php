@@ -429,7 +429,7 @@ final class CompletionResponseTest extends TestCase
      *
      * @return void
      */
-    public function testRefusesToBeSerialised(): void
+    public function testRefusesToBeSerialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A completion response cannot be serialised.'));
 
@@ -441,7 +441,7 @@ final class CompletionResponseTest extends TestCase
      *
      * @return void
      */
-    public function testRefusesToBeUnserialised(): void
+    public function testRefusesToBeUnserialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A completion response cannot be unserialised.'));
 

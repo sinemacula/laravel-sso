@@ -58,7 +58,8 @@ final class FailureReasonTest extends TestCase
             'domain_claim_expired', 'domain_record_not_found', 'domain_lookup_failed', 'feature_disabled',
             'completed_sign_in_required', 'link_not_found', 'link_limit_reached', 'subject_already_linked', 'connection_has_links',
             'links_unaccounted', 'metadata_invalid', 'metadata_signature_invalid', 'metadata_entity_not_found', 'metadata_conflict',
-            'metadata_refresh_in_progress',
+            'metadata_refresh_in_progress', 'id_token_invalid', 'token_response_invalid', 'at_hash_mismatch', 'userinfo_invalid',
+            'discovery_invalid', 'jwks_invalid',
         ], array_column(FailureReason::cases(), 'value'));
     }
 

@@ -75,6 +75,15 @@ The current note set is:
   expiry and the trust version, each on the driver `saml-driver.md` and the adapter `saml-adapter.md` lay down.
 - `jose-library.md`: why the package verifies ID tokens and signs client assertions with `web-token/jwt-library`, the
   hostile-token and clock results behind the choice, and the rules the package's adapter adds around it.
+- `jose-adapter.md`: the one namespace that calls the JOSE library, how it reads a token, admits and selects a key,
+  verifies a signature and signs a client assertion, and what it leaves to the package's own checks.
+- `oidc-driver.md`: the `oidc` driver as a whole, each call and its collaborator, the values they hand each other,
+  where a connection's JWKS and refresh state are kept, and the limits every OIDC connection is held to.
+- `oidc-discovery.md`, `oidc-requests.md`, `oidc-callback.md`, `oidc-id-tokens.md`, `oidc-claims.md` and
+  `oidc-relying-party.md`: discovery import, the JWKS, its refetch on an unknown `kid` and the scheduled refresh; the
+  authorisation code request; the callback and the token request; the ID token's validation; UserInfo, provider tokens
+  and the email; and what an administrator registers at the provider, each on the driver `oidc-driver.md` and the
+  adapter `jose-adapter.md` lay down.
 
 These documents are secondary to the code and tests, not a replacement for them. If a note and a cited test disagree,
 the test should be treated as authoritative until the mismatch is resolved.

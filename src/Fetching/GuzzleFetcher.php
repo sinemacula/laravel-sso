@@ -41,7 +41,7 @@ use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
  * - sends with redirects, cookies, proxies (the environment's included) and
  *   content decoding off, certificate verification always on, `https` the only
  *   protocol, the time left of the fetch's one deadline, and the response size
- *   cap (the request's own, a metadata request's say, or else
+ *   cap (the request's own, a metadata or OIDC request's say, or else
  *   `max_response_bytes`) enforced on the declared length, during the transfer
  *   by a sink that refuses the write past it (on every supported Guzzle), so
  *   nothing past the cap is read, and on the body received;
@@ -50,15 +50,17 @@ use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
  *   `max_redirects` times, rechecking and repinning each hop, with `GET` and no
  *   body.
  *
- * The timeout is one deadline for the whole fetch, measured on a monotonic
- * clock from the moment `fetch()` is called: every resolution and every hop,
- * redirects included, spends the same budget, and each transfer is given only
- * what is left of it, its connect timeout capped to the same. A lookup cannot
- * be cut short, so the deadline is checked before each one and straight after
- * it, and the time left is read once more as the transfer's caps the moment
- * before it is sent; a hop that finds less than a millisecond left at any of
- * these fails as `timeout` rather than send, so a transfer is never given a cap
- * of `0` (none, to cURL) and no response is ever answered past the cap.
+ * The timeout (the request's own, a token or UserInfo request's say, or else
+ * `timeout_seconds`) is one deadline for the whole fetch, measured on a
+ * monotonic clock from the moment `fetch()` is called: every resolution and
+ * every hop, redirects included, spends the same budget, and each transfer is
+ * given only what is left of it, its connect timeout capped to the same. A
+ * lookup cannot be cut short, so the deadline is checked before each one and
+ * straight after it, and the time left is read once more as the transfer's caps
+ * the moment before it is sent; a hop that finds less than a millisecond left
+ * at any of these fails as `timeout` rather than send, so a transfer is never
+ * given a cap of `0` (none, to cURL) and no response is ever answered past the
+ * cap. Nothing is ever retried.
  *
  * A refusal (before anything is sent) and a failure (once sent: no address, a
  * transport or TLS error, the deadline passed, too large, too many redirects)
@@ -177,8 +179,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * Send the request, or refuse it, within one deadline of the configured
-     * timeout from now.
+     * Send the request, or refuse it, within one deadline of the request's own
+     * timeout, or the configured one, from now.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return \SineMacula\Laravel\Sso\Fetching\FetchResult
@@ -188,7 +190,7 @@ final readonly class GuzzleFetcher implements Fetcher
     #[\Override]
     public function fetch(FetchRequest $request): FetchResult
     {
-        $deadline = FetchDeadline::in($this->settings->timeoutSeconds(), $this->monotonicClock);
+        $deadline = FetchDeadline::in($request->timeoutSeconds ?? $this->settings->timeoutSeconds(), $this->monotonicClock);
 
         return $this->hop($request, $request->url, 0, $deadline);
     }

@@ -247,7 +247,7 @@ final class RedemptionResultTest extends TestCase
      *
      * @return void
      */
-    public function testItCannotBeSerialised(): void
+    public function testItCannotBeSerialized(): void
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A redemption result cannot be serialised.');
@@ -260,7 +260,7 @@ final class RedemptionResultTest extends TestCase
      *
      * @return void
      */
-    public function testItCannotBeUnserialised(): void
+    public function testItCannotBeUnserialized(): void
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A redemption result cannot be unserialised.');

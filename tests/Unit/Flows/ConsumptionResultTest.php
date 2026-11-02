@@ -172,7 +172,7 @@ final class ConsumptionResultTest extends TestCase
      *
      * @return void
      */
-    public function testTheResultRefusesToBeSerialised(): void
+    public function testTheResultRefusesToBeSerialized(): void
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A consumption result cannot be serialised.');
@@ -185,7 +185,7 @@ final class ConsumptionResultTest extends TestCase
      *
      * @return void
      */
-    public function testTheResultRefusesToBeUnserialised(): void
+    public function testTheResultRefusesToBeUnserialized(): void
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A consumption result cannot be unserialised.');

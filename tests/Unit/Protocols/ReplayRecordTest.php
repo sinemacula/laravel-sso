@@ -127,7 +127,7 @@ final class ReplayRecordTest extends TestCase
      *
      * @return void
      */
-    public function testRefusesToBeSerialised(): void
+    public function testRefusesToBeSerialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A replay record cannot be serialised.'));
 
@@ -139,7 +139,7 @@ final class ReplayRecordTest extends TestCase
      *
      * @return void
      */
-    public function testRefusesToBeUnserialised(): void
+    public function testRefusesToBeUnserialized(): void
     {
         $this->expectExceptionObject(new \LogicException('A replay record cannot be unserialised.'));
 

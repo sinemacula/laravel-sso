@@ -12,8 +12,10 @@ use SineMacula\Laravel\Sso\Flows\RequestReference;
  * connection, under those names; the tenant, protocol, application and
  * purpose; the request's public reference; the mapped attributes, with whether
  * the email's domain is verified for the connection; the identity provider's
- * authentication context; and, where linking by a verified domain applies,
- * the linking email, kept apart from the mapped attributes.
+ * authentication context; where linking by a verified domain applies, the
+ * linking email, kept apart from the mapped attributes; and, for OIDC, the
+ * email the provider asserted with its `email_verified` and their one source
+ * (SSO-7.7), also kept apart from the mapped attributes.
  *
  * It exists only after every check of SSO-6 or SSO-7 has passed: only the
  * completion pipeline builds one, from a driver's `VerifiedClaims`, and the
@@ -23,12 +25,15 @@ use SineMacula\Laravel\Sso\Flows\RequestReference;
  * takes its fields one by one (SSO-10.4).
  *
  * It is serialisable, as SSO-8.1 requires, so a handoff store can keep it until
- * redemption: `toArray()` (also what `serialize()` and `json_encode()` write)
- * holds everything above and nothing else, and `restore()` (also what
- * `unserialize()` runs) checks every part again, failing with an
- * `UnexpectedValueException` on anything the package did not write. It holds
- * personal data (the mapped attributes, the linking email), so a store encrypts
- * it at rest.
+ * redemption: `toArray()` (also what `serialize()` writes) holds everything
+ * above and nothing else, and `restore()` (also what `unserialize()` runs)
+ * checks every part again, failing with an `UnexpectedValueException` on
+ * anything the package did not write. `json_encode()` writes the same, but for
+ * the asserted email, which it shows only as its source and `email_verified`,
+ * so the JSON of a result with one is not a stored form. A result with no
+ * asserted email stores no key for one. It holds personal data (the mapped
+ * attributes, the linking email, the asserted email), so a store encrypts it at
+ * rest.
  *
  * The issuer and subject are 1 to 1024 bytes and kept exactly as received
  * (SSO-6.9); a NameID format is 1 to 255 bytes; the connection, tenant,
@@ -70,6 +75,7 @@ final readonly class VerifiedResult implements \JsonSerializable
      * @param  bool  $emailDomainVerified
      * @param  \SineMacula\Laravel\Sso\Results\AuthenticationContext  $authenticationContext
      * @param  ?\SineMacula\Laravel\Sso\Results\LinkingEmail  $linkingEmail
+     * @param  ?\SineMacula\Laravel\Sso\Results\AssertedEmail  $assertedEmail
      *
      * @throws \InvalidArgumentException
      *
@@ -115,6 +121,9 @@ final readonly class VerifiedResult implements \JsonSerializable
 
         /** The linking email, where linking by a verified domain applies. */
         public ?LinkingEmail $linkingEmail = null,
+
+        /** The email and `email_verified` an OIDC provider asserted, from one source. */
+        public ?AssertedEmail $assertedEmail = null,
     ) {
         StoredValues::assertText('issuer', $issuer, self::MAX_ISSUER_LENGTH);
         StoredValues::assertText('subject', $subject, self::MAX_SUBJECT_LENGTH);
@@ -162,17 +171,18 @@ final readonly class VerifiedResult implements \JsonSerializable
         $this->emailDomainVerified   = $restored->emailDomainVerified;
         $this->authenticationContext = $restored->authenticationContext;
         $this->linkingEmail          = $restored->linkingEmail;
+        $this->assertedEmail         = $restored->assertedEmail;
     }
 
     /**
      * The result as stored, with snake_case keys: everything it holds, and
-     * nothing else.
+     * nothing else; the asserted email only when it has one.
      *
      * @return array<string, mixed>
      */
     public function toArray(): array
     {
-        return [
+        $stored = [
             'issuer'                 => $this->issuer,
             'subject'                => $this->subject,
             'name_id_format'         => $this->nameIdFormat,
@@ -187,6 +197,8 @@ final readonly class VerifiedResult implements \JsonSerializable
             'authentication_context' => $this->authenticationContext->toArray(),
             'linking_email'          => $this->linkingEmail?->toArray(),
         ];
+
+        return $this->assertedEmail === null ? $stored : [...$stored, 'asserted_email' => $this->assertedEmail->toArray()];
     }
 
     /**
@@ -206,6 +218,8 @@ final readonly class VerifiedResult implements \JsonSerializable
         $email    = StoredValues::optionalArray($stored, 'linking_email');
         $context  = AuthenticationContext::restore(StoredValues::array($stored, 'authentication_context'));
         $linking  = $email === null ? null : LinkingEmail::restore($email);
+        $pair     = StoredValues::optionalArray($stored, 'asserted_email');
+        $asserted = $pair === null ? null : AssertedEmail::restore($pair);
 
         return StoredValues::restoring(static fn (): self => new self(
             StoredValues::string($stored, 'issuer'),
@@ -221,18 +235,22 @@ final readonly class VerifiedResult implements \JsonSerializable
             $verified,
             $context,
             $linking,
+            $asserted,
         ));
     }
 
     /**
-     * What `json_encode()` writes: the stored form.
+     * What `json_encode()` writes: the stored form, but for the asserted email,
+     * shown only as its source and `email_verified`.
      *
      * @return array<string, mixed>
      */
     #[\Override]
     public function jsonSerialize(): array
     {
-        return $this->toArray();
+        $stored = $this->toArray();
+
+        return $this->assertedEmail === null ? $stored : array_replace($stored, ['asserted_email' => $this->assertedEmail->jsonSerialize()]);
     }
 
     /**

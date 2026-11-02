@@ -6,8 +6,10 @@ This note records how a SAML connection is filled in from its identity provider'
 it (SSO-2.8, SSO-6.11, SSO-10.3, SSO-11.12): the metadata validation profile, the import that proposes settings, the
 scheduled and on-demand refresh that applies certificates and endpoints, the claim and the compare-and-set that keep
 racing servers and administrators from overwriting each other, the trust version, the backoff, and the expiry of what
-a refresh applied. The SAML adapter it reads metadata through is in `saml-adapter.md`; the keys and anchors in
-`keys.md`.
+a refresh applied. The refresh machinery is shared by every protocol through `Metadata\MetadataSource`: an OIDC
+connection's discovery document and JWKS refresh through the same claim, compare-and-set, backoff, queue, command,
+stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter it reads metadata through is in
+`saml-adapter.md`; the keys and anchors in `keys.md`.
 
 ## Invariants
 
@@ -60,23 +62,35 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
   aggregate is imported from the console or a queued job, never a web request. A proposal that would not be valid
   settings (a single sign-on URL that is not `https`, an entity id that is neither a URL nor a URN) is
   `metadata_invalid`.
-- A connection refreshes only while `sso.features.metadata_refresh` is on, it is a SAML connection, its
-  `metadata_refresh` setting is on and its `metadata_url` is a valid `https` URL: the URL the administrator saved is the
-  only one ever fetched. The due connections are the SAML connections, read on the write connection, whose
-  `metadata_refresh_at` is unset or not after now and whose `metadata_claimed_until` is unset or not after now, in
-  chunks of 100 by keyset on the id, that refresh. `sso:metadata:refresh` lists their ids (`dueConnectionIds()`) and
-  queues one `Metadata\RefreshConnectionMetadata` job per connection, carrying the id alone, on
-  `sso.metadata.queue.connection` and `.name`, allowed `.timeout_seconds` (30 to 3600, default 60, never more than
-  `claim_seconds`, and less than the queue connection's `retry_after` where it sets one, checked at boot, so a refresh
-  still running is never reserved by a second worker and recorded as failed) and `.tries` (default 1, failing on a
-  timeout rather than being released past its claim); the job calls `refreshQueued()`, which reads the connection again
-  and is `skipped` when it is gone, no longer refreshes or is no longer due. `--sync` refreshes them in the command
-  instead (`refreshDue()`). `refreshNow()` refreshes the tenant's connection whatever its backoff
-  (`connection_not_found` for another tenant's, `feature_disabled` for one that does not refresh), for the
+- A connection refreshes only while `sso.features.metadata_refresh` is on, its protocol is available
+  (`ProtocolManager::isAvailable()`, so a protocol switched off fetches and writes nothing) and its protocol's
+  `Metadata\MetadataSource` says it does, a protocol with no source never refreshing. For a SAML connection that is its
+  `metadata_refresh` setting on and its `metadata_url` a valid `https` URL: the URL the administrator saved is the only
+  one ever fetched. The OIDC source is recorded in `oidc-discovery.md`. The due connections are those of the protocols
+  with a source, read on the write connection, whose `metadata_refresh_at` is unset or not after now and whose
+  `metadata_claimed_until` is unset or not after now, in chunks of 100 by keyset on the id, that refresh.
+  `sso:metadata:refresh` lists their ids (`dueConnectionIds()`) and queues one `Metadata\RefreshConnectionMetadata` job
+  per connection, carrying the id alone, on `sso.metadata.queue.connection` and `.name`, allowed `.timeout_seconds` (30
+  to 3600, default 60, never more than `claim_seconds`, and less than the queue connection's `retry_after` where it sets
+  one, checked at boot, so a refresh still running is never reserved by a second worker and recorded as failed) and
+  `.tries` (default 1, failing on a timeout rather than being released past its claim); the job calls `refreshQueued()`,
+  which reads the connection again and is `skipped` when it is gone, no longer refreshes or is no longer due. `--sync`
+  refreshes them in the command instead (`refreshDue()`). `refreshNow()` refreshes the tenant's connection whatever its
+  backoff (`connection_not_found` for another tenant's, `feature_disabled` for one that does not refresh), for the
   `ActingIdentity` it requires, after counting the attempt against `AttemptSubject::metadata()` (the import's limit,
   `sso.rate_limits.metadata`): past it, `rate_limited` with `retryAfter`, before anything is claimed or fetched. It asks
   no freshness. Every entry refuses to run inside a transaction on the storage connection
   (`StorageConnection::assertNoTransaction()`).
+- The machinery is protocol-agnostic. `Metadata\MetadataRefresher` lists the due connections of every protocol that
+  has a source (`Metadata\MetadataSources`: `SamlMetadataSource` for `saml2`, `OidcMetadataSource` for `oidc`; a
+  protocol an application registered has none and never refreshes), asks the connection's source whether it refreshes,
+  to snapshot and claim it (`RefreshClaims`, which takes the snapshot the source read), to fetch and validate
+  (`FetchedMetadata`, read with the moment it validated, or refused with a reason and the fetch's status) and to write
+  (`write()`), and logs a refresh that did not apply. `Metadata\RefreshWriter` is every source's write: the
+  transaction that locks the connection first, the compare and set (the claim's token, the metadata and trust
+  versions, and the source's snapshot read again under the lock), `conflict` reported as the winner left it, a
+  failure's backoff and claim release, a success's bookkeeping in the same save as the source's own attributes, and
+  `MetadataRefreshed`. `MetadataApplier` is the SAML source's write through it.
 - Each refresh reads the connection, then its anchors and its identity provider signing certificates: that is the
   snapshot (metadata version, trust version, the fingerprints of both sets, `Metadata\RefreshClaim`, taken by
   `Metadata\RefreshClaims`). It then claims the connection with one conditional update outside any transaction:
@@ -128,8 +142,10 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
   re-initiation, and the completion and the re-initiation check again on the locked connection, failing with
   `metadata_expired`) at the earlier of `metadata_valid_until` (the earliest `validUntil` of the entity and every
   aggregate around it) and `metadata_fetched_at` (the validated fetch) plus `sso.metadata.stale_limit_seconds` (30
-  days by default; `0`, set explicitly, for no limit): the same rule the refresh applied at commit. The expired last
-  good settings stay stored, for diagnosis, until a refresh succeeds.
+  days by default; `0`, set explicitly, for no limit): the same rule the refresh applied at commit. An OIDC
+  connection's JWKS counts from its own fetch too, once a refresh has written the connection or while its
+  `metadata_refresh` setting is on (`oidc-discovery.md`). The expired last good settings stay stored, for diagnosis,
+  until a refresh succeeds.
 - Events (`Administration\MetadataEvents`) are built through the one context projection, with the acting identity of
   the administrator who asked or none for a scheduled run, and dispatched after the transaction commits, never on a
   rollback. None holds a certificate, a URL or any value of the metadata.
@@ -193,9 +209,10 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
 - `src/Protocols/Saml2/Library/MetadataReader.php`, `SignedDescriptor.php`, `HardenedParser.php`,
   `src/Protocols/Saml2/Messages/IdpMetadata.php`.
 - `src/Metadata/MetadataImporter.php`, `ProposedSettings.php`, `ImportResult.php`.
-- `src/Metadata/MetadataRefresher.php`, `MetadataApplier.php`, `RefreshClaims.php`, `RefreshClaim.php`,
-  `RefreshConnectionMetadata.php`, `RefreshResult.php`, `Enums/RefreshOutcome.php`, `MetadataSettings.php`,
-  `MetadataExpiry.php`, `MetadataCheck.php`.
+- `src/Metadata/MetadataRefresher.php`, `MetadataSource.php`, `MetadataSources.php`, `SamlMetadataSource.php`,
+  `OidcMetadataSource.php`, `FetchedMetadata.php`, `RefreshWriter.php`, `MetadataApplier.php`, `RefreshClaims.php`,
+  `RefreshClaim.php`, `RefreshConnectionMetadata.php`, `RefreshResult.php`, `Enums/RefreshOutcome.php`,
+  `MetadataSettings.php`, `MetadataExpiry.php`, `MetadataCheck.php`.
 - `src/Fetching/FetchRequest.php` (the per-call cap), `src/Fetching/GuzzleFetcher.php`.
 - `src/Keys/KeyService.php` (`replaceTrustedCertificatesLocked()`), `src/Connections/InFlightVoider.php`.
 - `src/Administration/MetadataEvents.php`, `src/Events/MetadataRefreshed.php`, `MetadataRefreshFailed.php`.
@@ -208,7 +225,9 @@ a refresh applied. The SAML adapter it reads metadata through is in `saml-adapte
   aggregate's namespaces).
 - `tests/Feature/Fetching/GuzzleFetcherTest.php` and `tests/Unit/Fetching/FetchRequestTest.php` (a request's own cap).
 - `tests/Feature/Metadata/MetadataImporterTest.php`, `MetadataRefresherTest.php`, `MetadataApplierTest.php`,
-  `MetadataEventSequenceTest.php`, `MetadataExpiryTest.php`, `MetadataSettingsTest.php`.
+  `MetadataEventSequenceTest.php`, `MetadataExpiryTest.php`, `MetadataSettingsTest.php`, `MetadataSourcesTest.php`,
+  `RefreshWriterTest.php` (the compare and set, each mismatch alone; the backoff; the bookkeeping),
+  `SamlMetadataSourceTest.php`.
 - `tests/Feature/Keys/KeyServiceTest.php` (the replacement), `tests/Feature/Console/RefreshMetadataCommandTest.php`.
 - `tests/Integration/Metadata/ConcurrentMetadataRefreshTest.php` (MySQL and PostgreSQL: an addition, a distrust and an
   anchor while a refresh fetched; a claim taken over),

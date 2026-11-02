@@ -99,7 +99,8 @@ Each stage is in `Completion\Stages`.
 `Completion\ResultBuilder::build($claims, $connection, $consumed)` is the only place a `Results\VerifiedResult` is
 made, from what a driver verified and never from client input (SSO-8.1):
 
-- the issuer, subject, NameID format, authentication context and linking email are the claims', exactly as verified;
+- the issuer, subject, NameID format, authentication context, linking email and asserted email are the claims', exactly
+  as verified, and neither email is ever derived from the mapped attributes;
 - the connection id, tenant and protocol are the connection's; the application, purpose and reference the request's;
 - the attributes are `AttributeMapping::fromArray($protocol, $connection->attribute_mapping, MappingLimits)` applied to
   the claims' raw attributes, so `sso.mapping`'s caps cut them;
@@ -107,7 +108,14 @@ made, from what a driver verified and never from client input (SSO-8.1):
   last `@`, a domain that `Domains\DomainName::normalize()` accepts, and this same connection's claim of that domain
   routes now (`Domains\DomainStanding::routes()`: verified and before its lapse). A domain of another connection, a
   pending or lapsed claim, a claim at or past its lapse, and anything that is not an email are not verified. The claim
-  is read through `Domains\DomainFinder` on the write connection.
+  is read through `Domains\DomainFinder` on the write connection;
+- `assertedEmail` (`Results\AssertedEmail`, OIDC only, SSO-7.7) is the email the provider asserted with its
+  `email_verified`, `true`, `false` or `null` for unknown, and their one source (`oidc-claims.md`). A result with none
+  stores no key for one, so a SAML result's stored form does not change. It is stored and restored with the handoff:
+  `toArray()` and `serialize()` hold it whole, and `restore()` checks it again. `json_encode()` of a result is the
+  stored form but for this one part, shown only as its source and flag, so that JSON cannot be restored; no dump shows
+  the email. The result's mapped attributes and linking email are stored and written in JSON as they are, so a result's
+  JSON is personal data and only its parts' own JSON (`VerifiedClaims`, `LinkingEmail`, `AssertedEmail`) is redacted.
 
 ### Transactions and locks
 
@@ -233,7 +241,9 @@ no target is dispatched at once.
   deadline limiting, ignored and absent, the grant field by field, the limits, a database error.
 - `tests/Feature/Completion/CompletionEventSequenceTest.php`: each sequence and its whole context, and no secret.
 - `tests/Feature/Completion/ResultBuilderTest.php`: the result, the mapping and its caps, every `emailDomainVerified`
-  boundary.
+  boundary, the asserted email passed through, never derived from the mapped attributes, and kept by the handoff store.
+- `tests/Unit/Results/VerifiedResultTest.php`, `AssertedEmailTest.php`: the stored form, read back, and the asserted
+  email in JSON and dumps.
 - `tests/Feature/Completion/CompletionPipelineTest.php`: the stage of each step, the order, the transaction levels, the
   rows as locked, a refusal ending the pipeline, `completed_at`, a request voided and a connection disabled or gone
   under the lock, the lock order (enforcement, then connections in id order, then the request) and the locked policy

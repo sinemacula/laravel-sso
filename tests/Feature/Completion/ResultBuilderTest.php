@@ -9,11 +9,17 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\ResultBuilder;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Flows\S256Challenge;
+use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
+use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
+use SineMacula\Laravel\Sso\Results\AssertedEmail;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
 use SineMacula\Laravel\Sso\Results\LinkingEmail;
@@ -21,6 +27,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -30,7 +37,9 @@ use Tests\TestCase;
  * request, the subject exactly as received, the attributes through the
  * connection's mapping and its caps, and whether the email's domain is
  * verified: routing for this connection, of another connection, pending,
- * lapsed, at its lapse and either side, and malformed.
+ * lapsed, at its lapse and either side, and malformed; and the asserted email,
+ * passed through from the claims, never derived from the mapped attributes, and
+ * kept through the handoff store.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -40,10 +49,13 @@ use Tests\TestCase;
 #[CoversClass(ResultBuilder::class)]
 final class ResultBuilderTest extends TestCase
 {
-    use UsesConnections, UsesDomains;
+    use UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var string The request's public reference. */
     private const string REFERENCE = 'Bq8tVv3w0kLmNoPqRsTuVwXyZ0123456';
+
+    /** @var string The S256 challenge of the client's verifier. */
+    private const string CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
 
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     private FixedClock $clock;
@@ -68,6 +80,7 @@ final class ResultBuilderTest extends TestCase
 
         $this->createConnectionTables();
         $this->createDomainsTable();
+        $this->createFlowTables();
 
         $this->connection = $this->makeConnection([
             'tenant_id'         => 'tenant-7',
@@ -84,6 +97,7 @@ final class ResultBuilderTest extends TestCase
     #[\Override]
     protected function tearDown(): void
     {
+        $this->dropFlowTables();
         $this->dropDomainsTable();
         $this->dropConnectionTables();
 
@@ -275,6 +289,94 @@ final class ResultBuilderTest extends TestCase
         ]);
 
         self::assertSame($verified, $this->build(self::claims(['mail' => 'person@example.com']))->emailDomainVerified);
+    }
+
+    /**
+     * The asserted email is the claims', the same value, kept apart from the
+     * mapped attributes even when the mapped email is another, and stored last.
+     *
+     * @return void
+     */
+    public function testTheAssertedEmailIsPassedThroughFromTheClaims(): void
+    {
+        $asserted = new AssertedEmail('asserted@example.com', false, LinkingEmailSource::USERINFO);
+        $claims   = new VerifiedClaims('https://op.example.com', 'sub-1', null, ['mail' => 'mapped@example.com'], new AuthenticationContext, null, $asserted);
+
+        $result = $this->build($claims);
+
+        self::assertSame($asserted, $result->assertedEmail);
+        self::assertSame('mapped@example.com', $result->attributes['email']);
+        self::assertNull($result->linkingEmail);
+        self::assertSame(['email' => 'asserted@example.com', 'verified' => false, 'source' => 'userinfo'], $result->toArray()['asserted_email']);
+    }
+
+    /**
+     * Claims with no asserted email give a result with none, whatever the
+     * mapped attributes hold: it is never derived from them.
+     *
+     * @return void
+     */
+    public function testTheAssertedEmailIsNeverDerivedFromTheMappedAttributes(): void
+    {
+        $result = $this->build(self::claims(['mail' => 'mapped@example.com', 'email_verified' => true]));
+
+        self::assertSame('mapped@example.com', $result->attributes['email']);
+        self::assertNull($result->assertedEmail);
+        self::assertNull($result->linkingEmail);
+        self::assertArrayNotHasKey('asserted_email', $result->toArray());
+    }
+
+    /**
+     * A result stored by the handoff store, encrypted, reads back with its
+     * asserted email exactly as it was built, each thing `email_verified` may
+     * be.
+     *
+     * @return void
+     *
+     * @throws \JsonException
+     * @throws \Random\RandomException
+     */
+    public function testTheHandoffStoreKeepsTheAssertedEmail(): void
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app = $this->app;
+
+        foreach ([true, false, null] as $verified) {
+
+            $asserted = new AssertedEmail(' Asserted+Tag@Example.COM ', $verified, LinkingEmailSource::ID_TOKEN);
+            $claims   = new VerifiedClaims('https://op.example.com', 'sub-1', null, ['given' => 'Ada'], new AuthenticationContext, null, $asserted);
+            $result   = $this->build($claims);
+
+            $app->make(DatabaseHandoffStore::class)->issue(new HandoffGrant($result, S256Challenge::fromString(self::CHALLENGE), $this->clock->now()->addMinute()));
+
+            $row = StoredCode::query()->sole();
+
+            self::assertStringNotContainsString('Asserted+Tag', $row->result);
+
+            $restored = self::readBack($row, $app->make(SecretEncrypter::class));
+
+            self::assertSame($result->toArray(), $restored->toArray());
+            self::assertSame(['email' => ' Asserted+Tag@Example.COM ', 'verified' => $verified, 'source' => 'id_token'], $restored->assertedEmail?->toArray());
+
+            StoredCode::query()->delete();
+        }
+    }
+
+    /**
+     * The verified result a stored code carries, as a redemption reads it.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
+     * @param  \SineMacula\Laravel\Sso\Contracts\SecretEncrypter  $encrypter
+     * @return \SineMacula\Laravel\Sso\Results\VerifiedResult
+     *
+     * @throws \UnexpectedValueException
+     */
+    private static function readBack(StoredCode $code, SecretEncrypter $encrypter): VerifiedResult
+    {
+        /** @var array<string, mixed> $stored */
+        $stored = json_decode($encrypter->decrypt($code->result), true);
+
+        return VerifiedResult::restore($stored);
     }
 
     /**

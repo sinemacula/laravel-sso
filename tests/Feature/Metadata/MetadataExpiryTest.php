@@ -17,10 +17,11 @@ use Tests\TestCase;
 
 /**
  * Feature tests for when what a metadata refresh applied stops being used
- * (SSO-2.8): never for a connection no refresh wrote; otherwise at the earlier
- * of its `validUntil` and its last validated fetch plus the stale limit, or the
- * `validUntil` alone with no limit; expired from that instant on; read again by
- * id for a connection given only through its contract.
+ * (SSO-2.8): never for a connection no refresh wrote and whose refresh is off;
+ * otherwise at the earlier of its `validUntil` and its last validated fetch
+ * plus the stale limit, or the `validUntil` alone with no limit, and of its
+ * JWKS's own validated fetch plus the limit; expired from that instant on; read
+ * again by id for a connection given only through its contract.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -175,6 +176,100 @@ final class MetadataExpiryTest extends TestCase
         $at    = CarbonImmutable::parse($validated);
 
         self::assertSame([$expiry, $expired], [$this->expiry()->expiryOf($until, $at)?->toIso8601String(), $this->expiry()->hasExpired($until, $at)]);
+    }
+
+    /**
+     * An OIDC connection's JWKS counts from its own validated fetch: the
+     * earlier of it and the discovery document's decides, the stale limit after
+     * each, and a JWKS refetched since moves only its own; with no refresh
+     * written, neither expires.
+     *
+     * @return void
+     */
+    public function testTheJwksExpiresFromItsOwnFetch(): void
+    {
+        $now = $this->clock->now();
+
+        $older  = $this->makeConnection(['protocol' => 'oidc', 'metadata_fetched_at' => $now, 'jwks_fetched_at' => $now->subDays(2)]);
+        $newer  = $this->makeConnection(['protocol' => 'oidc', 'metadata_fetched_at' => $now->subDays(2), 'jwks_fetched_at' => $now]);
+        $never  = $this->makeConnection(['protocol' => 'oidc', 'jwks_fetched_at' => $now->subYear()]);
+        $nojwks = $this->makeConnection(['protocol' => 'oidc', 'metadata_fetched_at' => $now]);
+
+        self::assertSame('2026-11-29T09:30:00+00:00', $this->expiry()->expiresAt($older)?->toIso8601String());
+        self::assertSame('2026-11-29T09:30:00+00:00', $this->expiry()->expiresAt($newer)?->toIso8601String());
+        self::assertNull($this->expiry()->expiresAt($never));
+        self::assertSame('2026-12-01T09:30:00+00:00', $this->expiry()->expiresAt($nojwks)?->toIso8601String());
+
+        $this->clock->advance(2592000 - 2 * 86400 - 1);
+
+        self::assertFalse($this->expiry()->isExpired($older));
+
+        $this->clock->advance(1);
+
+        self::assertTrue($this->expiry()->isExpired($older));
+
+        config()->set('sso.metadata.stale_limit_seconds', 0);
+
+        self::assertNull($this->expiry()->expiresAt($older));
+    }
+
+    /**
+     * Rows of `[seconds fetched ago, refresh, expired]`: a JWKS a refetch
+     * stamped on a connection no refresh has written, around the limit, and
+     * whether its refresh is on.
+     *
+     * @return iterable<string, array{0: int, 1: mixed, 2: bool}>
+     */
+    public static function provideUnrefreshedKeys(): iterable
+    {
+        yield from [
+            'refresh on, a second under the limit' => [2592000 - 1, true, false],
+            'refresh on, at the limit'             => [2592000, true, true],
+            'refresh on, a second over the limit'  => [2592000 + 1, true, true],
+            'refresh off, over the limit'          => [2592000 + 1, false, false],
+            'refresh not true, over the limit'     => [2592000 + 1, 'true', false],
+            'no refresh setting, over the limit'   => [2592000 + 1, null, false],
+        ];
+    }
+
+    /**
+     * Keys a refetch stamped count from that fetch once the connection's
+     * refresh is on, though no refresh has written it; a connection with its
+     * refresh off stays exempt.
+     *
+     * @param  int  $seconds
+     * @param  mixed  $refresh
+     * @param  bool  $expired
+     * @return void
+     */
+    #[DataProvider('provideUnrefreshedKeys')]
+    public function testKeysAgeOutWhileTheRefreshIsOn(int $seconds, mixed $refresh, bool $expired): void
+    {
+        $fetched    = $this->clock->now()->subSeconds($seconds);
+        $connection = $this->makeConnection(['protocol' => 'oidc', 'settings' => ['metadata_refresh' => $refresh], 'jwks_fetched_at' => $fetched]);
+        $expiry     = $refresh === true ? $fetched->addSeconds(2592000)->toIso8601String() : null;
+
+        self::assertSame($expired, $this->expiry()->isExpired($connection));
+        self::assertSame($expiry, $this->expiry()->expiresAt($connection)?->toIso8601String());
+    }
+
+    /**
+     * With no stale limit, keys never age out, whatever the refresh; and a
+     * connection whose refresh is on but holds no fetched keys never expires.
+     *
+     * @return void
+     */
+    public function testKeysHaveNoLimitWithNoStaleLimit(): void
+    {
+        $unfetched = $this->makeConnection(['protocol' => 'oidc', 'settings' => ['metadata_refresh' => true]]);
+
+        self::assertNull($this->expiry()->expiresAt($unfetched));
+
+        config()->set('sso.metadata.stale_limit_seconds', 0);
+
+        $connection = $this->makeConnection(['protocol' => 'oidc', 'settings' => ['metadata_refresh' => true], 'jwks_fetched_at' => $this->clock->now()->subYear()]);
+
+        self::assertNull($this->expiry()->expiresAt($connection));
     }
 
     /**

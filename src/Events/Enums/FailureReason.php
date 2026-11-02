@@ -137,7 +137,9 @@ enum FailureReason: string
     // document type, is invalid against the SAML 2.0 schema, repeats an `ID`,
     // holds a signature or an assertion anywhere but its schema position, or
     // more than one assertion, or its assertion does not carry exactly one
-    // authentication statement (SSO-6.1, SSO-6.3, SSO-6.10, SSO-6.11)
+    // authentication statement (SSO-6.1, SSO-6.3, SSO-6.10, SSO-6.11); or an
+    // OIDC callback whose request was consumed carries neither a code nor an
+    // error, or both (SSO-7.1)
     case RESPONSE_INVALID = 'response_invalid';
 
     // An encrypted assertion could not be decrypted, or its algorithms are not
@@ -280,4 +282,32 @@ enum FailureReason: string
     // Another server holds the connection's refresh claim, so this refresh did
     // not run (SSO-2.8, SSO-11.12)
     case METADATA_REFRESH_IN_PROGRESS = 'metadata_refresh_in_progress';
+
+    // The ID token is missing from the token response, or is not a compact JWS
+    // within the size cap (a JWE included), repeats a JSON member, carries
+    // `crit` or `b64`, or has a claim the package reads missing or of the wrong
+    // type (SSO-7.2, SSO-7.3, SSO-7.4)
+    case ID_TOKEN_INVALID = 'id_token_invalid';
+
+    // The token endpoint answered with a body that is not one JSON object, or
+    // without an access token or a `Bearer` token type (SSO-7.2)
+    case TOKEN_RESPONSE_INVALID = 'token_response_invalid';
+
+    // The ID token's `at_hash` does not match the access token (OpenID Connect
+    // Core §3.1.3.8, SSO-7.4)
+    case AT_HASH_MISMATCH = 'at_hash_mismatch';
+
+    // The UserInfo response is not one JSON object, or its `sub` is not the ID
+    // token's, or a claim the package reads is of the wrong type (SSO-7.5)
+    case USERINFO_INVALID = 'userinfo_invalid';
+
+    // The OpenID provider's discovery document is too large, not one JSON
+    // object, or names an endpoint or a capability the package cannot use
+    // (SSO-2.8)
+    case DISCOVERY_INVALID = 'discovery_invalid';
+
+    // The OpenID provider's JWKS is too large, not one JSON object with a list
+    // of keys, holds too many keys or two usable keys under one `kid`, or none
+    // the package can use (SSO-7.3)
+    case JWKS_INVALID = 'jwks_invalid';
 }

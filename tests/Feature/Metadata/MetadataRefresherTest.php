@@ -28,8 +28,11 @@ use SineMacula\Laravel\Sso\Metadata\MetadataImporter;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Metadata\RefreshClaims;
 use SineMacula\Laravel\Sso\Metadata\RefreshResult;
+use SineMacula\Laravel\Sso\Metadata\RefreshWriter;
+use SineMacula\Laravel\Sso\Metadata\SamlMetadataSource;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
+use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
@@ -43,6 +46,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
+use Tests\Fixtures\Protocols\ExampleDriver;
 use Tests\TestCase;
 
 /**
@@ -66,6 +70,8 @@ use Tests\TestCase;
  */
 #[CoversClass(MetadataRefresher::class)]
 #[CoversClass(RefreshClaims::class)]
+#[CoversClass(SamlMetadataSource::class)]
+#[CoversClass(RefreshWriter::class)]
 final class MetadataRefresherTest extends TestCase
 {
     use CapturesLogs, RecordsEventSequences, UsesConnections, UsesFlowTables;
@@ -226,6 +232,53 @@ final class MetadataRefresherTest extends TestCase
         self::assertSame([], $this->refresher()->refreshDue());
 
         $this->fetcher->assertNothingFetched();
+    }
+
+    /**
+     * With SAML switched off and OIDC on, nothing of SAML refreshes: it is not
+     * listed as due nor refreshed, a queued job skips it and an administrator
+     * is refused, with nothing fetched, written or reported.
+     *
+     * @return void
+     */
+    public function testNothingOfAProtocolSwitchedOffRefreshes(): void
+    {
+        $connection = $this->saml();
+        $before     = self::refreshState($this->row($connection));
+
+        config()->set('sso.features.saml2', false);
+        config()->set('sso.features.oidc', true);
+
+        self::assertSame([], $this->refresher()->dueConnectionIds());
+        self::assertSame([], $this->refresher()->refreshDue());
+
+        $queued  = $this->refresher()->refreshQueued($connection->id);
+        $refused = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+
+        self::assertSame([RefreshOutcome::SKIPPED, $connection->id], [$queued->outcome, $queued->connectionId]);
+        self::assertSame([RefreshOutcome::REFUSED, FailureReason::FEATURE_DISABLED, $connection->id], [$refused->outcome, $refused->reason, $refused->connectionId]);
+        self::assertSame($before, self::refreshState($this->row($connection)));
+
+        $this->fetcher->assertNothingFetched();
+        $this->assertNoEvents();
+    }
+
+    /**
+     * A protocol switched off does not stop another that is on, and its
+     * connections page past in the listing.
+     *
+     * @return void
+     */
+    public function testAProtocolSwitchedOffLeavesTheOtherRefreshing(): void
+    {
+        config()->set('sso.features.oidc', false);
+
+        $oidc = $this->makeConnection(['protocol' => 'oidc', 'settings' => ['issuer' => 'https://op.example.test', 'metadata_refresh' => true]]);
+        $saml = $this->saml();
+
+        self::assertSame([$saml->id], $this->refresher()->dueConnectionIds());
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($oidc->id)->outcome);
+        self::assertSame([$saml->id], array_map(static fn (RefreshResult $result): string => (string) $result->connectionId, $this->refresher()->refreshDue()));
     }
 
     /**
@@ -971,6 +1024,22 @@ final class MetadataRefresherTest extends TestCase
         $this->clock->advance(86400 * 365);
 
         self::assertNull($this->startReason($connection));
+    }
+
+    /**
+     * A connection of a protocol an application registered has no source, so a
+     * queued refresh naming it is skipped.
+     *
+     * @return void
+     */
+    public function testAQueuedRefreshOfAProtocolWithNoSourceIsSkipped(): void
+    {
+        app(ProtocolManager::class)->extend('example', fn (): ExampleDriver => new ExampleDriver);
+
+        $connection = $this->makeConnection(['protocol' => 'example']);
+
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id)->outcome);
+        self::assertSame([], $this->fetcher->requests());
     }
 
     /**

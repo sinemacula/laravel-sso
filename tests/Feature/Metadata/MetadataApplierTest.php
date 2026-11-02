@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Metadata\MetadataApplier;
 use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
 use SineMacula\Laravel\Sso\Metadata\RefreshClaim;
 use SineMacula\Laravel\Sso\Metadata\RefreshResult;
+use SineMacula\Laravel\Sso\Metadata\RefreshWriter;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
@@ -54,6 +55,7 @@ use Tests\TestCase;
  * @phpstan-import-type MetadataValues from \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata
  */
 #[CoversClass(MetadataApplier::class)]
+#[CoversClass(RefreshWriter::class)]
 #[CoversClass(RefreshResult::class)]
 #[CoversClass(RefreshClaim::class)]
 final class MetadataApplierTest extends TestCase
@@ -713,6 +715,27 @@ final class MetadataApplierTest extends TestCase
             ),
         );
         self::assertNull(RefreshResult::refused(FailureReason::CONNECTION_NOT_FOUND)->connectionId);
+    }
+
+    /**
+     * The snapshot under the lock holds each use's fingerprints, in order,
+     * whichever order they were added in; each use has a list even when empty.
+     *
+     * @return void
+     */
+    public function testTheLockedSnapshotHoldsEachUseInOrder(): void
+    {
+        $this->trust(Certificates::distinct(5));
+        $this->trust(Certificates::distinct(6));
+
+        $fingerprints = $this->trusted();
+
+        self::assertCount(3, $fingerprints);
+        self::assertSame(['idp_signing' => $fingerprints, 'metadata_signing' => []], MetadataApplier::trustedOf($this->row()));
+
+        $this->trust(Certificates::distinct(8), KeyUse::METADATA_SIGNING);
+
+        self::assertCount(1, MetadataApplier::trustedOf($this->row())['metadata_signing']);
     }
 
     /**

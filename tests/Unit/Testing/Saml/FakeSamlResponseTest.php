@@ -49,7 +49,7 @@ final class FakeSamlResponseTest extends TestCase
 
         $suffix = substr($options['response_id'], 10);
 
-        self::assertSame(self::normalised(self::expectedDefaults($suffix)), self::normalised($options));
+        self::assertSame(self::normalized(self::expectedDefaults($suffix)), self::normalized($options));
     }
 
     /**
@@ -196,22 +196,22 @@ final class FakeSamlResponseTest extends TestCase
      * @param  array<array-key, mixed>  $options
      * @return array<array-key, mixed>
      */
-    private static function normalised(array $options): array
+    private static function normalized(array $options): array
     {
-        $normalised = array_map(
+        $normalized = array_map(
             static fn (mixed $value): mixed => match (true) {
                 $value instanceof CarbonImmutable => $value->format('Y-m-d\TH:i:sP'),
-                is_array($value)                  => self::normalised($value),
+                is_array($value)                  => self::normalized($value),
                 default                           => $value,
             },
             $options,
         );
 
-        if (!array_is_list($normalised)) {
-            ksort($normalised);
+        if (!array_is_list($normalized)) {
+            ksort($normalized);
         }
 
-        return $normalised;
+        return $normalized;
     }
 
     /**

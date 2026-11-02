@@ -67,11 +67,30 @@ enum OidcSetting: string
     // `acr_values`, `login_hint`, ...), never one the flow controls
     case EXTRA_PARAMETERS = 'extra_parameters';
 
+    // The audiences an ID token may name beside the client id (SSO-7.4), none
+    // by default
+    case TRUSTED_AUDIENCES = 'trusted_audiences';
+
+    // The `max_age` every authorisation request sends, in seconds, whose
+    // `auth_time` the ID token must then carry and satisfy (SSO-7.4); none by
+    // default
+    case MAX_AGE = 'max_age';
+
+    // Whether the UserInfo endpoint is called, which is then mandatory and
+    // fails closed (SSO-7.5); off by default
+    case FETCH_USERINFO = 'fetch_userinfo';
+
+    // Whether the discovery document and the JWKS are refreshed on a schedule
+    // (SSO-2.8), while `sso.features.metadata_refresh` is on; off by default
+    case METADATA_REFRESH = 'metadata_refresh';
+
     /**
      * The operation whose freshness a change to the setting needs, or `null`
      * when its change never widens or redirects access (SSO-2.12): what decides
      * whom the connection trusts, where it sends people or the code, what a
-     * subject means, what a signature must be, and the client's credentials, is
+     * subject means, what a signature or a token must be, what the provider's
+     * authentication must prove, where identity claims come from, whether its
+     * discovery document and keys refresh, and the client's credentials, is
      * trust.
      *
      * @return ?\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation
