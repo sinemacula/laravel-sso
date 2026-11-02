@@ -122,7 +122,7 @@ final class ConcurrentKeyRotationTest extends TestCase
      */
     public function testExactlyOneOfTheRacingAdditionsAddsTheNextKey(): void
     {
-        $outcomes = $this->race(fn (KeyService $keys): KeyResult => $keys->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::EC));
+        $outcomes = $this->race(fn (KeyService $keys): KeyResult => $keys->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA));
 
         self::assertCount(1, array_keys($outcomes, KeyStatus::ADDED->value, true), implode(', ', $outcomes));
         self::assertCount(self::PROCESSES - 1, array_keys($outcomes, self::conflict(), true), implode(', ', $outcomes));
@@ -141,7 +141,7 @@ final class ConcurrentKeyRotationTest extends TestCase
      */
     public function testExactlyOneOfTheRacingAdditionsInsideACallersTransactionAddsTheNextKey(): void
     {
-        $outcomes = $this->race(fn (KeyService $keys): KeyResult => $keys->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::EC), true);
+        $outcomes = $this->race(fn (KeyService $keys): KeyResult => $keys->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA), true);
 
         self::assertCount(1, array_keys($outcomes, KeyStatus::ADDED->value, true), implode(', ', $outcomes));
         self::assertCount(self::PROCESSES - 1, array_keys($outcomes, self::conflict(), true), implode(', ', $outcomes));
@@ -174,7 +174,7 @@ final class ConcurrentKeyRotationTest extends TestCase
      */
     private function add(): KeyResult
     {
-        return $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::EC);
+        return $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
     }
 
     /**

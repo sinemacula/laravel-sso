@@ -52,7 +52,7 @@ final class ExtensionsCheckTest extends TestCase
         $extensions = array_filter(array_keys($composer['require']), static fn (string $package): bool => str_starts_with($package, 'ext-'));
         $required   = array_map(static fn (string $package): string => substr($package, 4), array_values($extensions));
 
-        self::assertSame(['curl', 'dom', 'hash', 'libxml', 'mbstring', 'openssl', 'zlib'], array_keys(ExtensionsCheck::EXTENSIONS));
+        self::assertSame(['bcmath', 'curl', 'dom', 'hash', 'libxml', 'mbstring', 'openssl', 'zlib'], array_keys(ExtensionsCheck::EXTENSIONS));
         self::assertSame($required, array_keys(ExtensionsCheck::EXTENSIONS));
     }
 

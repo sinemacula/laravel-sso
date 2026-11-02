@@ -24,7 +24,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
  * digits or underscores), for example from a service provider's `register()`
  * once the registry resolves:
  *
- * `$this->callAfterResolving(ProtocolManager::class, fn ($protocols) => $protocols->extend('cas', ...));`
+ * `$this->callAfterResolving(ProtocolManager::class, fn ($protocols) =>
+ * $protocols->extend('cas', ...));`
  *
  * A singleton that keeps each driver it builds for as long as the same
  * application is serving (the life of the process, except under Octane, where
@@ -333,13 +334,16 @@ final class ProtocolManager extends Manager
     }
 
     /**
-     * Build the SAML 2.0 driver.
+     * Build the SAML 2.0 driver, with its collaborators, from the container the
+     * drivers are built with.
      *
      * @return \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver
+     *
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
     protected function createSaml2Driver(): Saml2Driver
     {
-        return new Saml2Driver;
+        return $this->container->make(Saml2Driver::class);
     }
 
     /**

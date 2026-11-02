@@ -67,8 +67,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
  * removes the links with it (SSO-2.13). Every update that asks
  * `sso.connection.trust` voids, in its transaction and under the connection's
  * lock, the requests and handoff codes in flight through the connection
- * (`Connections\InFlightVoider`); a change that asks only another operation, or
- * none, voids nothing.
+ * (`Connections\InFlightVoider`) and raises its trust version; a change that
+ * asks only another operation, or none, voids nothing. Enabling a connection
+ * raises its trust version too, under its lock.
  *
  * It holds the registry, the lookup, the freshness gate, the secrets, the
  * reporter, the mapping's caps, the voider and the clock, none of which keeps
@@ -342,7 +343,7 @@ final readonly class ConnectionService
                 return $refusal ?? ConnectionResult::unchanged($this->summary($connection));
             }
 
-            $connection->forceFill(['enabled' => true])->save();
+            $connection->forceFill(['enabled' => true, 'trust_version' => $connection->trust_version + 1])->save();
 
             $this->events->connectionEnabled($connection, $actor);
 

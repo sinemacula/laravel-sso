@@ -31,7 +31,11 @@ use SineMacula\Laravel\Sso\Protocols\Correlation;
  * locks in the package's order, the connection's row before its request's, and
  * commits the consumption before the response is validated. A change that voids
  * the connection's requests (a disable, a trust change) takes the same locks in
- * the same order, and the two never deadlock.
+ * the same order, and the two never deadlock. The request is judged against the
+ * connection as that locking read gives it, so a request whose trust version is
+ * no longer the connection's is refused before the driver validates anything or
+ * calls the provider; a connection gone by then is judged as the completion
+ * read it, and refused again under the completion's lock.
  *
  * The result maps to the state:
  *
@@ -91,7 +95,8 @@ final readonly class ConsumeRequest implements CompletionStage
 
     /**
      * Consume the request the correlation names, in a transaction on the
-     * storage connection that locks the connection's row first.
+     * storage connection that locks the connection's row first, judged against
+     * the connection as locked.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
@@ -103,9 +108,9 @@ final readonly class ConsumeRequest implements CompletionStage
     {
         return DB::connection(StorageConnection::name())->transaction(function () use ($connection, $correlation): ConsumptionResult {
 
-            Connection::query()->useWritePdo()->lockForUpdate()->whereKey($connection->id)->first();
+            $locked = Connection::query()->useWritePdo()->lockForUpdate()->whereKey($connection->id)->first();
 
-            return $this->consumption->consume($connection, $correlation);
+            return $this->consumption->consume($locked ?? $connection, $correlation);
         });
     }
 

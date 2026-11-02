@@ -72,6 +72,30 @@ return new class extends Migration {
             // new request or code unvoided (InFlightVoider).
             $blueprint->unsignedBigInteger('flows_version')->default(0);
 
+            // Raised under the connection's lock by every change that voids
+            // what is in flight through it (a trust change, a disable) and by
+            // enabling it; never by an additive certificate. A flow that holds
+            // no request to void (an unsolicited SAML response) and a metadata
+            // refresh capture it before their slow steps and compare it under
+            // the lock, so a change made meanwhile refuses them.
+            $blueprint->unsignedBigInteger('trust_version')->default(0);
+
+            // The SAML metadata refresh (SSO-2.8): raised by every refresh that
+            // writes, so two refreshes compare and set; the last validated
+            // fetch and the earliest validUntil of what it applied, from which
+            // the settings expire; when the next attempt is due, how many have
+            // failed in a row (the backoff), until when a server's claim on a
+            // refresh in progress holds, and the random token that claim was
+            // made with, which a refresh's write must match, so one whose claim
+            // expired and was taken over writes nothing.
+            $blueprint->unsignedBigInteger('metadata_version')->default(0);
+            $blueprint->dateTime('metadata_fetched_at', 0)->nullable();
+            $blueprint->dateTime('metadata_valid_until', 0)->nullable();
+            $blueprint->dateTime('metadata_refresh_at', 0)->nullable();
+            $blueprint->unsignedInteger('metadata_refresh_failures')->default(0);
+            $blueprint->dateTime('metadata_claimed_until', 0)->nullable();
+            $blueprint->char('metadata_claim_token', 32)->nullable();
+
             // Whole seconds in UTC, from the package's clock.
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);
@@ -79,6 +103,10 @@ return new class extends Migration {
             // Named from the table, so a long configured name still fits
             // MySQL's 64-character identifiers.
             $blueprint->index(['tenant_id'], self::indexName($table, 'tenant_index'));
+
+            // The scheduled refresh reads the connections whose next attempt is
+            // due.
+            $blueprint->index(['metadata_refresh_at'], self::indexName($table, 'refresh_index'));
         });
     }
 

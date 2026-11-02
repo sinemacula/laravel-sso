@@ -41,9 +41,10 @@ use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
  * - sends with redirects, cookies, proxies (the environment's included) and
  *   content decoding off, certificate verification always on, `https` the only
  *   protocol, the time left of the fetch's one deadline, and the response size
- *   cap enforced on the declared length, during the transfer by a sink that
- *   refuses the write past it (on every supported Guzzle) and on the body
- *   received;
+ *   cap (the request's own, a metadata request's say, or else
+ *   `max_response_bytes`) enforced on the declared length, during the transfer
+ *   by a sink that refuses the write past it (on every supported Guzzle), so
+ *   nothing past the cap is read, and on the body received;
  * - sends the request's one credential as its kind says, and nothing else;
  * - follows a redirect only for a request without a credential, at most
  *   `max_redirects` times, rechecking and repinning each hop, with `GET` and no
@@ -302,17 +303,19 @@ final readonly class GuzzleFetcher implements Fetcher
      * the size cap and what is left of the deadline, with each header's first
      * value.
      *
-     * The body is written into a `CappedSink`, which refuses the write that
-     * would pass the cap, so cURL aborts the transfer there on every supported
-     * Guzzle, and is read back no further than a byte past the cap. A request
-     * Guzzle or PSR-7 cannot build (a header value it refuses, say) fails like
-     * a transport error, logged with the exception's class only, never its
-     * message, which can quote the value. The time left is read once, the last
-     * thing before the request goes, so the transfer is always given a cap of a
-     * millisecond or more; with less than that left, nothing is sent and the
-     * hop fails as `timeout`, however little time passed since the deadline was
-     * last checked. A transfer that fails once the deadline has passed, as
-     * cURL's own timeout does, fails as `timeout`.
+     * The cap is the request's own when it carries one, and the configured
+     * `max_response_bytes` otherwise. The body is written into a `CappedSink`,
+     * which refuses the write that would pass the cap, so cURL aborts the
+     * transfer there on every supported Guzzle, and is read back no further
+     * than a byte past the cap. A request Guzzle or PSR-7 cannot build (a
+     * header value it refuses, say) fails like a transport error, logged with
+     * the exception's class only, never its message, which can quote the value.
+     * The time left is read once, the last thing before the request goes, so
+     * the transfer is always given a cap of a millisecond or more; with less
+     * than that left, nothing is sent and the hop fails as `timeout`, however
+     * little time passed since the deadline was last checked. A transfer that
+     * fails once the deadline has passed, as cURL's own timeout does, fails as
+     * `timeout`.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  array{uri: \Psr\Http\Message\UriInterface, host: string, port: int, literal: ?string}  $target
@@ -325,7 +328,7 @@ final readonly class GuzzleFetcher implements Fetcher
      */
     private function send(FetchRequest $request, array $target, string $address, bool $first, FetchDeadline $deadline): FetchResult
     {
-        $cap      = $this->settings->maxResponseBytes();
+        $cap      = $request->maxBytes ?? $this->settings->maxResponseBytes();
         $tooLarge = false;
         $sink     = new CappedSink($cap);
         $client   = new Client(['handler' => HandlerStack::create($this->handler)]);

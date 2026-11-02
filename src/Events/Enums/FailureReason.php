@@ -59,7 +59,8 @@ enum FailureReason: string
     case RECIPIENT_MISMATCH = 'recipient_mismatch';
 
     // The assertion or ID token is not yet valid, has expired or is older than
-    // the maximum age allowed (SSO-6.5, SSO-7.4)
+    // the maximum age allowed, or the provider's authentication is in the
+    // future (SSO-6.5, SSO-6.10, SSO-7.4)
     case ASSERTION_EXPIRED = 'assertion_expired';
 
     // The assertion id was seen before, the handoff code was already redeemed,
@@ -103,9 +104,9 @@ enum FailureReason: string
     // (SSO-5.10)
     case SESSION_INELIGIBLE = 'session_ineligible';
 
-    // Discovery found no enabled connection the email's domain is verified
-    // for; the client is answered with the application's fallback, exactly as
-    // a match is answered (SSO-3.4, SSO-3.5)
+    // Discovery found no enabled connection the email's domain is verified for;
+    // the client is answered with the application's fallback, exactly as a
+    // match is answered (SSO-3.4, SSO-3.5)
     case DISCOVERY_NO_MATCH = 'discovery_no_match';
 
     // A response arrived at another connection's endpoint than the one its
@@ -131,6 +132,49 @@ enum FailureReason: string
     // The link a handoff code resolved at completion was removed, or now names
     // another identity (SSO-8.5, SSO-9.9)
     case LINK_CHANGED = 'link_changed';
+
+    // A SAML response is too large, not base64, unparseable, declares a
+    // document type, is invalid against the SAML 2.0 schema, repeats an `ID`,
+    // holds a signature or an assertion anywhere but its schema position, or
+    // more than one assertion, or its assertion does not carry exactly one
+    // authentication statement (SSO-6.1, SSO-6.3, SSO-6.10, SSO-6.11)
+    case RESPONSE_INVALID = 'response_invalid';
+
+    // An encrypted assertion could not be decrypted, or its algorithms are not
+    // allowed; one indistinguishable failure, whatever the cause (SSO-6.7)
+    case DECRYPTION_FAILED = 'decryption_failed';
+
+    // The connection requires encrypted assertions and the response carried a
+    // plain one (SSO-6.8)
+    case ENCRYPTION_REQUIRED = 'encryption_required';
+
+    // The response's subject is not one the connection accepts: a transient,
+    // unrequested or missing `NameID`, a qualifier that is not the provider's
+    // or this service provider's, or a subject attribute absent, repeated,
+    // empty or too long (SSO-6.9)
+    case SUBJECT_INVALID = 'subject_invalid';
+
+    // The response's signed `InResponseTo`, on the response or a bearer
+    // confirmation, is not the id of the request consumed for it, or its
+    // `RelayState` names another request (SSO-5.3, SSO-6.6)
+    case REQUEST_MISMATCH = 'request_mismatch';
+
+    // The provider's authentication is too old for the connection's maximum
+    // authentication age or earlier than a `reauthenticate` request, or its
+    // session has already ended (SSO-5.10, SSO-6.10)
+    case AUTHENTICATION_EXPIRED = 'authentication_expired';
+
+    // The provider's authentication context class is not one the connection
+    // requires (SSO-6.10)
+    case AUTHENTICATION_CONTEXT_MISMATCH = 'authentication_context_mismatch';
+
+    // The assertion carries a condition the package does not understand (SAML
+    // 2.0 Core §2.5.1, SSO-6.4)
+    case CONDITION_UNSUPPORTED = 'condition_unsupported';
+
+    // An unsolicited SAML response arrived at a connection that does not allow
+    // IdP-initiated sign-in (SSO-5.8)
+    case UNSOLICITED_NOT_ALLOWED = 'unsolicited_not_allowed';
 
     // An outbound request was refused before it was sent: not `https`, an
     // address in a refused range, a redirect where none may be followed, or a
@@ -213,4 +257,27 @@ enum FailureReason: string
     // connection exactly once, relinked or removed, or named an id that is not
     // one of them (SSO-2.13)
     case LINKS_UNACCOUNTED = 'links_unaccounted';
+
+    // Identity provider metadata is too large, unparseable, declares a document
+    // type, repeats an `ID`, has a chosen entity invalid against the SAML 2.0
+    // metadata schema, or names no single sign-on service or signing
+    // certificate the package can use (SSO-2.8, SSO-6.11)
+    case METADATA_INVALID = 'metadata_invalid';
+
+    // The metadata is unsigned while the connection has a metadata signing
+    // anchor, or its signature does not cover the chosen entity or does not
+    // verify with an anchor (SSO-2.8)
+    case METADATA_SIGNATURE_INVALID = 'metadata_signature_invalid';
+
+    // The metadata holds no entity, or more than one, with the connection's
+    // pinned entity id (SSO-2.8)
+    case METADATA_ENTITY_NOT_FOUND = 'metadata_entity_not_found';
+
+    // A refresh lost to a change of the connection's trust, its metadata or
+    // another refresh made while it fetched, and wrote nothing (SSO-2.8)
+    case METADATA_CONFLICT = 'metadata_conflict';
+
+    // Another server holds the connection's refresh claim, so this refresh did
+    // not run (SSO-2.8, SSO-11.12)
+    case METADATA_REFRESH_IN_PROGRESS = 'metadata_refresh_in_progress';
 }

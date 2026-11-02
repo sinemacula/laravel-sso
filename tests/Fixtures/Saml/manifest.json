@@ -1,0 +1,458 @@
+{
+    "idp_entity_id": "https://idp.example.test/saml",
+    "sp_entity_id": "https://sp.example.test/saml/metadata",
+    "acs_url": "https://sp.example.test/saml/acs",
+    "request_id": "_req-0001",
+    "subject": "alice-persistent-id",
+    "attacker_subject": "mallory-persistent-id",
+    "validity": [
+        "2026-01-01T00:00:00Z",
+        "2036-01-01T00:00:00Z"
+    ],
+    "trusted_certificate": "keys/idp.crt",
+    "decryption_key": "keys/sp.key",
+    "fixtures": [
+        {
+            "name": "01-valid-response-signed",
+            "group": "baseline",
+            "expect": "accept",
+            "description": "Response signed (RSA-SHA256, exclusive c14n); assertion unsigned.",
+            "package": {
+                "outcome": "read",
+                "subject": "alice-persistent-id"
+            }
+        },
+        {
+            "name": "02-valid-assertion-signed",
+            "group": "baseline",
+            "expect": "accept",
+            "description": "Assertion signed; response unsigned.",
+            "package": {
+                "outcome": "read",
+                "subject": "alice-persistent-id"
+            }
+        },
+        {
+            "name": "03-valid-both-signed",
+            "group": "baseline",
+            "expect": "accept",
+            "description": "Assertion signed, then the response signed over it.",
+            "package": {
+                "outcome": "read",
+                "subject": "alice-persistent-id"
+            }
+        },
+        {
+            "name": "04-valid-encrypted-oaep-gcm",
+            "group": "baseline",
+            "expect": "accept",
+            "description": "Signed assertion encrypted to the SP (RSA-OAEP key transport, AES-256-GCM); response signed.",
+            "package": {
+                "outcome": "refused",
+                "reason": "decryption_failed",
+                "detail": "decryption",
+                "note": "AES-256-GCM is unusable in xml-security 2.x and out until saml2 v7 (docs/design/saml-library.md, condition 5)."
+            }
+        },
+        {
+            "name": "05-valid-encrypted-oaep-aes128-gcm",
+            "group": "baseline",
+            "expect": "accept",
+            "description": "As 04 with AES-128-GCM content encryption.",
+            "package": {
+                "outcome": "read",
+                "subject": "alice-persistent-id"
+            }
+        },
+        {
+            "name": "10-tampered-nameid",
+            "group": "integrity",
+            "expect": "refuse",
+            "description": "Response signed, then the NameID changed.",
+            "package": {
+                "outcome": "refused",
+                "reason": "signature_invalid",
+                "detail": "signature"
+            }
+        },
+        {
+            "name": "11-untrusted-key-embedded-cert",
+            "group": "integrity",
+            "expect": "refuse",
+            "description": "Response signed by an untrusted key whose certificate is carried in KeyInfo.",
+            "package": {
+                "outcome": "refused",
+                "reason": "signature_invalid",
+                "detail": "signature"
+            }
+        },
+        {
+            "name": "12-unsigned",
+            "group": "integrity",
+            "expect": "refuse",
+            "description": "No signature on the response or the assertion.",
+            "package": {
+                "outcome": "refused",
+                "reason": "signature_invalid",
+                "detail": "unsigned"
+            }
+        },
+        {
+            "name": "20-xsw1",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "XSW1: evil response at the root carrying the signature; the signed original response inside ds:Signature.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "schema"
+            }
+        },
+        {
+            "name": "21-xsw2",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "XSW2: evil response at the root; the signed original response as a detached sibling before the signature.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "schema"
+            }
+        },
+        {
+            "name": "22-xsw3",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "XSW3: unsigned evil assertion (new ID) before the signed assertion.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "assertion_location"
+            }
+        },
+        {
+            "name": "23-xsw4",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "XSW4: the signed assertion nested as the last child of an unsigned evil assertion.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "schema"
+            }
+        },
+        {
+            "name": "24-xsw5",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "XSW5: evil assertion carries the signature; the unsigned original appended at the end of the response.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "assertion_location"
+            }
+        },
+        {
+            "name": "25-xsw6",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "XSW6: evil assertion carries the signature; the unsigned original inside that ds:Signature.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "schema"
+            }
+        },
+        {
+            "name": "26-xsw7",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "XSW7: the signed assertion inside samlp:Extensions; an unsigned evil assertion in the assertion position.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "signature_location"
+            }
+        },
+        {
+            "name": "27-xsw8",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "XSW8: evil assertion carries the signature; the unsigned original inside ds:Object in that signature.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "assertion_location"
+            }
+        },
+        {
+            "name": "28-xsw-same-id-before",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "Unsigned evil assertion with the same ID as the signed assertion, placed before it.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "schema"
+            }
+        },
+        {
+            "name": "29-xsw-same-id-after",
+            "group": "wrapping",
+            "expect": "refuse",
+            "description": "Unsigned evil assertion with the same ID as the signed assertion, placed after it.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "schema"
+            }
+        },
+        {
+            "name": "30-dup-id-response-and-assertion",
+            "group": "duplicate-id",
+            "expect": "refuse",
+            "description": "Response and assertion share one ID; the response is signed (reference #_dup-0001).",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "schema"
+            }
+        },
+        {
+            "name": "31-dup-id-two-signed-assertions",
+            "group": "duplicate-id",
+            "expect": "refuse",
+            "description": "Two identical signed assertions with the same ID; the response signed over both.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "schema"
+            }
+        },
+        {
+            "name": "40-comment-in-nameid-response-signed",
+            "group": "comment",
+            "expect": "accept-full",
+            "description": "Signed NameID \"alice-persistent-id.mallory\" split by a comment after \"alice-persistent-id\"; response signed.",
+            "package": {
+                "outcome": "read",
+                "subject": "alice-persistent-id.mallory"
+            }
+        },
+        {
+            "name": "41-comment-in-nameid-assertion-signed",
+            "group": "comment",
+            "expect": "accept-full",
+            "description": "As 40, with the assertion signed instead of the response.",
+            "package": {
+                "outcome": "read",
+                "subject": "alice-persistent-id.mallory"
+            }
+        },
+        {
+            "name": "42-pi-in-nameid-response-signed",
+            "group": "comment",
+            "expect": "accept-full",
+            "description": "As 40, split by a processing instruction instead of a comment.",
+            "package": {
+                "outcome": "refused",
+                "reason": "signature_invalid",
+                "detail": "signature",
+                "note": "Canonicalisation keeps processing instructions, so one inserted after signing breaks the digest."
+            }
+        },
+        {
+            "name": "50-doctype-unused",
+            "group": "dtd",
+            "expect": "refuse",
+            "description": "A valid signed response with an internal DTD subset that declares an unused entity.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "unparseable"
+            }
+        },
+        {
+            "name": "51-xxe-external-entity",
+            "group": "dtd",
+            "expect": "refuse",
+            "description": "External entity (file:// URL of xxe-secret.txt) referenced from the NameID; must never be read.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "unparseable"
+            }
+        },
+        {
+            "name": "52-entity-expansion",
+            "group": "dtd",
+            "expect": "refuse",
+            "description": "Nested internal entities (10^4 expansion, deliberately small) referenced from the NameID.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "unparseable"
+            }
+        },
+        {
+            "name": "53-external-dtd",
+            "group": "dtd",
+            "expect": "refuse",
+            "description": "External DTD by SYSTEM identifier on a closed local port; must not be fetched.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "unparseable"
+            }
+        },
+        {
+            "name": "54-xxe-utf16",
+            "group": "dtd",
+            "expect": "refuse",
+            "description": "As 51, encoded as UTF-16LE with a BOM so that a byte-level \"<!DOCTYPE\" search does not match.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "unparseable"
+            }
+        },
+        {
+            "name": "60-rsa-sha1",
+            "group": "algorithm",
+            "expect": "refuse",
+            "description": "Response signed with RSA-SHA1 and a SHA-1 digest.",
+            "package": {
+                "outcome": "refused",
+                "reason": "signature_invalid",
+                "detail": "signature_policy"
+            }
+        },
+        {
+            "name": "61-sha1-digest",
+            "group": "algorithm",
+            "expect": "refuse",
+            "description": "Response signed with RSA-SHA256 but a SHA-1 reference digest.",
+            "package": {
+                "outcome": "refused",
+                "reason": "signature_invalid",
+                "detail": "signature_policy"
+            }
+        },
+        {
+            "name": "62-encrypted-rsa15-cbc",
+            "group": "algorithm",
+            "expect": "refuse",
+            "description": "Signed assertion encrypted with RSA PKCS#1 v1.5 key transport and AES-128-CBC; response signed.",
+            "package": {
+                "outcome": "refused",
+                "reason": "decryption_failed",
+                "detail": "decryption"
+            }
+        },
+        {
+            "name": "63-encrypted-rsa15-gcm",
+            "group": "algorithm",
+            "expect": "refuse",
+            "description": "Signed assertion encrypted with RSA PKCS#1 v1.5 key transport and AES-256-GCM; response signed.",
+            "package": {
+                "outcome": "refused",
+                "reason": "decryption_failed",
+                "detail": "decryption"
+            }
+        },
+        {
+            "name": "64-encrypted-oaep-cbc",
+            "group": "algorithm",
+            "expect": "refuse",
+            "description": "Signed assertion encrypted with RSA-OAEP and AES-128-CBC (allowed only by opt-in); response signed.",
+            "package": {
+                "outcome": "refused",
+                "reason": "decryption_failed",
+                "detail": "decryption",
+                "with_cbc": {
+                    "outcome": "read",
+                    "subject": "alice-persistent-id"
+                },
+                "note": "AES-CBC is decrypted only when the connection lists it, and then only after a verified response signature."
+            }
+        },
+        {
+            "name": "70-multiple-assertions",
+            "group": "structure",
+            "expect": "refuse",
+            "description": "Two validly signed assertions (alice, then mallory) in a signed response.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "assertion_location"
+            }
+        },
+        {
+            "name": "71-unsigned-assertion-beside-signed",
+            "group": "structure",
+            "expect": "refuse",
+            "description": "Unsigned response: a signed assertion followed by an injected unsigned assertion.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "assertion_location"
+            }
+        },
+        {
+            "name": "72-response-signature-references-assertion",
+            "group": "structure",
+            "expect": "refuse",
+            "description": "ds:Signature in the response whose Reference names the assertion (#_assert-0001), not the response.",
+            "package": {
+                "outcome": "refused",
+                "reason": "signature_invalid",
+                "detail": "signature_policy"
+            }
+        },
+        {
+            "name": "73-signed-response-assertion-signature-other-id",
+            "group": "structure",
+            "expect": "refuse",
+            "description": "Signed response; the assertion carries a signature whose reference names a different ID (#_assert-0001 on an assertion now _assert-0002), so that signature cannot verify.",
+            "package": {
+                "outcome": "refused",
+                "reason": "signature_invalid",
+                "detail": "signature_policy"
+            }
+        },
+        {
+            "name": "74-empty-uri-reference",
+            "group": "structure",
+            "expect": "refuse",
+            "description": "Response signed with Reference URI=\"\" (whole document) instead of a same-document #id.",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "structure"
+            }
+        },
+        {
+            "name": "75-c14n-with-comments",
+            "group": "structure",
+            "expect": "refuse",
+            "description": "Response signed with exclusive c14n WithComments as the SignedInfo canonicalisation.",
+            "package": {
+                "outcome": "refused",
+                "reason": "signature_invalid",
+                "detail": "signature_policy"
+            }
+        },
+        {
+            "name": "76-schema-invalid-order",
+            "group": "structure",
+            "expect": "refuse",
+            "description": "Signed response whose assertion has Conditions before Subject (invalid against the SAML 2.0 schema).",
+            "package": {
+                "outcome": "refused",
+                "reason": "response_invalid",
+                "detail": "schema"
+            }
+        }
+    ],
+    "description": "The BL-0A adversarial fixtures. expect is the outcome SSO-6 requires; package is the outcome the package adapter gives under the default policy (RSA-SHA256, RSA-OAEP, AES-128/192-GCM), with with_cbc for AES-CBC listed. {{FIXTURES}} in 51 and 54 stands for this directory."
+}

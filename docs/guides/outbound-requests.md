@@ -40,7 +40,11 @@ fetcher refuses to start rather than fall back to PHP streams, and `php artisan 
   the time connecting may take, never more than what is left of the timeout. A fetch that runs out of time fails as
   `fetch_failed`, logged with the cause `timeout`.
 - `max_response_bytes` is the largest response body accepted, counted as received (responses are never decompressed).
-  A larger one fails, however it is sent.
+  A larger one fails, however it is sent. SAML metadata is the one exception: it is held to its own cap,
+  `sso.metadata.max_bytes` (1 MiB by default, up to 256 MiB), so a federation's aggregate can be allowed without
+  raising the cap of every token, UserInfo and JWKS response (see
+  [SAML metadata](saml-metadata.md#large-federation-metadata)). A fetcher you bind yourself must honour a request's own
+  cap (`FetchRequest::$maxBytes`) when it carries one.
 - `max_redirects` is how many redirects a metadata, discovery or JWKS request may follow, each checked again. A token
   or UserInfo request follows none, whatever this is set to.
 

@@ -121,6 +121,8 @@ final class TrustedCertificatesTest extends TestCase
             'a weak rsa 1024 key'         => [static fn (): string => Certificates::rsa1024(), 'weak_key'],
             'a curve the package refuses' => [static fn (): string => Certificates::unsupportedCurve(), 'weak_key'],
             'an ed25519 key'              => [static fn (): string => Certificates::ED25519, 'not_allowed'],
+            'an ec p-256 key'             => [static fn (): string => Certificates::ecP256(), 'unsupported'],
+            'an ec p-384 key'             => [static fn (): string => Certificates::ecP384(), 'unsupported'],
         ];
     }
 
@@ -154,9 +156,8 @@ final class TrustedCertificatesTest extends TestCase
     public static function provideTrustedCertificates(): iterable
     {
         yield from [
-            'rsa 2048' => [static fn (): string => Certificates::rsa2048(), KeyType::RSA, 2048],
-            'ec p-256' => [static fn (): string => Certificates::ecP256(), KeyType::EC, 256],
-            'ec p-384' => [static fn (): string => Certificates::ecP384(), KeyType::EC, 384],
+            'rsa 2048'   => [static fn (): string => Certificates::rsa2048(), KeyType::RSA, 2048],
+            'rsa 2048 b' => [static fn (): string => Certificates::distinct(0), KeyType::RSA, 2048],
         ];
     }
 
@@ -213,7 +214,7 @@ final class TrustedCertificatesTest extends TestCase
     public function testTrustsASet(): void
     {
         $first  = self::summaryOf($this->trust(Certificates::rsa2048()));
-        $second = self::summaryOf($this->trust(Certificates::ecP256()));
+        $second = self::summaryOf($this->trust(Certificates::distinct(0)));
 
         self::assertSame([$first->id, $second->id], array_map(static fn (KeySummary $key): string => $key->id, $this->ring()->trustedCertificates($this->connection->id)));
     }
@@ -226,11 +227,11 @@ final class TrustedCertificatesTest extends TestCase
      */
     public function testRefusesADuplicate(): void
     {
-        $this->trust(Certificates::ecP256());
+        $this->trust(Certificates::distinct(0));
         $this->freshness->reset();
         $this->startRecordingEvents();
 
-        $result = $this->trust("\r\n" . str_replace("\n", "\r\n", Certificates::ecP256()));
+        $result = $this->trust("\r\n" . str_replace("\n", "\r\n", Certificates::distinct(0)));
 
         self::assertTrue($result->isInvalid());
         self::assertSame([['setting' => 'certificate', 'code' => 'duplicate']], $result->jsonSerialize()['violations']);
@@ -248,9 +249,9 @@ final class TrustedCertificatesTest extends TestCase
     {
         $other = $this->makeConnection(['protocol' => 'saml2']);
 
-        $this->trust(Certificates::ecP256());
+        $this->trust(Certificates::distinct(0));
 
-        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $other->id, Certificates::ecP256())->isSucceeded());
+        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $other->id, Certificates::distinct(0))->isSucceeded());
     }
 
     /**
@@ -289,7 +290,7 @@ final class TrustedCertificatesTest extends TestCase
      */
     public function testOwnKeysDoNotCountTowardsTheCap(): void
     {
-        $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::EC);
+        $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
 
         for ($index = 1; $index <= KeyService::MAX_TRUSTED_CERTIFICATES; $index++) {
             self::assertTrue($this->trust(Certificates::distinct($index))->isSucceeded());
@@ -304,7 +305,7 @@ final class TrustedCertificatesTest extends TestCase
     public function testAnOidcConnectionIsRefused(): void
     {
         $oidc   = $this->makeConnection(['protocol' => 'oidc']);
-        $result = $this->keys()->trustCertificate(self::TENANT, $oidc->id, Certificates::ecP256());
+        $result = $this->keys()->trustCertificate(self::TENANT, $oidc->id, Certificates::distinct(0));
 
         self::assertTrue($result->isInvalid());
         self::assertSame([['setting' => 'certificate', 'code' => 'unsupported']], $result->jsonSerialize()['violations']);
@@ -320,7 +321,7 @@ final class TrustedCertificatesTest extends TestCase
      */
     public function testTrustsAnExpiredCertificate(): void
     {
-        $pem      = Certificates::oneDay();
+        $pem      = Certificates::rsaOneDay();
         $notAfter = openssl_x509_parse($pem)['validTo_time_t'] ?? null;
 
         self::assertIsInt($notAfter);
@@ -346,7 +347,7 @@ final class TrustedCertificatesTest extends TestCase
     public function testDistrustsACertificateTheLastIncluded(): void
     {
         $first  = self::summaryOf($this->trust(Certificates::rsa2048()));
-        $second = self::summaryOf($this->trust(Certificates::ecP256()));
+        $second = self::summaryOf($this->trust(Certificates::distinct(0)));
 
         $this->freshness->reset();
         $this->startRecordingEvents();
@@ -383,8 +384,8 @@ final class TrustedCertificatesTest extends TestCase
     public function testDistrustsOnlyTheConnectionsCertificates(): void
     {
         $other  = $this->makeConnection(['protocol' => 'saml2']);
-        $own    = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::EC));
-        $theirs = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $other->id, Certificates::ecP256()));
+        $own    = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA));
+        $theirs = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $other->id, Certificates::distinct(0)));
 
         $this->freshness->reset();
         $this->startRecordingEvents();
@@ -407,23 +408,45 @@ final class TrustedCertificatesTest extends TestCase
     public function testACertificateTrustedMeanwhileIsADuplicate(): void
     {
         $this->freshness->onCheck = function (): void {
-            $this->trust(Certificates::ecP256());
+            $this->trust(Certificates::distinct(0));
         };
 
-        $result = $this->trust(Certificates::ecP256());
+        $result = $this->trust(Certificates::distinct(0));
 
         self::assertSame([['setting' => 'certificate', 'code' => 'duplicate']], $result->jsonSerialize()['violations']);
         self::assertSame(1, ConnectionKey::query()->count());
     }
 
     /**
-     * Trusting a certificate voids the connection's unfinished requests and
-     * unredeemed codes, stamped with the clock's now, and nothing of another
+     * Trusting a signing certificate is additive: it voids nothing in flight
+     * and leaves the trust version as it was, so a provider rotating its key
+     * never voids its own flows.
+     *
+     * @return void
+     */
+    public function testTrustingASigningCertificateVoidsNothing(): void
+    {
+        $pending = $this->makeAuthorizationRequest($this->connection, ['consumed_at' => $this->clock->now()]);
+        $code    = $this->makeHandoffCode($this->connection);
+
+        $this->clock->advance(60);
+
+        self::assertTrue($this->trust(Certificates::distinct(0))->isSucceeded());
+
+        self::assertNull(AuthorizationRequest::query()->findOrFail($pending->id)->voided_at);
+        self::assertNull(HandoffCode::query()->findOrFail($code->id)->voided_at);
+        self::assertSame(0, Connection::query()->findOrFail($this->connection->id)->trust_version);
+    }
+
+    /**
+     * Trusting a metadata signing anchor is a trust change: it voids the
+     * connection's unfinished requests and unredeemed codes, stamped with the
+     * clock's now, raises its trust version, and touches nothing of another
      * connection; a finished request and a redeemed code are kept.
      *
      * @return void
      */
-    public function testTrustingACertificateVoidsWhatIsInFlight(): void
+    public function testTrustingAMetadataAnchorVoidsWhatIsInFlight(): void
     {
         $other    = $this->makeConnection(['protocol' => 'saml2']);
         $pending  = $this->makeAuthorizationRequest($this->connection, ['consumed_at' => $this->clock->now()]);
@@ -434,23 +457,93 @@ final class TrustedCertificatesTest extends TestCase
 
         $this->clock->advance(60);
 
-        self::assertTrue($this->trust(Certificates::ecP256())->isSucceeded());
+        $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), null, KeyUse::METADATA_SIGNING);
 
+        self::assertSame(KeyUse::METADATA_SIGNING, self::summaryOf($result)->use);
         self::assertSame('2026-11-01T09:31:00+00:00', AuthorizationRequest::query()->findOrFail($pending->id)->voided_at?->toIso8601String());
         self::assertSame('2026-11-01T09:31:00+00:00', HandoffCode::query()->findOrFail($code->id)->voided_at?->toIso8601String());
         self::assertNull(AuthorizationRequest::query()->findOrFail($finished->id)->voided_at);
         self::assertNull(HandoffCode::query()->findOrFail($redeemed->id)->voided_at);
         self::assertNull(AuthorizationRequest::query()->findOrFail($theirs->id)->voided_at);
+        self::assertSame([1, 0], [Connection::query()->findOrFail($this->connection->id)->trust_version, Connection::query()->findOrFail($other->id)->trust_version]);
     }
 
     /**
-     * Distrusting a certificate voids what is in flight through the connection.
+     * A metadata signing anchor is a set of its own: the same certificate may
+     * be a signing certificate and an anchor, each capped apart, and the key
+     * ring answers each set alone.
+     *
+     * @return void
+     */
+    public function testAnchorsAreASetOfTheirOwn(): void
+    {
+        $signing = self::summaryOf($this->trust(Certificates::distinct(0)));
+        $anchor  = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), null, KeyUse::METADATA_SIGNING));
+        $ring    = app(KeyRing::class);
+
+        self::assertSame([$signing->id], array_map(static fn (KeySummary $key): string => $key->id, $ring->trustedCertificates($this->connection->id)));
+        self::assertSame([$anchor->id], array_map(static fn (KeySummary $key): string => $key->id, $ring->trustedCertificates($this->connection->id, KeyUse::METADATA_SIGNING)));
+        $again = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), null, KeyUse::METADATA_SIGNING);
+
+        self::assertSame([['setting' => 'certificate', 'code' => 'duplicate']], $again->jsonSerialize()['violations']);
+    }
+
+    /**
+     * SAML is RSA only, for every use: an elliptic curve certificate is refused
+     * as an identity provider signing certificate and as a metadata signing
+     * anchor alike, as `unsupported`, before freshness is asked, with nothing
+     * written.
+     *
+     * @return void
+     */
+    public function testAnEllipticCurveCertificateIsRefusedForEverySamlUse(): void
+    {
+        foreach ([KeyUse::IDP_SIGNING, KeyUse::METADATA_SIGNING] as $use) {
+            foreach ([Certificates::ecP256(), Certificates::ecP384()] as $certificate) {
+
+                $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $certificate, null, $use);
+
+                $refusal = [$result->reason, $result->jsonSerialize()['violations']];
+
+                self::assertSame([FailureReason::SETTINGS_INVALID, [['setting' => 'certificate', 'code' => 'unsupported']]], $refusal);
+            }
+        }
+
+        self::assertSame([], $this->freshness->asked());
+        self::assertSame(0, ConnectionKey::query()->count());
+    }
+
+    /**
+     * Only a trusted certificate's use may be trusted, and the key ring answers
+     * only those.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testOnlyATrustedCertificatesUseIsTrusted(): void
+    {
+        try {
+            $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), null, KeyUse::SP_SIGNING);
+            self::fail('An own key\'s use was trusted.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame('A certificate is trusted as [idp_signing] or [metadata_signing], never as [sp_signing].', $exception->getMessage());
+        }
+
+        $this->expectExceptionObject(new \InvalidArgumentException('[sp_encryption] is not a use of a trusted certificate.'));
+
+        app(KeyRing::class)->trustedCertificates($this->connection->id, KeyUse::SP_ENCRYPTION);
+    }
+
+    /**
+     * Distrusting a certificate voids what is in flight through the connection
+     * and raises its trust version.
      *
      * @return void
      */
     public function testDistrustingACertificateVoidsWhatIsInFlight(): void
     {
-        $certificate = self::summaryOf($this->trust(Certificates::ecP256()));
+        $certificate = self::summaryOf($this->trust(Certificates::distinct(0)));
         $request     = $this->makeAuthorizationRequest($this->connection);
         $code        = $this->makeHandoffCode($this->connection);
 
@@ -460,6 +553,7 @@ final class TrustedCertificatesTest extends TestCase
 
         self::assertSame('2026-11-01T09:31:00+00:00', AuthorizationRequest::query()->findOrFail($request->id)->voided_at?->toIso8601String());
         self::assertSame('2026-11-01T09:31:00+00:00', HandoffCode::query()->findOrFail($code->id)->voided_at?->toIso8601String());
+        self::assertSame(1, Connection::query()->findOrFail($this->connection->id)->trust_version);
     }
 
     /**
@@ -470,12 +564,12 @@ final class TrustedCertificatesTest extends TestCase
      */
     public function testARefusedCertificateChangeVoidsNothing(): void
     {
-        $this->trust(Certificates::ecP256());
+        $this->trust(Certificates::distinct(0));
 
         $request = $this->makeAuthorizationRequest($this->connection);
         $code    = $this->makeHandoffCode($this->connection);
 
-        self::assertTrue($this->trust(Certificates::ecP256())->isInvalid());
+        self::assertTrue($this->trust(Certificates::distinct(0))->isInvalid());
         self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, '01jbunknownkey000000000000')->reason);
 
         $this->freshness->answer(FreshnessOutcome::STALE);

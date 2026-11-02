@@ -33,7 +33,7 @@ A key's use says what it is for:
 
 | Use                        | Protocol | Types allowed | What it does                                 |
 |----------------------------|----------|---------------|----------------------------------------------|
-| `KeyUse::SP_SIGNING`       | `saml2`  | RSA, EC       | Signs the service provider's `AuthnRequest`s |
+| `KeyUse::SP_SIGNING`       | `saml2`  | RSA           | Signs the service provider's `AuthnRequest`s |
 | `KeyUse::SP_ENCRYPTION`    | `saml2`  | RSA           | Decrypts the assertions encrypted for it     |
 | `KeyUse::CLIENT_ASSERTION` | `oidc`   | RSA, EC       | Signs the `private_key_jwt` client assertion |
 
@@ -102,16 +102,16 @@ $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, $actor);
 
 A certificate is refused with `settings_invalid` and one violation at `certificate`:
 
-| Code                  | Why                                                                                 |
-|-----------------------|-------------------------------------------------------------------------------------|
-| `too_long`            | It is longer than 16384 bytes                                                       |
-| `private_key_refused` | It holds a private key: give the certificate only                                   |
-| `invalid_format`      | It is not exactly one PEM-encoded X.509 certificate                                 |
-| `weak_key`            | Its RSA key is under 2048 bits, or its curve is not P-256, P-384 or P-521           |
-| `not_allowed`         | Its key is of another kind, such as DSA or Ed25519                                  |
-| `duplicate`           | The connection already trusts it                                                    |
-| `too_many`            | The connection already trusts ten certificates: remove one first                    |
-| `unsupported`         | The connection is not a SAML connection; an OIDC provider's keys come from its JWKS |
+| Code                  | Why                                                                                                         |
+|-----------------------|-------------------------------------------------------------------------------------------------------------|
+| `too_long`            | It is longer than 16384 bytes                                                                               |
+| `private_key_refused` | It holds a private key: give the certificate only                                                           |
+| `invalid_format`      | It is not exactly one PEM-encoded X.509 certificate                                                         |
+| `weak_key`            | Its RSA key is under 2048 bits, or its curve is not P-256, P-384 or P-521                                   |
+| `not_allowed`         | Its key is of another kind, such as DSA or Ed25519                                                          |
+| `duplicate`           | The connection already trusts it                                                                            |
+| `too_many`            | The connection already trusts ten certificates: remove one first                                            |
+| `unsupported`         | The connection is not a SAML connection (an OIDC provider's keys come from its JWKS), or its key is not RSA |
 
 A certificate's dates are reported, never enforced: an expired certificate is trusted and keeps verifying signatures,
 since trust comes from the certificate you configured, not from its dates. Read a summary's dates, or ask
@@ -119,11 +119,13 @@ since trust comes from the certificate you configured, not from its dates. Read 
 
 Removing the last certificate is allowed; the connection then cannot complete a sign-in until another is trusted.
 
-Trusting or distrusting a certificate is a trust change: in the same transaction it voids the sign-ins already under
-way through the connection, its unfinished authorisation requests and unredeemed handoff codes, so none completes
-against the certificates it started under (see [what voiding does to people signing
-in](managing-connections.md#what-voiding-does-to-people-signing-in)). Rotating the service provider's own keys voids
-nothing.
+Distrusting a certificate is a trust change: in the same transaction it voids the sign-ins already under way through
+the connection, its unfinished authorisation requests and unredeemed handoff codes, so none completes against the
+certificates it started under (see [what voiding does to people signing
+in](managing-connections.md#what-voiding-does-to-people-signing-in)). Trusting another certificate only adds one a
+signature may verify with, so it voids nothing: trust the provider's next certificate before it switches, without
+interrupting anyone. Changing a metadata signing anchor voids, as distrusting does (see
+[SAML metadata](saml-metadata.md#a-metadata-signing-anchor)). Rotating the service provider's own keys voids nothing.
 
 ## Listing a connection's keys
 

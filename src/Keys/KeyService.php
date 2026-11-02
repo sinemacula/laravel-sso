@@ -29,7 +29,8 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
  * The management helpers of a connection's keys and certificates (SSO-2.5 to
  * SSO-2.7, SSO-2.11, SSO-2.12): generate a key pair of the service provider's
  * own and add it as `next`, make it current, retire the key it replaced; trust
- * a signing certificate of the identity provider, and remove one.
+ * a signing certificate of the identity provider or a metadata signing anchor,
+ * and remove one.
  *
  * Each change is scoped to a tenant (a connection of another tenant is
  * `connection_not_found`, exactly as an unknown one), and goes in a fixed
@@ -50,12 +51,23 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
  * of the ciphertext. A trusted certificate's dates are reported, never
  * enforced: an expired certificate is trusted (SSO-2.6).
  *
- * Trusting or distrusting a certificate is a trust change (SSO-2.13): in its
- * transaction, under the connection's lock, it voids the authorisation requests
- * and handoff codes in flight through the connection
+ * Removing a trusted certificate, and any change to the metadata signing
+ * anchors, is a trust change (SSO-2.13): in its transaction, under the
+ * connection's lock, it voids the authorisation requests and handoff codes in
+ * flight through the connection and raises its trust version
  * (`Connections\InFlightVoider`), so none completes or is redeemed against the
- * certificates it was started under. Rotating a key of the service provider's
- * own keeps what subjects mean and voids nothing.
+ * certificates it was started under. Adding an identity provider signing
+ * certificate is additive: every response a flow in flight could verify before
+ * still verifies, so it voids nothing and leaves the trust version as it was,
+ * and a provider rotating its key never voids its own flows. Only RSA
+ * certificates are trusted for SAML, the only keys its library verifies.
+ * Rotating a key of the service provider's own keeps what subjects mean and
+ * voids nothing.
+ *
+ * A metadata refresh replaces the identity provider signing certificates
+ * exactly, under the connection's lock it already holds, through
+ * `replaceTrustedCertificatesLocked()`: the same judgement, the same events,
+ * and a void only when a certificate is removed.
  *
  * @api
  *
@@ -63,6 +75,12 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
  * @copyright   2026 Sine Macula Limited
  *
  * @phpstan-import-type CertificateFacts from \SineMacula\Laravel\Sso\Keys\CertificateInspector
+ *
+ * @phpstan-type Replacement array{
+ *     added: list<\SineMacula\Laravel\Sso\Keys\KeySummary>,
+ *     retired: list<\SineMacula\Laravel\Sso\Keys\KeySummary>,
+ *     violations: list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
+ * }
  */
 final readonly class KeyService
 {
@@ -207,36 +225,38 @@ final readonly class KeyService
     }
 
     /**
-     * Trust a signing certificate of the identity provider for the SAML
-     * connection, alongside those it already trusts, and void what is in flight
-     * through the connection. An expired certificate is trusted: its dates are
-     * reported, never enforced.
+     * Trust a certificate for the SAML connection, alongside those it already
+     * trusts for the use: a signing certificate of the identity provider (by
+     * default), which voids nothing, or a metadata signing anchor, which voids
+     * what is in flight through the connection. An expired certificate is
+     * trusted: its dates are reported, never enforced.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $certificate
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function trustCertificate(string $tenantId, string $connectionId, string $certificate, ?ActingIdentity $actor = null): KeyResult
+    public function trustCertificate(string $tenantId, string $connectionId, string $certificate, ?ActingIdentity $actor = null, KeyUse $use = KeyUse::IDP_SIGNING): KeyResult
     {
-        $facts = $this->trustPrechecked($tenantId, $connectionId, $certificate);
+        $facts = $this->trustPrechecked($tenantId, $connectionId, $certificate, $use);
 
         if ($facts instanceof KeyResult) {
             return $facts;
         }
 
-        return $this->change($tenantId, $connectionId, fn (Connection $locked): KeyResult => $this->insertTrusted($locked, $facts, $actor));
+        return $this->change($tenantId, $connectionId, fn (Connection $locked): KeyResult => $this->insertTrusted($locked, $facts, $use, $actor));
     }
 
     /**
-     * Stop trusting one of the connection's identity provider certificates,
-     * remove it and void what is in flight through the connection. Removing the
-     * last one is allowed; the connection is then incomplete until another is
-     * trusted.
+     * Stop trusting one of the connection's identity provider certificates or
+     * metadata signing anchors, remove it and void what is in flight through
+     * the connection. Removing the last signing certificate is allowed; the
+     * connection is then incomplete until another is trusted.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -253,10 +273,82 @@ final readonly class KeyService
             $tenantId,
             $connectionId,
             $keyId,
-            static fn (ConnectionKey $key): bool => $key->use === KeyUse::IDP_SIGNING,
+            static fn (ConnectionKey $key): bool => $key->use->isTrustedCertificate(),
             static fn (): bool => true,
             fn (Connection $locked, ConnectionKey $key): KeyResult => KeyResult::distrusted($this->remove($locked, $key, $actor)),
         );
+    }
+
+    /**
+     * Make the identity provider signing certificates the locked connection
+     * trusts exactly the certificates given, never their union with those it
+     * trusts now (SSO-2.8): each trusted now that is not given is distrusted
+     * and removed, and each given that is not trusted now is trusted; one
+     * trusted and given is kept as it is.
+     *
+     * The certificates are judged first, in order, as `trustCertificate()`
+     * judges one (read by the inspector, RSA only, not given twice, at most
+     * `MAX_TRUSTED_CERTIFICATES`), each violation named at `certificate.<n>`;
+     * with any violation nothing is written or reported. Otherwise the rows are
+     * read again with a locking read, the certificates removed are deleted and
+     * reported retired, what is in flight through the connection is voided and
+     * its trust version raised once when any was removed
+     * (`Connections\InFlightVoider`), and the certificates added are inserted
+     * and reported added. Adding alone is additive and voids nothing.
+     *
+     * For the metadata refresh, which asks no freshness (no caller acts):
+     * called inside the transaction on the storage connection that holds the
+     * connection's row lock. It answers what it added and removed, each as it
+     * was, and the violations.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  list<string>  $pems
+     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @return Replacement
+     *
+     * @throws \LogicException
+     *
+     * @internal
+     */
+    public function replaceTrustedCertificatesLocked(Connection $locked, array $pems, ?ActingIdentity $actor = null): array
+    {
+        $wanted     = [];
+        $violations = [];
+
+        foreach ($pems as $index => $pem) {
+
+            $inspected = $this->inspector->inspect($pem);
+            $facts     = $inspected['facts'];
+            $violation = $facts === null ? $inspected['violations'][0] : self::trustViolation($locked, $facts, KeyUse::IDP_SIGNING, true, array_keys($wanted));
+
+            if ($violation !== null) {
+                $violations[] = new SettingViolation(CertificateInspector::SETTING . '.' . $index, $violation->code);
+            } elseif ($facts !== null) {
+                $wanted[$facts['fingerprint']] = $facts;
+            }
+        }
+
+        $stored  = $violations === [] ? self::query($locked, true)->where('use', KeyUse::IDP_SIGNING->value)->get()->keyBy('fingerprint')->all() : [];
+        $retired = array_diff_key($stored, $wanted);
+
+        foreach ($retired as $key) {
+            $key->delete();
+            $this->events->keyRetired($locked, $key, $actor);
+        }
+
+        if ($retired !== []) {
+            $this->voider->voidFor($locked);
+        }
+
+        $added = $violations === [] ? array_diff_key($wanted, $stored) : [];
+        $trust = fn (array $facts): KeySummary => $this->insertTrusted($locked, $facts, KeyUse::IDP_SIGNING, $actor)->key
+                ?? throw new \LogicException('A judged certificate is trusted.');
+
+        return [
+            'added'      => array_values(array_map($trust, $added)),
+            'retired'    => array_values(array_map(KeySummary::of(...), $retired)),
+            'violations' => $violations,
+        ];
     }
 
     /**
@@ -308,10 +400,18 @@ final readonly class KeyService
     private function additionPrechecked(string $tenantId, string $connectionId, KeyUse $use, KeyType $type): Connection|KeyResult
     {
         $connection = $this->connections->find($tenantId, $connectionId);
-        $violations = $connection === null ? [] : self::ownKeyViolations($connection, $use, $type);
+
+        if ($connection === null) {
+            return KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND);
+        }
+
+        $useAllowed = $use->isOwnKey() && $use->protocol() === $connection->protocol;
+        $violations = array_values(array_filter([
+            $useAllowed ? null : new SettingViolation('use', ViolationCode::NOT_ALLOWED),
+            in_array($type, $use->allowedTypes(), true) ? null : new SettingViolation('key_type', ViolationCode::NOT_ALLOWED),
+        ], static fn (?SettingViolation $violation): bool => $violation !== null));
 
         return match (true) {
-            $connection === null                                                                                 => KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND),
             $violations !== []                                                                                   => KeyResult::invalid($violations),
             self::query($connection)->where('use', $use->value)->where('state', KeyState::NEXT->value)->exists() => KeyResult::refused(FailureReason::KEY_STATE_CONFLICT),
             !$this->freshness->check($use->freshness())->isFresh()                                               => KeyResult::refused(FailureReason::FRESHNESS_REQUIRED),
@@ -320,39 +420,44 @@ final readonly class KeyService
     }
 
     /**
-     * The facts of the certificate the connection may trust, or why not: no
-     * such connection, not a SAML connection, a certificate refused by the
-     * inspector, one it already trusts or one too many, or a caller who is not
-     * fresh enough.
+     * The facts of the certificate the connection may trust for the use, or why
+     * not: no such connection, not a SAML connection, a certificate refused by
+     * the inspector or not RSA, one it already trusts for the use or one too
+     * many, or a caller who is not fresh enough.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $certificate
+     * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
      * @return CertificateFacts|\SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      */
-    private function trustPrechecked(string $tenantId, string $connectionId, string $certificate): array|KeyResult
+    private function trustPrechecked(string $tenantId, string $connectionId, string $certificate, KeyUse $use): array|KeyResult
     {
+        if (!$use->isTrustedCertificate()) {
+            throw new \InvalidArgumentException(sprintf('A certificate is trusted as [idp_signing] or [metadata_signing], never as [%s].', $use->value));
+        }
+
         $connection = $this->connections->find($tenantId, $connectionId);
 
         if ($connection === null) {
             return KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND);
         }
 
-        if ($connection->protocol !== KeyUse::IDP_SIGNING->protocol()) {
+        if ($connection->protocol !== $use->protocol()) {
             return KeyResult::invalid([new SettingViolation(CertificateInspector::SETTING, ViolationCode::UNSUPPORTED)]);
         }
 
         $inspected = $this->inspector->inspect($certificate);
         $facts     = $inspected['facts'];
-        $violation = $facts === null ? null : self::trustViolation($connection, $facts['fingerprint']);
+        $violation = $facts === null ? null : self::trustViolation($connection, $facts, $use);
 
         return match (true) {
-            $facts === null                                                       => KeyResult::invalid($inspected['violations']),
-            $violation !== null                                                   => KeyResult::invalid([$violation]),
-            !$this->freshness->check(KeyUse::IDP_SIGNING->freshness())->isFresh() => KeyResult::refused(FailureReason::FRESHNESS_REQUIRED),
-            default                                                               => $facts,
+            $facts === null                                        => KeyResult::invalid($inspected['violations']),
+            $violation !== null                                    => KeyResult::invalid([$violation]),
+            !$this->freshness->check($use->freshness())->isFresh() => KeyResult::refused(FailureReason::FRESHNESS_REQUIRED),
+            default                                                => $facts,
         };
     }
 
@@ -469,21 +574,23 @@ final readonly class KeyService
     }
 
     /**
-     * Insert the inspected certificate as one the locked connection trusts and
-     * void what is in flight through the connection; refused when it was
-     * trusted, or the cap reached, meanwhile.
+     * Insert the inspected certificate as one the locked connection trusts for
+     * the use, and void what is in flight through the connection when it is a
+     * metadata signing anchor; refused when it was trusted, or the cap reached,
+     * meanwhile.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  CertificateFacts  $facts
+     * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function insertTrusted(Connection $locked, array $facts, ?ActingIdentity $actor): KeyResult
+    private function insertTrusted(Connection $locked, array $facts, KeyUse $use, ?ActingIdentity $actor): KeyResult
     {
-        $violation = self::trustViolation($locked, $facts['fingerprint'], true);
+        $violation = self::trustViolation($locked, $facts, $use, true);
 
         if ($violation !== null) {
             return KeyResult::invalid([$violation]);
@@ -493,7 +600,7 @@ final readonly class KeyService
 
         $key->forceFill([
             'connection_id' => $locked->id,
-            'use'           => KeyUse::IDP_SIGNING,
+            'use'           => $use,
             'state'         => null,
             'key_type'      => $facts['type'],
             'key_bits'      => $facts['bits'],
@@ -505,7 +612,9 @@ final readonly class KeyService
             'not_after'     => $facts['not_after'],
         ])->save();
 
-        $this->voider->voidFor($locked);
+        if ($use === KeyUse::METADATA_SIGNING) {
+            $this->voider->voidFor($locked);
+        }
 
         $this->events->keyAdded($locked, $key, $actor);
 
@@ -585,51 +694,29 @@ final readonly class KeyService
     }
 
     /**
-     * What is wrong with adding a key pair of the use and type to the
-     * connection: a trusted certificate's use, or a use of another protocol,
-     * and a type the use does not allow.
+     * What is wrong with trusting the certificate for the connection and the
+     * use: a key type other than RSA, one it already trusts for the use, or one
+     * more than it may. The fingerprints trusted are read from the connection's
+     * rows unless given.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  CertificateFacts  $facts
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
-     * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
-     * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
-     *
-     * @throws \InvalidArgumentException
-     */
-    private static function ownKeyViolations(Connection $connection, KeyUse $use, KeyType $type): array
-    {
-        $violations = [];
-
-        if (!$use->isOwnKey() || $use->protocol() !== $connection->protocol) {
-            $violations[] = new SettingViolation('use', ViolationCode::NOT_ALLOWED);
-        }
-
-        if (!in_array($type, $use->allowedTypes(), true)) {
-            $violations[] = new SettingViolation('key_type', ViolationCode::NOT_ALLOWED);
-        }
-
-        return $violations;
-    }
-
-    /**
-     * What is wrong with trusting a certificate of the fingerprint for the
-     * connection: one it already trusts, or one more than it may.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @param  string  $fingerprint
      * @param  bool  $forUpdate
+     * @param  ?list<string>  $trusted
      * @return ?\SineMacula\Laravel\Sso\Connections\SettingViolation
      *
      * @throws \InvalidArgumentException
      */
-    private static function trustViolation(Connection $connection, string $fingerprint, bool $forUpdate = false): ?SettingViolation
+    private static function trustViolation(Connection $connection, array $facts, KeyUse $use, bool $forUpdate = false, ?array $trusted = null): ?SettingViolation
     {
-        $trusted = self::query($connection, $forUpdate)->where('use', KeyUse::IDP_SIGNING->value)->toBase()->pluck('fingerprint')->all();
+        $trusted ??= self::query($connection, $forUpdate)->where('use', $use->value)->toBase()->pluck('fingerprint')->all();
 
         return match (true) {
-            in_array($fingerprint, $trusted, true)            => new SettingViolation(CertificateInspector::SETTING, ViolationCode::DUPLICATE),
-            count($trusted) >= self::MAX_TRUSTED_CERTIFICATES => new SettingViolation(CertificateInspector::SETTING, ViolationCode::TOO_MANY),
-            default                                           => null,
+            !in_array($facts['type'], $use->allowedTypes(), true) => new SettingViolation(CertificateInspector::SETTING, ViolationCode::UNSUPPORTED),
+            in_array($facts['fingerprint'], $trusted, true)       => new SettingViolation(CertificateInspector::SETTING, ViolationCode::DUPLICATE),
+            count($trusted) >= self::MAX_TRUSTED_CERTIFICATES     => new SettingViolation(CertificateInspector::SETTING, ViolationCode::TOO_MANY),
+            default                                               => null,
         };
     }
 

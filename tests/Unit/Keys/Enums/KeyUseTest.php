@@ -31,11 +31,12 @@ final class KeyUseTest extends TestCase
      */
     public function testTheUsesAreStable(): void
     {
-        self::assertSame(['sp_signing', 'sp_encryption', 'client_assertion', 'idp_signing'], array_column(KeyUse::cases(), 'value'));
+        self::assertSame(['sp_signing', 'sp_encryption', 'client_assertion', 'idp_signing', 'metadata_signing'], array_column(KeyUse::cases(), 'value'));
     }
 
     /**
-     * Rows of `[use, own key, protocol, allowed types, freshness]`: each use.
+     * Rows of `[use, own key, protocol, allowed types, freshness]`: each use; a
+     * SAML use holds RSA only, since its library signs and verifies RSA alone.
      *
      * @return iterable<string, array{
      *     0: \SineMacula\Laravel\Sso\Keys\Enums\KeyUse,
@@ -48,10 +49,11 @@ final class KeyUseTest extends TestCase
     public static function provideUses(): iterable
     {
         yield from [
-            'sp signing'       => [KeyUse::SP_SIGNING, true, 'saml2', [KeyType::RSA, KeyType::EC], FreshnessOperation::KEYS_ROTATE],
+            'sp signing'       => [KeyUse::SP_SIGNING, true, 'saml2', [KeyType::RSA], FreshnessOperation::KEYS_ROTATE],
             'sp encryption'    => [KeyUse::SP_ENCRYPTION, true, 'saml2', [KeyType::RSA], FreshnessOperation::KEYS_ROTATE],
             'client assertion' => [KeyUse::CLIENT_ASSERTION, true, 'oidc', [KeyType::RSA, KeyType::EC], FreshnessOperation::KEYS_ROTATE],
-            'idp signing'      => [KeyUse::IDP_SIGNING, false, 'saml2', [KeyType::RSA, KeyType::EC], FreshnessOperation::CONNECTION_TRUST],
+            'idp signing'      => [KeyUse::IDP_SIGNING, false, 'saml2', [KeyType::RSA], FreshnessOperation::CONNECTION_TRUST],
+            'metadata signing' => [KeyUse::METADATA_SIGNING, false, 'saml2', [KeyType::RSA], FreshnessOperation::CONNECTION_TRUST],
         ];
     }
 
@@ -70,6 +72,7 @@ final class KeyUseTest extends TestCase
     public function testEachUseDescribesItself(KeyUse $use, bool $ownKey, string $protocol, array $types, FreshnessOperation $freshness): void
     {
         self::assertSame($ownKey, $use->isOwnKey());
+        self::assertSame(!$ownKey, $use->isTrustedCertificate());
         self::assertSame($protocol, $use->protocol());
         self::assertSame($types, $use->allowedTypes());
         self::assertSame($freshness, $use->freshness());

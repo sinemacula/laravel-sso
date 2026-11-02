@@ -14,3 +14,8 @@ indent_size = unset
 
 [*.{yml,yaml}]
 indent_size = 2
+
+# The SAML fixtures are signed byte for byte, one of them in UTF-16
+[tests/Fixtures/Saml/{responses/*.xml,xxe-secret.txt}]
+charset = unset
+insert_final_newline = unset

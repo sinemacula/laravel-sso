@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Completion\Stages\DecideUnlinked;
 use SineMacula\Laravel\Sso\Completion\Stages\DomainReservation;
 use SineMacula\Laravel\Sso\Completion\Stages\IssueHandoff;
 use SineMacula\Laravel\Sso\Completion\Stages\Provisioning;
+use SineMacula\Laravel\Sso\Completion\Stages\RecordReplay;
 use SineMacula\Laravel\Sso\Completion\Stages\ResolveLink;
 use SineMacula\Laravel\Sso\Completion\Stages\ValidateResponse;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -27,7 +28,9 @@ use SineMacula\Laravel\Sso\Contracts\CompletionStage;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\Linker;
+use SineMacula\Laravel\Sso\Contracts\ProtocolDriver;
 use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
+use SineMacula\Laravel\Sso\Contracts\ReinitiatingDriver;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -36,10 +39,12 @@ use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\SingleUseKey;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
+use SineMacula\Laravel\Sso\Protocols\ReplayRecord;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
@@ -65,6 +70,7 @@ use Tests\TestCase;
 #[CoversClass(CorrelateResponse::class)]
 #[CoversClass(ConsumeRequest::class)]
 #[CoversClass(ValidateResponse::class)]
+#[CoversClass(RecordReplay::class)]
 #[CoversClass(ResolveLink::class)]
 #[CoversClass(CheckEnforcement::class)]
 #[CoversClass(DecideUnlinked::class)]
@@ -195,8 +201,9 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Correlation refuses an unsolicited and an uncorrelated response with
-     * `request_unknown`, with no trusted redirect target.
+     * Correlation refuses an unsolicited response at a driver that does not
+     * re-initiate, and an uncorrelated one, with `request_unknown`, from the
+     * state the response arrived in, with no trusted redirect target.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @return void
@@ -212,6 +219,63 @@ final class StagesTest extends TestCase
         self::assertSame(FailureReason::REQUEST_UNKNOWN, $outcome->reason);
         self::assertSame($state, $outcome->state);
         self::assertFalse($outcome->state->hasRedirectTarget());
+    }
+
+    /**
+     * Correlation hands an unsolicited response at a driver that re-initiates
+     * to re-initiation, with the driver's correlation and the rest of the state
+     * kept: neither going on nor refused, with no reason and no trusted
+     * redirect target.
+     *
+     * @return void
+     */
+    public function testCorrelationHandsAnUnsolicitedResponseToReinitiation(): void
+    {
+        $correlation = Correlation::unsolicited();
+        $state       = $this->arrivedThroughAReinitiatingDriver($correlation);
+        $outcome     = $this->stage(CorrelateResponse::class)->run($state);
+
+        self::assertSame([true, false, false, null], [$outcome->isReinitiating(), $outcome->isProceeding(), $outcome->isRefused(), $outcome->reason]);
+        self::assertSame($correlation, $outcome->state->correlation);
+        self::assertSame($state->connection, $outcome->state->connection);
+        self::assertSame($state->request, $outcome->state->request);
+        self::assertFalse($outcome->state->hasRedirectTarget());
+    }
+
+    /**
+     * At a driver that re-initiates, a solicited response still goes on and an
+     * uncorrelated one is still refused with `request_unknown`; neither is
+     * handed to re-initiation.
+     *
+     * @return void
+     */
+    public function testAReinitiatingDriverReinitiatesOnlyAnUnsolicitedResponse(): void
+    {
+        $state        = $this->arrivedThroughAReinitiatingDriver(Correlation::solicited(self::STATE), Correlation::uncorrelated());
+        $solicited    = $this->stage(CorrelateResponse::class)->run($state);
+        $uncorrelated = $this->stage(CorrelateResponse::class)->run($state);
+
+        self::assertSame([true, false, null], [$solicited->isProceeding(), $solicited->isReinitiating(), $solicited->reason]);
+        self::assertSame([false, false, FailureReason::REQUEST_UNKNOWN], [$uncorrelated->isProceeding(), $uncorrelated->isReinitiating(), $uncorrelated->reason]);
+        self::assertNull($uncorrelated->state->correlation);
+    }
+
+    /**
+     * Each outcome is exactly one of going on, refused and handed to
+     * re-initiation.
+     *
+     * @return void
+     */
+    public function testAnOutcomeIsExactlyOneOfItsKinds(): void
+    {
+        $state = $this->arrived();
+
+        $kinds = static fn (StageOutcome $outcome): array => [$outcome->isProceeding(), $outcome->isRefused(), $outcome->isReinitiating(), $outcome->reason];
+
+        self::assertSame([true, false, false, null], $kinds(StageOutcome::proceed($state)));
+        self::assertSame([false, true, false, FailureReason::REPLAYED], $kinds(StageOutcome::refuse($state, FailureReason::REPLAYED)));
+        self::assertSame([false, false, true, null], $kinds(StageOutcome::reinitiate($state)));
+        self::assertSame($state, StageOutcome::reinitiate($state)->state);
     }
 
     /**
@@ -323,6 +387,77 @@ final class StagesTest extends TestCase
         self::assertSame(VerifyingDriver::SUBJECT, $outcome->state->result?->subject);
         self::assertSame(['email' => 'person@example.com'], $outcome->state->result->attributes);
         self::assertSame([$state->consumed], $this->driver->completions());
+    }
+
+    /**
+     * Validation goes on with the replay record the driver asked for, and with
+     * none when it asked for none.
+     *
+     * @return void
+     */
+    public function testValidationKeepsTheReplayRecordTheDriverAskedFor(): void
+    {
+        $state = $this->consumed();
+
+        self::assertNull($this->stage(ValidateResponse::class)->run($state)->state->replay);
+
+        $this->driver->replay = ReplayRecord::samlAssertion($this->connection->id, VerifyingDriver::ISSUER, '_assertion-1', $this->clock->now()->addMinutes(5));
+
+        self::assertSame($this->driver->replay, $this->stage(ValidateResponse::class)->run($state)->state->replay);
+    }
+
+    /**
+     * The replay recording goes on when there is nothing to record, records a
+     * record once and refuses it again with `replayed`, and refuses a record no
+     * longer acceptable with `assertion_expired`, recording nothing.
+     *
+     * @return void
+     */
+    public function testTheReplayRecordingRecordsOnce(): void
+    {
+        $state  = $this->consumed();
+        $record = ReplayRecord::samlAssertion($this->connection->id, VerifyingDriver::ISSUER, '_assertion-1', $this->clock->now()->addSecond());
+
+        self::assertSame($state, $this->stage(RecordReplay::class)->run($state)->state);
+        self::assertTrue($this->stage(RecordReplay::class)->run($state)->isProceeding());
+        self::assertSame(0, self::recordedKeys());
+
+        $first  = $this->stage(RecordReplay::class)->run($state->withReplay($record));
+        $second = $this->stage(RecordReplay::class)->run($state->withReplay($record));
+
+        self::assertTrue($first->isProceeding());
+        self::assertSame(FailureReason::REPLAYED, $second->reason);
+        self::assertSame(1, self::recordedKeys());
+        self::assertSame(ReplayRecord::SAML_ASSERTION, SingleUseKey::query()->sole()->namespace);
+
+        $atNow = ReplayRecord::samlAssertion($this->connection->id, VerifyingDriver::ISSUER, '_assertion-2', $this->clock->now());
+        $past  = ReplayRecord::samlAssertion($this->connection->id, VerifyingDriver::ISSUER, '_assertion-3', $this->clock->now()->subSecond());
+
+        self::assertSame(FailureReason::ASSERTION_EXPIRED, $this->stage(RecordReplay::class)->run($state->withReplay($atNow))->reason);
+        self::assertSame(FailureReason::ASSERTION_EXPIRED, $this->stage(RecordReplay::class)->run($state->withReplay($past))->reason);
+        self::assertSame(1, self::recordedKeys());
+    }
+
+    /**
+     * A record is scoped by connection and issuer: the same assertion id from
+     * another issuer or through another connection is recorded on its own.
+     *
+     * @return void
+     */
+    public function testTheReplayRecordingIsScopedByConnectionAndIssuer(): void
+    {
+        $state = $this->consumed();
+        $until = $this->clock->now()->addMinutes(5);
+
+        $scopes = [[$this->connection->id, VerifyingDriver::ISSUER], [$this->connection->id, 'https://other.example.com'], ['01jbanotherconnection00000', VerifyingDriver::ISSUER]];
+
+        foreach ($scopes as [$connection, $issuer]) {
+            $record = ReplayRecord::samlAssertion($connection, $issuer, '_assertion-1', $until);
+
+            self::assertTrue($this->stage(RecordReplay::class)->run($state->withReplay($record))->isProceeding());
+        }
+
+        self::assertSame(3, self::recordedKeys());
     }
 
     /**
@@ -657,6 +792,28 @@ final class StagesTest extends TestCase
     }
 
     /**
+     * The state of a post that arrived at a connection whose driver
+     * re-initiates, and correlates the responses it is asked about as given, in
+     * order.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
+     * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  ...$next
+     * @return \SineMacula\Laravel\Sso\Completion\CompletionState
+     */
+    private function arrivedThroughAReinitiatingDriver(Correlation $correlation, Correlation ...$next): CompletionState
+    {
+        $driver = self::createStubForIntersectionOfInterfaces([ProtocolDriver::class, ReinitiatingDriver::class]);
+
+        $driver->method('correlate')->willReturn($correlation, ...array_values($next));
+
+        app(ProtocolManager::class)->extend('reinitiating', fn (): ProtocolDriver => $driver);
+
+        $connection = $this->makeConnection(['protocol' => 'reinitiating', 'enabled' => true]);
+
+        return CompletionState::arrived($connection->id, new CompletionRequest('POST', '', ['SAMLResponse' => 'unread']))->withConnection($connection);
+    }
+
+    /**
      * The state once the response is correlated by its state.
      *
      * @return \SineMacula\Laravel\Sso\Completion\CompletionState
@@ -882,6 +1039,18 @@ final class StagesTest extends TestCase
     private static function application(string $name): Application
     {
         return app(ApplicationRegistry::class)->find($name) ?? throw new \LogicException("No [{$name}] application is registered.");
+    }
+
+    /**
+     * How many keys the single-use store holds now.
+     *
+     * @return int
+     *
+     * @phpstan-impure
+     */
+    private static function recordedKeys(): int
+    {
+        return SingleUseKey::query()->count();
     }
 
     /**

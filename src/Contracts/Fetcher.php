@@ -22,7 +22,9 @@ use SineMacula\Laravel\Sso\Fetching\FetchResult;
  *   it checked, so a second resolution cannot change it;
  * - follows no redirect for a request that carries a credential, and checks
  *   each redirect of any other request the same way;
- * - caps the response's size and the time taken;
+ * - caps the time taken, and the response's size: at the request's own cap when
+ *   it carries one (`FetchRequest::$maxBytes`, a metadata request's), and at
+ *   the configured cap otherwise, stopping the transfer once it is passed;
  * - sends the request's one credential as its kind says, and no other.
  *
  * A refused or failed request is a result (`fetch_refused`, `fetch_failed`),

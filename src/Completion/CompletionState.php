@@ -14,20 +14,26 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
+use SineMacula\Laravel\Sso\Protocols\ReplayRecord;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * What a completion has established so far (SSO-5.6), handed from each stage
- * to the next in `Enums\CompletionStep`'s order: the connection the response
- * arrived for and what arrived; the connection, read from the write
- * connection; the correlation the driver read; the authorisation request,
- * consumed, with what the driver is given of it and the registered
- * application; the enforcement policy as the locks the completion holds show
- * it; the claims the driver verified and the result built from them; the
- * identity the result's link resolved to; the enforcement version checked;
- * the latest end of the application's session the provider's deadline sets;
- * and the handoff issued.
+ * What a completion has established so far (SSO-5.6), handed from each stage to
+ * the next in `Enums\CompletionStep`'s order: the connection the response
+ * arrived for and what arrived; the connection, read from the write connection;
+ * the correlation the driver read; the authorisation request, consumed, with
+ * what the driver is given of it and the registered application; the
+ * enforcement policy as the locks the completion holds show it; the claims the
+ * driver verified, what records them against replay, and the result built from
+ * them; the identity the result's link resolved to; the enforcement version
+ * checked; the latest end of the application's session the provider's deadline
+ * sets; and the handoff issued.
+ *
+ * An unsolicited SAML response handed to re-initiation (SSO-5.8) only ever
+ * holds the connection, its correlation and, under the connection's lock, its
+ * replay record: no request, application, claims, result or identity, so
+ * nothing of it carries into the flow the application starts next.
  *
  * Each `with…()` answers a new state with one part added and the rest kept;
  * nothing is ever removed. It lives only for the completion it describes: it
@@ -58,6 +64,7 @@ final readonly class CompletionState
      * @param  ?string  $enforcementVersion
      * @param  ?\Carbon\CarbonImmutable  $sessionNotAfter
      * @param  ?\SineMacula\Laravel\Sso\Handoffs\IssuedHandoff  $handoff
+     * @param  ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay
      *
      * @SuppressWarnings("php:S107")
      */
@@ -104,6 +111,9 @@ final readonly class CompletionState
 
         /** The handoff issued. */
         public ?IssuedHandoff $handoff = null,
+
+        /** What records the verified response against replay, when the driver asks for it. */
+        public ?ReplayRecord $replay = null,
     ) {}
 
     /**
@@ -225,6 +235,17 @@ final readonly class CompletionState
     public function withClaims(VerifiedClaims $claims): self
     {
         return $this->with(['claims' => $claims]);
+    }
+
+    /**
+     * With what records the verified response against replay.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay
+     * @return self
+     */
+    public function withReplay(ReplayRecord $replay): self
+    {
+        return $this->with(['replay' => $replay]);
     }
 
     /**

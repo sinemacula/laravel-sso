@@ -21,6 +21,7 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
 {
     /** @var array<string, string> Each extension the package needs, and what for. */
     public const array EXTENSIONS = [
+        'bcmath'   => 'the SAML library\'s XML Schema types (simplesamlphp/xml-common)',
         'curl'     => 'the outbound fetcher, which pins the address it checked with CURLOPT_RESOLVE',
         'dom'      => 'parsing SAML messages and metadata',
         'hash'     => 'digests and constant-time comparison',

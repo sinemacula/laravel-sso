@@ -16,21 +16,25 @@ namespace SineMacula\Laravel\Sso\Completion\Enums;
  *    is consumed once whether the response then passes or fails.
  * 3. `validation`: the driver validates the response against the consumed
  *    request, outside any transaction (an OIDC token request is a fetch).
- * 4. `link_resolution`, then every later step, run in one transaction on the
+ * 4. `replay_recording`, then every later step, run in one transaction on the
  *    storage connection with the connection's row and the request's row locked,
  *    refusing first if either changed since consumption (the connection
- *    disabled or no longer usable, the request voided by a trust change): the
- *    result's link is resolved through the linking contract.
- * 5. `enforcement`: the connection must satisfy its tenant's enforcement for
+ *    disabled or no longer usable, the request voided by a trust change): what
+ *    the driver asked to record against replay (a SAML assertion's id, by
+ *    connection and issuer, SSO-6.6) is recorded through the single-use store,
+ *    a repeat refused with `replayed`, before any downstream effect.
+ * 5. `link_resolution`: the result's link is resolved through the linking
+ *    contract.
+ * 6. `enforcement`: the connection must satisfy its tenant's enforcement for
  *    the application, and its version is kept for the handoff.
- * 6. `domain_reservation`: linking by a verified domain reserves a link
+ * 7. `domain_reservation`: linking by a verified domain reserves a link
  *    (SSO-8.8); a seam that passes every result on until it is built.
- * 7. `provisioning`: an unlinked `sign_in` result holding no reservation is
+ * 8. `provisioning`: an unlinked `sign_in` result holding no reservation is
  *    offered for provisioning (SSO-8.6); a seam that passes every result on
  *    until it is built.
- * 8. `unlinked_decision`: an unlinked `sign_in` result ends in `unlinked`,
+ * 9. `unlinked_decision`: an unlinked `sign_in` result ends in `unlinked`,
  *    unless the application allows unlinked handoffs.
- * 9. `handoff_issuance`: the application policy is asked again, then the
+ * 10. `handoff_issuance`: the application policy is asked again, then the
  *    handoff issuer issues the code.
  *
  * An unsolicited SAML response consumes no request: re-initiation answers it at
@@ -52,6 +56,9 @@ enum CompletionStep: string
     // The driver validates the response against the consumed request
     case VALIDATION = 'validation';
 
+    // What the driver asked to record against replay is recorded once
+    case REPLAY_RECORDING = 'replay_recording';
+
     // The result's link is resolved
     case LINK_RESOLUTION = 'link_resolution';
 
@@ -71,8 +78,8 @@ enum CompletionStep: string
     case HANDOFF_ISSUANCE = 'handoff_issuance';
 
     /**
-     * Whether the step runs in the completion's locked transaction: from link
-     * resolution on.
+     * Whether the step runs in the completion's locked transaction: from the
+     * replay recording on.
      *
      * @return bool
      */

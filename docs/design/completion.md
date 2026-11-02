@@ -41,6 +41,7 @@ consuming a request is in `authorization-requests.md`; the response values are i
 | `correlation`        | `CorrelateResponse` | the solicited correlation; `request_unknown`                             |
 | `consumption`        | `ConsumeRequest`    | the request and its application; the consumption's reason                |
 | `validation`         | `ValidateResponse`  | the claims and the result; `connection_unavailable`; the driver's reason |
+| `replay_recording`   | `RecordReplay`      | the state unchanged; `replayed`, `assertion_expired`                     |
 | `link_resolution`    | `ResolveLink`       | the identity the linker resolves, if any                                 |
 | `enforcement`        | `CheckEnforcement`  | the policy's version, if any; `enforcement_unsatisfied`                  |
 | `domain_reservation` | `DomainReservation` | the state unchanged, until P6                                            |
@@ -51,9 +52,10 @@ consuming a request is in `authorization-requests.md`; the response values are i
 Each stage is in `Completion\Stages`.
 
 - `CorrelateResponse` asks the connection's driver to `correlate()`. An uncorrelated response is `request_unknown`. An
-  unsolicited SAML response is `request_unknown` too, for now: its arm of the stage's match on `CorrelationKind` is the
-  seam where IdP-initiated re-initiation (SSO-5.8, P4) answers `CompletionResult::reinitiated()` with the connection's
-  start URL, consuming no request.
+  unsolicited response at a driver that re-initiates (`Contracts\ReinitiatingDriver`, the SAML driver) is handed over
+  with `StageOutcome::reinitiate()`: no further step runs, no request is consumed, and
+  `Completion\UnsolicitedReinitiation` answers it (see `idp-initiated.md`). Any other driver's unsolicited response is
+  `request_unknown`.
 - `ConsumeRequest` calls `Flows\RequestConsumption::consume()` inside a transaction of its own on the storage connection
   that first locks the row of the connection the response arrived for, so a completion takes the connection's lock
   before its request's, in the package's order (see "Transactions and locks" below). `consumed`
@@ -67,6 +69,12 @@ Each stage is in `Completion\Stages`.
   connection that cannot complete; otherwise it asks the driver to `complete()` against the consumed request. A refusal
   keeps the driver's reason; a verified response goes on with its `Results\VerifiedClaims` and the result built from
   them.
+- `RecordReplay`, the first locked step, records what the driver asked to record against replay
+  (`Protocols\ReplayRecord` on the verified completion: a SAML assertion's id, by connection and issuer, SSO-6.6)
+  through the single-use store until its expiry, inside the locked transaction, so it runs only after the driver's
+  validation passed, before any downstream effect, and a completion that rolls back records nothing. A repeat is
+  `replayed`; a record whose expiry is no longer after now is `assertion_expired`, recording nothing. A completion
+  that asked for no record goes on (see `saml-responses.md`).
 - `ResolveLink` asks the bound `Contracts\Linker`; only the connection, issuer and subject select an identity (SSO-8.2).
 - `CheckEnforcement` judges the policy of the connection's tenant on the request's application. Under the default
   `DatabaseEnforcement` with the feature on, it is the policy the pipeline judged from the rows it locked at the start
@@ -111,19 +119,25 @@ made, from what a driver verified and never from client input (SSO-8.1):
   the driver's validation, which may fetch (SSO-11.5).
 - Correlation, consumption and validation run outside any transaction the pipeline opens; the consumption opens its
   own, so the request is consumed whether the response then passes or fails, and it commits before the driver
-  validates (a fetch is never made inside a transaction).
+  validates (a fetch is never made inside a transaction). The consumption judges the request against the connection's
+  row as its locking read gives it: a request whose `trust_version` (stored at start) is not the connection's is
+  refused `connection_unavailable`, the reason a voided request is refused with, so no response is validated and no
+  provider called for a flow a trust change has overtaken.
 - Once a request is consumed with a trusted target, one transaction on the storage connection takes `flows.md`'s lock
   order. For a completion still going on, under `DatabaseEnforcement` with the `enforcement` feature on, it first calls
   `DatabaseEnforcement::lock()` at the start of `CompletionPipeline::finish()`: the enforcing tenant's row (named by the
   inheritance contract, inserted unconfigured when it has none) and then, in one statement in ascending id order, the
-  connection and the connections the rule names. Otherwise (feature off, another contract bound, or a completion
-  already refused) it locks the connection's row alone, with no enforcement statement and no inheritance call. Then the
+  connection and the connections the rule names. Otherwise (feature off, another contract bound, or a completion already
+  refused) it locks the connection's row alone, with no enforcement statement and no inheritance call. Then the
   request's row. Each is a locking read on the write connection, so none answers from an older `REPEATABLE READ`
   snapshot. A completion still going on is refused with `connection_unavailable` when the connection is gone or no
-  longer usable, when the request is gone or its `voided_at` is set, or when the inheritance contract, asked again, no
-  longer names the tenant whose rule is locked: validation was based on the connection and the request as they were
-  before, and a change since (a disable, a trust change that voids the connection's requests, BL-37) wins. Otherwise
-  every locked step runs in that transaction, on the rows as locked, with the policy the locked rule gives.
+  longer usable, when the request is gone, its `voided_at` is set or its `trust_version` is not the locked connection's,
+  or when the inheritance contract, asked again, no longer names the tenant whose rule is locked: validation was based
+  on the connection and the request as they were before, and a change since (a disable, a trust change that voids the
+  connection's requests, BL-37) wins. It is refused with `metadata_expired` when what a metadata refresh applied to the
+  locked connection has expired by now (`Metadata\MetadataExpiry`, SSO-2.8): metadata that lapses, by its `validUntil`
+  or the stale limit, while the response is validated is never used. Otherwise every locked step runs in that
+  transaction, on the rows as locked, with the policy the locked rule gives.
 - The same transaction sets the request's `completed_at`, whether the completion completed or was refused (a refusal at
   consumption or validation included), and reports the completion. A response no request matches marks nothing. A
   request whose application is no longer registered is marked completed by its consumption instead, in the same write
@@ -189,6 +203,8 @@ no target is dispatched at once.
   with `connection_unavailable`, redirected. Disabled while the driver validates: refused under the lock, after
   `ResultVerified`.
 - A request voided while the driver validates: refused under the lock with `connection_unavailable`, and no code.
+- Refreshed metadata that lapses while the driver validates: refused under the lock with `metadata_expired`, redirected,
+  with nothing recorded and no code.
 - An application whose policy no longer allows external sign-in at issuance: `application_not_allowed`, redirected.
 - An application no longer registered when its request is consumed: `rejected(application_not_allowed)`, with no
   target. Its request is terminal at once: the consumption's own write sets `completed_at` with `consumed_at`, since

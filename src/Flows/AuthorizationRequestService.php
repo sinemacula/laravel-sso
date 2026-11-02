@@ -61,18 +61,22 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * 7. a `reauthenticate` asks `Contracts\ReauthenticationSessions` whether the
  *    identity is signed in through the connection on the session, else
  *    `session_ineligible` (SSO-5.10);
- * 8. the protocol state is generated (`ProtocolState`) and the driver asked to
+ * 8. the connection's trust version, as step 5 read it, is captured, the
+ *    protocol state is generated (`ProtocolState`) and the driver asked to
  *    start, outside any transaction the start opens; a refused start is refused
  *    with the driver's reason;
  * 9. the request is stored through its model in a transaction on the storage
  *    connection: the digests of the state and the nonce, never either; the PKCE
- *    verifier encrypted; the challenge; the identity and the session; and an
- *    expiry of `FlowSettings::requestTtlSeconds()`; the transaction first locks
- *    the connection's row, and a connection gone or changed since step 5 is
- *    `connection_unavailable`, answered as step 5 answers it; a stored request
- *    raises the connection's flows version by one, under that lock, so a
- *    PostgreSQL `REPEATABLE READ` change that locks the row later fails to
- *    serialise rather than miss the request (`Connections\InFlightVoider`);
+ *    verifier encrypted; the challenge; the identity and the session; the trust
+ *    version captured; and an expiry of `FlowSettings::requestTtlSeconds()`;
+ *    the transaction first locks the connection's row, and a connection gone,
+ *    changed in its switch, settings or secrets, or whose trust version is no
+ *    longer the one captured (a certificate removed, say, which voided the
+ *    requests stored before this one), is `connection_unavailable`, answered as
+ *    step 5 answers it; a stored request raises the connection's flows version
+ *    by one, under that lock, so a PostgreSQL `REPEATABLE READ` change that
+ *    locks the row later fails to serialise rather than miss the request
+ *    (`Connections\InFlightVoider`);
  * 10. `AuthorizationRequestStarted` is reported once that commits;
  * 11. the answer is `started`, with the generated verifier when one was.
  *
@@ -444,10 +448,11 @@ final readonly class AuthorizationRequestService
     ): StartResult {
         [$verifier, $challenge] = self::challenge($codeChallenge);
 
-        $reference = RequestReference::generate();
-        $state     = ProtocolState::generate();
-        $request   = new StartRequest($purpose, $application->name, $reference, $state->state(), $state->nonce(), $state->codeVerifier());
-        $start     = $this->protocols->protocol($connection->protocol)->start($connection, $request);
+        $trustVersion = $connection->trust_version;
+        $reference    = RequestReference::generate();
+        $state        = ProtocolState::generate();
+        $request      = new StartRequest($purpose, $application->name, $reference, $state->state(), $state->nonce(), $state->codeVerifier());
+        $start        = $this->protocols->protocol($connection->protocol)->start($connection, $request);
 
         if ($start->navigation === null) {
             return $this->refuse($start->reason ?? FailureReason::CONNECTION_UNAVAILABLE, $purpose, $identity, $sessionId, $application, $connection, $reference);
@@ -465,6 +470,7 @@ final readonly class AuthorizationRequestService
             'code_verifier'     => $this->encrypter->encrypt($state->codeVerifier()->reveal()),
             'saml_request_id'   => $start->samlRequestId,
             'handoff_challenge' => $challenge,
+            'trust_version'     => $trustVersion,
             'identity_type'     => $identity?->type,
             'identity_id'       => $identity?->id,
             'session_id'        => $sessionId,
@@ -485,9 +491,10 @@ final readonly class AuthorizationRequestService
      *
      * The driver started outside the transaction, from the connection as it was
      * read before, so the transaction first locks the connection's row, the
-     * first lock of every flow, and stores nothing when the connection is gone
-     * or its switch, settings or secrets changed since: a change that voids its
-     * connection's requests has then committed, and would not void this one.
+     * first lock of every flow, and stores nothing when the connection is gone,
+     * its switch, settings or secrets changed since, or its trust version is no
+     * longer the one the request captured: a change that voids its connection's
+     * requests has then committed, and would not void this one.
      *
      * A stored request raises the connection's flows version by one, so the
      * insert also writes the locked row: a PostgreSQL `REPEATABLE READ` change
@@ -504,7 +511,7 @@ final readonly class AuthorizationRequestService
     {
         return DB::connection(StorageConnection::name())->transaction(function () use ($connection, $attributes): bool {
 
-            if (!self::isUnchanged($connection)) {
+            if (!self::isUnchanged($connection, $attributes['trust_version'])) {
                 return false;
             }
 
@@ -524,19 +531,21 @@ final readonly class AuthorizationRequestService
     /**
      * Whether the connection, read again locked for update on the write
      * connection, still exists with the switch, settings and secrets it was
-     * read with. The values are compared as cast, the settings' maps whatever
-     * their key order, since a JSON column need not keep the order it was
-     * given, and a connection just created holds its values as given.
+     * read with, and the trust version the request captured. The values are
+     * compared as cast, the settings' maps whatever their key order, since a
+     * JSON column need not keep the order it was given, and a connection just
+     * created holds its values as given.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  mixed  $trustVersion
      * @return bool
      */
-    private static function isUnchanged(Connection $connection): bool
+    private static function isUnchanged(Connection $connection, mixed $trustVersion): bool
     {
         $locked = Connection::query()->useWritePdo()->lockForUpdate()->whereKey($connection->id)->first();
         $trust  = static fn (Connection $row): array => [$row->enabled, self::sorted($row->settings), $row->secrets];
 
-        return $locked !== null && $trust($locked) === $trust($connection);
+        return $locked !== null && $locked->trust_version === $trustVersion && $trust($locked) === $trust($connection);
     }
 
     /**

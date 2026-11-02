@@ -66,6 +66,13 @@ return new class extends Migration {
             // The S256 challenge of the client's verifier.
             $blueprint->char('handoff_challenge', 43);
 
+            // The connection's trust version when the flow started, compared
+            // with the connection's before the response is validated and again
+            // under the completion's lock, so a trust change that voided
+            // nothing it could see (the request not yet stored) still refuses
+            // the flow.
+            $blueprint->unsignedBigInteger('trust_version');
+
             // The identity a link or reauthenticate flow was started for, and
             // the session a reauthenticate flow was started on.
             $blueprint->string('identity_type', 255)->nullable();

@@ -69,8 +69,13 @@ enum Saml2Setting: string
     // Whether every `AuthnRequest` asks for fresh authentication (SSO-5.3)
     case FORCE_AUTHN = 'force_authn';
 
-    // The authentication context classes requested (SSO-5.3)
+    // The authentication context classes requested with `Comparison="exact"`
+    // and required of the response's `AuthnContextClassRef` (SSO-5.3, SSO-6.10)
     case REQUESTED_AUTHN_CONTEXT = 'requested_authn_context';
+
+    // The oldest the provider's `AuthnInstant` may be, in seconds; none by
+    // default (SSO-6.10)
+    case MAX_AUTHENTICATION_AGE_SECONDS = 'max_authentication_age_seconds';
 
     // Whether an unsolicited response is re-initiated (SSO-5.8)
     case IDP_INITIATED = 'idp_initiated';
@@ -79,21 +84,30 @@ enum Saml2Setting: string
     // connection (SSO-5.8, D7)
     case IDP_INITIATED_START_URL = 'idp_initiated_start_url';
 
+    // The HTTPS URL the identity provider's metadata is fetched from, for a
+    // scheduled refresh (SSO-2.8)
+    case METADATA_URL = 'metadata_url';
+
+    // Whether the connection's certificates and endpoints are refreshed from
+    // its metadata on a schedule (SSO-2.8)
+    case METADATA_REFRESH = 'metadata_refresh';
+
     /**
      * The operation whose freshness a change to the setting needs, or `null`
      * when its change never widens or redirects access (SSO-2.12): what decides
-     * whom the connection trusts, where it sends people, what a subject means
-     * or what a signature or algorithm must be is trust; the re-initiation of
-     * unsolicited responses has its own.
+     * whom the connection trusts, where it sends people, what a subject means,
+     * what a signature or algorithm must be, what a response must prove of the
+     * provider's authentication, and where and whether its metadata refreshes
+     * is trust; the re-initiation of unsolicited responses has its own.
      *
      * @return ?\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation
      */
     public function freshness(): ?FreshnessOperation
     {
         return match ($this) {
-            self::SIGN_AUTHN_REQUESTS, self::FORCE_AUTHN, self::REQUESTED_AUTHN_CONTEXT => null,
-            self::IDP_INITIATED, self::IDP_INITIATED_START_URL                          => FreshnessOperation::CONNECTION_IDP_INITIATED,
-            default                                                                     => FreshnessOperation::CONNECTION_TRUST,
+            self::SIGN_AUTHN_REQUESTS, self::FORCE_AUTHN       => null,
+            self::IDP_INITIATED, self::IDP_INITIATED_START_URL => FreshnessOperation::CONNECTION_IDP_INITIATED,
+            default                                            => FreshnessOperation::CONNECTION_TRUST,
         };
     }
 

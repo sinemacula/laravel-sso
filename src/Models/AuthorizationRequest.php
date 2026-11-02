@@ -21,8 +21,10 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * `Contracts\SecretEncrypter`, never the client's verifier; the SAML
  * `AuthnRequest` id; the S256 challenge of the client's verifier; the identity
  * a `link` or `reauthenticate` flow was started for and the session a
- * `reauthenticate` flow was started on; when it expires; and when it was
- * consumed by a completion, voided by a change to its connection, and
+ * `reauthenticate` flow was started on; its connection's trust version when it
+ * started, which the completion compares with the connection's before it
+ * validates the response and again under its lock; when it expires; and when it
+ * was consumed by a completion, voided by a change to its connection, and
  * completed.
  *
  * Its key is a lower-case ULID and its timestamps come from the package's clock
@@ -49,6 +51,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property ?string $code_verifier
  * @property ?string $saml_request_id
  * @property string $handoff_challenge
+ * @property int $trust_version
  * @property ?string $identity_type
  * @property ?string $identity_id
  * @property ?string $session_id
@@ -106,6 +109,7 @@ final class AuthorizationRequest extends SsoModel
         return [
             'purpose'         => Purpose::class,
             'issuer_required' => 'boolean',
+            'trust_version'   => 'integer',
             'expires_at'      => UtcDateTime::class,
             'consumed_at'     => UtcDateTime::class,
             'voided_at'       => UtcDateTime::class,

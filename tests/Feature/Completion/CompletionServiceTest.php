@@ -292,8 +292,10 @@ final class CompletionServiceTest extends TestCase
      * A `saml2` connection completes only at the assertion consumer service and
      * an `oidc` one only at the callback; anywhere else they are rejected with
      * `connection_unavailable` before their driver is asked. At its own
-     * endpoint each reaches its driver, which correlates nothing until it is
-     * built. A protocol no driver is registered under completes nowhere.
+     * endpoint each reaches its driver, which names no request: the SAML driver
+     * finds no response in an empty post, and the OIDC driver correlates
+     * nothing until it is built. A protocol no driver is registered under
+     * completes nowhere.
      *
      * @return void
      */

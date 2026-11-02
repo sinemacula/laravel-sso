@@ -62,8 +62,8 @@ final class ConnectionsMigrationTest extends TestCase
     }
 
     /**
-     * The table has exactly these columns, only the secrets nullable, with the
-     * id as its primary key.
+     * The table has exactly these columns, only the secrets and the metadata
+     * refresh's instants nullable, with the id as its primary key.
      *
      * @return void
      */
@@ -74,19 +74,27 @@ final class ConnectionsMigrationTest extends TestCase
         ksort($columns);
 
         self::assertSame([
-            'attribute_mapping'     => false,
-            'created_at'            => false,
-            'display_name'          => false,
-            'enabled'               => false,
-            'flows_version'         => false,
-            'has_completed_sign_in' => false,
-            'id'                    => false,
-            'links_version'         => false,
-            'protocol'              => false,
-            'secrets'               => true,
-            'settings'              => false,
-            'tenant_id'             => false,
-            'updated_at'            => false,
+            'attribute_mapping'         => false,
+            'created_at'                => false,
+            'display_name'              => false,
+            'enabled'                   => false,
+            'flows_version'             => false,
+            'has_completed_sign_in'     => false,
+            'id'                        => false,
+            'links_version'             => false,
+            'metadata_claim_token'      => true,
+            'metadata_claimed_until'    => true,
+            'metadata_fetched_at'       => true,
+            'metadata_refresh_at'       => true,
+            'metadata_refresh_failures' => false,
+            'metadata_valid_until'      => true,
+            'metadata_version'          => false,
+            'protocol'                  => false,
+            'secrets'                   => true,
+            'settings'                  => false,
+            'tenant_id'                 => false,
+            'trust_version'             => false,
+            'updated_at'                => false,
         ], $columns);
 
         $primary = array_values(array_filter(Schema::getIndexes(self::TABLE), static fn (array $index): bool => $index['primary']));
@@ -96,24 +104,28 @@ final class ConnectionsMigrationTest extends TestCase
     }
 
     /**
-     * The one secondary index is on the tenant, for listing a tenant's
-     * connections, and is not unique: a tenant may have several.
+     * The secondary indexes are on the tenant, for listing a tenant's
+     * connections, and on when the metadata refresh is next due, for the
+     * scheduled refresh; neither is unique.
      *
      * @return void
      */
-    public function testIndexesTheTenant(): void
+    public function testIndexesTheTenantAndTheRefreshDue(): void
     {
         $secondary = array_values(array_filter(Schema::getIndexes(self::TABLE), static fn (array $index): bool => !$index['primary']));
 
-        self::assertCount(1, $secondary);
-        self::assertSame(['tenant_id'], $secondary[0]['columns']);
-        self::assertFalse($secondary[0]['unique']);
-        self::assertSame('sso_connections_tenant_index', $secondary[0]['name']);
+        usort($secondary, static fn (array $one, array $other): int => strcmp($one['name'], $other['name']));
+
+        self::assertSame([
+            ['sso_connections_refresh_index', ['metadata_refresh_at'], false],
+            ['sso_connections_tenant_index', ['tenant_id'], false],
+        ], array_map(static fn (array $index): array => [$index['name'], $index['columns'], $index['unique']], $secondary));
     }
 
     /**
      * A row written with only what the table requires is disabled, has
-     * completed no sign-in and has a links version and a flows version of zero.
+     * completed no sign-in, has every version and the refresh failures at zero
+     * and no metadata refresh instant.
      *
      * @return void
      */
@@ -137,6 +149,8 @@ final class ConnectionsMigrationTest extends TestCase
         self::assertFalse((bool) $row->has_completed_sign_in);
         self::assertSame(0, (int) $row->links_version);
         self::assertSame(0, (int) $row->flows_version);
+        self::assertSame([0, 0, 0], [(int) $row->trust_version, (int) $row->metadata_version, (int) $row->metadata_refresh_failures]);
+        self::assertSame([null, null, null, null], [$row->metadata_fetched_at, $row->metadata_valid_until, $row->metadata_refresh_at, $row->metadata_claimed_until]);
         self::assertNull($row->secrets);
     }
 

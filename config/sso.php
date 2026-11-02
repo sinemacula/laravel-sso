@@ -148,6 +148,91 @@ return [
 
     /*
     |---------------------------------------------------------------------------
+    | SAML 2.0
+    |---------------------------------------------------------------------------
+    |
+    | The caps and windows every SAML connection is held to; every check is
+    | always on. A posted `SAMLResponse` longer than `max_response_bytes` is
+    | refused before it is decoded (16 KiB to 1 MiB, default 256 KiB), a
+    | decoded one longer than `max_xml_bytes` before it is parsed (16 KiB to
+    | 1 MiB, default 192 KiB), and an assertion decrypted from an
+    | `EncryptedAssertion` longer than `max_decrypted_bytes` before it is
+    | parsed (4 KiB to 1 MiB, default 128 KiB). A response's and an assertion's
+    | `IssueInstant` may be at most `issue_instant_max_age_seconds` old (30 to
+    | 3600, default 300), with the clock skew on top.
+    |
+    */
+
+    'saml2' => [
+        'max_response_bytes'            => env('SSO_SAML2_MAX_RESPONSE_BYTES', 262144),
+        'max_xml_bytes'                 => env('SSO_SAML2_MAX_XML_BYTES', 196608),
+        'max_decrypted_bytes'           => env('SSO_SAML2_MAX_DECRYPTED_BYTES', 131072),
+        'issue_instant_max_age_seconds' => env('SSO_SAML2_ISSUE_INSTANT_MAX_AGE_SECONDS', 300),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Metadata
+    |---------------------------------------------------------------------------
+    |
+    | How large a SAML identity provider's metadata may be, imported or
+    | refreshed, given as XML or fetched: `max_bytes`, 64 KiB to a hard ceiling
+    | of 256 MiB (default 1 MiB), in place of `fetcher.max_response_bytes`,
+    | which every other request keeps. A fetch stops reading past it and a
+    | document over it is never parsed. Raising it for a federation aggregate
+    | means the whole file is loaded and its signature checked in one piece:
+    | expect memory of several times the file's size and seconds of
+    | processing, and size the queue worker's memory limit and `timeout_seconds`
+    | for it. Where the federation publishes a URL per entity, use that
+    | instead. An import from a URL fetches while it is called, so import a
+    | large aggregate from the console or a queued job, never a web request.
+    |
+    | How the scheduled refresh of a SAML connection's metadata runs, for the
+    | connections that opt in while `features.metadata_refresh` is on. After a
+    | success the next refresh is due `refresh_interval_seconds` later (an
+    | hour to a week, default a day); after a failure it waits
+    | `backoff_initial_seconds` (a minute to an hour, default 5 minutes),
+    | doubling with each failure in a row up to `backoff_max_seconds` (5
+    | minutes to a day, default 6 hours). What a refresh applied stops being
+    | used `stale_limit_seconds` after its last validated fetch (a day to a
+    | year, default 30 days, or 0 for no limit, which you must set
+    | explicitly), or at its metadata's `validUntil`, whichever comes first.
+    | A server's claim on a refresh holds for `claim_seconds` (30 to 3600,
+    | default 300), so racing servers refresh a connection once. Run the
+    | refresh command more often than the initial backoff.
+    |
+    | The command queues one job per connection due (`--sync` refreshes them
+    | in the command instead): on `queue.connection` and `queue.name` (`null`
+    | for the application's default connection and its default queue), each
+    | allowed `queue.timeout_seconds` (30 to 3600, default 60, at most
+    | `claim_seconds`) and `queue.tries` attempts (1 to 10, default 1; a failed
+    | refresh is retried by the backoff). The timeout must be shorter than the
+    | queue connection's `retry_after` (90 in Laravel's stock queue config),
+    | or a refresh still running is reserved by a second worker and recorded
+    | as failed; the boot check refuses one that is not. Send large aggregates
+    | to a queue whose workers have the memory and the timeout for them, and
+    | raise that connection's `retry_after` above the timeout.
+    |
+    */
+
+    'metadata' => [
+        'max_bytes'                => env('SSO_METADATA_MAX_BYTES', 1048576),
+        'refresh_interval_seconds' => env('SSO_METADATA_REFRESH_INTERVAL_SECONDS', 86400),
+        'backoff_initial_seconds'  => env('SSO_METADATA_BACKOFF_INITIAL_SECONDS', 300),
+        'backoff_max_seconds'      => env('SSO_METADATA_BACKOFF_MAX_SECONDS', 21600),
+        'stale_limit_seconds'      => env('SSO_METADATA_STALE_LIMIT_SECONDS', 2592000),
+        'claim_seconds'            => env('SSO_METADATA_CLAIM_SECONDS', 300),
+
+        'queue' => [
+            'connection'      => env('SSO_METADATA_QUEUE_CONNECTION'),
+            'name'            => env('SSO_METADATA_QUEUE'),
+            'timeout_seconds' => env('SSO_METADATA_QUEUE_TIMEOUT_SECONDS', 60),
+            'tries'           => env('SSO_METADATA_QUEUE_TRIES', 1),
+        ],
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
     | Connections
     |---------------------------------------------------------------------------
     |
@@ -396,9 +481,11 @@ return [
     | multicast or a cloud metadata address, pinned so a second resolution
     | cannot change it. `refused_ranges` adds CIDR ranges (IPv4 or IPv6) to the
     | ones always refused; it never removes one. A response larger than
-    | `max_response_bytes` or slower than `timeout_seconds` fails, and a request
-    | that carries no credential follows at most `max_redirects` redirects,
-    | each checked again (one that carries a credential follows none).
+    | `max_response_bytes` (SAML metadata has its own cap,
+    | `metadata.max_bytes`) or slower than `timeout_seconds` fails, and a
+    | request that carries no credential follows at most `max_redirects`
+    | redirects, each checked again (one that carries a credential follows
+    | none).
     |
     */
 

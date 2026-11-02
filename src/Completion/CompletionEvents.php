@@ -11,8 +11,10 @@ use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
+use SineMacula\Laravel\Sso\Events\UnsolicitedResponseReinitiated;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
  * Reports how a completion at an assertion consumer service or a callback ended
@@ -23,7 +25,11 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
  *   `FlowFailed` with the flow and the reason;
  * - refused before (a full limit, a method or a connection the endpoint does
  *   not take, a response no request matches, a refused consumption or
- *   validation): exactly one `FlowFailed`.
+ *   validation): exactly one `FlowFailed`;
+ * - an unsolicited SAML response re-initiated (SSO-5.8):
+ *   `UnsolicitedResponseReinitiated` alone, its context naming the connection,
+ *   its tenant and its protocol and nothing of the response; refused, exactly
+ *   one `FlowFailed` with that same context.
  *
  * Each event's context is built through the one projection
  * (`Events\EventContexts`) from what the completion had established: the
@@ -85,6 +91,24 @@ final readonly class CompletionEvents
         }
 
         $this->dispatcher->dispatch($reason === null ? new HandoffIssued($context) : new FlowFailed($context, $flow, $reason));
+    }
+
+    /**
+     * Report an unsolicited response through the connection re-initiated: its
+     * context names the connection, its tenant and its protocol only, never a
+     * request, an application or an identity, since the response answers none
+     * and its subject never carries into the new flow (SSO-10.4).
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return void
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function reinitiated(Connection $connection): void
+    {
+        $context = $this->contexts->make(connectionId: $connection->id, tenantId: $connection->tenant_id, protocol: $connection->protocol);
+
+        $this->dispatcher->dispatch(new UnsolicitedResponseReinitiated($context));
     }
 
     /**

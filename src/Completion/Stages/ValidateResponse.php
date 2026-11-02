@@ -24,8 +24,9 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  * may change while the driver validates.
  *
  * A response the driver refuses is refused with its reason. A verified one goes
- * on with its claims and the `Results\VerifiedResult` built from them by
- * `Completion\ResultBuilder`.
+ * on with its claims, the `Protocols\ReplayRecord` the driver asked for, if any
+ * (recorded by the `replay_recording` step under the completion's locks), and
+ * the `Results\VerifiedResult` built from them by `Completion\ResultBuilder`.
  *
  * It holds the drivers' registry and the builder, neither of which keeps
  * anything of one completion for the next (SSO-11.2).
@@ -78,6 +79,8 @@ final readonly class ValidateResponse implements CompletionStage
             return StageOutcome::refuse($state, $completion->reason ?? throw new \LogicException('A refused completion holds its reason.'));
         }
 
-        return StageOutcome::proceed($state->withClaims($claims)->withResult($this->results->build($claims, $connection, $consumed)));
+        $verified = $state->withClaims($claims)->withResult($this->results->build($claims, $connection, $consumed));
+
+        return StageOutcome::proceed($completion->replay === null ? $verified : $verified->withReplay($completion->replay));
     }
 }

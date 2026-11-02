@@ -27,9 +27,11 @@ reasons by flow and the events each operation reports. Each part's own behaviour
   public reference, unique; `state_digest`, the SHA-256 of the random protocol state, unique, never the state;
   `purpose`, `application`, `connection_id`; `expected_issuer`, `issuer_required`; `nonce_digest`; `code_verifier`, the
   PKCE verifier used with the identity provider, encrypted through `Contracts\SecretEncrypter`; `saml_request_id`,
-  unique with the connection; `handoff_challenge`, the client's S256 challenge; `identity_type`, `identity_id` (`link`,
-  `reauthenticate`) and `session_id` (`reauthenticate`); `expires_at`, and `consumed_at` (a completion consumed it),
-  `voided_at` (a change to its connection voided it) and `completed_at` (its completion finished, either way).
+  unique with the connection; `handoff_challenge`, the client's S256 challenge; `trust_version`, the connection's trust
+  version as the start read it, compared at consumption and again under the completion's lock; `identity_type`,
+  `identity_id` (`link`, `reauthenticate`) and `session_id` (`reauthenticate`); `expires_at`, and `consumed_at` (a
+  completion consumed it), `voided_at` (a change to its connection voided it) and `completed_at` (its completion
+  finished, either way).
 - `sso.handoff_codes.table` (`sso_handoff_codes`, `Models\HandoffCode`): `code_digest`, unique, never the code; what the
   code is bound to: `purpose`, `application`, `connection_id`, `request_reference`, `handoff_challenge`, `identity_type`
   and `identity_id` (the flow's identity), `session_id`, `linked_identity_type` and `linked_identity_id` (what the
@@ -106,26 +108,30 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
   answers `Protocols\Completion::verified(VerifiedClaims)` or `refused(FailureReason)`.
   `Protocols\Start` keeps what a request stores, typed: `samlRequestId`, `expectedIssuer`, `issuerRequired`.
 - The steps run in `Completion\Enums\CompletionStep`'s order: `correlation`, `consumption`, `validation`,
-  `link_resolution`, `enforcement`, `domain_reservation`, `provisioning`, `unlinked_decision`, `handoff_issuance`. Each
-  is a `Contracts\CompletionStage` taking and returning a `Completion\CompletionState` through a
-  `Completion\StageOutcome` (`proceed` or `refuse` with a reason, the state kept either way). The two P6 steps,
-  `domain_reservation` and `provisioning`, are `Completion\Stages\UnbuiltStage`s that pass every state on.
+  `replay_recording`, `link_resolution`, `enforcement`, `domain_reservation`, `provisioning`, `unlinked_decision`,
+  `handoff_issuance`. Each is a `Contracts\CompletionStage` taking and returning a `Completion\CompletionState` through
+  a `Completion\StageOutcome` (`proceed`, `refuse` with a reason, or, from `correlation` alone, `reinitiate` for an
+  unsolicited SAML response; the state kept either way). The two P6 steps, `domain_reservation` and `provisioning`, are
+  `Completion\Stages\UnbuiltStage`s that pass every state on.
 - Transactions: a completion, and a start (named or by discovery), run outside any transaction on the storage
   connection; called inside one, each is a `LogicException` at entry, before anything is written, so a caller's rollback
   never undoes a consumption (SSO-5.1) and a caller's transaction never keeps the connection's lock across a call to the
   driver (SSO-11.5). A redemption, by decision D5, may run inside the redeemer's. `correlation` and `validation` run
   outside any transaction the pipeline opens (validation may fetch); `consumption` runs in a transaction of its own on
   the storage connection, which locks the connection's row before the request's, as every transaction here does, so the
-  request is consumed whether the response then passes or fails; every step from `link_resolution` on runs in one
+  request is consumed whether the response then passes or fails; every step from `replay_recording` on runs in one
   transaction on the storage connection that first locks the tenant's enforcement (when it applies, see the lock order),
   then the connection's row (with the rule's connections) and then the request's row, and refuses if the connection is
-  no longer usable, the request was voided since consumption, or the enforcing tenant moved since its rule was locked.
+  no longer usable, the request was voided since consumption or its stored trust version is no longer the connection's,
+  or the enforcing tenant moved since its rule was locked. The trust version is stored on every request at start
+  (compared under the connection's lock before the insert), checked at consumption against the locked connection
+  before validation or any provider call, and checked again under the completion's lock.
   Events are dispatched after that transaction commits (or after the consumption's, for a refusal before it), never on a
   rollback.
 - `Completion\CompletionResult` is how a completion ended: `completed` (redirect URI, delivery, reference, issued
   handoff), `failed` (reason, redirect URI, delivery, reference), `rejected` (reason, no trusted target: a 400),
-  `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL, P4). It may hold the code, so it
-  shows none in a dump and refuses serialisation.
+  `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL, SSO-5.8). It may hold the code, so
+  it shows none in a dump and refuses serialisation.
 - `Handoffs\HandoffGrant` is what a code is issued for: the result (which names purpose, application, connection and
   reference), the challenge, the expiry, the linked identity, the flow's identity (`link`, `reauthenticate`) and session
   (`reauthenticate`), the enforcement version and the session's latest end; a grant whose identity or session does not

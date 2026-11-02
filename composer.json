@@ -19,6 +19,7 @@
     ],
     "require": {
         "php": "^8.3",
+        "ext-bcmath": "*",
         "ext-curl": "*",
         "ext-dom": "*",
         "ext-hash": "*",
@@ -29,6 +30,8 @@
         "guzzlehttp/guzzle": "^7.9",
         "laravel/framework": "^12.40|^13.3",
         "psr/clock": "^1.0",
+        "simplesamlphp/saml2": "~6.2.4",
+        "simplesamlphp/xml-security": "~2.3.1",
         "symfony/polyfill-intl-idn": "^1.31"
     },
     "require-dev": {
@@ -144,7 +147,8 @@
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true,
             "infection/extension-installer": true,
-            "phpstan/extension-installer": true
+            "phpstan/extension-installer": true,
+            "simplesamlphp/composer-xmlprovider-installer": true
         }
     },
     "extra": {

@@ -71,7 +71,7 @@ final class Certificates
      */
     public static function ecP256(): string
     {
-        return self::distinct(0);
+        return self::generate('p256-0', ['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1'], 365)['certificate'];
     }
 
     /**
@@ -105,14 +105,25 @@ final class Certificates
     }
 
     /**
-     * The EC P-256 certificate of the index, distinct from every other index's.
+     * The RSA 2048 certificate of the index, distinct from every other index's,
+     * as a SAML connection trusts one.
      *
      * @param  int  $index
      * @return string
      */
     public static function distinct(int $index): string
     {
-        return self::generate('p256-' . $index, ['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1'], 365)['certificate'];
+        return self::generate('rsa-' . $index, ['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048], 365)['certificate'];
+    }
+
+    /**
+     * An RSA 2048 certificate valid for one day from when it was generated.
+     *
+     * @return string
+     */
+    public static function rsaOneDay(): string
+    {
+        return self::generate('rsa-one-day', ['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048], 1)['certificate'];
     }
 
     /**

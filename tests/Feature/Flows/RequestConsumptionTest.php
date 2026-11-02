@@ -224,23 +224,25 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A SAML response that gave only its request id finds the request by it,
-     * within the connection it arrived for and compared exactly.
+     * A SAML response finds its request by its request id, within the
+     * connection it arrived for and compared exactly, never by its
+     * `RelayState`: an id of another connection, or not exactly the stored one,
+     * is unknown and consumes nothing, whatever the `RelayState` names.
      *
      * @return void
      */
-    public function testARequestIsConsumedByItsSamlRequestIdWithinTheConnection(): void
+    public function testASamlRequestIsFoundByItsIdWithinTheConnection(): void
     {
         $request = $this->request(['saml_request_id' => self::SAML_REQUEST_ID]);
         $other   = $this->makeConnection(['enabled' => true]);
 
         foreach ([[$other, self::SAML_REQUEST_ID], [$this->connection, strtoupper(self::SAML_REQUEST_ID)], [$this->connection, self::SAML_REQUEST_ID . ' ']] as [$route, $id]) {
-            self::assertUnknown($this->consume(Correlation::solicited(null, $id), $route));
+            self::assertUnknown($this->consume(Correlation::solicited(self::STATE, $id), $route));
         }
 
         self::assertNull($this->reread($request)->consumed_at);
 
-        $result = $this->consume(Correlation::solicited(null, self::SAML_REQUEST_ID));
+        $result = $this->consume(Correlation::solicited(self::STATE, self::SAML_REQUEST_ID));
 
         self::assertTrue($result->isConsumed());
         self::assertSame($request->id, $result->request?->id);
@@ -266,31 +268,35 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A response whose state names a request but whose SAML request id is
-     * another is refused `request_unknown`, with the application kept so the
-     * completion redirects, and the request is consumed all the same.
+     * A SAML response whose `RelayState` is not its request's state, or that
+     * gave none, is refused `request_mismatch`, with the application kept so
+     * the completion redirects, and the request is consumed all the same.
      *
      * @return void
      */
-    public function testAMismatchedSamlRequestIdIsRefusedAndStillConsumed(): void
+    public function testAMismatchedOrMissingRelayStateIsRefusedAndStillConsumed(): void
     {
-        $request = $this->request(['saml_request_id' => self::SAML_REQUEST_ID]);
+        $first  = $this->request(['saml_request_id' => self::SAML_REQUEST_ID]);
+        $second = $this->request(['saml_request_id' => '_second-request'], 'second-state');
 
-        $result = $this->consume(Correlation::solicited(self::STATE, '_another-request'));
+        $mismatched = $this->consume(Correlation::solicited('second-state', self::SAML_REQUEST_ID));
+        $missing    = $this->consume(Correlation::solicited(null, '_second-request'));
 
-        self::assertRefused(FailureReason::REQUEST_UNKNOWN, $result, true);
-        self::assertSame($request->id, $result->request?->id);
-        self::assertNotNull($this->reread($request)->consumed_at);
+        self::assertRefused(FailureReason::REQUEST_MISMATCH, $mismatched, true);
+        self::assertRefused(FailureReason::REQUEST_MISMATCH, $missing, true);
+        self::assertSame([$first->id, $second->id], [$mismatched->request?->id, $missing->request?->id]);
+        self::assertNotNull($this->reread($first)->consumed_at);
+        self::assertNotNull($this->reread($second)->consumed_at);
         self::assertReplayed($this->consume(Correlation::solicited(self::STATE, self::SAML_REQUEST_ID)));
     }
 
     /**
-     * A state with its request's own SAML request id is consumed, and so is a
-     * state alone for a request that has one.
+     * A SAML response with its request's own `RelayState` is consumed, and an
+     * OIDC response's state alone finds a request whatever it keeps.
      *
      * @return void
      */
-    public function testAStateWithTheSameOrNoSamlRequestIdIsConsumed(): void
+    public function testAMatchingRelayStateOrAStateAloneIsConsumed(): void
     {
         $this->request(['saml_request_id' => self::SAML_REQUEST_ID]);
 
@@ -302,16 +308,17 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A SAML request id given with a state, for a request that keeps none, is a
-     * mismatch.
+     * A SAML request id for a request that keeps none finds nothing, and
+     * consumes nothing.
      *
      * @return void
      */
-    public function testASamlRequestIdForARequestThatKeepsNoneIsAMismatch(): void
+    public function testASamlRequestIdForARequestThatKeepsNoneIsUnknown(): void
     {
-        $this->request();
+        $request = $this->request();
 
-        self::assertRefused(FailureReason::REQUEST_UNKNOWN, $this->consume(Correlation::solicited(self::STATE, self::SAML_REQUEST_ID)), true);
+        self::assertUnknown($this->consume(Correlation::solicited(self::STATE, self::SAML_REQUEST_ID)));
+        self::assertNull($this->reread($request)->consumed_at);
     }
 
     /**
@@ -375,6 +382,51 @@ final class RequestConsumptionTest extends TestCase
         $request = $this->request(['voided_at' => $this->clock->now()]);
 
         self::assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->consume(Correlation::solicited(self::STATE)), true);
+        self::assertNotNull($this->reread($request)->consumed_at);
+    }
+
+    /**
+     * Rows of `[request's trust version, connection's, reason]`: the trust
+     * version the request was started with, the connection's, and what the
+     * consumption comes to.
+     *
+     * @return iterable<string, array{0: int, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideTrustVersions(): iterable
+    {
+        yield from [
+            'the same'               => [4, 4, null],
+            'the connection raised'  => [4, 5, FailureReason::CONNECTION_UNAVAILABLE],
+            'the connection lowered' => [4, 3, FailureReason::CONNECTION_UNAVAILABLE],
+        ];
+    }
+
+    /**
+     * A request whose trust version is not the connection's (a trust change
+     * since it started that voided nothing it could see) is refused
+     * `connection_unavailable`, as a voided one is, and consumed; one of the
+     * connection's trust version is consumed.
+     *
+     * @param  int  $started
+     * @param  int  $current
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('provideTrustVersions')]
+    public function testARequestOfAnotherTrustVersionIsRefused(int $started, int $current, ?FailureReason $reason): void
+    {
+        $request = $this->request(['trust_version' => $started]);
+
+        $this->connection->forceFill(['trust_version' => $current])->save();
+
+        $result = $this->consume(Correlation::solicited(self::STATE), $this->connection->fresh());
+
+        if ($reason === null) {
+            self::assertTrue($result->isConsumed());
+        } else {
+            self::assertRefused($reason, $result, true);
+        }
+
         self::assertNotNull($this->reread($request)->consumed_at);
     }
 
@@ -509,8 +561,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * The reasons are judged in order: the SAML request id, then the voiding,
-     * then the connection, then the expiry.
+     * The reasons are judged in order: the `RelayState`, then the voiding, then
+     * the connection, then the trust version, then the expiry.
      *
      * @return void
      */
@@ -519,13 +571,15 @@ final class RequestConsumptionTest extends TestCase
         $other = $this->makeConnection(['enabled' => true]);
         $now   = $this->clock->now();
 
-        $this->request(['saml_request_id' => self::SAML_REQUEST_ID, 'voided_at' => $now], 'state-1');
+        $this->request(['saml_request_id' => self::SAML_REQUEST_ID, 'voided_at' => $now, 'expires_at' => $now], 'state-1');
         $this->request(['voided_at' => $now, 'expires_at' => $now], 'state-2');
-        $this->request(['expires_at' => $now], 'state-3');
+        $this->request(['expires_at' => $now, 'trust_version' => 9], 'state-3');
+        $this->request(['expires_at' => $now, 'trust_version' => 9], 'state-4');
 
-        self::assertRefused(FailureReason::REQUEST_UNKNOWN, $this->consume(Correlation::solicited('state-1', '_another'), $other), true);
+        self::assertRefused(FailureReason::REQUEST_MISMATCH, $this->consume(Correlation::solicited('state-2', self::SAML_REQUEST_ID)), true);
         self::assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->consume(Correlation::solicited('state-2'), $other), true);
         self::assertRefused(FailureReason::CONNECTION_MISMATCH, $this->consume(Correlation::solicited('state-3'), $other), true);
+        self::assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->consume(Correlation::solicited('state-4')), true);
     }
 
     /**

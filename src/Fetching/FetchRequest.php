@@ -11,6 +11,11 @@ use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
  * or metadata or discovery supplied, and, for a token request, its form fields
  * and client authentication, or, for UserInfo, its access token.
  *
+ * A metadata request may carry a size cap of its own (`maxBytes`), which the
+ * fetcher holds its response to in place of `sso.fetcher.max_response_bytes`,
+ * so a SAML metadata aggregate can be allowed far more than any other response
+ * without raising the cap of the rest; every other request carries none.
+ *
  * Built only through the named constructor of its purpose, which pairs it with
  * the only credential that purpose may carry: none for metadata, discovery and
  * a JWKS, a client authentication for a token request, and an access token for
@@ -41,6 +46,9 @@ final readonly class FetchRequest
      * @param  string  $url
      * @param  array<string, string>  $form
      * @param  ?\SineMacula\Laravel\Sso\Fetching\FetchCredentials  $credentials
+     * @param  ?int  $maxBytes
+     *
+     * @throws \InvalidArgumentException
      */
     private function __construct(
 
@@ -57,13 +65,21 @@ final readonly class FetchRequest
 
         /** The one credential the request carries, if its purpose takes one. */
         public ?FetchCredentials $credentials = null,
+
+        /** The most bytes the response may hold, in place of the fetcher's cap, or `null` for the fetcher's. */
+        public ?int $maxBytes = null,
     ) {
+        if ($maxBytes !== null && $maxBytes < 1) {
+            throw new \InvalidArgumentException('A request\'s own size cap is at least one byte.');
+        }
+
         $this->form = new \SensitiveParameterValue($form);
     }
 
     /**
-     * What a dump shows: the purpose, the URL, the names of the form fields and
-     * the credential's kind, never a value of the form or the credential.
+     * What a dump shows: the purpose, the URL, the names of the form fields,
+     * the credential's kind and the size cap, never a value of the form or the
+     * credential.
      *
      * @return array<string, mixed>
      */
@@ -74,6 +90,7 @@ final readonly class FetchRequest
             'url'         => $this->url,
             'form'        => array_keys($this->form()),
             'credentials' => $this->credentials?->kind->value,
+            'max_bytes'   => $this->maxBytes,
         ];
     }
 
@@ -108,14 +125,18 @@ final readonly class FetchRequest
     }
 
     /**
-     * Fetch a SAML identity provider's metadata, with no credential.
+     * Fetch a SAML identity provider's metadata, with no credential, held to
+     * the size cap given, or to the fetcher's when none is.
      *
      * @param  string  $url
+     * @param  ?int  $maxBytes
      * @return self
+     *
+     * @throws \InvalidArgumentException
      */
-    public static function metadata(string $url): self
+    public static function metadata(string $url, ?int $maxBytes = null): self
     {
-        return new self(FetchPurpose::METADATA, $url);
+        return new self(FetchPurpose::METADATA, $url, maxBytes: $maxBytes);
     }
 
     /**

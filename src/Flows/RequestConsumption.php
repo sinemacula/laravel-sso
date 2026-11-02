@@ -18,6 +18,7 @@ use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
+use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 
 /**
@@ -30,13 +31,14 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * In a transaction of its own on the storage connection (a savepoint inside the
  * caller's), the request is read with a locking read on the write connection,
  * so a lagging replica or the snapshot of a caller's older transaction never
- * answers: by the digest of the response's state when it carries one, and
- * otherwise by its SAML request id within the connection the response arrived
- * for, compared again exactly. None is `unknown`. A request consumed before, or
- * one the single-use store has seen (keyed by its id until its expiry, and at
- * least a second), is `replayed`, and is written nothing more. Otherwise it is
- * consumed: it is recorded in the store and its `consumed_at` set, both in the
- * transaction, so racing servers consume it exactly once.
+ * answers: a SAML response's by its `InResponseTo` within the connection the
+ * response arrived for, compared again exactly, never by its `RelayState`; any
+ * other's by the digest of its state. None is `unknown`, and nothing is
+ * consumed. A request consumed before, or one the single-use store has seen
+ * (keyed by its id until its expiry, and at least a second), is `replayed`, and
+ * is written nothing more. Otherwise it is consumed: it is recorded in the
+ * store and its `consumed_at` set, both in the transaction, so racing servers
+ * consume it exactly once.
  *
  * A request whose application is no longer registered is
  * `application_not_allowed`, with no redirect target, ahead of every other
@@ -44,15 +46,19 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * write sets its `completed_at` with its `consumed_at`, since no later step
  * that would mark it completed runs without an application to answer to.
  *
- * Once that commits it is judged, in this order: a SAML request id other than
- * the one the response gave, when it gave a state as well, is
- * `request_unknown`; a request a change to its connection voided is
+ * Once that commits it is judged, in this order: a SAML request whose state's
+ * digest is not the digest of the response's `RelayState`, compared in constant
+ * time, or that the response gave no `RelayState` for, is `request_mismatch`
+ * (SSO-5.3); a request a change to its connection voided is
  * `connection_unavailable`; one started through another connection than the
- * response arrived for is `connection_mismatch`; one whose expiry is not after
- * now is `request_expired`. Each of these keeps the application, so the
- * completion redirects to it with the failure. Otherwise it is `consumed`, with
- * what the driver is given of it: its PKCE verifier, still encrypted, with the
- * encrypter that decrypts it only when the driver asks for it to build the
+ * response arrived for is `connection_mismatch`; one whose trust version is not
+ * the connection's (the connection as the caller read it, locked) is
+ * `connection_unavailable`, as a voided one is, so no response is validated or
+ * provider called for a flow a trust change has overtaken; one whose expiry is
+ * not after now is `request_expired`. Each of these keeps the application, so
+ * the completion redirects to it with the failure. Otherwise it is `consumed`,
+ * with what the driver is given of it: its PKCE verifier, still encrypted, with
+ * the encrypter that decrypts it only when the driver asks for it to build the
  * token request; its nonce digest, the issuer it expects, its SAML request id
  * and when it started. Nothing is decrypted here, so a ciphertext no key
  * decrypts never stops a request being consumed.
@@ -242,32 +248,52 @@ final readonly class RequestConsumption
     private static function refusal(AuthorizationRequest $request, Connection $routeConnection, Correlation $correlation, CarbonImmutable $now): ?FailureReason
     {
         return match (true) {
-            self::answersAnotherSamlRequest($request, $correlation) => FailureReason::REQUEST_UNKNOWN,
-            $request->voided_at     !== null                        => FailureReason::CONNECTION_UNAVAILABLE,
-            $request->connection_id !== $routeConnection->id        => FailureReason::CONNECTION_MISMATCH,
-            $request->expires_at <= $now                            => FailureReason::REQUEST_EXPIRED,
-            default                                                 => null,
+            self::isRelayStateMismatch($request, $correlation) => FailureReason::REQUEST_MISMATCH,
+            $request->voided_at     !== null                   => FailureReason::CONNECTION_UNAVAILABLE,
+            $request->connection_id !== $routeConnection->id   => FailureReason::CONNECTION_MISMATCH,
+            self::isTrustChanged($request, $routeConnection)   => FailureReason::CONNECTION_UNAVAILABLE,
+            $request->expires_at <= $now                       => FailureReason::REQUEST_EXPIRED,
+            default                                            => null,
         };
     }
 
     /**
-     * Whether the response gave a SAML request id other than the one the
-     * request keeps, compared exactly. A request found by its SAML request id
-     * keeps the one given.
+     * Whether the connection's trust version is no longer the one the request
+     * captured when it started.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
+     * @return bool
+     */
+    private static function isTrustChanged(AuthorizationRequest $request, Connection $routeConnection): bool
+    {
+        return $request->trust_version !== $routeConnection->trust_version;
+    }
+
+    /**
+     * Whether a SAML response, found by its `InResponseTo`, carries no
+     * `RelayState`, or one whose digest is not the request's state digest,
+     * compared in constant time. A response found by its state never is.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @return bool
      */
-    private static function answersAnotherSamlRequest(AuthorizationRequest $request, Correlation $correlation): bool
+    private static function isRelayStateMismatch(AuthorizationRequest $request, Correlation $correlation): bool
     {
-        return $correlation->samlRequestId !== null && $request->saml_request_id !== $correlation->samlRequestId;
+        if ($correlation->samlRequestId === null) {
+            return false;
+        }
+
+        $state = $correlation->state;
+
+        return $state === null || !ConstantTime::matchesDigest($request->state_digest, $state->reveal());
     }
 
     /**
      * The request the correlation names, locked for update on the write
-     * connection: by its state's digest when it carries a state, by its SAML
-     * request id within the connection otherwise, and none when it carries
+     * connection: by its SAML request id within the connection when the
+     * response gave one, by its state's digest otherwise, and none when it gave
      * neither.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
@@ -276,13 +302,13 @@ final readonly class RequestConsumption
      */
     private static function lookup(Connection $routeConnection, Correlation $correlation): ?AuthorizationRequest
     {
-        $digest = $correlation->stateDigest();
-
-        if ($digest !== null) {
-            return self::locked()->where('state_digest', $digest)->first();
+        if ($correlation->samlRequestId !== null) {
+            return self::bySamlRequestId($routeConnection, $correlation->samlRequestId);
         }
 
-        return $correlation->samlRequestId === null ? null : self::bySamlRequestId($routeConnection, $correlation->samlRequestId);
+        $digest = $correlation->stateDigest();
+
+        return $digest === null ? null : self::locked()->where('state_digest', $digest)->first();
     }
 
     /**

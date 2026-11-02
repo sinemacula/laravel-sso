@@ -100,6 +100,7 @@ final class FlowTablesMigrationTest extends TestCase
             'saml_request_id'   => true,
             'session_id'        => true,
             'state_digest'      => false,
+            'trust_version'     => false,
             'updated_at'        => false,
             'voided_at'         => true,
         ], [
