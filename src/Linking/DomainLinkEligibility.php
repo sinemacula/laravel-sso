@@ -12,7 +12,6 @@ use SineMacula\Laravel\Sso\Config\Enums\Feature;
 use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\LinkEmailMatcher;
-use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
 use SineMacula\Laravel\Sso\Contracts\TenantMembership;
 use SineMacula\Laravel\Sso\Domains\DomainName;
@@ -20,7 +19,7 @@ use SineMacula\Laravel\Sso\Domains\DomainSettings;
 use SineMacula\Laravel\Sso\Domains\DomainStanding;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
-use SineMacula\Laravel\Sso\Links\LinkStore;
+use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 use SineMacula\Laravel\Sso\Links\ReservationTerms;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -39,8 +38,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *   administrator's acknowledgement, and a shared issuer (one the administrator
  *   classified so, or one `requiredClaim()` knows, which is never downgraded)
  *   names its organisation claim and the expected value, which the result's
- *   accepted
- *   value equals exactly;
+ *   accepted value equals exactly;
  * - the linking email came from the protocol: for SAML through the named
  *   attribute with the administrator's acknowledgement, for OIDC through the ID
  *   token or UserInfo, and never from attribute mapping;
@@ -57,18 +55,26 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *   strictly before the domain's current verification;
  * - the identity holds no link in the connection, and the subject none.
  *
- * It runs only under the package's link store: an alternative linker cannot
- * hold a reservation, so the combination reserves nothing and activates
- * nothing. `atCompletion()` answers the identity and the terms to reserve, with
- * the connection and result they stand on, or `null`. `isStillEligible()` answers whether everything still holds for that
- * same identity at redemption; another match never becomes the target.
- * `requiredClaim()` answers the organisation claim a known shared issuer must
- * be told apart by: one a preset with an organisation claim names
- * (`Protocols\Preset::names()`), or else one `LinkingSettings` lists.
+ * It runs only over `Contracts\LinkStorage`: a linker not backed by it cannot
+ * hold a reservation, and `Links\LinkStorageBinding` refuses it with a
+ * `LogicException` before anything is written. `atCompletion()` answers the
+ * identity and the terms to reserve, with the connection and result they stand
+ * on, or `null`. `isStillEligible()` answers whether everything still holds for
+ * that same identity at redemption; another match never becomes the target.
  *
- * It holds the container, the clock, the settings and the presets, none of
- * which keeps anything of one flow for the next (SSO-11.2). A contract's
- * exception propagates.
+ * The package's locks come before the application's answers: what an identity
+ * holds is read by a locking read before the matcher, the principal scope or
+ * the membership are asked. At completion that identity is the one whose guard
+ * the completion took (`Linking\ReservationDiscovery`); an identity matched
+ * only now is answered without its scope or membership being asked, and
+ * `Completion\Stages\DomainReservation` refuses it. `requiredClaim()` answers
+ * the organisation claim a known shared issuer must be told apart by: one a
+ * preset with an organisation claim names (`Protocols\Preset::names()`), or
+ * else one `LinkingSettings` lists.
+ *
+ * It holds the container, the clock, the settings, the presets and the storage
+ * binding, none of which keeps anything of one flow for the next (SSO-11.2). A
+ * contract's exception propagates.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -90,6 +96,9 @@ final readonly class DomainLinkEligibility
     /** @var string The classification of an issuer one organisation controls. */
     public const string SINGLE_ORGANIZATION = 'single_organization';
 
+    /** @var string What refuses a linker not backed by link storage names. */
+    private const string OPERATION = 'Linking by a verified domain';
+
     /** @var string What a state with no consumed request means here. */
     private const string NOT_CONSUMED = 'A link is reserved once the request is consumed.';
 
@@ -101,6 +110,7 @@ final readonly class DomainLinkEligibility
      * @param  \SineMacula\Laravel\Sso\Linking\LinkingSettings  $settings
      * @param  \SineMacula\Laravel\Sso\Domains\DomainSettings  $domains
      * @param  \SineMacula\Laravel\Sso\Protocols\ProtocolManager  $protocols
+     * @param  \SineMacula\Laravel\Sso\Links\LinkStorageBinding  $storage
      */
     public function __construct(
 
@@ -118,7 +128,26 @@ final readonly class DomainLinkEligibility
 
         /** The presets, some of which name shared issuers. */
         private ProtocolManager $protocols,
+
+        /** Whether the bound linker is backed by link storage. */
+        private LinkStorageBinding $storage,
     ) {}
+
+    /**
+     * The email's domain as SSO-3.1 compares one, or `null` when it could be no
+     * registered domain. The whitespace `DomainName::normalize()` would trim
+     * from what an administrator typed is no part of an address, so it refuses
+     * here.
+     *
+     * @param  \SineMacula\Laravel\Sso\Results\LinkingEmail  $email
+     * @return ?string
+     */
+    public static function canonicalDomain(LinkingEmail $email): ?string
+    {
+        $domain = $email->domain();
+
+        return $domain === trim($domain) ? DomainName::normalize($domain) : null;
+    }
 
     /**
      * The identity to reserve for and the terms to reserve on, or `null` when
@@ -160,17 +189,17 @@ final readonly class DomainLinkEligibility
     {
         $email = $result->linkingEmail;
 
-        if ($domain === null || $email === null || !$this->isStoreBound()) {
+        if ($domain === null || $email === null) {
             return false;
         }
 
-        if (!$this->allowsPolicy($connection, $result, $email) || !$this->allowsDomain($connection, $domain, $email)) {
+        $held = $this->storage->require(self::OPERATION)->holdings($connection->id, $identity);
+
+        if ($held !== 1 || !$this->allowsPolicy($connection, $result, $email) || !$this->allowsDomain($connection, $domain, $email)) {
             return false;
         }
 
-        return $this->match($result, $email)->isSolely($identity)
-            && $this->allowsIdentity($identity, $result->tenantId, $domain)
-            && LinkStore::heldBy($connection->id, $identity, $this->clock->now()) === 1;
+        return $this->match($result, $email)->isSolely($identity) && $this->allowsIdentity($identity, $result->tenantId, $domain);
     }
 
     /**
@@ -195,6 +224,26 @@ final readonly class DomainLinkEligibility
         }
 
         return $this->settings->sharedIssuers()[$issuer] ?? null;
+    }
+
+    /**
+     * What the link email contract finds for the result's email.
+     *
+     * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Results\LinkingEmail  $email
+     * @return \SineMacula\Laravel\Sso\Linking\LinkEmailMatch
+     *
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     */
+    public function match(VerifiedResult $result, LinkingEmail $email): LinkEmailMatch
+    {
+        $domain = self::canonicalDomain($email);
+
+        if ($domain === null) {
+            return LinkEmailMatch::none();
+        }
+
+        return $this->container->make(LinkEmailMatcher::class)->match(new LinkEmailQuery($result->tenantId, $email->email, $domain));
     }
 
     /**
@@ -228,15 +277,40 @@ final readonly class DomainLinkEligibility
             return null;
         }
 
+        $guarded  = $state->linkingDiscovery?->identity;
+        $held     = $guarded === null ? 0 : $this->storage->require(self::OPERATION)->holdings($connection->id, $guarded);
         $identity = $this->match($result, $email)->identity;
 
-        if ($identity === null || !$this->allowsIdentity($identity, $result->tenantId, $domain) || LinkStore::heldBy($connection->id, $identity, $this->clock->now()) !== 0) {
+        if ($identity === null || !$this->allowsMatched($identity, $guarded, $held, $result, $domain)) {
             return null;
         }
 
         $terms = $this->terms($state, $email, $domain, $connection);
 
         return $terms === null ? null : ['identity' => $identity, 'terms' => $terms, 'connection' => $connection, 'result' => $result];
+    }
+
+    /**
+     * Whether the identity matched goes on: the one whose guard is held, when
+     * it holds nothing in the connection and its principals and membership
+     * allow it; or another, which is left for the stage to refuse, unasked.
+     *
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $guarded
+     * @param  int  $held
+     * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
+     * @return bool
+     *
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     */
+    private function allowsMatched(IdentityReference $identity, ?IdentityReference $guarded, int $held, VerifiedResult $result, Domain $domain): bool
+    {
+        if ($guarded === null || !$guarded->is($identity)) {
+            return true;
+        }
+
+        return $held === 0 && $this->allowsIdentity($identity, $result->tenantId, $domain);
     }
 
     /**
@@ -251,11 +325,12 @@ final readonly class DomainLinkEligibility
      * @return bool
      *
      * @throws \InvalidArgumentException
-     * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
     private function allowsState(CompletionState $state, Connection $connection, Domain $domain, VerifiedResult $result, LinkingEmail $email): bool
     {
-        if (!$this->isStoreBound() || $state->linkingVersion !== $connection->linking_version) {
+        $this->storage->require(self::OPERATION);
+
+        if ($state->linkingVersion !== $connection->linking_version) {
             return false;
         }
 
@@ -297,19 +372,6 @@ final readonly class DomainLinkEligibility
     private function reservationExpiry(AuthorizationRequest $request, Application $application): CarbonImmutable
     {
         return $this->clock->now()->addSeconds($application->handoffTtlSeconds)->min($request->expires_at);
-    }
-
-    /**
-     * Whether the bound linker is the package's own store, the only one whose
-     * rows a reservation can be.
-     *
-     * @return bool
-     *
-     * @throws \Illuminate\Contracts\Container\BindingResolutionException
-     */
-    private function isStoreBound(): bool
-    {
-        return $this->container->make(Linker::class) instanceof LinkStore;
     }
 
     /**
@@ -405,42 +467,6 @@ final readonly class DomainLinkEligibility
         }
 
         return DomainStanding::allowsLinking($domain, $this->clock->now(), $this->domains->linkingMaxAgeSeconds());
-    }
-
-    /**
-     * The email's domain as SSO-3.1 compares one, or `null` when it could be no
-     * registered domain. The whitespace `DomainName::normalize()` would trim
-     * from what an administrator typed is no part of an address, so it refuses
-     * here.
-     *
-     * @param  \SineMacula\Laravel\Sso\Results\LinkingEmail  $email
-     * @return ?string
-     */
-    private static function canonicalDomain(LinkingEmail $email): ?string
-    {
-        $domain = $email->domain();
-
-        return $domain === trim($domain) ? DomainName::normalize($domain) : null;
-    }
-
-    /**
-     * What the link email contract finds for the result's email.
-     *
-     * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-     * @param  \SineMacula\Laravel\Sso\Results\LinkingEmail  $email
-     * @return \SineMacula\Laravel\Sso\Linking\LinkEmailMatch
-     *
-     * @throws \Illuminate\Contracts\Container\BindingResolutionException
-     */
-    private function match(VerifiedResult $result, LinkingEmail $email): LinkEmailMatch
-    {
-        $domain = self::canonicalDomain($email);
-
-        if ($domain === null) {
-            return LinkEmailMatch::none();
-        }
-
-        return $this->container->make(LinkEmailMatcher::class)->match(new LinkEmailQuery($result->tenantId, $email->email, $domain));
     }
 
     /**

@@ -25,6 +25,9 @@ final class ScriptedEmailMatcher implements LinkEmailMatcher
     /** @var ?\Throwable What it throws instead of answering. */
     public ?\Throwable $failure = null;
 
+    /** @var list<\SineMacula\Laravel\Sso\Linking\LinkEmailMatch> What it answers first, each once, before the match set. */
+    public array $queued = [];
+
     /**
      * Constructor.
      *
@@ -53,6 +56,6 @@ final class ScriptedEmailMatcher implements LinkEmailMatcher
             throw $this->failure;
         }
 
-        return $this->match;
+        return array_shift($this->queued) ?? $this->match;
     }
 }

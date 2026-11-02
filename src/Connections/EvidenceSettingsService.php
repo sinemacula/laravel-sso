@@ -12,6 +12,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Evidence\EvidenceRules;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Linking\LinkingSettings;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 
@@ -32,8 +33,9 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  * 3. in one transaction on the storage connection, the connection's row is read
  *    again locked, the only lock taken; gone is `connection_not_found`, and a
  *    protocol no longer available `protocol_unavailable`;
- * 4. the policy is judged for that protocol, with every violation answered as
- *    `settings_invalid`;
+ * 4. the policy is judged for that protocol, and its `max_age_seconds` against
+ *    the ceiling `sso.linking.evidence_max_age_seconds`, with every violation
+ *    answered as `settings_invalid`;
  * 5. a policy the row already holds, whatever the key order of its maps, is
  *    `unchanged`, and writes and reports nothing;
  * 6. the policy is written, and `ConnectionUpdated` is reported after commit,
@@ -48,8 +50,9 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  * The values given are never logged, reported or echoed by a violation. An
  * empty or overlong tenant id is an `InvalidArgumentException`; a database
  * error propagates (SSO-11.4). It holds the lookup, the freshness gate, the
- * reporter, the registry and the secrets, none of which keeps anything of one
- * request for the next (SSO-11.2). Resolve it from the container per request.
+ * reporter, the registry, the secrets and the settings, none of which keeps
+ * anything of one request for the next (SSO-11.2). Resolve it from the
+ * container per request.
  *
  * @api
  *
@@ -69,6 +72,7 @@ final readonly class EvidenceSettingsService
      * @param  \SineMacula\Laravel\Sso\Administration\AdministrationEvents  $events
      * @param  \SineMacula\Laravel\Sso\Protocols\ProtocolManager  $protocols
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionSecrets  $secrets
+     * @param  \SineMacula\Laravel\Sso\Linking\LinkingSettings  $settings
      */
     public function __construct(
 
@@ -86,6 +90,9 @@ final readonly class EvidenceSettingsService
 
         /** The connections' encrypted secrets, masked in the summary. */
         private ConnectionSecrets $secrets,
+
+        /** The ceiling a policy's maximum age may only tighten. */
+        private LinkingSettings $settings,
     ) {}
 
     /**
@@ -194,7 +201,7 @@ final readonly class EvidenceSettingsService
             return ConnectionResult::refused($locked === null ? FailureReason::CONNECTION_NOT_FOUND : FailureReason::PROTOCOL_UNAVAILABLE);
         }
 
-        $violations = EvidenceRules::violations($policy, $locked->protocol);
+        $violations = EvidenceRules::violations($policy, $locked->protocol, $this->settings->evidenceMaxAgeSeconds());
 
         return $violations === [] ? $this->written($locked, $policy, $actor) : ConnectionResult::invalid($violations);
     }

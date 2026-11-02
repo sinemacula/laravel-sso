@@ -40,6 +40,7 @@ use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
@@ -419,6 +420,8 @@ final class LinkAdmissionTest extends LinkingTestCase
         yield 'another holds it, the same observed' => [LinkResolution::linked($other, 'link-7'), 'link-7', true, RecheckOutcome::SUBJECT_ALREADY_LINKED];
         yield 'another has it suspended' => [LinkResolution::suspended($other, 'link-8'), null, false, RecheckOutcome::SUBJECT_ALREADY_LINKED];
         yield 'a holder differing only by case' => [LinkResolution::linked($cased, 'link-7'), 'link-7', true, RecheckOutcome::SUBJECT_ALREADY_LINKED];
+        yield 'its scope unknown' => [LinkResolution::scopeUnknown($bound, 'link-7'), 'link-7', true, RecheckOutcome::PRINCIPAL_SCOPE_UNKNOWN];
+        yield 'another holds it, its scope unknown' => [LinkResolution::scopeUnknown($other, 'link-8'), null, false, RecheckOutcome::SUBJECT_ALREADY_LINKED];
     }
 
     /**
@@ -543,6 +546,26 @@ final class LinkAdmissionTest extends LinkingTestCase
     }
 
     /**
+     * An adapter's lock that does not name the identity of a `link` never takes
+     * its guard, so the redemption refuses to judge under it, whoever calls.
+     *
+     * @return void
+     */
+    public function testTheRecheckNeedsTheGuardOfTheIdentity(): void
+    {
+        $result = $this->linkResult();
+
+        $this->expectExceptionObject(new \LogicException('A [link] redemption locks with the identity it was started for: pass it to HandoffRecheck::lock().'));
+
+        DB::connection(StorageConnection::name())->transaction(function () use ($result): void {
+
+            $recheck = app(HandoffRecheck::class);
+
+            $recheck->recheck($result, new HandoffBinding(identity: $this->person), $recheck->lock('tenant-1', $this->connection->id, 'web'), $this->person);
+        });
+    }
+
+    /**
      * A lock taken for another application cannot be used for the result.
      *
      * @return void
@@ -644,11 +667,11 @@ final class LinkAdmissionTest extends LinkingTestCase
      */
     private function underLock(VerifiedResult $result, \Closure $work): mixed
     {
-        return DB::connection(StorageConnection::name())->transaction(static function () use ($result, $work): mixed {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($result, $work): mixed {
 
             $recheck = app(HandoffRecheck::class);
 
-            return $work($recheck, $recheck->lock($result->tenantId, $result->connectionId, $result->application));
+            return $work($recheck, $recheck->lock($result->tenantId, $result->connectionId, $result->application, null, $this->person));
         });
     }
 
@@ -660,31 +683,6 @@ final class LinkAdmissionTest extends LinkingTestCase
      */
     private function bindLinker(LinkResolution ...$answers): void
     {
-        $this->app?->instance(Linker::class, new class (array_values($answers)) implements Linker {
-            /**
-             * Constructor.
-             *
-             * @param  list<\SineMacula\Laravel\Sso\Links\LinkResolution>  $answers
-             */
-            public function __construct(
-
-                /** What is left to answer. */
-                private array $answers,
-            ) {}
-
-            /**
-             * The next answer, or the last one given once there is no other.
-             *
-             * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
-             * @return \SineMacula\Laravel\Sso\Links\LinkResolution
-             */
-            #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
-            {
-                unset($result);
-
-                return count($this->answers) > 1 ? array_shift($this->answers) : $this->answers[0];
-            }
-        });
+        $this->app?->instance(Linker::class, new DelegatingLinkStorage(app(LinkStore::class), ...$answers));
     }
 }

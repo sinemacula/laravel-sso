@@ -236,6 +236,7 @@ final class ProvisioningTest extends LinkingTestCase
         $expected = [
             'created'                => null,
             'grant_invalid'          => 'provisioning_grant_invalid',
+            'grant_wrong_result'     => 'provisioning_grant_invalid',
             'request_unavailable'    => 'connection_unavailable',
             'expired'                => 'request_expired',
             'subject_already_linked' => 'subject_already_linked',
@@ -335,7 +336,7 @@ final class ProvisioningTest extends LinkingTestCase
 
         $completion = $this->complete();
 
-        self::assertSame([ProvisioningStatus::GRANT_INVALID, ProvisioningStatus::GRANT_INVALID], $this->statuses());
+        self::assertSame([ProvisioningStatus::GRANT_WRONG_RESULT, ProvisioningStatus::GRANT_INVALID], $this->statuses());
         self::assertSame(FailureReason::PROVISIONING_GRANT_INVALID, $this->answers[0]->reason());
         self::assertSame(0, Link::query()->count());
         self::assertSame(0, $this->connection->refresh()->links_version);
@@ -1771,8 +1772,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[seconds to the reservation's expiry, or `null` for none,
-     * what the helper answers]`.
+     * Rows of `[seconds to the reservation's expiry, or `null` for none, what
+     * the helper answers]`.
      *
      * @return iterable<string, array{0: ?int, 1: \SineMacula\Laravel\Sso\Provisioning\Enums\ProvisioningStatus}>
      */

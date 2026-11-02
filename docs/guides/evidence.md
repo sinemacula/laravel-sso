@@ -69,14 +69,23 @@ reservation is touched, and a code already issued is judged at its redemption by
 | `acr`                     | all but SAML | Accepted classes: at most 32, each once, 1 to 1024 bytes                     |
 | `authn_context_class_ref` | SAML         | Accepted classes, as `acr`                                                   |
 | `combinations`            | all          | What counts: 1 to 32 maps, any one of which is enough                        |
+| `max_age_seconds`         | all          | Optional: how long after the authentication this connection accepts it       |
 
 Each combination names `amr`, every one of whose methods the assertion must state, `acr`, the class it must state, or
 both; or, on SAML, `authn_context_class_ref`. Everything it names must be in the accepted lists. Values compare exactly,
 case included.
 
 RFC 8176's values are `face`, `fpt`, `geo`, `hwk`, `iris`, `kba`, `mca`, `mfa`, `otp`, `pin`, `pwd`, `rba`, `retina`,
-`sc`, `sms`, `swk`, `tel`, `user`, `vbm` and `wia`. Anything else your provider sends can never enter the evidence. If
-it is what you rely on, rely on its class instead.
+`sc`, `sms`, `swk`, `tel`, `user`, `vbm` and `wia`. Anything else your provider sends can never enter the evidence, and
+a provider-specific value does not make a result class-only: the same result may also state accepted standard methods,
+which count. With no accepted combination the evidence is insufficient.
+
+`sso.linking.evidence_max_age_seconds` is a ceiling for every connection. `max_age_seconds` may only tighten it: a whole
+number of at least one, and a value above the ceiling is `not_allowed` when you write it. A stored value is clamped to
+the ceiling as it is at redemption, so lowering the ceiling later still wins.
+
+A driver you registered is read as OIDC is. Its methods and class are its normalised evidence contract, not an
+assumption that its wire protocol is OIDC, and it populates them only from its own authenticated response.
 
 ## How a result is judged
 
@@ -84,13 +93,13 @@ At redemption, with the policy the connection holds then, from the result's own 
 any other assertion never strengthen it. It comes to `null`, never to a pass, and the redemption goes on without
 evidence, when:
 
-| Case                             | Detail                                                                                    |
-|----------------------------------|-------------------------------------------------------------------------------------------|
-| The policy is empty or malformed | A row the helper did not write counts as malformed                                        |
-| No authentication time           | An ID token with no `auth_time`, say. Ask for it with the connection's `max_age`          |
-| Too old                          | Older than `sso.linking.evidence_max_age_seconds` (60 to 3600, default 900) at redemption |
-| Too far ahead                    | Later than the redemption by more than `sso.clock.skew_seconds`                           |
-| No combination is satisfied      | Only accepted methods count towards one                                                   |
+| Case                             | Detail                                                                                                                                           |
+|----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| The policy is empty or malformed | A row the helper did not write counts as malformed                                                                                               |
+| No authentication time           | An ID token with no `auth_time`, say. Ask for it with the connection's `max_age`                                                                 |
+| Too old                          | Older than `max_age_seconds`, or the ceiling `sso.linking.evidence_max_age_seconds` (60 to 3600, default 900), whichever is lower, at redemption |
+| Too far ahead                    | Later than the redemption by more than `sso.clock.skew_seconds`                                                                                  |
+| No combination is satisfied      | Only accepted methods count towards one                                                                                                          |
 
 The handoff code's short lifetime establishes nothing. A code redeemed later than the maximum age, though unexpired, has
 no evidence.
@@ -107,6 +116,9 @@ $evidence?->authenticatedAt;   // when the provider authenticated the person
 $evidence?->methods();         // only the accepted RFC 8176 methods, as asserted, each once
 $evidence?->rawContext();      // the raw acr or AuthnContextClassRef, as data, listed or not
 ```
+
+`rawContext()` is raw on purpose: it is not an accepted class, and it may name something your policy lists nowhere.
+Decide from `methods()` and from your own reading of it, never from its presence.
 
 It is held for the request, and refuses to be serialised. A dump or `json_encode()` shows the connection, the time and
 how many methods. Write what you need onto your session in the transaction that admits it (`completing-a-flow.md`,

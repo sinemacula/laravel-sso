@@ -351,7 +351,11 @@ final class RedemptionTransactionTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier);
+        $redemption = $app->make(HandoffRedemption::class);
+
+        return DB::connection(StorageConnection::name())->transaction(
+            fn (): RedemptionResult => $redemption->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier),
+        );
     }
 
     /**

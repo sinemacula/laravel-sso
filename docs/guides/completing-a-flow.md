@@ -174,7 +174,8 @@ identities itself when it redeems the code can allow unlinked handoffs:
 
 Its codes then carry no linked identity, and the redemption must decide who signed in. Never resolve an identity from
 the email or any other mapped attribute there either. An unlinked handoff is only for a link that is genuinely absent:
-a suspended link ends with `link_suspended`, and another flow's live reservation with `link_reserved`, whatever this
+a suspended link ends with `link_suspended`, one whose scope could not be judged with `principal_scope_unknown`, and
+another flow's live reservation with `link_reserved`, whatever this
 setting says. Under `laravel-iam` the sign-in adapter always requires a linked identity.
 
 `link` and `reauthenticate` flows are never refused as unlinked here, and never offered for provisioning.

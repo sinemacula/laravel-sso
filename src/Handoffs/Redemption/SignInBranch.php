@@ -21,11 +21,11 @@ use SineMacula\Laravel\Sso\Links\LinkResolution;
  *   reservation is `reservation_invalid`, never a fallback to provisioning or
  *   an unlinked handoff;
  * - a code that resolved to a link needs that same link still there, by its id,
- *   for that same identity: a suspended one is `link_suspended`, and anything
- *   else is `link_changed`;
+ *   for that same identity: a suspended one is `link_suspended`, one whose
+ *   scope could not be judged `principal_scope_unknown`, and anything else
+ *   `link_changed`;
  * - an unlinked handoff needs the subject still absent, and a code that
- *   observed a link for no identity is never one: a suspended link is
- *   `link_suspended`, and anything else is `link_changed`.
+ *   observed a link for no identity is never one: the same refusals follow.
  *
  * Accepted evidence is asked of the bound policy (`Contracts\EvidencePolicy`)
  * once, at redemption and after any activation, and only once an identity is
@@ -82,6 +82,7 @@ final readonly class SignInBranch implements PurposeBranch
         return match (true) {
             self::isContinuous($now, $context->binding) => RecheckOutcome::PASSED,
             $now->isSuspended()                         => RecheckOutcome::LINK_SUSPENDED,
+            $now->isScopeUnknown()                      => RecheckOutcome::PRINCIPAL_SCOPE_UNKNOWN,
             default                                     => RecheckOutcome::LINK_CHANGED,
         };
     }

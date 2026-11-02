@@ -59,6 +59,7 @@ final class StorageConnection
         'domains.table'                => 'sso_domains',
         'enforcement.table'            => 'sso_enforcement',
         'links.table'                  => 'sso_links',
+        'identity_guards.table'        => 'sso_identity_guards',
         'authorization_requests.table' => 'sso_authorization_requests',
         'handoff_codes.table'          => 'sso_handoff_codes',
     ];

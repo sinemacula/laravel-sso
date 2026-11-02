@@ -12,7 +12,8 @@ use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 /**
  * The default link confirmation contract (SSO-8.8): no caller's authentication
  * counts as independent of a verified domain link until the application binds
- * its own, so a `link` of an identity holding such a link is refused.
+ * its own, so a `link` of an identity that holds, or has ever held, such a link
+ * is refused.
  *
  * It holds nothing between calls (SSO-11.2).
  *
@@ -26,7 +27,7 @@ final readonly class RefusingLinkConfirmation implements LinkConfirmation
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
-     * @param  non-empty-list<string>  $domainLinkIds
+     * @param  list<string>  $domainLinkIds
      * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict
      */
     #[\Override]

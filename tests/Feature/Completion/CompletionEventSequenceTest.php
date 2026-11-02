@@ -27,6 +27,7 @@ use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
+use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
@@ -39,16 +40,17 @@ use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
  * The events a completion reports (SSO-10.1, SSO-10.2, SSO-10.4, SSO-9.8):
- * `ResultVerified` then `HandoffIssued` for a completion; `ResultVerified`
- * then exactly one `FlowFailed` for a refusal once the response was verified;
- * exactly one `FlowFailed` for any earlier refusal, a full limit included;
- * each with the flow, the reason and as much context as the completion had
+ * `ResultVerified` then `HandoffIssued` for a completion; `ResultVerified` then
+ * exactly one `FlowFailed` for a refusal once the response was verified;
+ * exactly one `FlowFailed` for any earlier refusal, a full limit included; each
+ * with the flow, the reason and as much context as the completion had
  * established, the identity being the linked one for a `sign_in` and the one
  * the request was started for otherwise; and never a subject, an attribute, the
  * protocol state, a verifier, a challenge or a code.
@@ -417,6 +419,7 @@ final class CompletionEventSequenceTest extends TestCase
         $this->request(['purpose' => 'link', 'identity_type' => 'App\Models\User', 'identity_id' => '7']);
 
         $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+        $this->app?->instance(Linker::class, new DelegatingLinkStorage(app(LinkStore::class), LinkResolution::absent()));
         $this->linked = null;
 
         self::assertTrue($this->completeAtCallback()->isCompleted());

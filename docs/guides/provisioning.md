@@ -58,9 +58,10 @@ final class ProvisionNewPerson
 }
 ```
 
-Bind the package's `Links\LinkStore` as your `Contracts\Linker` ([Links](links.md)): the helper writes to the link
-store, and the final step of the completion finds the link through the linker. The default linker links nothing, so the
-result would still end `unlinked`.
+Bind the package's `Links\LinkStore` as your `Contracts\Linker` ([Links](links.md)), or a wrapper implementing
+`Contracts\LinkStorage` that delegates to it: the helper writes to the link store, and the final step of the completion
+finds the link through the linker. The default linker links nothing, so the helper refuses over it with a
+`LogicException` before it spends the grant or writes anything, since the link would never resolve.
 
 Register the listener synchronously, on the event's class:
 
@@ -112,7 +113,8 @@ a concurrent admission.
 | `status`                 | `reason()`                   | Why                                                                                                                                       |
 |--------------------------|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | `created`                | `null`                       | The link was made, active, with `provisioning` as its origin; `link` holds its summary                                                    |
-| `grant_invalid`          | `provisioning_grant_invalid` | The grant was already used, its dispatch has ended, or it is presented with anything but the exact result object the event carried        |
+| `grant_invalid`          | `provisioning_grant_invalid` | The grant was already used, or its dispatch has ended                                                                                     |
+| `grant_wrong_result`     | `provisioning_grant_invalid` | The grant was presented with anything but the exact result object the event carried: a bug in your listener, and the grant is spent       |
 | `request_unavailable`    | `connection_unavailable`     | The connection is disabled, gone or incomplete, what was fetched for it has expired, or the request was voided or its trust version moved |
 | `expired`                | `request_expired`            | The verified response's deadline has passed                                                                                               |
 | `subject_already_linked` | `subject_already_linked`     | The subject is held in the connection: linked, suspended or reserved, to this identity or another; the answer never says which            |
@@ -125,8 +127,9 @@ The grant allows one use, claimed before anything else is attempted:
 - A refused attempt cannot be repeated, for this identity or another.
 - A second listener, and a call made from inside the helper's own work, get `grant_invalid`. Every listener shares the
   one grant, so register one listener that provisions.
-- The grant is bound to the exact result object, not to its fields: a result rebuilt from the same values is refused,
-  and that attempt spends the grant too.
+- The grant is bound to the exact result object, not to its fields: a result rebuilt from the same values is
+  `grant_wrong_result`, and that attempt spends the grant too. Roll your identity and membership transaction back when
+  it answers so, like any refusal; recovery is a new flow, not another use of that grant.
 - A grant kept after the dispatch returned or a listener threw is void, however fresh the request looks.
 
 Neither the grant nor the event can be serialised, and the grant cannot be cloned. Neither shows the result, the subject

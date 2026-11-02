@@ -5,11 +5,13 @@ declare(strict_types = 1);
 namespace Tests\Unit\Linking;
 
 use Illuminate\Config\Repository;
+use Illuminate\Container\Container;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Linking\LinkingCheck;
 use SineMacula\Laravel\Sso\Linking\LinkingSettings;
+use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 use SineMacula\Laravel\Sso\Protocols\Preset;
 use SineMacula\Laravel\Sso\Protocols\Presets;
 
@@ -42,7 +44,7 @@ final class LinkingSettingsTest extends TestCase
 
         self::assertSame(120, $settings->verifiedResultMaxAgeSeconds());
         self::assertSame(900, $settings->evidenceMaxAgeSeconds());
-        self::assertSame(['https://accounts.google.com' => 'hd', 'accounts.google.com' => 'hd'], $settings->sharedIssuers());
+        self::assertSame(['https://accounts.google.com' => 'hd', 'accounts.google.com' => 'hd', 'https://slack.com' => 'https://slack.com/team_id'], $settings->sharedIssuers());
     }
 
     /**
@@ -125,12 +127,18 @@ final class LinkingSettingsTest extends TestCase
      */
     public function testConfigurationAddsAndNeverDowngrades(): void
     {
-        $settings = self::settings(['shared_issuers' => ['https://shared.example.com' => 'org', 'https://accounts.google.com' => 'not-hd', 'accounts.google.com' => 'not-hd']]);
+        $settings = self::settings(['shared_issuers' => [
+            'https://shared.example.com'  => 'org',
+            'https://accounts.google.com' => 'not-hd',
+            'accounts.google.com'         => 'not-hd',
+            'https://slack.com'           => 'not-team-id',
+        ]]);
 
         self::assertSame([
             'https://shared.example.com'  => 'org',
             'https://accounts.google.com' => 'hd',
             'accounts.google.com'         => 'hd',
+            'https://slack.com'           => 'https://slack.com/team_id',
         ], $settings->sharedIssuers());
     }
 
@@ -172,9 +180,30 @@ final class LinkingSettingsTest extends TestCase
     {
         $linking    = ['verified_result_max_age_seconds' => 10, 'evidence_max_age_seconds' => 70, 'shared_issuers' => ['https://shared.example.com' => 'org']];
         $repository = new Repository(['sso' => ['linking' => $linking]]);
-        $answers    = array_map(static fn (\Closure $check): mixed => $check(), (new LinkingCheck($repository))->checks());
+        $check      = new LinkingCheck($repository, new LinkStorageBinding(new Container));
+        $answers    = array_map(static fn (\Closure $read): mixed => $read(), $check->checks());
+        $issuers    = ['https://shared.example.com' => 'org', ...LinkingSettings::SHARED_ISSUERS];
 
-        self::assertSame([10, 70, ['https://shared.example.com' => 'org', 'https://accounts.google.com' => 'hd', 'accounts.google.com' => 'hd']], $answers);
+        self::assertSame([10, 70, $issuers, null], $answers);
+    }
+
+    /**
+     * Slack is a shared issuer, told apart by its signed team claim. Microsoft
+     * Entra's `common` and `organizations` are authorities and never issuers,
+     * so nothing here names them, and explicit classification applies to the
+     * real issuer of each tenant.
+     *
+     * @return void
+     */
+    public function testTheBuiltInSharedIssuers(): void
+    {
+        self::assertSame('https://slack.com/team_id', LinkingSettings::SHARED_ISSUERS['https://slack.com']);
+
+        foreach (array_keys(LinkingSettings::SHARED_ISSUERS) as $issuer) {
+            self::assertStringNotContainsString('microsoftonline', $issuer);
+            self::assertStringNotContainsString('common', $issuer);
+            self::assertStringNotContainsString('organizations', $issuer);
+        }
     }
 
     /**

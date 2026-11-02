@@ -15,10 +15,11 @@ use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
 
 /**
- * Creates and drops the links, authorisation requests and handoff codes tables
- * through their shipped migrations, on the storage connection and under their
- * configured names, and makes rows for a test to work on. A test that uses it
- * uses `UsesConnections` too, since each row belongs to a connection.
+ * Creates and drops the links, authorisation requests, handoff codes and
+ * identity guards tables through their shipped migrations, on the storage
+ * connection and under their configured names, and makes rows for a test to
+ * work on. A test that uses it uses `UsesConnections` too, since each row
+ * belongs to a connection.
  *
  * A test calls `createFlowTables()` in its `setUp()` and `dropFlowTables()` in
  * its `tearDown()`, before the parent's, so a persistent database starts the
@@ -33,15 +34,16 @@ use SineMacula\Laravel\Sso\Models\Link;
  */
 trait UsesFlowTables
 {
-    /** @var list<string> The shipped migrations of the three tables, in the order they run. */
+    /** @var list<string> The shipped migrations of the flow tables, in the order they run. */
     private static array $flowMigrations = [
         '2026_11_03_000000_create_sso_links_table.php',
         '2026_11_03_000001_create_sso_authorization_requests_table.php',
         '2026_11_03_000002_create_sso_handoff_codes_table.php',
+        '2026_11_03_000003_create_sso_identity_guards_table.php',
     ];
 
     /**
-     * Run the three tables' shipped migrations.
+     * Run the flow tables' shipped migrations.
      *
      * @return void
      */
@@ -53,7 +55,7 @@ trait UsesFlowTables
     }
 
     /**
-     * Roll the three tables' shipped migrations back.
+     * Roll the flow tables' shipped migrations back.
      *
      * @return void
      */

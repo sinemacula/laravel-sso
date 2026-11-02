@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Linking\DomainLinkEligibility;
+use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 use SineMacula\Laravel\Sso\Links\ReservationWithdrawal;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcDriver;
@@ -89,12 +90,16 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
  * value or a token (`AttributeMapping::RESERVED_OIDC_SOURCES`), nor the email
  * itself (`reserved`).
  *
+ * Linking on over a bound `Contracts\Linker` not backed by
+ * `Contracts\LinkStorage` is a `LogicException`, with nothing written: the
+ * reservations it would make are rows the resolver ignores.
+ *
  * The organisation's value is never logged, reported or echoed by a violation.
  * An empty or overlong tenant id is an `InvalidArgumentException`; a database
  * error propagates (SSO-11.4). It holds the lookup, the freshness gate, the
- * reporter, the registry, the secrets, the eligibility and the clock, none of
- * which keeps anything of one request for the next (SSO-11.2). Resolve it from
- * the container per request.
+ * reporter, the registry, the secrets, the eligibility, the clock and the
+ * storage binding, none of which keeps anything of one request for the next
+ * (SSO-11.2). Resolve it from the container per request.
  *
  * @api
  *
@@ -162,6 +167,9 @@ final readonly class LinkingPolicyService
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionSecrets  $secrets
      * @param  \SineMacula\Laravel\Sso\Linking\DomainLinkEligibility  $eligibility
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
+     * @param  \SineMacula\Laravel\Sso\Links\LinkStorageBinding  $storage
+     *
+     * @SuppressWarnings("php:S107")
      */
     public function __construct(
 
@@ -185,6 +193,9 @@ final readonly class LinkingPolicyService
 
         /** The clock an acknowledgement is stamped from. */
         private Clock $clock,
+
+        /** Whether the bound linker is backed by link storage. */
+        private LinkStorageBinding $storage,
     ) {}
 
     /**
@@ -471,9 +482,13 @@ final readonly class LinkingPolicyService
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $merged
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
+     *
+     * @throws \LogicException
      */
     private function requirements(Connection $locked, #[\SensitiveParameter] array $merged): array
     {
+        $this->storage->require('Linking by a verified domain');
+
         $isSaml   = $locked->protocol === Saml2Driver::NAME;
         $issuer   = $locked->settings['issuer'] ?? $locked->settings['idp_entity_id'] ?? null;
         $required = is_string($issuer) ? $this->eligibility->requiredClaim($locked->protocol, $issuer) : null;

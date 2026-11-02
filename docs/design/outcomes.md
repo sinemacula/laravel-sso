@@ -101,14 +101,14 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   (a refusal with none: `request_unknown`, `connection_unavailable` or `application_not_allowed`, a 400), `rate_limited`
   (`retryAfter`, a 429) or `reinitiated` (SSO-5.8). A failure carries the reason of the step that refused: the
   consumption's above, a driver's (`signature_invalid`, `issuer_mismatch` and the other protocol reasons),
-  `enforcement_unsatisfied`, the purpose's rules (`link_suspended`, `link_reserved`, `link_ineligible`,
-  `subject_already_linked`, `identity_mismatch` and `authentication_expired`), `unlinked` and
+  `enforcement_unsatisfied`, the purpose's rules (`link_suspended`, `principal_scope_unknown`, `link_reserved`,
+  `link_ineligible`, `subject_already_linked`, `identity_mismatch` and `authentication_expired`), `unlinked` and
   `application_not_allowed`. A listener's or a contract's exception is no refusal: it propagates, and the request stays
-  consumed and unfinished. `Responses\CompletionResponses` turns it into the
-  response value the application answers with. A completion called inside a transaction open on the storage connection
-  is a `LogicException`. See `completion.md` and `completion-responses.md`.
+  consumed and unfinished. `Responses\CompletionResponses` turns it into the response value the application answers
+  with. A completion called inside a transaction open on the storage connection is a `LogicException`. See
+  `completion.md` and `completion-responses.md`.
 - **Redeeming a handoff.** `Handoffs\HandoffRedemption::admit()`, the session-admission path, which needs the caller's
-  open transaction on the storage connection, and `redeem()`, its standalone convenience, answer a
+  open transaction on the storage connection, and `redeem()`, standalone only for a `link`, answer a
   `Handoffs\RedemptionResult`, status `Handoffs\Enums\RedemptionStatus`: `redeemed` (the verified result and what the
   code was bound to), `refused` (`handoff_unknown`, `replayed`, `handoff_expired`, `purpose_mismatch`,
   `application_mismatch`, `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`,
@@ -116,7 +116,8 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   `Handoffs\HandoffRecheck::recheck()`, for an adapter's own redemption under the `Handoffs\RecheckLock` its `lock()`
   took first, answers the outcome enum `Handoffs\Enums\RecheckOutcome` (`passed` or the first refusal), whose `reason()`
   names the `FailureReason` a refused redemption reports. Beyond the checks of every redemption, those are
-  `link_suspended`, `link_reserved`, `link_ineligible`, `independent_authentication_required`, `identity_mismatch`,
+  `link_suspended`, `principal_scope_unknown`, `link_reserved`, `link_ineligible`,
+  `independent_authentication_required`, `identity_mismatch`,
   `subject_already_linked`, `link_limit_reached`, `reservation_invalid`, `freshness_required`, `session_ineligible` and
   `authentication_expired`. `HandoffRecheck::admit()` makes the purpose's writes too and answers a
   `Handoffs\Redemption\Admission`: `isPassed()`, the outcome, the identity it established, the link it resolved
@@ -133,9 +134,9 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   `linking.md`.
 - **Provisioning.** `Provisioning\ProvisioningHelper::link()`, called by a listener of `Events\ResultUnlinked` with the
   grant it was given, answers a `Provisioning\ProvisioningResult`, status `Provisioning\Enums\ProvisioningStatus`:
-  `created` (the summary), `grant_invalid` (`provisioning_grant_invalid`), `request_unavailable`
-  (`connection_unavailable`), `expired` (`request_expired`), `subject_already_linked` or `link_limit_reached`, whose
-  `reason()` names each refusal's reason. See `linking.md`.
+  `created` (the summary), `grant_invalid` and `grant_wrong_result` (`provisioning_grant_invalid`),
+  `request_unavailable` (`connection_unavailable`), `expired` (`request_expired`), `subject_already_linked` or
+  `link_limit_reached`, whose `reason()` names each refusal's reason. See `linking.md`.
 - **Issuing a handoff.** `Contracts\HandoffIssuer::issue()` answers a `Handoffs\IssuedHandoff`: the code, revealed
   once, and its expiry. An issuer that cannot issue throws, and the completion propagates it.
 

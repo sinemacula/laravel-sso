@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
 use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -362,7 +363,9 @@ final class EnforcementAdmissionRaceTest extends TestCase
             self::await($awaited);
         }
 
-        $answer = app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->redeemed->id, $this->code, self::VERIFIER);
+        $answer = DB::connection(StorageConnection::name())->transaction(
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->redeemed->id, $this->code, self::VERIFIER),
+        );
 
         if ($answer->isRedeemed()) {
             TableSessions::write(self::TENANT, $this->redeemed->id);

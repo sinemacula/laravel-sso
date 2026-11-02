@@ -21,22 +21,32 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
  *   accepted methods every one of which the assertion must state, and `acr` or
  *   `authn_context_class_ref`, the one accepted class it must state, or both of
  *   the first two. A result satisfying any one combination counts. A
- *   combination naming nothing is refused, since it would count anything.
+ *   combination naming nothing is refused, since it would count anything;
+ * - `max_age_seconds`: optional, how long after the provider's authentication
+ *   this connection accepts evidence, a whole number of at least one, which may
+ *   only tighten the ceiling `sso.linking.evidence_max_age_seconds`.
  *
  * `amr` and `acr` belong to every protocol but SAML, and
  * `authn_context_class_ref` to SAML alone; the other's is `unsupported`. A
- * driver an application registered is read as OIDC is, since a result's
- * authentication context states methods and one class whatever made it.
+ * driver an application registered is read as OIDC is: the methods and class of
+ * its `AuthenticationContext` are its normalised evidence contract, populated
+ * only from its own authenticated response, whatever its wire protocol. A
+ * result stating a provider's own `amr` value may also state accepted standard
+ * ones: only those enter the accepted methods, and no accepted combination at
+ * all is insufficient evidence.
  *
  * `violations()` judges a policy to be written, with every violation named by
  * path and code and never by value; a policy of nothing is valid and accepts
- * nothing. `parse()` judges a stored one by the very same rules and answers
- * `null` for anything they refuse, so a malformed policy is insufficient rather
- * than an exception. `acceptedMethods()` compares exactly, whatever the case:
- * it answers the asserted methods the policy accepts, in their asserted order
- * and each once, when a combination is satisfied, and `null` when none is. An
- * asserted method the policy does not list never enters them, and judges
- * nothing.
+ * nothing. A `max_age_seconds` above the ceiling it is given is `not_allowed`.
+ * `parse()` judges a stored one by the very same rules, the ceiling apart,
+ * since lowering the ceiling later must not turn a policy malformed, and
+ * answers `null` for anything they refuse, so a malformed policy is
+ * insufficient rather than an exception. `maxAgeSeconds()` clamps a stored
+ * value to the ceiling as it is when asked, so that lowering wins.
+ * `acceptedMethods()` compares exactly, whatever the case: it answers the
+ * asserted methods the policy accepts, in their asserted order and each once,
+ * when a combination is satisfied, and `null` when none is. An asserted method
+ * the policy does not list never enters them, and judges nothing.
  *
  * It holds nothing but one policy, for one call.
  *
@@ -59,6 +69,9 @@ final readonly class EvidenceRules
     /** @var string What counts, as a policy names it. */
     public const string COMBINATIONS = 'combinations';
 
+    /** @var string How long this connection accepts evidence, as a policy names it. */
+    public const string MAX_AGE_SECONDS = 'max_age_seconds';
+
     /** @var int The most values one list may name. */
     public const int MAX_VALUES = 32;
 
@@ -75,13 +88,14 @@ final readonly class EvidenceRules
     private const array PARTS = [self::AMR, self::ACR, self::AUTHN_CONTEXT_CLASS_REF];
 
     /** @var list<string> What a policy may name. */
-    private const array SETTINGS = [...self::PARTS, self::COMBINATIONS];
+    private const array SETTINGS = [...self::PARTS, self::COMBINATIONS, self::MAX_AGE_SECONDS];
 
     /**
      * Constructor.
      *
      * @param  list<string>  $methods
      * @param  list<array{0: list<string>, 1: ?string}>  $combinations
+     * @param  ?int  $maxAgeSeconds
      */
     private function __construct(
 
@@ -90,23 +104,33 @@ final readonly class EvidenceRules
 
         /** Each combination's required methods and required class. */
         private array $combinations,
+
+        /** How long this connection accepts evidence, as stored. */
+        private ?int $maxAgeSeconds = null,
     ) {}
 
     /**
      * Every violation of the policy on the protocol, by path and code: unknown
-     * names first, then the accepted lists, then the combinations.
+     * names first, then the accepted lists, then the combinations, then the
+     * maximum age, judged against the ceiling when one is given.
      *
      * @param  array<array-key, mixed>  $policy
      * @param  string  $protocol
+     * @param  ?int  $ceiling
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
      */
-    public static function violations(array $policy, string $protocol): array
+    public static function violations(array $policy, string $protocol, ?int $ceiling = null): array
     {
         if ($policy === []) {
             return [];
         }
 
-        return [...self::unknown($policy), ...self::accepted($policy, $protocol), ...self::combinations($policy, $protocol)];
+        return [
+            ...self::unknown($policy),
+            ...self::accepted($policy, $protocol),
+            ...self::combinations($policy, $protocol),
+            ...SettingRules::at(self::MAX_AGE_SECONDS, self::maxAgeCode($policy, $ceiling)),
+        ];
     }
 
     /**
@@ -125,11 +149,26 @@ final readonly class EvidenceRules
 
         $class = self::isSaml($protocol) ? self::AUTHN_CONTEXT_CLASS_REF : self::ACR;
 
-        /** @var array{amr?: list<string>, combinations: list<array<string, list<string>|string>>} $stored */
+        /** @var array{amr?: list<string>, combinations: list<array<string, list<string>|string>>, max_age_seconds?: int} $stored */
         $combinations = array_map(static fn (array $combination): array => [$combination[self::AMR] ?? [], $combination[$class] ?? null], $stored[self::COMBINATIONS]);
 
+        /** @var ?int $maxAge */
+        $maxAge = $stored[self::MAX_AGE_SECONDS] ?? null;
+
         /** @var list<array{0: list<string>, 1: ?string}> $combinations */
-        return new self($stored[self::AMR] ?? [], $combinations);
+        return new self($stored[self::AMR] ?? [], $combinations, $maxAge);
+    }
+
+    /**
+     * How long this connection accepts evidence now: its own value, clamped to
+     * the ceiling as it is when asked, or the ceiling.
+     *
+     * @param  int  $ceiling
+     * @return int
+     */
+    public function maxAgeSeconds(int $ceiling): int
+    {
+        return min($this->maxAgeSeconds ?? $ceiling, $ceiling);
     }
 
     /**
@@ -166,6 +205,30 @@ final readonly class EvidenceRules
     private static function isSatisfied(array $required, ?string $class, array $methods, ?string $stated): bool
     {
         return array_diff($required, $methods) === [] && ($class === null || $class === $stated);
+    }
+
+    /**
+     * The code of the policy's maximum age, or `null` when it names none or an
+     * acceptable one: a whole number of at least one, never above the ceiling.
+     *
+     * @param  array<array-key, mixed>  $policy
+     * @param  ?int  $ceiling
+     * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
+     */
+    private static function maxAgeCode(array $policy, ?int $ceiling): ?ViolationCode
+    {
+        if (!array_key_exists(self::MAX_AGE_SECONDS, $policy)) {
+            return null;
+        }
+
+        $value = $policy[self::MAX_AGE_SECONDS];
+
+        return match (true) {
+            !is_int($value)                        => ViolationCode::INVALID_TYPE,
+            $value < 1                             => ViolationCode::NOT_ALLOWED,
+            $ceiling !== null && $value > $ceiling => ViolationCode::NOT_ALLOWED,
+            default                                => null,
+        };
     }
 
     /**

@@ -5,8 +5,11 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Linking;
 
 use Illuminate\Contracts\Config\Repository;
+use SineMacula\Laravel\Sso\Config\BooleanSetting;
+use SineMacula\Laravel\Sso\Config\Enums\Feature;
 use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
+use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 
 /**
  * Checks `sso.linking` at boot, while the package is in use (SSO-12.3).
@@ -22,11 +25,15 @@ final readonly class LinkingCheck implements ConfigurationCheck
      * Constructor.
      *
      * @param  \Illuminate\Contracts\Config\Repository  $config
+     * @param  \SineMacula\Laravel\Sso\Links\LinkStorageBinding  $storage
      */
     public function __construct(
 
         /** The configuration checked. */
         private Repository $config,
+
+        /** Whether the bound linker is backed by link storage. */
+        private LinkStorageBinding $storage,
     ) {}
 
     /**
@@ -41,8 +48,9 @@ final readonly class LinkingCheck implements ConfigurationCheck
     }
 
     /**
-     * The verified response's validity, the evidence's maximum age and the
-     * shared issuers.
+     * The verified response's validity, the evidence's maximum age, the shared
+     * issuers, and, while the `domain_linking` feature is on, that the bound
+     * linker is backed by link storage.
      *
      * @return list<\Closure(): mixed>
      */
@@ -55,6 +63,27 @@ final readonly class LinkingCheck implements ConfigurationCheck
             $settings->verifiedResultMaxAgeSeconds(...),
             $settings->evidenceMaxAgeSeconds(...),
             $settings->sharedIssuers(...),
+            $this->assertStorage(...),
         ];
+    }
+
+    /**
+     * Refuse linking by a verified domain over a linker that is not backed by
+     * link storage.
+     *
+     * @return void
+     *
+     * @throws \LogicException
+     * @throws \InvalidArgumentException
+     */
+    private function assertStorage(): void
+    {
+        $feature = Feature::DOMAIN_LINKING;
+
+        if (!BooleanSetting::isOn($feature->key(), $this->config->get($feature->key(), $feature->isOnByDefault()))) {
+            return;
+        }
+
+        $this->storage->require('The `domain_linking` feature');
     }
 }

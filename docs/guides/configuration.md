@@ -67,6 +67,7 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `linking.shared_issuers`                             | `[]`                                            |                                               | [Linking by domain](linking-by-domain.md)       |
 | `enforcement.table`                                  | `sso_enforcement`                               | `SSO_ENFORCEMENT_TABLE`                       | [Enforcement](enforcement.md)                   |
 | `links.table`                                        | `sso_links`                                     | `SSO_LINKS_TABLE`                             | [Storage](#storage)                             |
+| `identity_guards.table`                              | `sso_identity_guards`                           | `SSO_IDENTITY_GUARDS_TABLE`                   | [Storage](#storage)                             |
 | `authorization_requests.table`                       | `sso_authorization_requests`                    | `SSO_AUTHORIZATION_REQUESTS_TABLE`            | [Storage](#storage)                             |
 | `authorization_requests.ttl_seconds`                 | `600`                                           | `SSO_AUTHORIZATION_REQUESTS_TTL_SECONDS`      | [Flows](#flows)                                 |
 | `handoff_codes.table`                                | `sso_handoff_codes`                             | `SSO_HANDOFF_CODES_TABLE`                     | [Storage](#storage)                             |

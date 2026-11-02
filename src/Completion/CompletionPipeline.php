@@ -24,7 +24,8 @@ use SineMacula\Laravel\Sso\Contracts\CompletionStage;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
-use SineMacula\Laravel\Sso\Links\LinkReservations;
+use SineMacula\Laravel\Sso\Linking\LinkingDiscovery;
+use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 
 /**
  * Runs a completion's steps in `Enums\CompletionStep`'s fixed order (SSO-5.6,
@@ -37,11 +38,12 @@ use SineMacula\Laravel\Sso\Links\LinkReservations;
  *    so the request is consumed whether the response then passes or fails, and
  *    the validation may fetch.
  * 2. T2, one transaction on the storage connection, takes the package's lock
- *    order (`Completion\CompletionLocks`) and, for a completion still going on,
- *    refuses what no longer stands, then runs every locked step, in order, on
- *    the rows as locked, with the policy the locked rule gives. On PostgreSQL
- *    under `REPEATABLE READ`, a completion that waited on a change may fail to
- *    serialise instead: the error propagates as a server error.
+ *    order (`Completion\CompletionLocks`), having found by plain reads, before
+ *    it opens, whose identity guard comes first, and, for a completion still
+ *    going on, refuses what no longer stands, then runs every locked step, in
+ *    order, on the rows as locked, with the policy the locked rule gives. On
+ *    PostgreSQL under `REPEATABLE READ`, a completion that waited on a change
+ *    may fail to serialise instead: the error propagates as a server error.
  * 3. A linked result, an eligible `link` or `reauthenticate` and a successful
  *    reservation finish in T2: the handoff is issued, the request's
  *    `completed_at` is set, whether it completed or was refused, a reservation
@@ -88,7 +90,7 @@ use SineMacula\Laravel\Sso\Links\LinkReservations;
  * Each stage is resolved from the container per completion, so an application
  * or a test may bind its own for a step. It holds the container, the
  * application gate, the clock, the reporter, the re-initiation, the locks, the
- * reservations and the offer, none of which keeps anything of one completion
+ * storage binding and the offer, none of which keeps anything of one completion
  * for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -131,7 +133,7 @@ final readonly class CompletionPipeline
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionEvents  $events
      * @param  \SineMacula\Laravel\Sso\Completion\UnsolicitedReinitiation  $reinitiation
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionLocks  $locks
-     * @param  \SineMacula\Laravel\Sso\Links\LinkReservations  $reservations
+     * @param  \SineMacula\Laravel\Sso\Links\LinkStorageBinding  $storage
      * @param  \SineMacula\Laravel\Sso\Completion\ProvisioningOffer  $offer
      */
     public function __construct(
@@ -155,7 +157,7 @@ final readonly class CompletionPipeline
         private CompletionLocks $locks,
 
         /** Discards a reservation a completion made before it refused. */
-        private LinkReservations $reservations,
+        private LinkStorageBinding $storage,
 
         /** Offers an unlinked result to the unlinked-result event's listeners. */
         private ProvisioningOffer $offer,
@@ -199,7 +201,8 @@ final readonly class CompletionPipeline
             return self::rejected($outcome);
         }
 
-        $finished = DB::connection(StorageConnection::name())->transaction(fn (): CompletionResult|StageOutcome => $this->prepared($flow, $outcome));
+        $discovery = $outcome->isProceeding() ? $this->locks->discover($outcome->state) : null;
+        $finished  = DB::connection(StorageConnection::name())->transaction(fn (): CompletionResult|StageOutcome => $this->prepared($flow, $outcome, $discovery));
 
         return $finished instanceof CompletionResult ? $finished : $this->continued($flow, $finished);
     }
@@ -297,13 +300,14 @@ final readonly class CompletionPipeline
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
      * @param  \SineMacula\Laravel\Sso\Completion\StageOutcome  $outcome
+     * @param  ?\SineMacula\Laravel\Sso\Linking\LinkingDiscovery  $discovery
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult|\SineMacula\Laravel\Sso\Completion\StageOutcome
      *
      * @throws \Throwable
      */
-    private function prepared(Flow $flow, StageOutcome $outcome): CompletionResult|StageOutcome
+    private function prepared(Flow $flow, StageOutcome $outcome, ?LinkingDiscovery $discovery): CompletionResult|StageOutcome
     {
-        $lock = $this->locks->take($outcome->state, $outcome->isProceeding(), true);
+        $lock = $this->locks->take($outcome->state, $outcome->isProceeding(), true, $discovery);
         $ran  = $outcome->isProceeding() ? $this->locked($outcome->state, $lock, static fn (CompletionStep $step): bool => $step->isLocked()) : $outcome;
 
         if (!$ran->isProvisioning()) {
@@ -360,7 +364,7 @@ final readonly class CompletionPipeline
             return StageOutcome::refuse($state, $reason);
         }
 
-        $held = $state->withConnection($lock->connection, $lock->domain)->withAuthorizationRequest($lock->request, $state->consumed, $state->application);
+        $held = $state->withConnection($lock->connection, $lock->domain, $lock->discovery)->withAuthorizationRequest($lock->request, $state->consumed, $state->application);
 
         return $this->steps($lock->enforcement === null ? $held : $held->withEnforcementPolicy($lock->enforcement->policy()), $runs);
     }
@@ -383,7 +387,7 @@ final readonly class CompletionPipeline
         $candidate = $outcome->state->reservedCandidate;
 
         if ($outcome->isRefused() && $candidate !== null && $lock->connection !== null) {
-            $this->reservations->discard($lock->connection, $candidate);
+            $this->storage->require('Discarding a reservation')->reservations()->discard($lock->connection, $candidate);
         }
 
         $this->stamp($lock, 'completed_at');

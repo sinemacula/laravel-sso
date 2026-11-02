@@ -89,8 +89,8 @@ Each stage is in `Completion\Stages`.
 - `CheckPurpose` runs the rules of the flow's purpose (`Completion\Rules`): a suspended link ends a `sign_in` with
   `link_suspended`, a subject another flow's reservation holds with `link_reserved`; a `link` needs an eligible identity
   and a subject no other identity holds; a `reauthenticate` needs a result resolving to the identity it was started for.
-- `DomainReservation` and `Provisioning` are the frozen machine of `linking.md`. A genuinely unlinked `sign_in` holding no
-  reservation stops T2 at the provisioning boundary, and the final continuation runs only `link_resolution`,
+- `DomainReservation` and `Provisioning` are the frozen machine of `linking.md`. A genuinely unlinked `sign_in`
+  holding no reservation stops T2 at the provisioning boundary, and the final continuation runs only `link_resolution`,
   `enforcement`, `purpose_rules`, `unlinked_decision` and `handoff_issuance`.
 - `DecideUnlinked` refuses a `sign_in` whose result resolved to no identity, and holds no reservation, with `unlinked`
   unless the application allows unlinked handoffs (SSO-8.6). `link` and `reauthenticate` pass unchanged.
@@ -160,10 +160,12 @@ made, from what a driver verified and never from client input (SSO-8.1):
   consumption or validation included), and reports the completion. A response no request matches marks nothing. A
   request whose application is no longer registered is marked completed by its consumption instead, in the same write
   as `consumed_at`, since that completion is rejected with no trusted target and never reaches the transaction.
-- The lock order is `flows.md`'s: the tenant's enforcement row (when it applies), then the connection with the rule's
-  connections in ascending id order, then its request's, then (in the stages) links and codes. A change that voids a
-  connection's requests locks the connection first, so it waits for a completion that holds it, and finds its request
-  finished; a completion that consumed a request before the change refuses it under the lock afterwards.
+- The lock order is `flows.md`'s: the identity's guard (a `sign_in` a reservation may be made for, found by plain reads
+  before the transaction opens, `linking.md`), the tenant's enforcement row (when it applies), then the connection with
+  the rule's connections in ascending id order, the relevant domain claim, then its request's, then (in the stages)
+  links and codes. A change that voids a connection's requests locks the connection first, so it waits for a completion
+  that holds it, and finds its request finished; a completion that consumed a request before the change refuses it under
+  the lock afterwards.
 - An enforcement change waits for a completion that holds the rule's lock, and a completion that waited sees the rule
   as changed. The code carries the version checked; the redemption locks the rule again and rechecks it, and the
   session is written there. On PostgreSQL under `REPEATABLE READ`, a completion that waited may get a serialisation

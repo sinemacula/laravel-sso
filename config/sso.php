@@ -26,7 +26,7 @@ return [
     |
     | Each table's name is set in its own section (`connections.table`,
     | `keys.table`, `domains.table`, `enforcement.table`, `links.table`,
-    | `authorization_requests.table`, `handoff_codes.table`,
+    | `identity_guards.table`, `authorization_requests.table`, `handoff_codes.table`,
     | `single_use.table`, `rate_limits.table`), each defaulting to an `sso_`
     | prefix.
     |
@@ -438,6 +438,22 @@ return [
 
     /*
     |---------------------------------------------------------------------------
+    | Identity guards
+    |---------------------------------------------------------------------------
+    |
+    | The table each identity's linking guard is kept in, on the storage
+    | connection: a row holding only a digest of the identity, which a principal
+    | widening, a reservation, an activation and a confirmation lock first, so
+    | none of them overlaps another for that identity.
+    |
+    */
+
+    'identity_guards' => [
+        'table' => env('SSO_IDENTITY_GUARDS_TABLE', 'sso_identity_guards'),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
     | Linking, provisioning and evidence
     |---------------------------------------------------------------------------
     |
@@ -446,11 +462,14 @@ return [
     |   120). It never extends the authorisation request's own expiry.
     | - `evidence_max_age_seconds`: the longest time since the provider's
     |   authentication that a connection's evidence may be accepted, 60 to 3600
-    |   seconds (default 900).
+    |   seconds (default 900). A connection's evidence policy may only tighten
+    |   it (`max_age_seconds`), and lowering this later still wins.
     | - `shared_issuers`: issuers shared by many organisations, each mapped to
     |   the claim naming the organisation. Linking by a verified domain through
     |   one needs that claim and its expected value. It adds to the issuers the
-    |   package knows, and can never change or remove one of those.
+    |   package knows, and can never change or remove one of those. Microsoft
+    |   Entra's `common` and `organizations` are authorities and no issuer: the
+    |   real issuer names its tenant, and explicit classification applies to it.
     |
     | Whether linking by a verified domain is on at all is the `domain_linking`
     | feature and each connection's own setting; how recent a domain's check must

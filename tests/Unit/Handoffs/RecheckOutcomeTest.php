@@ -31,7 +31,7 @@ final class RecheckOutcomeTest extends TestCase
     {
         self::assertSame(
             [
-                'passed', 'connection_unavailable', 'enforcement_unsatisfied', 'link_changed', 'link_suspended', 'link_reserved', 'link_ineligible',
+                'passed', 'connection_unavailable', 'enforcement_unsatisfied', 'link_changed', 'link_suspended', 'principal_scope_unknown', 'link_reserved', 'link_ineligible',
                 'independent_authentication_required', 'identity_mismatch', 'subject_already_linked', 'link_limit_reached', 'reservation_invalid',
                 'freshness_required', 'session_ineligible', 'authentication_expired',
             ],
@@ -51,6 +51,7 @@ final class RecheckOutcomeTest extends TestCase
         yield 'enforcement unsatisfied' => [RecheckOutcome::ENFORCEMENT_UNSATISFIED, FailureReason::ENFORCEMENT_UNSATISFIED];
         yield 'link changed' => [RecheckOutcome::LINK_CHANGED, FailureReason::LINK_CHANGED];
         yield 'link suspended' => [RecheckOutcome::LINK_SUSPENDED, FailureReason::LINK_SUSPENDED];
+        yield 'principal scope unknown' => [RecheckOutcome::PRINCIPAL_SCOPE_UNKNOWN, FailureReason::PRINCIPAL_SCOPE_UNKNOWN];
         yield 'link reserved' => [RecheckOutcome::LINK_RESERVED, FailureReason::LINK_RESERVED];
         yield 'link ineligible' => [RecheckOutcome::LINK_INELIGIBLE, FailureReason::LINK_INELIGIBLE];
         yield 'identity mismatch' => [RecheckOutcome::IDENTITY_MISMATCH, FailureReason::IDENTITY_MISMATCH];

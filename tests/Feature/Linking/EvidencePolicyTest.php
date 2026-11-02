@@ -209,6 +209,115 @@ final class EvidencePolicyTest extends TestCase
     }
 
     /**
+     * Rows of `[the connection's own maximum age, the ceiling, the age of the
+     * authentication in seconds, whether it is accepted]`: a connection only
+     * ever tightens the ceiling, and a value above it, stored before the
+     * ceiling was lowered, is clamped to the ceiling as it is now.
+     *
+     * @return iterable<string, array{0: int, 1: int, 2: int, 3: bool}>
+     */
+    public static function provideOwnMaximumAges(): iterable
+    {
+        yield 'under its own bound' => [120, 600, 119, true];
+        yield 'at its own bound' => [120, 600, 120, true];
+        yield 'over its own bound, under the ceiling' => [120, 600, 121, false];
+        yield 'equal to the ceiling, at it' => [600, 600, 600, true];
+        yield 'equal to the ceiling, over it' => [600, 600, 601, false];
+        yield 'one second' => [1, 600, 1, true];
+        yield 'one second, over it' => [1, 600, 2, false];
+        yield 'above a lowered ceiling, at the ceiling' => [600, 300, 300, true];
+        yield 'above a lowered ceiling, over the ceiling' => [600, 300, 301, false];
+    }
+
+    /**
+     * A connection's own maximum age tightens the ceiling, and the ceiling as
+     * it is now always wins.
+     *
+     * @param  int  $own
+     * @param  int  $ceiling
+     * @param  int  $age
+     * @param  bool  $accepted
+     * @return void
+     */
+    #[DataProvider('provideOwnMaximumAges')]
+    public function testAConnectionsOwnMaximumAgeOnlyTightens(int $own, int $ceiling, int $age, bool $accepted): void
+    {
+        config()->set('sso.linking.evidence_max_age_seconds', $ceiling);
+
+        $context = new AuthenticationContext(self::at()->subSeconds($age), ['pwd']);
+
+        self::assertSame($accepted, self::policy()->evaluate(self::resultWith($context), self::connection(self::PASSWORD + ['max_age_seconds' => $own]), self::at()) !== null);
+    }
+
+    /**
+     * Rows of `[what a stored maximum age holds]`: a policy holding anything
+     * but a whole number of at least one is malformed, so insufficient.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function provideMalformedMaximumAges(): iterable
+    {
+        yield 'zero' => [0];
+        yield 'negative' => [-1];
+        yield 'a string' => ['120'];
+        yield 'a fraction' => [120.5];
+        yield 'nothing' => [null];
+        yield 'true' => [true];
+    }
+
+    /**
+     * A stored maximum age that is no whole number of at least one accepts
+     * nothing at all.
+     *
+     * @param  mixed  $stored
+     * @return void
+     */
+    #[DataProvider('provideMalformedMaximumAges')]
+    public function testAMalformedMaximumAgeIsInsufficient(mixed $stored): void
+    {
+        $context = new AuthenticationContext(self::at(), ['pwd']);
+
+        self::assertNull(self::policy()->evaluate(self::resultWith($context), self::connection(self::PASSWORD + ['max_age_seconds' => $stored]), self::at()));
+    }
+
+    /**
+     * A result stating a provider's own `amr` value alongside an accepted
+     * standard one is not class-only evidence: the standard one is accepted and
+     * the other left out; the provider's value alone satisfies nothing. A raw
+     * class that no combination lists stays data, never an accepted class.
+     *
+     * @return void
+     */
+    public function testAProviderSpecificMethodDoesNotForceClassOnlyEvidence(): void
+    {
+        $stated   = new AuthenticationContext(self::at(), ['provider-specific', 'pwd'], 'urn:example:unlisted');
+        $evidence = self::policy()->evaluate(self::resultWith($stated), self::connection(self::PASSWORD), self::at());
+
+        self::assertNotNull($evidence);
+        self::assertSame(['pwd'], $evidence->methods());
+        self::assertSame('urn:example:unlisted', $evidence->rawContext());
+
+        $alone = new AuthenticationContext(self::at(), ['provider-specific'], 'urn:example:unlisted');
+
+        self::assertNull(self::policy()->evaluate(self::resultWith($alone), self::connection(self::PASSWORD), self::at()));
+    }
+
+    /**
+     * A registered driver's methods and class are read as its normalised
+     * evidence contract, whatever its wire protocol: its own protocol's name is
+     * enough.
+     *
+     * @return void
+     */
+    public function testARegisteredDriversMethodsAreItsNormalisedEvidence(): void
+    {
+        $context  = new AuthenticationContext(self::at(), ['pwd']);
+        $evidence = self::policy()->evaluate(self::resultWith($context, protocol: 'a-registered-driver'), self::connection(self::PASSWORD, 'a-registered-driver'), self::at());
+
+        self::assertSame(['pwd'], $evidence?->methods());
+    }
+
+    /**
      * No authentication time is insufficient, whatever else it states.
      *
      * @return void

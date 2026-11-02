@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Links;
 
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
+use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\AfterCommitDispatcher;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\LinkActivated;
@@ -62,7 +63,7 @@ final readonly class LinkEvents
      * Report a link created through the connection for the identity, how it was
      * made, and the flow that made it when there was one.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
@@ -76,7 +77,7 @@ final readonly class LinkEvents
      * @SuppressWarnings("php:S107")
      */
     public function created(
-        Connection $connection,
+        SsoConnection $connection,
         IdentityReference $identity,
         LinkOrigin $origin,
         ?ActingIdentity $actor = null,
@@ -85,9 +86,9 @@ final readonly class LinkEvents
         ?RequestReference $reference = null,
     ): void {
         $context = $this->contexts->make(
-            connectionId: $connection->id,
-            tenantId: $connection->tenant_id,
-            protocol: $connection->protocol,
+            connectionId: $connection->getConnectionId(),
+            tenantId: $connection->getTenantId(),
+            protocol: $connection->getProtocol(),
             application: $application,
             purpose: $purpose?->value,
             requestReference: $reference?->value,
@@ -161,7 +162,7 @@ final readonly class LinkEvents
     /**
      * Report the identity's link confirmed through the `link` purpose.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
@@ -169,12 +170,12 @@ final readonly class LinkEvents
      *
      * @throws \InvalidArgumentException
      */
-    public function confirmed(Connection $connection, IdentityReference $identity, ?string $application = null, ?RequestReference $reference = null): void
+    public function confirmed(SsoConnection $connection, IdentityReference $identity, ?string $application = null, ?RequestReference $reference = null): void
     {
         $context = $this->contexts->make(
-            connectionId: $connection->id,
-            tenantId: $connection->tenant_id,
-            protocol: $connection->protocol,
+            connectionId: $connection->getConnectionId(),
+            tenantId: $connection->getTenantId(),
+            protocol: $connection->getProtocol(),
             application: $application,
             purpose: Purpose::LINK->value,
             requestReference: $reference?->value,

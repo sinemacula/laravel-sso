@@ -24,6 +24,11 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkResolutionStatus;
  * - `suspended`: `$identity` is `null`, since it resolves nothing; `$holder`
  *   and `$linkId` say whose link it is, read only by a confirming `link`
  *   (SSO-8.8), never by a sign-in.
+ * - `scope_unknown`: `$identity` is `null`, since it resolves nothing;
+ *   `$holder` and `$linkId` say whose link it is. The link's verified domain
+ *   provenance needs `Contracts\PrincipalScope`, which answered `unknown`: this
+ *   attempt is refused, and nothing is suspended or revoked, so the link's next
+ *   resolution judges it again.
  *
  * It holds opaque references, never a subject or a secret.
  *
@@ -106,6 +111,21 @@ final readonly class LinkResolution
     }
 
     /**
+     * The holder's link holds the subject, and its scope could not be judged:
+     * it resolves nothing, for this attempt.
+     *
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $holder
+     * @param  string  $linkId
+     * @return self
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function scopeUnknown(IdentityReference $holder, string $linkId): self
+    {
+        return new self(LinkResolutionStatus::SCOPE_UNKNOWN, holder: $holder, linkId: self::linkId($linkId));
+    }
+
+    /**
      * Whether an active link resolves the subject.
      *
      * @return bool
@@ -143,6 +163,16 @@ final readonly class LinkResolution
     public function isSuspended(): bool
     {
         return $this->status === LinkResolutionStatus::SUSPENDED;
+    }
+
+    /**
+     * Whether the link holding the subject could not be judged, this attempt.
+     *
+     * @return bool
+     */
+    public function isScopeUnknown(): bool
+    {
+        return $this->status === LinkResolutionStatus::SCOPE_UNKNOWN;
     }
 
     /**

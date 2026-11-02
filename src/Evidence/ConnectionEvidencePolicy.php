@@ -25,19 +25,22 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * - a `link` result, which proves nothing, though the redemption never asks;
  * - a result of another connection, tenant or protocol than the connection's;
  * - no authentication time;
- * - an authentication time older than `sso.linking.evidence_max_age_seconds` at
- *   the instant asked, or later than that instant by more than the clock skew.
- *   Each bound is itself accepted. A code's short lifetime establishes nothing,
- *   so a code redeemed later than the maximum age, though unexpired, has none;
  * - a policy that is empty or malformed;
+ * - an authentication time older than the maximum age at the instant asked: the
+ *   ceiling `sso.linking.evidence_max_age_seconds`, or the policy's own tighter
+ *   `max_age_seconds`, clamped to the ceiling as it is now, so lowering the
+ *   ceiling later still wins; or later than that instant by more than the clock
+ *   skew. Each bound is itself accepted. A code's short lifetime establishes
+ *   nothing, so a code redeemed later than the maximum age, though unexpired,
+ *   has none;
  * - a context that satisfies no combination.
  *
  * Otherwise it answers `AcceptedEvidence`: the connection's id as the
  * credential reference, the provider's authentication time, only the accepted
  * RFC 8176 methods, and the raw `acr` or `AuthnContextClassRef`, whether listed
- * or not, as data. It is an input to the application's policy for further
- * factors and never an assurance level, and which factors combine stays the
- * application's.
+ * or not, as data through `rawContext()`, which is no accepted class. It is an
+ * input to the application's policy for further factors and never an assurance
+ * level, and which factors combine stays the application's.
  *
  * It never logs or reports a value. A configuration out of its bounds is an
  * `InvalidArgumentException`, and any other error propagates. It keeps nothing
@@ -78,12 +81,13 @@ final readonly class ConnectionEvidencePolicy implements EvidencePolicy
     {
         $context         = $result->authenticationContext;
         $authenticatedAt = self::isOwn($result, $connection) ? $context->authenticatedAt : null;
+        $rules           = EvidenceRules::parse($connection->getEvidencePolicy(), $connection->getProtocol());
 
-        if ($authenticatedAt === null || !$this->isCurrent($authenticatedAt, $now)) {
+        if ($authenticatedAt === null || $rules === null || !$this->isCurrent($authenticatedAt, $now, $rules)) {
             return null;
         }
 
-        $methods = EvidenceRules::parse($connection->getEvidencePolicy(), $connection->getProtocol())?->acceptedMethods($context);
+        $methods = $rules->acceptedMethods($context);
 
         return $methods === null ? null : new AcceptedEvidence($connection->getConnectionId(), $authenticatedAt, $methods, $context->contextClass);
     }
@@ -104,18 +108,20 @@ final readonly class ConnectionEvidencePolicy implements EvidencePolicy
     }
 
     /**
-     * Whether the authentication is no older than the maximum age at the
-     * instant, and no later than it by more than the clock skew.
+     * Whether the authentication is no older than the policy's maximum age at
+     * the instant, clamped to the ceiling as it is now, and no later than it by
+     * more than the clock skew.
      *
      * @param  \Carbon\CarbonImmutable  $authenticatedAt
      * @param  \Carbon\CarbonImmutable  $now
+     * @param  \SineMacula\Laravel\Sso\Evidence\EvidenceRules  $rules
      * @return bool
      *
      * @throws \InvalidArgumentException
      */
-    private function isCurrent(CarbonImmutable $authenticatedAt, CarbonImmutable $now): bool
+    private function isCurrent(CarbonImmutable $authenticatedAt, CarbonImmutable $now, EvidenceRules $rules): bool
     {
-        $oldest = $now->subSeconds($this->settings->evidenceMaxAgeSeconds());
+        $oldest = $now->subSeconds($rules->maxAgeSeconds($this->settings->evidenceMaxAgeSeconds()));
         $latest = $now->addSeconds(ClockSkew::seconds());
 
         return $authenticatedAt >= $oldest && $authenticatedAt <= $latest;

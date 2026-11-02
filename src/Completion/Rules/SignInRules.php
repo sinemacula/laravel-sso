@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Completion\Rules;
 
 use SineMacula\Laravel\Sso\Completion\CompletionState;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Links\Enums\LinkResolutionStatus;
 
 /**
  * What a `sign_in` requires of its link at completion (SSO-8.2, SSO-8.8): a
@@ -30,10 +31,11 @@ final readonly class SignInRules
      */
     public function refusal(CompletionState $state): ?FailureReason
     {
-        return match (true) {
-            $state->resolution?->isSuspended() ?? false => FailureReason::LINK_SUSPENDED,
-            $state->resolution?->isReserved()  ?? false => FailureReason::LINK_RESERVED,
-            default                                     => null,
+        return match ($state->resolution?->status) {
+            LinkResolutionStatus::SUSPENDED     => FailureReason::LINK_SUSPENDED,
+            LinkResolutionStatus::SCOPE_UNKNOWN => FailureReason::PRINCIPAL_SCOPE_UNKNOWN,
+            LinkResolutionStatus::RESERVED      => FailureReason::LINK_RESERVED,
+            default                             => null,
         };
     }
 }

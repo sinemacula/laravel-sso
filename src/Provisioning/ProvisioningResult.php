@@ -53,6 +53,16 @@ final readonly class ProvisioningResult implements \JsonSerializable
     }
 
     /**
+     * The grant was given another result than it is bound to, and is spent.
+     *
+     * @return self
+     */
+    public static function grantWrongResult(): self
+    {
+        return new self(ProvisioningStatus::GRANT_WRONG_RESULT);
+    }
+
+    /**
      * The connection or the request no longer stands, under the locks.
      *
      * @return self

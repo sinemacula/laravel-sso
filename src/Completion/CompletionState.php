@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Linking\LinkingDiscovery;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\ReservedCandidate;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
@@ -35,8 +36,9 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * sets; the handoff issued; the receipt of a key rotation the response's own
  * validation made; how the result's link resolved; the candidate a reservation
  * holds, which is never the resolved identity; the domain claim locked for
- * linking; the linking policy version the response was validated under; and
- * when the verified response stops being valid, which no continuation extends.
+ * linking; the linking policy version the response was validated under; when
+ * the verified response stops being valid, which no continuation extends; and
+ * what plain reads found to lock before its locked transaction.
  *
  * An unsolicited SAML response handed to re-initiation (SSO-5.8) only ever
  * holds the connection, its correlation and, under the connection's lock, its
@@ -79,6 +81,7 @@ final readonly class CompletionState
      * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $linkingDomain
      * @param  ?int  $linkingVersion
      * @param  ?\Carbon\CarbonImmutable  $verifiedUntil
+     * @param  ?\SineMacula\Laravel\Sso\Linking\LinkingDiscovery  $linkingDiscovery
      *
      * @SuppressWarnings("php:S107")
      */
@@ -146,6 +149,9 @@ final readonly class CompletionState
 
         /** When the verified response stops being valid. */
         public ?CarbonImmutable $verifiedUntil = null,
+
+        /** What plain reads found to lock before the locked transaction. */
+        public ?LinkingDiscovery $linkingDiscovery = null,
     ) {}
 
     /**
@@ -213,16 +219,18 @@ final readonly class CompletionState
     }
 
     /**
-     * With the connection, read from the write connection, and its claim of the
-     * linking email's domain when that was locked with it.
+     * With the connection, read from the write connection, its claim of the
+     * linking email's domain when that was locked with it, and what plain reads
+     * found to lock before they were taken.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $linkingDomain
+     * @param  ?\SineMacula\Laravel\Sso\Linking\LinkingDiscovery  $discovery
      * @return self
      */
-    public function withConnection(?Connection $connection, ?Domain $linkingDomain = null): self
+    public function withConnection(?Connection $connection, ?Domain $linkingDomain = null, ?LinkingDiscovery $discovery = null): self
     {
-        return $this->with(['connection' => $connection, 'linkingDomain' => $linkingDomain]);
+        return $this->with(['connection' => $connection, 'linkingDomain' => $linkingDomain, 'linkingDiscovery' => $discovery]);
     }
 
     /**

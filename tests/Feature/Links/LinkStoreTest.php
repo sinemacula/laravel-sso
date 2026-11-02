@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkCreation;
 use SineMacula\Laravel\Sso\Links\LinkEvents;
+use SineMacula\Laravel\Sso\Links\LinkHoldings;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Links\LinkSummary;
@@ -54,6 +55,7 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(LinkStore::class)]
+#[CoversClass(LinkHoldings::class)]
 #[CoversClass(LinkSubject::class)]
 #[CoversClass(LinkCreation::class)]
 #[CoversClass(LinkSummary::class)]
@@ -337,14 +339,14 @@ final class LinkStoreTest extends TestCase
     {
         $now = CarbonImmutable::parse(self::NOW);
 
-        self::assertSame(0, LinkStore::heldBy($this->connection->id, $this->identity, $now));
+        self::assertSame(0, LinkHoldings::count($this->connection->id, $this->identity, $now));
 
         $this->makeLink($this->connection, 'active');
         $this->makeLink($this->connection, 'suspended', ['state' => LinkState::SUSPENDED]);
         $this->makeLink($this->connection, 'reserved', ['state' => LinkState::RESERVED, 'reservation_expires_at' => $now->addSecond()]);
 
-        self::assertSame(3, LinkStore::heldBy($this->connection->id, $this->identity, $now));
-        self::assertSame(2, LinkStore::heldBy($this->connection->id, $this->identity, $now->addSecond()));
+        self::assertSame(3, LinkHoldings::count($this->connection->id, $this->identity, $now));
+        self::assertSame(2, LinkHoldings::count($this->connection->id, $this->identity, $now->addSecond()));
     }
 
     /**
@@ -359,14 +361,14 @@ final class LinkStoreTest extends TestCase
         /** @var \SineMacula\Laravel\Sso\Contracts\LinkLimit $limit */
         $limit = app(LinkLimit::class);
 
-        self::assertSame(1, LinkStore::limitOf($limit, $this->identity, $this->connection));
+        self::assertSame(1, LinkHoldings::limitOf($limit, $this->identity, $this->connection));
 
         $this->bindLimit(2);
 
         /** @var \SineMacula\Laravel\Sso\Contracts\LinkLimit $limit */
         $limit = app(LinkLimit::class);
 
-        self::assertSame(2, LinkStore::limitOf($limit, $this->identity, $this->connection));
+        self::assertSame(2, LinkHoldings::limitOf($limit, $this->identity, $this->connection));
     }
 
     /**
@@ -433,6 +435,54 @@ final class LinkStoreTest extends TestCase
 
         self::assertSame('2026-11-01T10:30:00+00:00', $link->last_used_at?->toIso8601String());
         self::assertSame('2026-11-01T09:30:00+00:00', $link->updated_at->toIso8601String());
+    }
+
+    /**
+     * Rows of `[the purpose of a result that is no sign-in]`.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose}>
+     */
+    public static function providePurposesThatAreNoSignIn(): iterable
+    {
+        yield 'a link' => [Purpose::LINK];
+        yield 'a reauthentication' => [Purpose::REAUTHENTICATE];
+    }
+
+    /**
+     * A resolution for a `link` or a `reauthenticate` resolves the link and is
+     * no use of it: `last_used_at` stays exactly as it was, whether never
+     * stamped or stamped long ago, so such an operation never looks like a
+     * sign-in.
+     *
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @return void
+     */
+    #[DataProvider('providePurposesThatAreNoSignIn')]
+    public function testOnlyASignInStampsTheLastUse(Purpose $purpose): void
+    {
+        $this->linkSubject();
+
+        $this->clock->advance(3600);
+
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection, purpose: $purpose))->isLinked());
+
+        $unstamped = Link::query()->sole();
+
+        self::assertNull($unstamped->last_used_at);
+
+        $this->store()->resolve($this->resultFor($this->connection));
+
+        $stamped = Link::query()->sole();
+
+        self::assertSame('2026-11-01T10:30:00+00:00', $stamped->last_used_at?->toIso8601String());
+
+        $this->clock->advance(3600);
+
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection, purpose: $purpose))->isLinked());
+
+        $kept = Link::query()->sole();
+
+        self::assertSame('2026-11-01T10:30:00+00:00', $kept->last_used_at?->toIso8601String());
     }
 
     /**
@@ -961,10 +1011,16 @@ final class LinkStoreTest extends TestCase
      * @param  string  $subject
      * @param  ?string  $format
      * @param  string  $issuer
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @return \SineMacula\Laravel\Sso\Results\VerifiedResult
      */
-    private function resultFor(Connection $connection, string $subject = self::SUBJECT, ?string $format = self::FORMAT, string $issuer = self::ISSUER): VerifiedResult
-    {
+    private function resultFor(
+        Connection $connection,
+        string $subject = self::SUBJECT,
+        ?string $format = self::FORMAT,
+        string $issuer = self::ISSUER,
+        Purpose $purpose = Purpose::SIGN_IN,
+    ): VerifiedResult {
         return new VerifiedResult(
             $issuer,
             $subject,
@@ -973,7 +1029,7 @@ final class LinkStoreTest extends TestCase
             $connection->tenant_id,
             $connection->protocol,
             'web',
-            Purpose::SIGN_IN,
+            $purpose,
             RequestReference::fromString(ExampleResults::REFERENCE),
             [],
             false,

@@ -7,7 +7,6 @@ namespace Tests\Feature\Linking;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Applications\Enums\ExternalSignIn;
 use SineMacula\Laravel\Sso\Completion\CompletionLocks;
@@ -26,6 +25,7 @@ use SineMacula\Laravel\Sso\Contracts\DnsResolver;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
 use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
+use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Domains\DomainService;
 use SineMacula\Laravel\Sso\Domains\DomainWithdrawal;
@@ -71,20 +71,21 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Fixtures\Enforcement\FailingRevocation;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Linking\RecordingRevocation;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
  * Feature tests of the frozen state machine (`docs/design/linking.md`), through
- * the
- * public completion and redemption paths: the reserved finish and its activation;
- * the provisioning boundary, with what it commits, the grant it offers and the
- * final continuation; a suspended link and another flow's reservation, neither
- * of which is an unlinked subject; a confirming `link`; the exact-link
- * `reauthenticate`; a refusal that cleans its reservation up; a withdrawal; and
- * the standalone path that refuses what must commit with a session. The
- * adversarial and race tests of each are BL-60 to BL-64's.
+ * the public completion and redemption paths: the reserved finish and its
+ * activation; the provisioning boundary, with what it commits, the grant it
+ * offers and the final continuation; a suspended link and another flow's
+ * reservation, neither of which is an unlinked subject; a confirming `link`;
+ * the exact-link `reauthenticate`; a refusal that cleans its reservation up; a
+ * withdrawal; and the standalone path that refuses what must commit with a
+ * session. The adversarial and race tests of each are BL-60 to BL-64's.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -353,36 +354,25 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[what the principal scope contract answers]`: anything but
-     * `within_tenant`.
-     *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict}>
-     */
-    public static function provideRefusingVerdicts(): iterable
-    {
-        yield 'outside the tenant' => [ScopeVerdict::OUTSIDE_TENANT];
-        yield 'unknown' => [ScopeVerdict::UNKNOWN];
-    }
-
-    /**
      * A link found outside the tenant is suspended for good: it is
      * `link_suspended`, reported, never provisioned, and a later narrowing does
-     * not restore it. A confirming `link` by the same identity clears the
-     * suspension and the provenance. A verdict of `unknown` latches exactly as
-     * one of `outside_tenant` does: the package cannot tell them apart from a
-     * principal it cannot rule out.
+     * not restore it. The sessions established through it are revoked in that
+     * same transaction, once. A confirming `link` by the same identity clears
+     * the suspension and the provenance.
      *
-     * @param  \SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict  $verdict
      * @return void
      */
-    #[DataProvider('provideRefusingVerdicts')]
-    public function testASuspendedLinkStaysSuspendedUntilAConfirmingLink(ScopeVerdict $verdict): void
+    public function testASuspendedLinkStaysSuspendedUntilAConfirmingLink(): void
     {
+        $sessions = new RecordingRevocation;
+
+        $this->app?->instance(SessionRevocation::class, $sessions);
+
         $this->linkByDomain();
 
         $version = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
 
-        $this->scope->verdict = $verdict;
+        $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
 
         $offered = 0;
 
@@ -394,6 +384,8 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
 
         self::assertSame(FailureReason::LINK_SUSPENDED, $this->complete()->reason);
         self::assertSame(0, $offered);
+        self::assertSame([Link::query()->sole()->id], $sessions->linkIds);
+        self::assertSame([2], $sessions->levels, 'In a savepoint inside the completion\'s transaction.');
         self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
         self::assertNotNull(Link::query()->sole()->suspended_at);
         self::assertSame($version + 1, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
@@ -420,6 +412,108 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
         self::assertSame(LinkOrigin::LINK_PURPOSE, $link->provenance);
         self::assertNull($link->suspended_at);
         self::assertNotEmpty(array_filter($this->recordedEvents(), static fn ($event): bool => $event instanceof LinkConfirmed));
+        self::assertCount(1, $sessions->linkIds, 'A link already suspended is not revoked again by its resolutions.');
+    }
+
+    /**
+     * A verdict of `unknown` refuses that attempt with a reason of its own: the
+     * link is no more suspended than it was, nothing is reported, no version
+     * rises, no session is revoked and no provisioning is offered; once the
+     * verdict is known the link resolves again.
+     *
+     * @return void
+     */
+    public function testAnUnknownScopeRefusesTheAttemptOnly(): void
+    {
+        $sessions = new RecordingRevocation;
+
+        $this->app?->instance(SessionRevocation::class, $sessions);
+
+        $this->linkByDomain();
+
+        $version = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
+        $offered = 0;
+
+        Event::listen(ResultUnlinked::class, static function () use (&$offered): void {
+            $offered++;
+        });
+
+        $this->scope->verdict = ScopeVerdict::UNKNOWN;
+
+        $this->startRecordingEvents();
+        $this->start();
+
+        self::assertSame(FailureReason::PRINCIPAL_SCOPE_UNKNOWN, $this->complete()->reason);
+        self::assertSame(0, $offered);
+        self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
+        self::assertNull(Link::query()->sole()->suspended_at);
+        self::assertSame(LinkOrigin::VERIFIED_DOMAIN, Link::query()->sole()->provenance);
+        self::assertSame($version, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
+        self::assertSame([], $sessions->linkIds);
+        self::assertSame([], array_filter($this->recordedEvents(), static fn ($event): bool => $event instanceof LinkSuspended));
+
+        $this->scope->verdict = ScopeVerdict::WITHIN_TENANT;
+
+        $start      = $this->start();
+        $completion = $this->complete();
+
+        self::assertTrue($completion->isCompleted());
+        self::assertTrue($this->admit($completion, $start)->isRedeemed());
+    }
+
+    /**
+     * A link already suspended stays suspended under a verdict of `unknown`,
+     * its reason `link_suspended`, the contract not even asked.
+     *
+     * @return void
+     */
+    public function testAnUnknownScopeLeavesASuspendedLinkSuspended(): void
+    {
+        $this->linkByDomain();
+
+        $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
+
+        $this->start();
+        $this->complete();
+
+        $this->scope->verdict = ScopeVerdict::UNKNOWN;
+        $version              = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
+
+        $this->start();
+
+        self::assertSame(FailureReason::LINK_SUSPENDED, $this->complete()->reason);
+        self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
+        self::assertSame($version, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
+    }
+
+    /**
+     * A revocation that fails while a link latches rolls the completion back:
+     * the link is as it was, no suspension is reported, and the next resolution
+     * tries again.
+     *
+     * @return void
+     */
+    public function testARevocationThatFailsWhileLatchingRollsTheSuspensionBack(): void
+    {
+        $this->linkByDomain();
+
+        $this->app?->instance(SessionRevocation::class, new FailingRevocation);
+
+        $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
+
+        $this->startRecordingEvents();
+        $this->start();
+
+        try {
+            $this->complete();
+            self::fail('The revocation\'s failure was swallowed.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame(FailingRevocation::MESSAGE, $exception->getMessage());
+        }
+
+        self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
+        self::assertNull(Link::query()->sole()->suspended_at);
+        self::assertSame([], array_filter($this->recordedEvents(), static fn ($event): bool => $event instanceof LinkSuspended));
     }
 
     /**

@@ -84,6 +84,7 @@ final readonly class ReauthenticationBranch implements PurposeBranch
 
         return match (true) {
             $now->isSuspended()                                               => RecheckOutcome::LINK_SUSPENDED,
+            $now->isScopeUnknown()                                            => RecheckOutcome::PRINCIPAL_SCOPE_UNKNOWN,
             !self::isExactLink($now, $context)                                => RecheckOutcome::IDENTITY_MISMATCH,
             $context->result->authenticationContext->authenticatedAt === null => RecheckOutcome::AUTHENTICATION_EXPIRED,
             default                                                           => $this->standing($context, (string) $now->linkId),

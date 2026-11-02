@@ -29,6 +29,9 @@ final class ScriptedLinkConfirmation implements LinkConfirmation
     /** @var list<\SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict> What it answers first, before the verdict set. */
     public array $queued = [];
 
+    /** @var ?\Closure(list<string>): \SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict What it answers from the links given, when set, instead of the verdict. */
+    public ?\Closure $fromLinks = null;
+
     /**
      * Constructor.
      *
@@ -41,11 +44,12 @@ final class ScriptedLinkConfirmation implements LinkConfirmation
     ) {}
 
     /**
-     * Answer the verdict set, or throw the failure set.
+     * Answer the verdict queued, from the links given, or set, or throw the
+     * failure set.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
-     * @param  non-empty-list<string>  $domainLinkIds
+     * @param  list<string>  $domainLinkIds
      * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict
      *
      * @throws \Throwable
@@ -59,6 +63,12 @@ final class ScriptedLinkConfirmation implements LinkConfirmation
             throw $this->failure;
         }
 
-        return array_shift($this->queued) ?? $this->verdict;
+        $queued = array_shift($this->queued);
+
+        if ($queued !== null) {
+            return $queued;
+        }
+
+        return $this->fromLinks === null ? $this->verdict : ($this->fromLinks)($domainLinkIds);
     }
 }

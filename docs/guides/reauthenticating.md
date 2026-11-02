@@ -169,7 +169,9 @@ A `reauthenticate` also acknowledges no completed sign-in on the connection, act
 link. A subject held only by a reservation is `identity_mismatch`.
 
 The time given is the provider's, as its assertion stated it. If your session already holds a later one, from another
-flow redeemed first, keep the later one: a renewal never moves it backwards.
+flow redeemed first, keep the later one: under the session's lock, in the redemption's transaction, write `max(current,
+provider_time)`, so a renewal never moves it backwards. That is your adapter's obligation, since the package does not
+hold the session.
 
 ### Evidence
 
@@ -180,18 +182,19 @@ carries the same value on the answer. See [Provider Evidence for Further Factors
 
 ## Refusals
 
-| Reason                   | Where      | Meaning                                                                                      |
-|--------------------------|------------|----------------------------------------------------------------------------------------------|
-| `session_ineligible`     | Start      | `standing()` did not answer `signed_in`                                                      |
-| `id_token_invalid`       | Completion | An OpenID Connect ID token with no `auth_time`                                               |
-| `response_invalid`       | Completion | A SAML assertion without exactly one `AuthnStatement`                                        |
-| `authentication_expired` | Completion | No authentication time from another driver, or one before the request less the skew          |
-| `assertion_expired`      | Completion | An authentication time after now plus the skew                                               |
-| `identity_mismatch`      | Completion | The subject resolves to nobody, a reservation or another identity                            |
-| `link_suspended`         | Both       | The link is suspended until a confirming `link` flow                                         |
-| `identity_mismatch`      | Redemption | The link observed at completion is gone or replaced, by its id                               |
-| `session_ineligible`     | Redemption | The session is gone, revoked, of another application or connection, or bound to another link |
-| `authentication_expired` | Redemption | An adapter's own result states no authentication time                                        |
+| Reason                    | Where      | Meaning                                                                                      |
+|---------------------------|------------|----------------------------------------------------------------------------------------------|
+| `session_ineligible`      | Start      | `standing()` did not answer `signed_in`                                                      |
+| `id_token_invalid`        | Completion | An OpenID Connect ID token with no `auth_time`                                               |
+| `response_invalid`        | Completion | A SAML assertion without exactly one `AuthnStatement`                                        |
+| `authentication_expired`  | Completion | No authentication time from another driver, or one before the request less the skew          |
+| `assertion_expired`       | Completion | An authentication time after now plus the skew                                               |
+| `identity_mismatch`       | Completion | The subject resolves to nobody, a reservation or another identity                            |
+| `link_suspended`          | Both       | The link is suspended until a confirming `link` flow                                         |
+| `principal_scope_unknown` | Both       | The link's verified domain provenance needs a scope your contract could not judge, this once |
+| `identity_mismatch`       | Redemption | The link observed at completion is gone or replaced, by its id                               |
+| `session_ineligible`      | Redemption | The session is gone, revoked, of another application or connection, or bound to another link |
+| `authentication_expired`  | Redemption | An adapter's own result states no authentication time                                        |
 
 A refusal at redemption keeps the code consumed and renews nothing. The rest of the redemption's checks apply as they do
 to every code: see [Redeeming a Handoff](redeeming-a-handoff.md).

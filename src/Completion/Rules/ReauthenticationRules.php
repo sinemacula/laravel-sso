@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Completion\CompletionState;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\Enums\LinkResolutionStatus;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 
@@ -82,11 +83,12 @@ final readonly class ReauthenticationRules
      */
     private static function linkRefusal(?LinkResolution $resolution, IdentityReference $identity): ?FailureReason
     {
-        if ($resolution?->isSuspended() ?? false) {
-            return FailureReason::LINK_SUSPENDED;
-        }
-
-        return ($resolution?->isLinked() ?? false) && $resolution->isHeldBy($identity) ? null : FailureReason::IDENTITY_MISMATCH;
+        return match ($resolution?->status) {
+            LinkResolutionStatus::SUSPENDED     => FailureReason::LINK_SUSPENDED,
+            LinkResolutionStatus::SCOPE_UNKNOWN => FailureReason::PRINCIPAL_SCOPE_UNKNOWN,
+            LinkResolutionStatus::LINKED        => $resolution->isHeldBy($identity) ? null : FailureReason::IDENTITY_MISMATCH,
+            default                             => FailureReason::IDENTITY_MISMATCH,
+        };
     }
 
     /**

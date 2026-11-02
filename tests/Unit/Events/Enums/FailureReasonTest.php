@@ -51,7 +51,7 @@ final class FailureReasonTest extends TestCase
             'issuer_mismatch', 'audience_mismatch', 'recipient_mismatch', 'assertion_expired', 'replayed', 'nonce_mismatch',
             'provider_error', 'metadata_expired', 'unlinked', 'purpose_mismatch', 'verifier_mismatch', 'rate_limited',
             'challenge_invalid', 'session_ineligible', 'discovery_no_match', 'connection_mismatch', 'application_mismatch',
-            'enforcement_unsatisfied', 'handoff_unknown', 'handoff_expired', 'link_changed', 'link_suspended', 'link_reserved', 'link_ineligible',
+            'enforcement_unsatisfied', 'handoff_unknown', 'handoff_expired', 'link_changed', 'link_suspended', 'principal_scope_unknown', 'link_reserved', 'link_ineligible',
             'independent_authentication_required', 'identity_mismatch', 'reservation_invalid',
             'provisioning_grant_invalid', 'response_invalid', 'decryption_failed',
             'encryption_required', 'subject_invalid', 'request_mismatch', 'authentication_expired', 'authentication_context_mismatch',

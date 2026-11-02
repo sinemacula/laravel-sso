@@ -22,13 +22,14 @@ use SineMacula\Laravel\Sso\Linking\LinkEmailQuery;
  * confusable matching. Redemption asks again, and the reservation's identity
  * must still be the sole match; another match never becomes the target.
  *
- * Protection through admission: the answer is read at completion and again
- * inside the redeemer's transaction, on the package's storage connection, and
- * it must stay true until that commits. Locking the rows it returned does not
- * stop another identity from matching later, so an implementation relies on a
- * uniqueness guarantee on the verified email, or takes a guard every writer of
- * a verified email takes, after the package's locks in the documented order
- * (`docs/design/linking.md`).
+ * Protection through admission: the answer is read first by a plain read before
+ * the completion takes its locks, which only chooses the identity whose guard
+ * comes first; it is read again under them, and again inside the redeemer's
+ * transaction, on the package's storage connection, and it must stay true until
+ * that commits. Locking the rows it returned does not stop another identity
+ * from matching later, so an implementation relies on a uniqueness guarantee on
+ * the verified email, or takes a guard every writer of a verified email takes,
+ * after the package's locks in the documented order (`docs/design/linking.md`).
  *
  * The default, `Linking\NoEmailMatches`, finds none. An implementation reads
  * from the write connection (SSO-11.3), keeps nothing of one call for the next

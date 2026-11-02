@@ -176,6 +176,7 @@ with the operation's flow (`$event->flow`, a `Flow`) and a machine-readable reas
 | `discovery_invalid`                   | The OpenID provider's discovery document is malformed or names nothing usable                      |
 | `jwks_invalid`                        | The OpenID provider's JWKS is malformed, too large, or holds no usable key                         |
 | `link_suspended`                      | The link is suspended until a confirming `link` flow                                               |
+| `principal_scope_unknown`             | The link stands on a verified domain and its identity's scope could not be judged, this attempt    |
 | `link_reserved`                       | Another flow's live reservation holds the subject                                                  |
 | `link_ineligible`                     | The link eligibility contract does not let the identity link through the connection                |
 | `independent_authentication_required` | The identity holds a verified domain link, and the caller did not authenticate apart from it       |
@@ -234,8 +235,8 @@ A queued listener (`ShouldQueue`) receives every package event as a synchronous 
 `FlowFailed`'s flow and reason are enums.
 
 The unlinked-result event is the one exception: it is dispatched synchronously, inside the flow and before any handoff
-is issued, so a listener can create the identity in time. A queued listener on it fails loudly, because the event refuses
-to be serialised: it would run too late to provision anything. See [Provisioning](provisioning.md).
+is issued, so a listener can create the identity in time. A queued listener on it fails loudly, because the event
+refuses to be serialised: it would run too late to provision anything. See [Provisioning](provisioning.md).
 
 ## Administration events
 

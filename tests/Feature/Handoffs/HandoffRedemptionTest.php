@@ -35,12 +35,14 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
+use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
@@ -50,6 +52,7 @@ use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
+use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
@@ -1037,6 +1040,135 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
+     * Rows of `[whether the code resolved to an identity]`.
+     *
+     * @return iterable<string, array{0: bool}>
+     */
+    public static function provideSignIns(): iterable
+    {
+        yield 'linked' => [true];
+        yield 'unlinked' => [false];
+    }
+
+    /**
+     * A `sign_in` code, linked or unlinked, is never redeemed standalone: it is
+     * a `LogicException`, the code is left unconsumed, and the same code
+     * redeems inside a transaction.
+     *
+     * @param  bool  $linked
+     * @return void
+     *
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    #[DataProvider('provideSignIns')]
+    public function testAStandaloneSignInIsRefusedAndLeavesTheCodeUnconsumed(bool $linked): void
+    {
+        if (!$linked) {
+            $this->linked = null;
+        }
+
+        $code = $this->issue();
+
+        try {
+            app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, self::VERIFIER);
+            self::fail('A sign-in was redeemed with no transaction open.');
+        } catch (\LogicException $exception) {
+            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).', $exception->getMessage());
+        }
+
+        self::assertNull($this->stored($code)->redeemed_at);
+        self::assertSame([], $this->singleUseKeys());
+        self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
+        self::assertTrue($this->redeem($code)->isRedeemed());
+    }
+
+    /**
+     * Rows of `[purpose]`: each purpose the standalone path refuses.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose}>
+     */
+    public static function provideSessionPurposes(): iterable
+    {
+        yield 'a sign_in' => [Purpose::SIGN_IN];
+        yield 'a reauthenticate' => [Purpose::REAUTHENTICATE];
+    }
+
+    /**
+     * A single-use store that is not transactional, such as a shared cache,
+     * keeps whatever it records when the redemption rolls back; the standalone
+     * path refuses a `sign_in` or a `reauthenticate` code before it records
+     * anything there, so the same code still redeems through `admit()`.
+     *
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @return void
+     *
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    #[DataProvider('provideSessionPurposes')]
+    public function testTheStandaloneRefusalRecordsNothingInANonTransactionalStore(Purpose $purpose): void
+    {
+        $store = new class implements SingleUseStore {
+            /** @var array<string, true> Every key recorded, kept whatever rolls back. */
+            public array $recorded = [];
+
+            /**
+             * Record the key unless it was recorded before.
+             *
+             * @param  string  $namespace
+             * @param  string  $key
+             * @param  \Carbon\CarbonImmutable  $until
+             * @return \SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome
+             */
+            #[\Override]
+            public function record(string $namespace, #[\SensitiveParameter] string $key, CarbonImmutable $until): SingleUseOutcome
+            {
+                unset($until);
+
+                if (isset($this->recorded["{$namespace}:{$key}"])) {
+                    return SingleUseOutcome::SEEN;
+                }
+
+                $this->recorded["{$namespace}:{$key}"] = true;
+
+                return SingleUseOutcome::RECORDED;
+            }
+
+            /**
+             * Every key recorded so far, in order.
+             *
+             * @return list<string>
+             */
+            public function keys(): array
+            {
+                return array_keys($this->recorded);
+            }
+        };
+
+        $this->app?->instance(SingleUseStore::class, $store);
+
+        $code = $this->issue($purpose);
+
+        try {
+            app(HandoffRedemption::class)->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER);
+            self::fail('A session purpose was redeemed with no transaction open.');
+        } catch (\LogicException $exception) {
+            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).', $exception->getMessage());
+        }
+
+        self::assertSame([], $store->keys());
+        self::assertNull($this->stored($code)->redeemed_at);
+
+        if ($purpose === Purpose::REAUTHENTICATE) {
+            return;
+        }
+
+        self::assertTrue($this->redeem($code)->isRedeemed());
+        self::assertSame([HandoffRedemption::NAMESPACE . ':' . hash('sha256', $code)], $store->keys());
+    }
+
+    /**
      * Issue a code through the package's store for the purpose, linked to the
      * identity the test holds, with the challenge of the verifier, expiring a
      * minute from now unless given.
@@ -1093,15 +1225,12 @@ final class HandoffRedemptionTest extends TestCase
 
         $caller = $purpose === Purpose::LINK ? new IdentityReference('App\Models\User', '7') : null;
 
-        if ($purpose === Purpose::REAUTHENTICATE) {
-            $redemption = $app->make(HandoffRedemption::class);
-            $connection = $connectionId ?? $this->connection->id;
-            $database   = DB::connection(StorageConnection::name());
+        $redemption = $app->make(HandoffRedemption::class);
+        $connection = $connectionId ?? $this->connection->id;
 
-            return $database->transaction(static fn (): RedemptionResult => $redemption->admit($purpose, $application, $connection, $code, $verifier));
-        }
-
-        return $app->make(HandoffRedemption::class)->redeem($purpose, $application, $connectionId ?? $this->connection->id, $code, $verifier, $caller);
+        return DB::connection(StorageConnection::name())->transaction(
+            static fn (): RedemptionResult => $redemption->redeem($purpose, $application, $connection, $code, $verifier, $caller),
+        );
     }
 
     /**
@@ -1271,5 +1400,11 @@ final class HandoffRedemptionTest extends TestCase
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
         $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
         $this->app?->instance(ReauthenticationSessions::class, new RecordingSessions(ExampleLinks::linkId($this->linked)));
+
+        $storage = new DelegatingLinkStorage(app(LinkStore::class));
+
+        $storage->answering = fn (): LinkResolution => ExampleLinks::resolution($this->linked);
+
+        $this->app?->instance(Linker::class, $storage);
     }
 }

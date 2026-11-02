@@ -103,11 +103,11 @@ writes something of its own that must commit with the link, call `admit()` insid
 
 What is asked, and when:
 
-| Step       | Asked                                                                                                                                                                                                        | Refusal                                                                                                                                                        |
-|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Start      | Freshness, `sso.link.create`                                                                                                                                                                                 | `freshness_required`                                                                                                                                           |
-| Completion | Eligibility; a live reservation of the subject; another identity holding the subject, active or suspended                                                                                                    | `link_ineligible`, `link_reserved`, `subject_already_linked`                                                                                                   |
-| Redemption | The caller is the bound identity; freshness; eligibility; independent authentication, when the identity holds a verified domain link; a live reservation; another identity holding it; the link's continuity | `identity_mismatch`, `freshness_required`, `link_ineligible`, `independent_authentication_required`, `link_reserved`, `subject_already_linked`, `link_changed` |
+| Step       | Asked                                                                                                                                                                                                                                                     | Refusal                                                                                                                                                                                   |
+|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Start      | Freshness, `sso.link.create`                                                                                                                                                                                                                              | `freshness_required`                                                                                                                                                                      |
+| Completion | Eligibility; a live reservation of the subject; another identity holding the subject, active or suspended; a link whose scope cannot be judged                                                                                                            | `link_ineligible`, `link_reserved`, `subject_already_linked`, `principal_scope_unknown`                                                                                                   |
+| Redemption | The caller is the bound identity; freshness; eligibility; independent authentication, when the identity holds or held a verified domain link; a live reservation; another identity holding it; a link whose scope cannot be judged; the link's continuity | `identity_mismatch`, `freshness_required`, `link_ineligible`, `independent_authentication_required`, `link_reserved`, `subject_already_linked`, `principal_scope_unknown`, `link_changed` |
 
 Redemption asks again because holding the code and its verifier proves only that the client started the flow. It does
 not prove who is calling now: you must pass the caller your application has authenticated, and no caller, or one that
@@ -136,19 +136,22 @@ is logically absent, and the link replaces its row.
 > [!IMPORTANT]
 > A `link` asks the freshness contract (`sso.link.create`, with `sso.freshness.max_age_seconds.link_create`) and the
 > eligibility contract, and both defaults refuse. Bind your own of each first. Bind the package's `LinkStore` as your
-> `Linker` too: a `link` writes to the links table, so an alternative linker must answer from that same table, with a
-> link's id, or the links it makes will never resolve.
+> `Linker` too, or a wrapper implementing `Contracts\LinkStorage` that delegates to it: a `link` writes to the links
+> table, so a linker without it is refused with a `LogicException` before anything is written, since the links it made
+> would never resolve.
 
 ## Confirming a suspended link
 
 A link made through a [verified domain](linking-by-domain.md) keeps that provenance. Whenever its identity turns out to
 hold a principal outside the connection's tenant, it is suspended (SSO-8.8): the suspension is stored, the connection's
-links version is raised, `LinkSuspended` is reported, and the link resolves nothing. A sign-in or a reauthentication
-through it is `link_suspended`, and the subject can be neither reserved nor provisioned.
+links version is raised, `LinkSuspended` is reported, the sessions established through it are revoked, and the link
+resolves nothing. A sign-in or a reauthentication through it is `link_suspended`, and the subject can be neither
+reserved nor provisioned.
 
-Your `PrincipalScope` answering `unknown` suspends the link the same way, so answer it only for a set of principals you
-truly cannot vouch for. A store you cannot reach for the moment should throw: the exception propagates, refuses nothing
-and suspends nothing.
+Your `PrincipalScope` answering `unknown` refuses that attempt alone, with `principal_scope_unknown`, whatever the
+purpose: the link is not suspended and nothing is revoked, since uncertainty asserts no widening, and its next
+resolution judges it again. A link already suspended stays suspended. A store you cannot reach for the moment should
+throw: the exception propagates, refuses nothing and suspends nothing.
 
 The suspension is latched. Removing the outside principal later never restores the link. Only the person can, through
 the `link` purpose, with the rules above: the caller is the identity holding the link, with fresh authentication,
@@ -161,11 +164,12 @@ The same happens for a link on a verified domain that is not suspended. A link w
 confirm: it passes, changes nothing and reports only the redemption. A suspension held by another identity is refused as
 `subject_already_linked`, and that link stays suspended.
 
-Suspension blocks new admissions and reauthentication; it does not, by itself, end a session. The change that widens a
-person's scope does that: your principal mutation calls `Linking\ScopeWidening`, which also revokes the sessions
-established through the affected domain links, through your `SessionRevocation` binding, in that same transaction. A
-suspension a resolution finds revokes nothing until then. Confirming a link does not bring a revoked session back, and
-it creates none: the person signs in again.
+Suspension blocks new admissions and reauthentication, and ends the sessions established through the link. The change
+that widens a person's scope is the primary place that happens: your principal mutation calls `Linking\ScopeWidening`,
+which revokes them through your `SessionRevocation` binding, in that same transaction, and revokes again for a link
+already suspended. A resolution that finds a definite outside scope repairs what it missed, revoking through the link in
+its own transaction when it latches. Revocation is therefore asked more than once for a link, and must be idempotent.
+Confirming a link does not bring a revoked session back, and it creates none: the person signs in again.
 
 ### Confirming it is the person
 
@@ -173,10 +177,17 @@ The identity provider behind a verified domain link was not the person's choice.
 their freshness, so it could answer a `link` of them with the same subject. That is not the person confirming anything,
 and it would clear the very provenance that holds the provider to the rule above.
 
-So while an identity holds a link of verified domain provenance, active or suspended, in any connection, every `link` of
-it needs `Contracts\LinkConfirmation` to answer `independent`, or it is `independent_authentication_required`. That covers
-adding a second subject as well as confirming: a new subject would stand with no such provenance. The default refuses
-everyone, so bind your own before anyone can confirm. A `link` of an identity holding no such link never asks it.
+So once an identity has held an active link of verified domain provenance, in any connection, every `link` of it needs
+`Contracts\LinkConfirmation` to answer `independent`, or it is `independent_authentication_required`. That covers adding
+a second subject as well as confirming: a new subject would stand with no such provenance. It goes on after the link is
+removed or confirmed: the package records on the identity's guard, when a reservation is activated, that the identity
+has held one, and never clears it, so removing the link and then linking from the session that survived it is asked
+too. The ids given are those of the links held now, which can be none. The default refuses everyone, so bind your own
+before anyone can confirm. A `link` of an identity that has never held such a link never asks it.
+
+Answer by how the current session was established, not by which links remain: through any link that had verified
+domain provenance at the time, given, removed since or confirmed since, it is `dependent`. So record, when you admit a
+session from a redemption, whether the link it stood on (`$result->linkId`) had that provenance then.
 
 ```php
 use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
@@ -193,10 +204,13 @@ final readonly class PasswordSessionsConfirm implements LinkConfirmation
         // Under the guard your session writers take, through the redeemer's commit
         $session = $this->sessions->currentLocked($identity);
 
-        // Neither established through one of these links, nor renewed through one
-        return $session !== null && $session->wasAuthenticatedApartFrom($domainLinkIds)
-            ? LinkConfirmationVerdict::INDEPENDENT
-            : LinkConfirmationVerdict::DEPENDENT;
+        // Neither established through a link of verified domain provenance, held now or
+        // before, as recorded when the session was admitted, nor renewed through one
+        $independent = $session !== null
+            && !$session->stoodOnADomainLink()
+            && $session->wasAuthenticatedApartFrom($domainLinkIds);
+
+        return $independent ? LinkConfirmationVerdict::INDEPENDENT : LinkConfirmationVerdict::DEPENDENT;
     }
 }
 
@@ -204,9 +218,12 @@ $this->app->scoped(LinkConfirmation::class, PasswordSessionsConfirm::class);
 ```
 
 > [!IMPORTANT]
-> Freshness that came from an SSO sign-in does not count here, even when your `Freshness` binding answers `fresh` for it.
-> Someone whose only credential is the identity provider therefore cannot confirm the link: give them another credential
-> first, or remove the link, which ends its sessions, and have them link again once they hold one.
+> Freshness that came from an SSO sign-in does not count here, even when your `Freshness` binding answers `fresh` for
+> it. Someone whose only credential is the identity provider therefore cannot confirm the link until they hold another.
+> Removal is not the only way out: application-controlled recovery, or a credential established independently of the
+> provider, qualifies. Removing the link does not turn its surviving session into independent authentication, so your
+> credential enrolment and recovery must preserve that distinction: enrolling a credential from a session the link
+> established proves nothing the provider could not do.
 
 ## Deciding who may link
 

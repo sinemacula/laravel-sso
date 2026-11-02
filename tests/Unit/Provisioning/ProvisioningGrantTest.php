@@ -126,6 +126,24 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
+     * Whether it is bound to a result claims nothing, and is exact: a copy with
+     * the same fields is another result.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testBeingBoundToAResultClaimsNothing(): void
+    {
+        $result = self::verifiedResult();
+        $grant  = ProvisioningGrant::issue($result, self::REQUEST_ID, self::until());
+
+        self::assertTrue($grant->isBoundTo($result));
+        self::assertFalse($grant->isBoundTo(clone $result));
+        self::assertTrue($grant->isUsable());
+    }
+
+    /**
      * Closing voids it: the exact result gets nothing, used or not, and closing
      * again changes nothing.
      *

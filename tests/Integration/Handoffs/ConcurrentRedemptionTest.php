@@ -18,6 +18,7 @@ use SineMacula\Laravel\Sso\Flows\S256Challenge;
 use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
 use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -286,7 +287,9 @@ final class ConcurrentRedemptionTest extends TestCase
                 usleep((int) ($wait * 1000000));
             }
 
-            $answer  = app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $this->code, self::VERIFIER);
+            $answer = DB::connection(StorageConnection::name())->transaction(
+                fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $this->code, self::VERIFIER),
+            );
             $outcome = $answer->isRedeemed() ? 'redeemed' : 'refused:' . $answer->reason?->value;
 
             if ($inTransaction) {

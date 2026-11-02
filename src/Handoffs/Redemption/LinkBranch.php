@@ -5,7 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Handoffs\Redemption;
 
 use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
-use SineMacula\Laravel\Sso\Contracts\Linker;
+use SineMacula\Laravel\Sso\Contracts\LinkStorage;
 use SineMacula\Laravel\Sso\Contracts\PurposeBranch;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
@@ -16,7 +16,7 @@ use SineMacula\Laravel\Sso\Linking\LinkConfirmationGate;
 use SineMacula\Laravel\Sso\Links\Enums\LinkCreationStatus;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
-use SineMacula\Laravel\Sso\Links\LinkStore;
+use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 
 /**
@@ -25,19 +25,27 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
  * the evidence contract. The caller the application has authenticated must be
  * the identity the code is bound to, compared byte for byte, since possessing
  * the code and its verifier does not prove that (`identity_mismatch`).
+ *
+ * The package's locks come first: under the identity's guard and the
+ * connections `Handoffs\HandoffRecheck::lock()` took, the identity's verified
+ * domain links and the subject's link are read by locking reads, and only then
+ * is any application contract asked, so its guards come after the package's.
  * Freshness (`sso.link.create`, `freshness_required`) and
  * `Contracts\LinkEligibility` (`link_ineligible`) are asked again, and
  * same-identity idempotence bypasses neither. An identity holding a link of
- * verified domain provenance, in any connection, then needs
- * `Linking\LinkConfirmationGate` to pass, or the redemption is
- * `independent_authentication_required`: the provider behind that link cannot
- * confirm it, nor add a second subject that escapes its rule. Then, in this
- * order, against the link as it is now:
+ * verified domain provenance, in any connection, or that has ever held an
+ * active one, then needs `Linking\LinkConfirmationGate` to pass, or the
+ * redemption is `independent_authentication_required`: the provider behind that
+ * link cannot confirm it, nor add a second subject that escapes its rule, and
+ * removing the link first does not change that. Then, in this order, against
+ * the link as it is now:
  *
  * - a live reservation is busy, `link_reserved`: never converted, and never
  *   superseded by a fresh proof;
  * - a link another identity holds, active or suspended, is
  *   `subject_already_linked`, naming nobody;
+ * - a link whose scope could not be judged is `principal_scope_unknown`, for
+ *   this attempt, and nothing is confirmed;
  * - a link observed at completion that is gone or replaced is `link_changed`:
  *   links are compared by id, so a link removed and made again for the same
  *   identity is refused; a binding that names a linked identity but no link
@@ -53,10 +61,14 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
  * connection's links version and reports `LinkConfirmed`
  * (`Links\LinkStore::confirm()`); a link with no such provenance is left as it
  * is, and reports nothing. Admission judges the link it re-reads again, so a
- * `Contracts\Linker` that does not hold the locks of the redemption can never
- * make it write what `judge()` did not pass.
+ * wrapper whose answer moved can never make it write what `judge()` did not
+ * pass.
  *
- * It holds the linker, the store, the eligibility, the freshness gate and the
+ * The bound `Contracts\Linker` must be backed by `Contracts\LinkStorage`, since
+ * a link written here must be one the resolver reads: another is a
+ * `LogicException` before anything is written.
+ *
+ * It holds the storage binding, the eligibility, the freshness gate and the
  * confirmation gate, none of which keeps anything of one redemption for the
  * next (SSO-11.2).
  *
@@ -70,19 +82,15 @@ final readonly class LinkBranch implements PurposeBranch
     /**
      * Constructor.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\Linker  $linker
-     * @param  \SineMacula\Laravel\Sso\Links\LinkStore  $store
+     * @param  \SineMacula\Laravel\Sso\Links\LinkStorageBinding  $storage
      * @param  \SineMacula\Laravel\Sso\Contracts\LinkEligibility  $eligibility
      * @param  \SineMacula\Laravel\Sso\Freshness\FreshnessGate  $freshness
      * @param  \SineMacula\Laravel\Sso\Linking\LinkConfirmationGate  $confirmation
      */
     public function __construct(
 
-        /** Resolves the result's link now. */
-        private Linker $linker,
-
-        /** Creates or confirms the link. */
-        private LinkStore $store,
+        /** Resolves the result's link now, and creates or confirms it. */
+        private LinkStorageBinding $storage,
 
         /** Whether the identity may link through the connection. */
         private LinkEligibility $eligibility,
@@ -95,27 +103,29 @@ final readonly class LinkBranch implements PurposeBranch
     ) {}
 
     /**
-     * Judge the caller, freshness, eligibility and the link as it is now.
+     * Judge the caller; then, once the package's link locks are taken,
+     * freshness, eligibility, the confirmation and the link as it is now.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @return \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
+     *
+     * @throws \LogicException
+     * @throws \SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged
      */
     #[\Override]
     public function judge(RedemptionContext $context): RecheckOutcome
     {
+        $storage  = $this->storage->require('A [link] redemption');
         $identity = $context->binding->identity;
 
         if (!self::isCallerBound($context->caller, $identity)) {
             return RecheckOutcome::IDENTITY_MISMATCH;
         }
 
-        if (!$this->freshness->check(FreshnessOperation::LINK_CREATE)->isFresh()) {
-            return RecheckOutcome::FRESHNESS_REQUIRED;
-        }
+        $held = $this->confirmation->lockedDomainLinks($identity, $context->lock);
+        $now  = $storage->resolve($context->result);
 
-        return $this->eligibility->judge($identity, $context->connection)->isEligible()
-            ? $this->standing($context, $identity)
-            : RecheckOutcome::LINK_INELIGIBLE;
+        return $this->applicationRefusal($context, $identity, $held) ?? self::continuity($now, $identity, $context->binding);
     }
 
     /**
@@ -130,20 +140,22 @@ final readonly class LinkBranch implements PurposeBranch
     #[\Override]
     public function admit(RedemptionContext $context): Admission
     {
+        $storage  = $this->storage->require('A [link] redemption');
         $identity = $context->binding->identity ?? throw new \LogicException('A link flow names the identity it was started for.');
+        $held     = $this->confirmation->lockedDomainLinks($identity, $context->lock);
 
-        if (!$this->confirmation->allows($identity, $context->connection)) {
+        if (!$this->confirmation->allows($identity, $context->connection, $held, $context->lock->domainLinkHeld)) {
             return Admission::refused(RecheckOutcome::INDEPENDENT_AUTHENTICATION_REQUIRED);
         }
 
-        $now     = $this->linker->resolve($context->result);
+        $now     = $storage->resolve($context->result);
         $outcome = self::continuity($now, $identity, $context->binding);
 
         if ($outcome !== RecheckOutcome::PASSED) {
             return Admission::refused($outcome);
         }
 
-        return $now->linkId === null ? $this->created($context, $identity) : $this->confirmed($context, $identity, $now->linkId);
+        return $now->linkId === null ? self::created($storage, $context, $identity) : self::confirmed($storage, $context, $identity, $now->linkId);
     }
 
     /**
@@ -162,18 +174,24 @@ final readonly class LinkBranch implements PurposeBranch
     }
 
     /**
-     * What the identity's domain links, and then the link as it is now, leave
-     * of the redemption.
+     * Why an application contract refuses the redemption, or `null`, asked once
+     * the package's locks are held: freshness, eligibility, the confirmation.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @return \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
+     * @param  list<string>  $held
+     * @return ?\SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
      */
-    private function standing(RedemptionContext $context, IdentityReference $identity): RecheckOutcome
+    private function applicationRefusal(RedemptionContext $context, IdentityReference $identity, array $held): ?RecheckOutcome
     {
-        return $this->confirmation->allows($identity, $context->connection)
-            ? self::continuity($this->linker->resolve($context->result), $identity, $context->binding)
-            : RecheckOutcome::INDEPENDENT_AUTHENTICATION_REQUIRED;
+        $connection = $context->connection;
+
+        return match (true) {
+            !$this->freshness->check(FreshnessOperation::LINK_CREATE)->isFresh()                        => RecheckOutcome::FRESHNESS_REQUIRED,
+            !$this->eligibility->judge($identity, $connection)->isEligible()                            => RecheckOutcome::LINK_INELIGIBLE,
+            !$this->confirmation->allows($identity, $connection, $held, $context->lock->domainLinkHeld) => RecheckOutcome::INDEPENDENT_AUTHENTICATION_REQUIRED,
+            default                                                                                     => null,
+        };
     }
 
     /**
@@ -190,6 +208,7 @@ final readonly class LinkBranch implements PurposeBranch
         return match (true) {
             $now->isReserved()                     => RecheckOutcome::LINK_RESERVED,
             self::isHeldByAnother($now, $identity) => RecheckOutcome::SUBJECT_ALREADY_LINKED,
+            $now->isScopeUnknown()                 => RecheckOutcome::PRINCIPAL_SCOPE_UNKNOWN,
             self::isReplaced($now, $binding)       => RecheckOutcome::LINK_CHANGED,
             default                                => RecheckOutcome::PASSED,
         };
@@ -226,18 +245,17 @@ final readonly class LinkBranch implements PurposeBranch
      * Clear the identity's link of its verified domain provenance and any
      * suspension, and answer it.
      *
+     * @param  \SineMacula\Laravel\Sso\Contracts\LinkStorage  $storage
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $linkId
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Admission
-     *
-     * @throws \InvalidArgumentException
      */
-    private function confirmed(RedemptionContext $context, IdentityReference $identity, string $linkId): Admission
+    private static function confirmed(LinkStorage $storage, RedemptionContext $context, IdentityReference $identity, string $linkId): Admission
     {
         $result = $context->result;
 
-        $this->store->confirm($context->connection, $linkId, $result->application, $result->requestReference);
+        $storage->confirm($context->connection, $linkId, $result->application, $result->requestReference);
 
         return new Admission(RecheckOutcome::PASSED, $identity, $linkId);
     }
@@ -245,19 +263,17 @@ final readonly class LinkBranch implements PurposeBranch
     /**
      * Create the link, answering the store's refusal when it makes none.
      *
+     * @param  \SineMacula\Laravel\Sso\Contracts\LinkStorage  $storage
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Admission
-     *
-     * @throws \LogicException
-     * @throws \Throwable
      */
-    private function created(RedemptionContext $context, IdentityReference $identity): Admission
+    private static function created(LinkStorage $storage, RedemptionContext $context, IdentityReference $identity): Admission
     {
         $result    = $context->result;
         $subject   = LinkSubject::of($result);
         $reference = $result->requestReference;
-        $creation  = $this->store->create($context->connection, $subject, $identity, LinkOrigin::LINK_PURPOSE, null, $result->application, $result->purpose, $reference);
+        $creation  = $storage->create($context->connection, $subject, $identity, LinkOrigin::LINK_PURPOSE, null, $result->application, $result->purpose, $reference);
 
         return match ($creation->status) {
             LinkCreationStatus::CREATED                => new Admission(RecheckOutcome::PASSED, $identity, $creation->linkId()),

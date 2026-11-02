@@ -25,7 +25,9 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * connection, so its writes commit or roll back with the change; one that
  * writes elsewhere is not atomic with it. It signals failure by throwing: the
  * exception rolls the change back and propagates as a server error. It never
- * reports success it did not achieve.
+ * reports success it did not achieve. It is idempotent: a widened scope revokes
+ * through one link from the principal's change and again from a resolution that
+ * finds it first.
  *
  * The default, `Revocation\NoSessionRevocation`, does nothing: an application
  * without `laravel-authentication` binds its own, or accepts that existing

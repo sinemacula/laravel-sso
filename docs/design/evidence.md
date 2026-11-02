@@ -41,11 +41,18 @@ event. The guide is `docs/guides/evidence.md`.
 | `acr`                     | all but SAML | Accepted classes, at most 32, each once, each 1 to 1024 bytes   |
 | `authn_context_class_ref` | SAML         | Accepted classes, by the same rules as `acr`                    |
 | `combinations`            | all          | What counts: 1 to 32 maps, any one of which is enough           |
+| `max_age_seconds`         | all          | Optional: a whole number from 1, up to the ceiling              |
 
 A combination names `amr`, a non-empty list every one of which the assertion must state, `acr`, the class it must state,
 or both; on SAML, `authn_context_class_ref`. Each value must be one the policy lists. A combination naming nothing is
 refused, since it would otherwise count anything. The connection's protocol decides which names it may hold, and a
-stored policy naming another protocol's is malformed there. A driver an application registered reads as OIDC does.
+stored policy naming another protocol's is malformed there. A driver an application registered reads as OIDC does: the
+methods and class of its `AuthenticationContext` are its normalised evidence contract, populated only from its own
+authenticated response, not an assumption that its wire protocol is OIDC.
+
+`sso.linking.evidence_max_age_seconds` is the ceiling, and `max_age_seconds` may only tighten it: a value above the
+ceiling is `not_allowed` when written, and a stored value is clamped to the ceiling as it is when read, so lowering the
+ceiling later still wins, and never turns a stored policy malformed.
 
 Only methods are filtered into the evidence. An asserted method the policy does not list is dropped, and a combination
 it would have completed is not satisfied. The raw class is carried whether listed or not, since it is data; it satisfies
@@ -59,8 +66,9 @@ no protocol trust change and no linking change: `trust_version`, `linking_versio
 request, code or reservation is touched. It reports `ConnectionUpdated` once, after commit, with the names as
 `evidence.*`, sorted, and no value; a refused or unchanged call reports nothing.
 
-Reads and writes are judged by one set of rules, so nothing `set()` accepts can later read as malformed and nothing it
-refuses can be read as a policy. A row the package did not write is insufficient, and `set()` can replace it.
+Reads and writes are judged by one set of rules, the ceiling apart, so nothing `set()` accepts can later read as
+malformed and nothing else it refuses can be read as a policy. A row the package did not write is insufficient, and
+`set()` can replace it.
 
 ### What a redeemer does with it
 
@@ -86,10 +94,15 @@ or the application's (AUTH-3.12).
 
 ## Failure / Edge Cases
 
-- No authentication time, one older than `sso.linking.evidence_max_age_seconds`, or one later than the instant by more
-  than `sso.clock.skew_seconds`, is `null`. Each bound is itself accepted, to the microsecond.
+- No authentication time, one older than the policy's `max_age_seconds` or the ceiling, whichever is lower now, or one
+  later than the instant by more than `sso.clock.skew_seconds`, is `null`. Each bound is itself accepted, to the
+  microsecond.
 - A provider whose methods include an unlisted value still gives the listed ones: only they enter, and only they satisfy
-  a combination.
+  a combination. A provider-specific `amr` does not force class-only evidence, since a result may also carry accepted
+  standard methods; a result with no accepted combination is insufficient. Accepted lists alone authorise nothing: a
+  combination must name what counts.
+- The raw `acr` or `AuthnContextClassRef` stays data, through `rawContext()`, so downstream policy cannot mistake it for
+  an accepted class.
 - `reauthenticate` with insufficient evidence still renews the authentication time, which is the purpose's whole
   meaning, and offers nothing.
 - An error from the policy, or from a contract it reads, rolls the redeemer's transaction back with the code unconsumed.

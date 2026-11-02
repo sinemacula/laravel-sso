@@ -460,7 +460,6 @@ final class ConcurrentActivationTest extends LinkingTestCase
     {
         DB::connection(StorageConnection::name())->transaction(function (): void {
             app(ScopeWidening::class)->widened($this->person, 'tenant-2');
-            app(ScopeWidening::class)->assertSettled($this->person, 'tenant-2');
         });
 
         return self::CHANGED;
@@ -522,9 +521,10 @@ final class ConcurrentActivationTest extends LinkingTestCase
 
     /**
      * In a forked process: open a connection of its own; inside a transaction,
-     * open one at `REPEATABLE READ` and read the connection and its links; signal
-     * it has read; do its work; commit; report; signal it is done, once its work
-     * is committed or refused; and end without running the parent's shutdown.
+     * open one at `REPEATABLE READ` and read the connection and its links;
+     * signal it has read; do its work; commit; report; signal it is done, once
+     * its work is committed or refused; and end without running the parent's
+     * shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work

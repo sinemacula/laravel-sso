@@ -34,6 +34,7 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
+use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -291,26 +292,13 @@ final class SignInBranchTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[what the principal scope contract answers at redemption]`.
+     * A domain link whose person's scope widened since completion is found out
+     * at redemption, suspended for good, and refused. A contract answering
+     * `within_tenant` again restores nothing.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict}>
-     */
-    public static function provideRefusingVerdicts(): iterable
-    {
-        yield 'outside the tenant' => [ScopeVerdict::OUTSIDE_TENANT];
-        yield 'unknown' => [ScopeVerdict::UNKNOWN];
-    }
-
-    /**
-     * A domain link whose person's scope widened since completion, or is no
-     * longer known, is found out at redemption, suspended for good, and
-     * refused. A contract answering `within_tenant` again restores nothing.
-     *
-     * @param  \SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict  $verdict
      * @return void
      */
-    #[DataProvider('provideRefusingVerdicts')]
-    public function testADomainLinkFoundOutsideTheTenantAtRedemptionIsSuspended(ScopeVerdict $verdict): void
+    public function testADomainLinkFoundOutsideTheTenantAtRedemptionIsSuspended(): void
     {
         $first = $this->start();
 
@@ -322,7 +310,7 @@ final class SignInBranchTest extends LinkingTestCase
         $start      = $this->start();
         $completion = $this->complete();
 
-        $this->scope->verdict = $verdict;
+        $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
 
         $this->assertRefused($completion, $start, FailureReason::LINK_SUSPENDED);
         self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
@@ -333,6 +321,40 @@ final class SignInBranchTest extends LinkingTestCase
         $this->start();
 
         self::assertSame(FailureReason::LINK_SUSPENDED, $this->complete()->reason);
+    }
+
+    /**
+     * A domain link whose person's scope is no longer known at redemption
+     * refuses that redemption with a reason of its own, spends its code, and
+     * leaves the link as it was: the next sign-in goes through once the verdict
+     * is known.
+     *
+     * @return void
+     */
+    public function testADomainLinkOfUnknownScopeAtRedemptionRefusesThatAttempt(): void
+    {
+        $first = $this->start();
+
+        self::assertTrue($this->admit($this->complete(), $first)->isAdmitted());
+
+        $this->asked = 0;
+
+        $start      = $this->start();
+        $completion = $this->complete();
+        $version    = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
+
+        $this->scope->verdict = ScopeVerdict::UNKNOWN;
+
+        $this->assertRefused($completion, $start, FailureReason::PRINCIPAL_SCOPE_UNKNOWN);
+        self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
+        self::assertNull(Link::query()->sole()->suspended_at);
+        self::assertSame($version, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
+
+        $this->scope->verdict = ScopeVerdict::WITHIN_TENANT;
+
+        $again = $this->start();
+
+        self::assertTrue($this->admit($this->complete(), $again)->isAdmitted());
     }
 
     /**

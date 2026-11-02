@@ -10,9 +10,9 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 /**
  * Linking contract (SSO-8.2, SSO-8.3, AUTH-3.9): what a verified result's link
  * resolves to, through a link keyed by its connection, its issuer and its
- * subject (for SAML, the `NameID` with its format): linked, absent, reserved or
- * suspended (`Links\LinkResolution`). Only `absent` lets a result be
- * provisioned, reserve a link or take an unlinked handoff.
+ * subject (for SAML, the `NameID` with its format): linked, absent, reserved,
+ * suspended or of unknown scope (`Links\LinkResolution`). Only `absent` lets a
+ * result be provisioned, reserve a link or take an unlinked handoff.
  *
  * A result matches a link only through the connection it completed through, so
  * a tenant administrator who enters another identity provider's issuer in their
@@ -25,9 +25,19 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * `Links\LinkStore`, implements it over the links table; the application or
  * `laravel-iam` binds it, and under `laravel-iam` the same store answers
  * `laravel-authentication`'s link contract, so both packages see the same
- * links. An implementation reads from the write connection (SSO-11.3), keeps
- * nothing of one call for the next (SSO-11.2), and lets a database error
- * propagate; it never answers an identity it cannot vouch for.
+ * links. Whatever writes a link needs `Contracts\LinkStorage`, which that store
+ * implements and a wrapper can delegate; a `Linker` without it resolves results
+ * and nothing writes through it. An implementation reads from the write
+ * connection (SSO-11.3), keeps nothing of one call for the next (SSO-11.2), and
+ * lets a database error propagate; it never answers an identity it cannot vouch
+ * for.
+ *
+ * A resolution can write: the package's store latches a suspension when the
+ * principal scope contract answers `outside_tenant`. A caller resolving inside
+ * a transaction of its own therefore locks the result's connection first, as
+ * the package's completion and redemptions do, so a link is never locked before
+ * its connection (`docs/design/links.md`); one with no transaction open needs
+ * nothing more.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

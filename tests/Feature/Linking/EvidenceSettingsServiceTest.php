@@ -323,6 +323,10 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     public static function provideInvalidPolicies(): iterable
     {
         yield 'an unknown name' => [VerifyingDriver::NAME, ['max_age' => 5] + self::POLICY, [['max_age', 'unknown']]];
+        yield 'a maximum age above the ceiling' => [VerifyingDriver::NAME, ['max_age_seconds' => 901] + self::POLICY, [['max_age_seconds', 'not_allowed']]];
+        yield 'a maximum age of nothing' => [VerifyingDriver::NAME, ['max_age_seconds' => 0] + self::POLICY, [['max_age_seconds', 'not_allowed']]];
+        yield 'a maximum age below nothing' => [VerifyingDriver::NAME, ['max_age_seconds' => -1] + self::POLICY, [['max_age_seconds', 'not_allowed']]];
+        yield 'a maximum age as a string' => [VerifyingDriver::NAME, ['max_age_seconds' => '60'] + self::POLICY, [['max_age_seconds', 'invalid_type']]];
         yield 'an unregistered method' => [VerifyingDriver::NAME, ['amr' => ['none']], [['amr.0', 'not_allowed'], ['combinations', 'required']]];
         yield 'no combinations' => [VerifyingDriver::NAME, ['amr' => ['pwd']], [['combinations', 'required']]];
         yield 'a combination naming nothing' => [VerifyingDriver::NAME, ['amr' => ['pwd'], 'combinations' => [[]]], [['combinations.0', 'required']]];
@@ -353,6 +357,54 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
         self::assertNull(self::column($connection->id));
 
         $this->assertEventSequence([]);
+    }
+
+    /**
+     * Rows of `[the connection's own maximum age]`: the least, and the ceiling
+     * itself, each accepted.
+     *
+     * @return iterable<string, array{0: int}>
+     */
+    public static function provideAcceptedMaximumAges(): iterable
+    {
+        yield 'one second' => [1];
+        yield 'one under the ceiling' => [899];
+        yield 'the ceiling' => [900];
+    }
+
+    /**
+     * A maximum age up to the ceiling is written, and named when it changes.
+     *
+     * @param  int  $age
+     * @return void
+     */
+    #[DataProvider('provideAcceptedMaximumAges')]
+    public function testAMaximumAgeUpToTheCeilingIsWritten(int $age): void
+    {
+        $result = self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => $age] + self::POLICY);
+
+        self::assertTrue($result->isChanged());
+        self::assertSame($age, app(EvidenceSettingsService::class)->get('tenant-1', $this->connection->id)['max_age_seconds'] ?? null);
+    }
+
+    /**
+     * The ceiling is read when the policy is written: lowering it refuses a
+     * value it accepted before, which stays as stored until it is replaced.
+     *
+     * @return void
+     */
+    public function testTheCeilingIsReadAtWriteTime(): void
+    {
+        self::assertTrue(self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => 800] + self::POLICY)->isChanged());
+
+        config()->set('sso.linking.evidence_max_age_seconds', 700);
+
+        $result = self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => 701] + self::POLICY);
+
+        self::assertSame(ConnectionStatus::INVALID, $result->status);
+        self::assertSame([['max_age_seconds', 'not_allowed']], self::violations($result));
+        self::assertSame(800, app(EvidenceSettingsService::class)->get('tenant-1', $this->connection->id)['max_age_seconds'] ?? null);
+        self::assertTrue(self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => 700] + self::POLICY)->isChanged());
     }
 
     /**

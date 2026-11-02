@@ -4,24 +4,34 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Linking;
 
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\LinkSuspended;
+use SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged;
+use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
+use SineMacula\Laravel\Sso\Linking\IdentityLock;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
+use SineMacula\Laravel\Sso\Links\NoLinks;
 use SineMacula\Laravel\Sso\Links\ReservationWithdrawal;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\IdentityGuard;
 use SineMacula\Laravel\Sso\Models\Link;
+use SineMacula\Laravel\Sso\Results\AuthenticationContext;
+use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
@@ -29,6 +39,7 @@ use Tests\Concerns\ComparesIdentitiesWithoutCase;
 use Tests\Concerns\RecordsLockOrder;
 use Tests\Fixtures\Enforcement\FailingRevocation;
 use Tests\Fixtures\Enforcement\TableSessions;
+use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -38,8 +49,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  * established through them revoked; its reservations in them are deleted, so a
  * principal added and removed between checks is caught; links of any other
  * provenance, identity or tenant are left; the lock order; a revocation that
- * fails rolls it back; and `assertSettled()` catches what its first read
- * missed.
+ * fails rolls it back; the identity's guard comes first, and a row its plain
+ * read missed refuses the whole change.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,6 +58,9 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  * @internal
  */
 #[CoversClass(ScopeWidening::class)]
+#[CoversClass(IdentityLock::class)]
+#[CoversClass(IdentityGuard::class)]
+#[CoversClass(LinkCandidatesChanged::class)]
 #[CoversClass(RevocationScope::class)]
 #[CoversClass(RevocationScopeKind::class)]
 #[CoversClass(RevocationReason::class)]
@@ -94,27 +108,24 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Outside a transaction on the storage connection, each refuses.
+     * Outside a transaction on the storage connection, it refuses, and takes no
+     * guard.
      *
      * @return void
      */
-    public function testEachNeedsATransaction(): void
+    public function testItNeedsATransaction(): void
     {
-        $message = 'A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection (decision D5).';
-
         try {
             app(ScopeWidening::class)->widened($this->person, 'tenant-2');
             self::fail('It widened with no transaction open.');
         } catch (\LogicException $exception) {
-            self::assertSame($message, $exception->getMessage());
+            self::assertSame(
+                'A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection (decision D5).',
+                $exception->getMessage(),
+            );
         }
 
-        try {
-            app(ScopeWidening::class)->assertSettled($this->person, 'tenant-2');
-            self::fail('It settled with no transaction open.');
-        } catch (\LogicException $exception) {
-            self::assertSame($message, $exception->getMessage());
-        }
+        self::assertSame(0, IdentityGuard::query()->count());
     }
 
     /**
@@ -156,7 +167,7 @@ final class ScopeWideningTest extends LinkingTestCase
         self::assertSame(RevocationReason::SCOPE_WIDENED, $scope->reason);
         self::assertSame('tenant-1', $scope->tenantId);
         self::assertSame($this->connection->id, $scope->connectionId);
-        self::assertSame($this->person, $scope->identity);
+        self::assertSame($this->person->jsonSerialize(), $scope->identity?->jsonSerialize());
         self::assertSame($link->id, $scope->linkId);
         self::assertNull($scope->policy);
 
@@ -271,8 +282,9 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A link suspended by a resolution revoked nothing then, so its sessions
-     * are revoked now, with no second event and no version raised.
+     * The resolution that latched the link revoked its sessions once; the
+     * widening revokes them again, idempotently, with no second event, no
+     * version raised and its `suspended_at` unchanged.
      *
      * @return void
      */
@@ -291,11 +303,88 @@ final class ScopeWideningTest extends LinkingTestCase
 
         $this->clock->advance(30);
 
+        $linkIds = static fn (array $scopes): array => array_map(static fn (RevocationScope $scope): ?string => $scope->linkId, $scopes);
+
+        self::assertSame([$link->id], $linkIds($this->revocation->scopes), 'The resolution that latched it revoked.');
+
         self::assertSame(0, $this->widen($this->person, 'tenant-2'));
-        self::assertSame([$link->id], array_map(static fn (RevocationScope $scope): ?string => $scope->linkId, $this->revocation->scopes));
+        self::assertSame([$link->id, $link->id], $linkIds($this->revocation->scopes));
         self::assertSame($version, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
         self::assertCount($events, $this->recordedEvents());
         self::assertSame($stamped?->toIso8601String(), Link::query()->sole()->suspended_at?->toIso8601String());
+    }
+
+    /**
+     * A resolution outside any transaction that finds the link outside the
+     * tenant latches it in the package's order: its first locking read ends
+     * with its statement, then, in the latch's own transaction, the link's
+     * connection is locked before the link is read again, locked; it is
+     * suspended, reported and revoked once.
+     *
+     * @return void
+     */
+    public function testALatchOutsideAnyTransactionLocksTheConnectionFirst(): void
+    {
+        $link    = $this->activeDomainLink();
+        $version = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
+        $before  = count($this->recordedEvents());
+
+        $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
+
+        $this->recordLockOrder();
+
+        self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
+        self::assertTrue(app(LinkStore::class)->resolve($this->resultOfTheLink())->isSuspended());
+        self::assertSame(['link', 'connections ' . $this->connection->id . ', tenant-1', 'link'], $this->lockOrder());
+
+        $events = array_slice($this->recordedEvents(), $before);
+
+        self::assertCount(1, $events);
+        self::assertInstanceOf(LinkSuspended::class, $events[0]);
+        self::assertSame([$link->id], array_map(static fn (RevocationScope $scope): ?string => $scope->linkId, $this->revocation->scopes));
+        self::assertSame([1], $this->revocation->levels);
+        self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
+        self::assertSame($version + 1, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
+    }
+
+    /**
+     * A latch another resolution made between this one's read and its lock is
+     * never made twice: under the locks the link is found suspended, so this
+     * resolution answers `suspended` with no second suspension, event,
+     * revocation or version.
+     *
+     * @return void
+     */
+    public function testALatchAnotherResolutionMadeFirstIsNotMadeAgain(): void
+    {
+        $link    = $this->activeDomainLink();
+        $before  = count($this->recordedEvents());
+        $table   = StorageConnection::table('links.table');
+        $latched = false;
+
+        $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
+
+        DB::connection(StorageConnection::name())->listen(function (QueryExecuted $query) use ($link, $table, &$latched): void {
+
+            if ($latched || !str_starts_with(strtolower($query->sql), 'select') || !str_contains($query->sql, $table)) {
+                return;
+            }
+
+            $latched = true;
+
+            Link::query()->whereKey($link->id)->update(['state' => LinkState::SUSPENDED->value, 'suspended_at' => '2026-11-01 09:00:00']);
+        });
+
+        $version = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
+        $answer  = app(LinkStore::class)->resolve($this->resultOfTheLink());
+
+        self::assertTrue($latched);
+        self::assertTrue($answer->isSuspended());
+        self::assertSame($link->id, $answer->linkId);
+        self::assertSame([], array_slice($this->recordedEvents(), $before));
+        self::assertSame([], $this->revocation->scopes);
+        self::assertSame($version, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
+        self::assertSame('2026-11-01T09:00:00+00:00', Link::query()->sole()->suspended_at?->toIso8601String());
     }
 
     /**
@@ -333,9 +422,9 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Each connection of another tenant is taken in ascending id order, the
-     * connection before its links, and a connection of the new principal's
-     * tenant is never locked.
+     * Every connection holding one of the identity's rows is locked in one
+     * statement, in ascending id order, before its links; a connection of the
+     * new principal's tenant is locked with them but left unchanged.
      *
      * @return void
      */
@@ -355,12 +444,15 @@ final class ScopeWideningTest extends LinkingTestCase
 
         $this->domainRowIn($mine, 'subject-in-mine');
 
+        $all = [...$ids, $mine->id];
+
         sort($ids, SORT_STRING);
+        sort($all, SORT_STRING);
 
         $this->recordLockOrder();
 
         self::assertSame(2, $this->widen($this->person, 'tenant-9'));
-        self::assertSame(['connections ' . $ids[0], 'link', 'connections ' . $ids[1], 'link'], $this->lockOrder());
+        self::assertSame(['identity guard', 'connections ' . implode(', ', $all), 'link'], $this->lockOrder());
         self::assertSame($ids, array_map(static fn (RevocationScope $scope): ?string => $scope->connectionId, $this->revocation->scopes));
         self::assertSame(LinkState::ACTIVE, Link::query()->where('connection_id', $mine->id)->sole()->state);
     }
@@ -394,87 +486,108 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Once `widened()` has run nothing stands in the way, so `assertSettled()`
-     * passes, as it does for an identity with no links and for a connection of
-     * the new principal's own tenant.
-     *
-     * @return void
-     */
-    public function testASettledChangePasses(): void
-    {
-        $this->activeDomainLink();
-
-        $this->connection->getConnection()->transaction(function (): void {
-
-            app(ScopeWidening::class)->assertSettled($this->person, 'tenant-1');
-            app(ScopeWidening::class)->assertSettled(new IdentityReference('App\Models\User', '8'), 'tenant-2');
-            app(ScopeWidening::class)->widened($this->person, 'tenant-2');
-            app(ScopeWidening::class)->assertSettled($this->person, 'tenant-2');
-        });
-
-        self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
-    }
-
-    /**
-     * A link or a reservation that appeared after `widened()` read refuses the
-     * change, which rolls back to be retried; a retry reaches it.
+     * A row its plain read did not see, which only a transaction with an older
+     * snapshot can come to, stands in a connection that was not locked, and
+     * that connection cannot be locked now: the whole change is refused, for a
+     * retry, with nothing changed and no revocation. The retry reaches it.
      *
      * @return void
      *
      * @throws \Throwable
      */
-    public function testWhatAppearedSinceTheFirstReadRefusesTheChange(): void
+    public function testARowItsFirstReadMissedRefusesTheWholeChange(): void
     {
-        foreach ([LinkState::ACTIVE, LinkState::RESERVED] as $state) {
+        $other    = $this->connectionOf('tenant-2');
+        $database = $this->connection->getConnection();
+        $inserted = false;
 
-            Link::query()->delete();
+        $database->listen(function (QueryExecuted $query) use ($other, &$inserted): void {
 
-            $row = $this->domainRowIn($this->connection, 'a-subject', $state);
-
-            try {
-                $this->connection->getConnection()->transaction(function (): void {
-                    app(ScopeWidening::class)->assertSettled($this->person, 'tenant-2');
-                });
-
-                self::fail('The change went on over what it missed.');
-            } catch (\RuntimeException $exception) {
-                self::assertSame('An identity\'s links changed while its scope widened; retry the whole transaction.', $exception->getMessage());
+            if ($inserted || !str_contains($query->sql, StorageConnection::table('links.table')) || !str_starts_with(strtolower($query->sql), 'select')) {
+                return;
             }
 
-            self::assertSame($state, Link::query()->whereKey($row->id)->sole()->state);
-        }
+            $inserted = true;
 
-        $this->connection->getConnection()->transaction(function (): void {
-            app(ScopeWidening::class)->widened($this->person, 'tenant-2');
-            app(ScopeWidening::class)->assertSettled($this->person, 'tenant-2');
+            $this->domainRowIn($other, 'a-subject');
         });
 
-        self::assertSame(0, Link::query()->where('state', LinkState::RESERVED->value)->count());
+        try {
+            $database->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-9'));
+            self::fail('The change went on over what it missed.');
+        } catch (LinkCandidatesChanged $exception) {
+            self::assertSame('An identity\'s verified domain links changed before they were locked; retry the whole transaction.', $exception->getMessage());
+        }
+
+        self::assertSame([], $this->revocation->scopes);
+        self::assertSame(0, Link::query()->count(), 'The row made in that transaction rolls back with it.');
+
+        $this->domainRowIn($other, 'a-subject');
+
+        self::assertSame(1, $this->widen($this->person, 'tenant-9'));
+        self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
     }
 
     /**
-     * A link already suspended, and another provenance, do not refuse the
-     * change.
+     * The guard is the identity's: one row per identity, however often it is
+     * taken, naming nobody, and another identity has another.
      *
      * @return void
      */
-    public function testOnlyActiveOrReservedDomainRowsAreUnsettled(): void
+    public function testTheGuardIsTheIdentitys(): void
     {
-        $this->domainRowIn($this->connection, 'a-suspended-subject', LinkState::SUSPENDED);
+        $this->widen($this->person, 'tenant-2');
+        $this->widen($this->person, 'tenant-3');
 
-        $this->domainRowIn($this->connection, 'a-provisioned-subject')->forceFill(['provenance' => LinkOrigin::PROVISIONING])->save();
+        $guard = IdentityGuard::query()->sole();
 
-        $this->connection->getConnection()->transaction(function (): void {
-            app(ScopeWidening::class)->assertSettled($this->person, 'tenant-2');
-        });
+        self::assertSame(IdentityLock::digest($this->person), $guard->identity_hash);
+        self::assertSame(64, strlen($guard->identity_hash));
+        self::assertSame($this->clock->now()->toIso8601String(), $guard->created_at->toIso8601String());
 
-        self::assertSame(2, Link::query()->count());
+        $this->widen(new IdentityReference('App\Models\User', '8'), 'tenant-2');
+
+        self::assertSame(2, IdentityGuard::query()->count());
+        self::assertNotSame(IdentityLock::digest(new IdentityReference('ab', 'c')), IdentityLock::digest(new IdentityReference('a', 'bc')));
+        self::assertNotSame(IdentityLock::digest(new IdentityReference('a', 'B')), IdentityLock::digest(new IdentityReference('a', 'b')));
+    }
+
+    /**
+     * Over a linker not backed by link storage it takes the guard and changes
+     * nothing, since such a linker holds no link by a verified domain.
+     *
+     * @return void
+     */
+    public function testALinkerNotBackedByStorageHasNothingToSuspend(): void
+    {
+        $row = $this->domainRowIn($this->connectionOf('tenant-2'), 'a-subject');
+
+        $this->app?->instance(Linker::class, new NoLinks);
+
+        self::assertSame(0, $this->widen($this->person, 'tenant-9'));
+        self::assertSame(LinkState::ACTIVE, $row->refresh()->state);
+        self::assertSame(1, IdentityGuard::query()->count());
+    }
+
+    /**
+     * A wrapper that delegates to the store suspends and revokes through it.
+     *
+     * @return void
+     */
+    public function testAWrapperThatDelegatesSuspendsAndRevokes(): void
+    {
+        $row = $this->domainRowIn($this->connectionOf('tenant-2'), 'a-subject');
+
+        $this->app?->instance(Linker::class, new DelegatingLinkStorage(app(LinkStore::class)));
+
+        self::assertSame(1, $this->widen($this->person, 'tenant-9'));
+        self::assertSame(LinkState::SUSPENDED, $row->refresh()->state);
+        self::assertSame([$row->id], array_map(static fn (RevocationScope $scope): ?string => $scope->linkId, $this->revocation->scopes));
     }
 
     /**
      * A row an engine's collation finds, of an identity differing only in case,
-     * is another person's: it is neither suspended nor revoked, and it never
-     * unsettles the change.
+     * is another person's: it is neither suspended nor revoked.
      *
      * @return void
      */
@@ -490,12 +603,6 @@ final class ScopeWideningTest extends LinkingTestCase
         self::assertSame(0, $this->widen($person, 'tenant-9'));
         self::assertSame(LinkState::ACTIVE, $other->refresh()->state);
         self::assertSame([], $this->revocation->scopes);
-
-        $this->connection->getConnection()->transaction(static function () use ($person): void {
-            app(ScopeWidening::class)->assertSettled($person, 'tenant-9');
-        });
-
-        self::assertSame(LinkState::ACTIVE, $other->refresh()->state);
     }
 
     /**
@@ -523,8 +630,8 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * An identity with nothing by a verified domain costs one read of its rows
-     * and none of a connection, each way.
+     * An identity with nothing by a verified domain costs its guard and two
+     * reads of its rows, and none of a connection.
      *
      * @return void
      */
@@ -536,15 +643,7 @@ final class ScopeWideningTest extends LinkingTestCase
         $database->flushQueryLog();
 
         self::assertSame(0, $this->widen($this->person, 'tenant-9'));
-        self::assertCount(1, $database->getQueryLog());
-
-        $database->flushQueryLog();
-
-        $database->transaction(function (): void {
-            app(ScopeWidening::class)->assertSettled($this->person, 'tenant-9');
-        });
-
-        self::assertCount(1, $database->getQueryLog());
+        self::assertCount(3, $database->getQueryLog());
     }
 
     /**
@@ -638,6 +737,29 @@ final class ScopeWideningTest extends LinkingTestCase
         self::assertTrue($this->admit($this->complete(), $start)->isRedeemed());
 
         return Link::query()->sole();
+    }
+
+    /**
+     * A `sign_in` result of the driver's subject through the connection.
+     *
+     * @return \SineMacula\Laravel\Sso\Results\VerifiedResult
+     */
+    private function resultOfTheLink(): VerifiedResult
+    {
+        return new VerifiedResult(
+            issuer: VerifyingDriver::ISSUER,
+            subject: VerifyingDriver::SUBJECT,
+            nameIdFormat: null,
+            connectionId: $this->connection->id,
+            tenantId: 'tenant-1',
+            protocol: VerifyingDriver::NAME,
+            application: 'web',
+            purpose: Purpose::SIGN_IN,
+            requestReference: RequestReference::fromString('Dq8tVv3w0kLmNoPqRsTuVwXyZ0123456'),
+            attributes: [],
+            emailDomainVerified: false,
+            authenticationContext: new AuthenticationContext,
+        );
     }
 
     /**

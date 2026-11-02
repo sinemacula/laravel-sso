@@ -109,8 +109,8 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     }
 
     /**
-     * Rows of
-     * `[protocol, issuer, what is given besides enabled, the violations]`.
+     * Rows of `[protocol, issuer, what is given besides enabled, the
+     * violations]`.
      *
      * @return iterable<string, array{0: string, 1: string, 2: array<string, mixed>, 3: list<array{0: string, 1: string}>}>
      */
@@ -119,6 +119,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         $shared = ['issuer_class' => 'shared', 'organization_claim' => 'org', 'organization_value' => self::ORGANIZATION];
         $single = ['issuer_class' => 'single_organization', 'acknowledged' => true];
         $google = ['issuer_class' => 'shared', 'organization_claim' => 'hd', 'organization_value' => self::ORGANIZATION];
+        $slack  = ['issuer_class' => 'shared', 'organization_claim' => 'https://slack.com/team_id', 'organization_value' => self::ORGANIZATION];
         $saml   = ['saml_attribute' => 'mail', 'saml_attribute_format' => self::URI_FORMAT, 'acknowledged' => true];
 
         $noOrganization = [['organization_claim', 'required'], ['organization_value', 'required']];
@@ -133,6 +134,10 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         yield 'one organisation with no acknowledgement' => [VerifyingDriver::NAME, self::PLAIN_ISSUER, ['issuer_class' => 'single_organization'], [['acknowledged', 'required']]];
         yield 'one organisation with it refused' => [VerifyingDriver::NAME, self::PLAIN_ISSUER, ['acknowledged' => false] + $single, [['acknowledged', 'required']]];
         yield 'Google' => ['oidc', self::GOOGLE, $google, []];
+        yield 'Slack' => ['oidc', 'https://slack.com', $slack, []];
+        yield 'Slack as one organisation' => ['oidc', 'https://slack.com', $single + $slack, [['issuer_class', 'not_allowed']]];
+        yield 'Slack under another claim' => ['oidc', 'https://slack.com', ['organization_claim' => 'team'] + $slack, [['organization_claim', 'not_allowed']]];
+        yield 'Slack with no value' => ['oidc', 'https://slack.com', ['organization_value' => null] + $slack, [['organization_value', 'required']]];
         yield 'Google without the https' => ['oidc', 'accounts.google.com', $google, []];
         yield 'Google as one organisation' => ['oidc', self::GOOGLE, $single, [['issuer_class', 'not_allowed'], ...$noOrganization]];
         yield 'Google as one organisation, claim given' => ['oidc', self::GOOGLE, $single + $google, [['issuer_class', 'not_allowed']]];
@@ -692,6 +697,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         $oidc        = 'https://login.microsoftonline.com/the-directory/v2.0';
         $saml        = 'https://sts.windows.net/the-directory/';
 
+        self::assertSame('https://slack.com/team_id', $eligibility->requiredClaim('oidc', 'https://slack.com'));
         self::assertSame('tid', $eligibility->requiredClaim('oidc', $oidc));
 
         config()->set('sso.linking.shared_issuers', [$oidc => 'preferred_username', $saml => 'preferred_username', self::PLAIN_ISSUER => 'org']);

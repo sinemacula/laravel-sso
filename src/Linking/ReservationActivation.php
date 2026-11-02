@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkEvents;
 use SineMacula\Laravel\Sso\Links\LinkReservations;
+use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Models\Link;
@@ -16,25 +17,29 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
  * Judges and activates the reservation a `sign_in` handoff is bound to
- * (SSO-8.8) inside its redemption's transaction, with the connection, the
- * domain claim, the code and then the reservation's row locked, in the
- * package's order.
+ * (SSO-8.8) inside its redemption's transaction, with the identity's guard, the
+ * connection, the domain claim, the code and then the reservation's row locked,
+ * in the package's order.
  *
  * `judge()` answers `passed` only when the row is exactly the handoff's
- * reservation, unexpired, for the result's subject; the result's linking email
- * and accepted organisation are the ones bound; the domain claim locked is the
- * one bound, at the same verification generation, so a re-verification never
- * revives it; the linking policy version is the one bound; and every condition
- * of `DomainLinkEligibility::isStillEligible()` holds for that same identity.
+ * reservation, unexpired, for the result's subject and the identity whose guard
+ * is held, so a principal widening cannot slip between this judgement and the
+ * commit; the result's linking email and accepted organisation are the ones
+ * bound; the domain claim locked is the one bound, at the same verification
+ * generation, so a re-verification never revives it; the linking policy version
+ * is the one bound; and every condition of
+ * `DomainLinkEligibility::isStillEligible()` holds for that same identity.
  * Anything else is `reservation_invalid`, and a different match is never the
  * new target.
  *
  * `activate()` makes the row active with verified domain provenance
- * (`Links\LinkReservations::activate()`) and reports `LinkCreated` then
- * `LinkActivated`, after commit.
+ * (`Links\LinkReservations::activate()`), records on the identity's guard that
+ * it has held such a link (`Linking\IdentityLock::recordDomainLink()`), which
+ * nothing clears, and reports `LinkCreated` then `LinkActivated`, after commit.
  *
- * It holds the reservations, the eligibility and the reporter, none of which
- * keeps anything of one redemption for the next (SSO-11.2).
+ * It holds the storage binding, the eligibility, the identity lock and the
+ * reporter, none of which keeps anything of one redemption for the next
+ * (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,17 +51,21 @@ final readonly class ReservationActivation
     /**
      * Constructor.
      *
-     * @param  \SineMacula\Laravel\Sso\Links\LinkReservations  $reservations
+     * @param  \SineMacula\Laravel\Sso\Links\LinkStorageBinding  $storage
      * @param  \SineMacula\Laravel\Sso\Linking\DomainLinkEligibility  $eligibility
+     * @param  \SineMacula\Laravel\Sso\Linking\IdentityLock  $identities
      * @param  \SineMacula\Laravel\Sso\Links\LinkEvents  $events
      */
     public function __construct(
 
         /** Reads and activates the reservation. */
-        private LinkReservations $reservations,
+        private LinkStorageBinding $storage,
 
         /** Judges the conditions a reservation stands on. */
         private DomainLinkEligibility $eligibility,
+
+        /** Records on the identity's guard that it has held a domain link. */
+        private IdentityLock $identities,
 
         /** Reports the activation. */
         private LinkEvents $events,
@@ -75,12 +84,14 @@ final readonly class ReservationActivation
     {
         $row = $this->row($context);
 
-        if ($row === null || !self::isBound($row, $context)) {
+        if ($row === null) {
             return RecheckOutcome::RESERVATION_INVALID;
         }
 
         $identity = new IdentityReference($row->identity_type, $row->identity_id);
-        $holds    = $this->eligibility->isStillEligible($context->result, $identity, $context->connection, $context->lock->domain);
+        $holds    = $context->lock->isGuarding($identity)
+            && self::isBound($row, $context)
+            && $this->eligibility->isStillEligible($context->result, $identity, $context->connection, $context->lock->domain);
 
         return $holds ? RecheckOutcome::PASSED : RecheckOutcome::RESERVATION_INVALID;
     }
@@ -97,8 +108,10 @@ final readonly class ReservationActivation
     {
         $row      = $this->row($context) ?? throw new \LogicException('A reservation is activated once it is judged.');
         $identity = new IdentityReference($row->identity_type, $row->identity_id);
-        $link     = $this->reservations->activate($row);
+        $link     = $this->reservations()->activate($row);
         $result   = $context->result;
+
+        $this->identities->recordDomainLink($identity);
 
         $this->events->activated($context->connection, $identity, $link->id, $result->application, $result->requestReference);
 
@@ -121,13 +134,26 @@ final readonly class ReservationActivation
             return null;
         }
 
-        $row = $this->reservations->locked($binding->reservationId);
+        $reservations = $this->reservations();
+        $row          = $reservations->locked($binding->reservationId);
 
-        if ($row === null || !$this->reservations->isBoundTo($row, $binding->handoffReference, $context->connection->id, LinkSubject::of($context->result))) {
+        if ($row === null || !$reservations->isBoundTo($row, $binding->handoffReference, $context->connection->id, LinkSubject::of($context->result))) {
             return null;
         }
 
         return $row;
+    }
+
+    /**
+     * The one writer of a reserved row, of the bound storage.
+     *
+     * @return \SineMacula\Laravel\Sso\Links\LinkReservations
+     *
+     * @throws \LogicException
+     */
+    private function reservations(): LinkReservations
+    {
+        return $this->storage->require('Linking by a verified domain')->reservations();
     }
 
     /**

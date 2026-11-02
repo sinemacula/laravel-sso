@@ -139,6 +139,11 @@ enum FailureReason: string
     // until a confirming `link` (SSO-8.8)
     case LINK_SUSPENDED = 'link_suspended';
 
+    // The subject's link stands on a verified domain and the principal scope
+    // contract could not judge its identity: this attempt is refused, and
+    // nothing is suspended or revoked (SSO-8.8)
+    case PRINCIPAL_SCOPE_UNKNOWN = 'principal_scope_unknown';
+
     // The subject is held by a live reservation another flow made (SSO-8.8)
     case LINK_RESERVED = 'link_reserved';
 
@@ -157,7 +162,9 @@ enum FailureReason: string
     case IDENTITY_MISMATCH = 'identity_mismatch';
 
     // A reservation is gone, expired, or some condition it was made under no
-    // longer holds for that same identity; no link is activated (SSO-8.8)
+    // longer holds for that same identity; no link is activated. At completion,
+    // the identity it would be made for changed before its guard was held
+    // (SSO-8.8)
     case RESERVATION_INVALID = 'reservation_invalid';
 
     // A provisioning grant is used, closed or was not issued for that result

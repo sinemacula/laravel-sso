@@ -13,11 +13,13 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 /**
  * Records, on the storage connection, the statements that take a lock, in the
  * order they ran, so a test can assert the package's lock order: the upsert of
- * a tenant's enforcement row (`enforcement upsert`), and each locking read,
- * named by its table (`enforcement`, `code`, `request`, `link`), the
- * connections' with the ids it locks in the order bound (`connections a, b`).
- * Every statement that names the enforcement table is counted too, so a test
- * can assert none ran.
+ * an identity's guard (`identity guard`) and of a tenant's enforcement row
+ * (`enforcement upsert`), and each locking read, named by its table
+ * (`enforcement`, `code`, `request`, `link`, and `identity mark` for the read
+ * of whether the guarded identity has held a domain link), the connections'
+ * with the ids it locks in the order bound (`connections a, b`). Every
+ * statement that names the enforcement table is counted too, so a test can
+ * assert none ran.
  *
  * SQLite has no locking read, so there a lock for update is compiled to a
  * marker comment that shows it was asked for; MySQL and PostgreSQL compile
@@ -117,8 +119,8 @@ trait RecordsLockOrder
     {
         $table = self::tableOf($sql);
 
-        if (str_starts_with($sql, 'insert') && $table === StorageConnection::table('enforcement.table')) {
-            return 'enforcement upsert';
+        if (str_starts_with($sql, 'insert')) {
+            return self::upsertOf($table);
         }
 
         if (!str_contains($sql, 'for update')) {
@@ -131,7 +133,24 @@ trait RecordsLockOrder
             StorageConnection::table('handoff_codes.table')          => 'code',
             StorageConnection::table('authorization_requests.table') => 'request',
             StorageConnection::table('links.table')                  => 'link',
+            StorageConnection::table('identity_guards.table')        => 'identity mark',
             default                                                  => (string) $table,
+        };
+    }
+
+    /**
+     * The lock an insert into the table takes as an upsert, or `null` when it
+     * takes none the order names.
+     *
+     * @param  ?string  $table
+     * @return ?string
+     */
+    private static function upsertOf(?string $table): ?string
+    {
+        return match ($table) {
+            StorageConnection::table('enforcement.table')     => 'enforcement upsert',
+            StorageConnection::table('identity_guards.table') => 'identity guard',
+            default                                           => null,
         };
     }
 

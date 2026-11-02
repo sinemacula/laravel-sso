@@ -38,6 +38,10 @@ enum RecheckOutcome: string
     // The link is suspended until a confirming `link`
     case LINK_SUSPENDED = 'link_suspended';
 
+    // The link's verified domain provenance needs the principal scope contract,
+    // which could not judge its identity; nothing is suspended
+    case PRINCIPAL_SCOPE_UNKNOWN = 'principal_scope_unknown';
+
     // A live reservation holds the subject, which a `link` waits out
     case LINK_RESERVED = 'link_reserved';
 

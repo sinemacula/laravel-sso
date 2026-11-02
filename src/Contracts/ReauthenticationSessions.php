@@ -89,7 +89,10 @@ interface ReauthenticationSessions
      * Renew the session's authentication time, and nothing else but storing the
      * evidence accepted from this authentication, inside the redeemer's
      * transaction, on the row `lockedStanding()` locked. A later time the
-     * session holds already is kept: a renewal never moves it backwards.
+     * session holds already is kept: a renewal never moves it backwards. The
+     * adapter writes `max(current, provider_time)` under the session's lock, in
+     * the redemption's transaction, since the package does not hold the
+     * session.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $sessionId

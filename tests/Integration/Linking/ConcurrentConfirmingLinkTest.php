@@ -11,8 +11,10 @@ use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
+use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\LinkConfirmed;
+use SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
@@ -20,6 +22,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
@@ -42,21 +45,22 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  * connection, on MySQL and PostgreSQL (SSO-5.11, SSO-8.5, SSO-8.8,
  * `docs/design/linking.md`), against what can change the link under it: its
  * removal, a second confirmation of it, its suspension by a resolution or by a
- * widened scope, another identity's link of the same subject, and a disable of
- * the connection.
+ * widened scope, another identity's link of the same subject, a disable of the
+ * connection, and an activation of the person's reservation in another
+ * connection, which the redemption must see once it holds the guard.
  *
  * The order is fixed by signal files, never by time, and a barrier that times
- * out fails the racer loudly: each process opens its connection and, racing in a
- * transaction, begins one at `REPEATABLE READ` and reads the connection, the
+ * out fails the racer loudly: each process opens its connection and, racing in
+ * a transaction, begins one at `REPEATABLE READ` and reads the connection, the
  * links and the codes; once both have signalled that, the first does its work
  * and signals before it commits; only then does the second start. So in a
  * transaction, the second's snapshot predates everything the first wrote, and
- * its locking reads either wait for the first to commit or find it committed; on
- * MySQL they must answer what is committed rather than the snapshot, and on
+ * its locking reads either wait for the first to commit or find it committed;
+ * on MySQL they must answer what is committed rather than the snapshot, and on
  * PostgreSQL its lock of the connection's row, which every one of these writes
- * raises a version on, fails to serialise (SQLSTATE `40001`, possibly wrapped in
- * a `DeadlockException`), which rolls it back whole and is accepted there alone.
- * Each race also runs both ways round where the order matters.
+ * raises a version on, fails to serialise (SQLSTATE `40001`, possibly wrapped
+ * in a `DeadlockException`), which rolls it back whole and is accepted there
+ * alone. Each race also runs both ways round where the order matters.
  *
  * A process reports how its work ended, then how many `LinkConfirmed` it
  * reported once it committed. Skipped on SQLite, whose in-memory database each
@@ -80,6 +84,9 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
 
     /** @var string What a racer reports when it failed to serialise, accepted on PostgreSQL alone. */
     private const string SERIALIZATION = 'serialization';
+
+    /** @var string What a racer reports when it was refused for a retry of its whole transaction. */
+    private const string RETRY = 'retry';
 
     /** @var string Directory the processes signal and report in. */
     private string $signals;
@@ -453,6 +460,141 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
+     * Rows of `[whether each racer runs inside its own transaction that read
+     * first, how the `link` ends on PostgreSQL, how on MySQL]`. Plainly, the
+     * standalone redemption takes the guard before any read, so it sees the
+     * activation it waited on, locks that link's connection and asks the
+     * contract. In a transaction that read first, its snapshot holds the
+     * reservation: on PostgreSQL its guard, written since, fails to serialise;
+     * on MySQL it finds the link in a connection it did not lock, for a retry.
+     *
+     * @return iterable<string, array{0: bool, 1: string, 2: string}>
+     */
+    public static function provideLinksAfterAnActivation(): iterable
+    {
+        $refused = 'refused:independent_authentication_required|0';
+
+        yield 'plainly' => [false, $refused, $refused];
+        yield 'inside a transaction that read first' => [true, self::SERIALIZATION, self::RETRY];
+    }
+
+    /**
+     * An activation of the person's reservation in one connection, holding the
+     * guard, then a `link` of the person through another, which reaches the
+     * guard while the activation holds it: the activation commits, and the
+     * `link` judges the domain link it made, refused without independent
+     * authentication, never a server error from a snapshot it took itself.
+     *
+     * @param  bool  $inTransaction
+     * @param  string  $onPostgres
+     * @param  string  $onMysql
+     * @return void
+     */
+    #[DataProvider('provideLinksAfterAnActivation')]
+    public function testAnActivationElsewhereThenALinkRedemption(bool $inTransaction, string $onPostgres, string $onMysql): void
+    {
+        $signIn     = $this->flow(Purpose::SIGN_IN, null);
+        $reservedIn = $this->connection->id;
+
+        self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
+
+        $this->connection = $this->makeConnection([
+            'protocol' => VerifyingDriver::NAME,
+            'enabled'  => true,
+            'settings' => ['issuer' => VerifyingDriver::ISSUER],
+        ]);
+
+        $link = $this->linkFlow($this->person);
+
+        $this->confirmation->verdict = LinkConfirmationVerdict::DEPENDENT;
+
+        $this->stopInTheScopeUntil('acquiring');
+
+        $activation = fn (): string => self::outcomeOf(DB::connection(StorageConnection::name())->transaction(
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $reservedIn, $signIn[1], $signIn[2]),
+        ));
+
+        $redeemer = $this->linkRedeemer($link);
+        $linking  = function () use ($redeemer): string {
+            $this->signalBeforeTheGuard('acquiring');
+
+            return $redeemer();
+        };
+
+        $outcomes = $this->race($activation, $linking, $inTransaction, false);
+
+        self::assertSame(['redeemed|0', DB::connection()->getDriverName() === 'pgsql' ? $onPostgres : $onMysql], $outcomes);
+        self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
+        self::assertSame($reservedIn, Link::query()->sole()->connection_id);
+    }
+
+    /**
+     * Bind a principal scope that answers `within_tenant`, stopping until the
+     * signal exists.
+     *
+     * @param  string  $signal
+     * @return void
+     */
+    private function stopInTheScopeUntil(string $signal): void
+    {
+        $path = "{$this->signals}/{$signal}";
+
+        $this->app?->instance(PrincipalScope::class, new readonly class (static fn () => self::await($path)) implements PrincipalScope {
+            /**
+             * Constructor.
+             *
+             * @param  \Closure(): void  $wait
+             */
+            public function __construct(
+
+                /** Waits for the signal, failing loudly when it never appears. */
+                private \Closure $wait,
+            ) {}
+
+            /**
+             * Wait for the signal, and answer `within_tenant`.
+             *
+             * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+             * @param  string  $tenantId
+             * @return \SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict
+             */
+            #[\Override]
+            public function judge(IdentityReference $identity, string $tenantId): ScopeVerdict
+            {
+                unset($identity, $tenantId);
+
+                ($this->wait)();
+
+                return ScopeVerdict::WITHIN_TENANT;
+            }
+        });
+    }
+
+    /**
+     * Touch the signal just before this process sends the statement that takes
+     * an identity's guard, on its own connection.
+     *
+     * @param  string  $signal
+     * @return void
+     */
+    private function signalBeforeTheGuard(string $signal): void
+    {
+        $table = StorageConnection::table('identity_guards.table');
+        $path  = "{$this->signals}/{$signal}";
+
+        DB::connection(StorageConnection::name())->beforeExecuting(static function (string $query) use ($table, $path): void {
+
+            $sql = strtolower($query);
+
+            if (!str_starts_with($sql, 'insert') || !str_contains($sql, $table)) {
+                return;
+            }
+
+            touch($path);
+        });
+    }
+
+    /**
      * A verified domain link with a `sign_in` code and a `link` code each bound
      * to it at completion, and then the person's scope widened, so the next
      * resolution of the link suspends it.
@@ -541,7 +683,9 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
      */
     private function signInRedeemer(array $flow): \Closure
     {
-        return fn (): string => self::outcomeOf(app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $flow[1], $flow[2]));
+        return fn (): string => self::outcomeOf(DB::connection(StorageConnection::name())->transaction(
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $flow[1], $flow[2]),
+        ));
     }
 
     /**
@@ -682,9 +826,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
      * In a forked process: open a connection of its own and, in a transaction,
      * begin one at `REPEATABLE READ` and read; signal that; wait for the
      * other's signal; wait for the first's work, when the second in turn; do
-     * its work,
-     * signalling before it commits; report how it ended and what it confirmed;
-     * and end without running the parent's shutdown.
+     * its work, signalling before it commits; report how it ended and what it
+     * confirmed; and end without running the parent's shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work
@@ -730,6 +873,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
             }
 
             $outcome .= '|' . $this->confirmationsReported();
+        } catch (LinkCandidatesChanged) {
+            $outcome = self::RETRY;
         } catch (\Throwable $e) {
             $outcome = self::isSerializationFailure($e) ? self::SERIALIZATION : 'error: ' . $e::class . ': ' . $e->getMessage();
         }

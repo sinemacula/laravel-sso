@@ -355,9 +355,9 @@ final readonly class LinkReservations
      */
     private function isFull(Connection $locked, IdentityReference $identity): bool
     {
-        $held = LinkStore::heldBy($locked->id, $identity, $this->clock->now());
+        $held = LinkHoldings::count($locked->id, $identity, $this->clock->now());
 
-        return $held >= LinkStore::limitOf($this->container->make(LinkLimit::class), $identity, $locked);
+        return $held >= LinkHoldings::limitOf($this->container->make(LinkLimit::class), $identity, $locked);
     }
 
     /**

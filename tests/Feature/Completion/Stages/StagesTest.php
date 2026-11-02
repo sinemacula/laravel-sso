@@ -40,6 +40,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
+use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\SingleUseKey;
@@ -708,11 +709,15 @@ final class StagesTest extends TestCase
         yield 'a sign-in of a linked result' => [Purpose::SIGN_IN, LinkResolution::linked($person, 'link-7'), null];
         yield 'a sign-in of a suspended link' => [Purpose::SIGN_IN, LinkResolution::suspended($person, 'link-7'), FailureReason::LINK_SUSPENDED];
         yield 'a sign-in of a reserved link' => [Purpose::SIGN_IN, LinkResolution::reserved(), FailureReason::LINK_RESERVED];
+        yield 'a sign-in of a link of unknown scope' => [Purpose::SIGN_IN, LinkResolution::scopeUnknown($person, 'link-7'), FailureReason::PRINCIPAL_SCOPE_UNKNOWN];
         yield 'a link of an absent subject' => [Purpose::LINK, LinkResolution::absent(), null];
         yield 'a link of a reserved subject' => [Purpose::LINK, LinkResolution::reserved(), FailureReason::LINK_RESERVED];
         yield 'a link of another identity\'s subject' => [Purpose::LINK, LinkResolution::linked($another, 'link-8'), FailureReason::SUBJECT_ALREADY_LINKED];
+        yield 'a link of its own link of unknown scope' => [Purpose::LINK, LinkResolution::scopeUnknown($person, 'link-7'), FailureReason::PRINCIPAL_SCOPE_UNKNOWN];
+        yield 'a link of another identity\'s link of unknown scope' => [Purpose::LINK, LinkResolution::scopeUnknown($another, 'link-8'), FailureReason::SUBJECT_ALREADY_LINKED];
         yield 'a reauthentication of a suspended link' => [Purpose::REAUTHENTICATE, LinkResolution::suspended($person, 'link-7'), FailureReason::LINK_SUSPENDED];
         yield 'a reauthentication of another identity' => [Purpose::REAUTHENTICATE, LinkResolution::linked($another, 'link-8'), FailureReason::IDENTITY_MISMATCH];
+        yield 'a reauthentication of a link of unknown scope' => [Purpose::REAUTHENTICATE, LinkResolution::scopeUnknown($person, 'link-7'), FailureReason::PRINCIPAL_SCOPE_UNKNOWN];
     }
 
     /**
@@ -728,6 +733,7 @@ final class StagesTest extends TestCase
     public function testThePurposesRulesDecide(Purpose $purpose, LinkResolution $resolution, ?FailureReason $reason): void
     {
         $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+        $this->app?->instance(Linker::class, app(LinkStore::class));
 
         $state   = $this->verified($purpose)->withResolution($resolution);
         $outcome = $this->stage(CheckPurpose::class)->run($state);

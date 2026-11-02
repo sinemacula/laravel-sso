@@ -40,6 +40,7 @@ use SineMacula\Laravel\Sso\Linking\RefusingLinkEligibility;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
+use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
@@ -52,7 +53,7 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
-use Tests\Fixtures\Links\FixedLinker;
+use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -777,7 +778,7 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * A linker that answers absent while the row is there meets the unique
+     * A wrapper that answers absent while the row is there meets the unique
      * index at insertion: `subject_already_linked`, nothing written, the row
      * left as it was and the code spent.
      *
@@ -789,7 +790,7 @@ final class LinkBranchTest extends LinkingTestCase
 
         $row = $this->hold(new IdentityReference('App\Models\User', '8'));
 
-        $this->app?->instance(Linker::class, new FixedLinker(null));
+        $this->app?->instance(Linker::class, new DelegatingLinkStorage(app(LinkStore::class), LinkResolution::absent()));
 
         $before = $this->linksVersion();
 
@@ -1092,7 +1093,7 @@ final class LinkBranchTest extends LinkingTestCase
         $state = $this->stateFor('App\Models\User', '7');
         $state = $resolution === null ? $state : $state->withResolution($resolution);
 
-        self::assertSame($expected, (new LinkRules(new AllowingLinkEligibility))->refusal($state));
+        self::assertSame($expected, (new LinkRules(new AllowingLinkEligibility, app(LinkStorageBinding::class)))->refusal($state));
     }
 
     /**
@@ -1111,7 +1112,7 @@ final class LinkBranchTest extends LinkingTestCase
         $state = $this->stateFor('App\Models\User', '7');
         $state = $resolution === null ? $state : $state->withResolution($resolution);
 
-        self::assertSame(FailureReason::LINK_INELIGIBLE, (new LinkRules(new RefusingLinkEligibility))->refusal($state));
+        self::assertSame(FailureReason::LINK_INELIGIBLE, (new LinkRules(new RefusingLinkEligibility, app(LinkStorageBinding::class)))->refusal($state));
     }
 
     /**
@@ -1124,7 +1125,7 @@ final class LinkBranchTest extends LinkingTestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A link is checked once its request is consumed.');
 
-        (new LinkRules(new AllowingLinkEligibility))->refusal($this->arrived()->withConnection($this->connection));
+        (new LinkRules(new AllowingLinkEligibility, app(LinkStorageBinding::class)))->refusal($this->arrived()->withConnection($this->connection));
     }
 
     /**
@@ -1137,7 +1138,7 @@ final class LinkBranchTest extends LinkingTestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A link is checked once its connection is read.');
 
-        (new LinkRules(new AllowingLinkEligibility))->refusal($this->withRequest($this->arrived(), new AuthorizationRequest));
+        (new LinkRules(new AllowingLinkEligibility, app(LinkStorageBinding::class)))->refusal($this->withRequest($this->arrived(), new AuthorizationRequest));
     }
 
     /**
@@ -1151,7 +1152,9 @@ final class LinkBranchTest extends LinkingTestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A link flow names the identity it was started for.');
 
-        (new LinkRules(new AllowingLinkEligibility))->refusal($this->withRequest($this->arrived()->withConnection($this->connection), new AuthorizationRequest));
+        $rules = new LinkRules(new AllowingLinkEligibility, app(LinkStorageBinding::class));
+
+        $rules->refusal($this->withRequest($this->arrived()->withConnection($this->connection), new AuthorizationRequest));
     }
 
     /**

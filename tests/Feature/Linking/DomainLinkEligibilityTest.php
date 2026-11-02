@@ -19,7 +19,9 @@ use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\LinkLimit;
+use SineMacula\Laravel\Sso\Contracts\LinkStorage;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Domains\DomainStanding;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -35,12 +37,16 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext;
+use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\DomainLinkEligibility;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
+use SineMacula\Laravel\Sso\Linking\IdentityLock;
 use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
+use SineMacula\Laravel\Sso\Linking\LinkingDiscovery;
 use SineMacula\Laravel\Sso\Linking\MembershipStanding;
 use SineMacula\Laravel\Sso\Linking\ReservationActivation;
+use SineMacula\Laravel\Sso\Linking\ReservationDiscovery;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
@@ -52,6 +58,7 @@ use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
+use SineMacula\Laravel\Sso\Models\IdentityGuard;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
@@ -64,9 +71,11 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\CapturesLogs;
+use Tests\Concerns\RecordsLockOrder;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Links\FixedLinker;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -92,6 +101,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  * @internal
  */
 #[CoversClass(DomainLinkEligibility::class)]
+#[CoversClass(ReservationDiscovery::class)]
+#[CoversClass(IdentityLock::class)]
 #[CoversClass(ReservationActivation::class)]
 #[CoversClass(DomainReservation::class)]
 #[CoversClass(LinkReservations::class)]
@@ -99,7 +110,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 #[CoversClass(DomainStanding::class)]
 final class DomainLinkEligibilityTest extends LinkingTestCase
 {
-    use CapturesLogs;
+    use CapturesLogs, RecordsLockOrder;
 
     /** @var string Google's issuer. */
     private const string GOOGLE = 'https://accounts.google.com';
@@ -427,7 +438,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
         [$start, $completion] = $this->reserved();
 
         self::assertTrue($this->admit($completion, $start)->isRedeemed());
-        self::assertCount(2, $this->matcher->queries);
+        self::assertCount(3, $this->matcher->queries, 'Asked by plain read before the locks, under them, and at redemption.');
 
         foreach ($this->matcher->queries as $query) {
             self::assertSame($email, $query->email());
@@ -944,8 +955,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the state of a row the identity holds in the connection, whether
-     * it holds anything]`.
+     * Rows of `[the state of a row the identity holds in the connection,
+     * whether it holds anything]`.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Links\Enums\LinkState, 1: ?int, 2: bool}>
      */
@@ -1105,10 +1116,9 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * Rows of
-     * `[seconds the request has left, the handoff lifetime, the expiry]`: the
-     * minimum of the request's expiry and the lifetime from now, at each
-     * boundary.
+     * Rows of `[seconds the request has left, the handoff lifetime, the
+     * expiry]`: the minimum of the request's expiry and the lifetime from now,
+     * at each boundary.
      *
      * @return iterable<string, array{0: int, 1: int, 2: int}>
      */
@@ -1241,22 +1251,204 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * An alternative linker cannot hold a reservation, so it reserves nothing,
-     * and swapped in by redemption it activates nothing.
+     * A linker not backed by link storage cannot hold a reservation: a
+     * completion through it is a `LogicException` naming the problem, with
+     * nothing written, and swapped in by redemption it activates nothing and
+     * spends nothing.
      *
      * @return void
+     *
+     * @throws \Throwable
      */
-    public function testAnAlternativeLinkerReservesAndActivatesNothing(): void
+    public function testALinkerNotBackedByStorageFailsClosedBeforeWriting(): void
     {
         [$start, $completion] = $this->reserved();
 
+        $row     = Link::query()->sole();
+        $message = sprintf('[%s] bound as [%s] does not implement [%s]', FixedLinker::class, Linker::class, LinkStorage::class);
+
         $this->app?->instance(Linker::class, new FixedLinker(null));
 
-        $this->assertRedemption($completion, $start, false);
+        try {
+            $this->connection->getConnection()->transaction(fn (): RedemptionResult => $this->admit($completion, $start));
+            self::fail('A reservation activated through a linker that would ignore it.');
+        } catch (\LogicException $exception) {
+            self::assertStringContainsString($message, $exception->getMessage());
+        }
+
+        self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
+        self::assertSame($row->id, Link::query()->sole()->id);
+        self::assertNull(StoredCode::query()->sole()->redeemed_at);
 
         $this->start();
 
-        $this->assertNothingReserved($this->complete());
+        try {
+            $this->complete();
+            self::fail('A completion wrote through a linker that would ignore it.');
+        } catch (\LogicException $exception) {
+            self::assertStringContainsString($message, $exception->getMessage());
+            self::assertStringStartsWith('Linking by a verified domain needs links its resolver reads', $exception->getMessage());
+        }
+
+        self::assertSame(1, Link::query()->count());
+    }
+
+    /**
+     * A reservation locks in the package's order, its identity's guard first;
+     * an activation too, with its claim before its code.
+     *
+     * @return void
+     */
+    public function testAReservationAndAnActivationLockInTheOrder(): void
+    {
+        $start = $this->start();
+
+        $this->recordLockOrder();
+
+        $completion = $this->complete();
+        $order      = $this->lockOrder();
+        $prepared   = array_slice($order, (int) array_search('identity guard', $order, true), 5);
+
+        self::assertSame(['identity guard', 'connections ' . $this->connection->id, StorageConnection::table('domains.table'), 'request', 'link'], $prepared);
+
+        $from = count($order);
+
+        self::assertTrue($this->admit($completion, $start)->isRedeemed());
+        self::assertSame(
+            ['identity guard', 'connections ' . $this->connection->id . ', tenant-1', StorageConnection::table('domains.table'), 'code', 'link', 'link', 'link'],
+            array_slice($this->lockOrder(), $from),
+        );
+    }
+
+    /**
+     * An identity matched under the locks whose guard was not taken is never
+     * reserved for: the email moved to another person in between, or matched
+     * nobody when it was first read. The completion refuses, its contracts of
+     * that identity unasked, and nothing is written.
+     *
+     * @return void
+     */
+    public function testATargetWhoseGuardWasNotTakenIsRefused(): void
+    {
+        foreach ([LinkEmailMatch::exactlyOne(new IdentityReference('App\Models\User', '8')), LinkEmailMatch::none()] as $first) {
+
+            $this->matcher->queued = [$first];
+            $this->scope->asked    = [];
+
+            $this->start();
+
+            self::assertSame(FailureReason::RESERVATION_INVALID, $this->complete()->reason);
+            self::assertSame(0, Link::query()->count());
+            self::assertSame([], $this->scope->asked);
+        }
+    }
+
+    /**
+     * A subject held when it was first read and absent under the lock is a link
+     * that changed, never an unlinked result: no provisioning is offered, and
+     * nothing is written. Its claim was not locked, and no guard was taken.
+     *
+     * @return void
+     */
+    public function testASubjectHeldWhenReadAndAbsentUnderTheLockIsALinkThatChanged(): void
+    {
+        $this->makeLink($this->connection, VerifyingDriver::SUBJECT, [
+            'issuer'        => VerifyingDriver::ISSUER,
+            'identity_type' => $this->person->type,
+            'identity_id'   => $this->person->id,
+        ]);
+
+        $this->app?->instance(Linker::class, new DelegatingLinkStorage(app(LinkStore::class), LinkResolution::absent()));
+
+        $offered = 0;
+
+        Event::listen(ResultUnlinked::class, static function () use (&$offered): void {
+            $offered++;
+        });
+
+        $this->start();
+
+        self::assertSame(FailureReason::LINK_CHANGED, $this->complete()->reason);
+        self::assertSame(0, $offered);
+        self::assertSame(0, IdentityGuard::query()->count());
+    }
+
+    /**
+     * Discovery reads an expired reservation as absent, so it reserves anew
+     * under the guard; a live one holds the subject, and takes no guard.
+     *
+     * @return void
+     */
+    public function testDiscoveryReadsAnExpiredReservationAsAbsent(): void
+    {
+        $this->makeLink($this->connection, VerifyingDriver::SUBJECT, [
+            'issuer'                 => VerifyingDriver::ISSUER,
+            'identity_type'          => $this->person->type,
+            'identity_id'            => $this->person->id,
+            'state'                  => LinkState::RESERVED,
+            'provenance'             => LinkOrigin::VERIFIED_DOMAIN,
+            'reservation_id'         => '01jbz000000000000000000001',
+            'reservation_expires_at' => $this->clock->now()->addSecond(),
+        ]);
+
+        $this->start();
+
+        self::assertSame(FailureReason::LINK_RESERVED, $this->complete()->reason);
+        self::assertSame(0, IdentityGuard::query()->count());
+
+        $this->clock->advance(1);
+
+        $this->start();
+
+        self::assertTrue($this->complete()->isCompleted());
+        self::assertSame(1, IdentityGuard::query()->count());
+    }
+
+    /**
+     * With the feature off, or the connection's linking off, nothing about a
+     * completion touches linking: no guard, no claim locked, no contract asked.
+     *
+     * @return void
+     */
+    public function testNothingIsDiscoveredWithLinkingOff(): void
+    {
+        $asked = count($this->matcher->queries);
+
+        config()->set('sso.features.domain_linking', false);
+
+        $this->start();
+
+        self::assertSame(FailureReason::UNLINKED, $this->complete()->reason);
+
+        config()->set('sso.features.domain_linking', true);
+
+        $this->connection->forceFill(['linking_enabled' => false])->save();
+
+        $this->start();
+
+        self::assertSame(FailureReason::UNLINKED, $this->complete()->reason);
+        self::assertSame(0, IdentityGuard::query()->count());
+        self::assertCount($asked, $this->matcher->queries);
+    }
+
+    /**
+     * A wrapper that delegates to the store is the store: it reserves and
+     * activates exactly as the store does, its own `resolve()` asked.
+     *
+     * @return void
+     */
+    public function testAWrapperThatDelegatesReservesAndActivates(): void
+    {
+        $wrapper = new DelegatingLinkStorage(app(LinkStore::class));
+
+        $this->app?->instance(Linker::class, $wrapper);
+
+        [$start, $completion] = $this->reserved();
+
+        self::assertTrue($this->admit($completion, $start)->isRedeemed());
+        self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
+        self::assertSame(LinkOrigin::VERIFIED_DOMAIN, Link::query()->sole()->provenance);
+        self::assertSame(1, $wrapper->resolutions, 'Resolved at completion; a reserved code is judged by its reservation.');
     }
 
     /**
@@ -1515,8 +1707,9 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[whether the connection, the handoff and the subject compared are
-     * the row's, the seconds its reservation has left]`, each one thing apart.
+     * Rows of `[whether the connection, the handoff and the subject compared
+     * are the row's, the seconds its reservation has left]`, each one thing
+     * apart.
      *
      * @return iterable<string, array{0: bool, 1: bool, 2: bool, 3: int}>
      */
@@ -1846,7 +2039,10 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
 
         $this->app?->instance(Linker::class, new FixedLinker(null));
 
-        self::assertNull(self::eligibility()->atCompletion($stale));
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Linking by a verified domain needs links its resolver reads');
+
+        self::eligibility()->atCompletion($stale);
     }
 
     /**
@@ -2266,6 +2462,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
         $this->connection->refresh();
 
         return self::consumedAs($this->connection, $this->domain, $left)
+            ->withConnection($this->connection, $this->domain, LinkingDiscovery::open($this->person))
             ->withResult($this->resultWith(new LinkingEmail(self::EMAIL, LinkingEmailSource::ID_TOKEN)))
             ->withResolution(LinkResolution::absent());
     }
@@ -2352,7 +2549,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     private function judged(VerifiedResult $result, HandoffBinding $binding): RecheckOutcome
     {
         $connection = Connection::query()->whereKey($this->connection->id)->sole();
-        $lock       = RecheckLock::held('tenant-1', $connection->id, 'web', $connection, null, $this->domain->refresh());
+        $lock       = RecheckLock::held('tenant-1', $connection->id, 'web', $connection, null, $this->domain->refresh(), $this->person);
 
         return $connection->getConnection()->transaction(
             static fn (): RecheckOutcome => app(ReservationActivation::class)->judge(new RedemptionContext($result, $binding, $lock, $connection, null)),

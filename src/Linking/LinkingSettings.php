@@ -21,6 +21,13 @@ use SineMacula\Laravel\Sso\Config\IntegerSetting;
  *   never change or remove one of those: a built-in shared issuer is never
  *   downgraded.
  *
+ * Microsoft Entra's `common` and `organizations` are no issuers and are not
+ * listed: they are tenant-independent authorities, and the issuer of a token
+ * they lead to names its tenant. A connection's issuer is that real issuer, and
+ * explicit classification applies to it: under the `microsoft_entra` preset,
+ * which knows those issuers, it is `shared`, told apart by `tid`
+ * (`docs/guides/linking-by-domain.md`).
+ *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  *
@@ -32,6 +39,7 @@ final readonly class LinkingSettings
     public const array SHARED_ISSUERS = [
         'https://accounts.google.com' => 'hd',
         'accounts.google.com'         => 'hd',
+        'https://slack.com'           => 'https://slack.com/team_id',
     ];
 
     /** @var int The verified response's validity when none is configured, in seconds. */

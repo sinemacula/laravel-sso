@@ -15,16 +15,32 @@ use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
  * not the person's confirmation.
  *
  * It is asked inside a `link` redemption's transaction, in its judgement and
- * again in its admission, only when the identity holds an active or suspended
- * link of verified domain provenance in any connection: the ids of those links
- * are given, oldest first. A `link` of an identity holding none never asks it.
+ * again in its admission, when the identity holds an active or suspended link
+ * of verified domain provenance in any connection, or has ever held an active
+ * one (its guard records that when a reservation is activated, and nothing
+ * clears it): the ids of the links it holds now are given, in id order, and
+ * none when every one has been removed or confirmed. A `link` of an identity
+ * that has never held one never asks it. It is asked under the identity's
+ * guard, the connections' and the links' locks (`docs/design/linking.md`), so
+ * its own guards come after the package's.
  *
  * Answer `independent` only when the current session was not established
- * through any link given, and its freshness was not renewed through one, nor
- * through the connection a given link belongs to; a password or a passkey the
- * person holds is independent. Answer `dependent` otherwise, and when it cannot
- * tell. A person whose only credential is such a link stays unable to confirm
- * it; removing the link is what remains (`docs/guides/links.md`).
+ * through a link that had verified domain provenance when the session was
+ * established, whether it is given, removed since or confirmed since, and its
+ * freshness was not renewed through one, nor through the connection such a link
+ * belongs to; a password or a passkey the person holds is independent. Answer
+ * `dependent` otherwise, and when it cannot tell. So an implementation records,
+ * when it admits a session from a redemption, whether the link it stood on
+ * (`RedemptionResult::$linkId`) had that provenance then.
+ *
+ * Removal is not the only way out for a person whose only credential is such a
+ * link. Application-controlled recovery, or a credential established
+ * independently of the provider, qualifies, and the session they lead to is
+ * independent. Removing the link does not turn the session that survives it
+ * into independent authentication, so credential enrolment and recovery must
+ * preserve that distinction: enrolling a credential from a session the link
+ * established proves nothing the provider could not do
+ * (`docs/guides/links.md`).
  *
  * Protection through admission: an implementation that reads the session keeps
  * its answer true until the redeemer's transaction commits, by a guard its
@@ -45,7 +61,7 @@ interface LinkConfirmation
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
-     * @param  non-empty-list<string>  $domainLinkIds
+     * @param  list<string>  $domainLinkIds
      * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict
      */
     public function judge(IdentityReference $identity, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict;

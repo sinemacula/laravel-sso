@@ -40,6 +40,7 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Links\ReservationWithdrawal;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
+use SineMacula\Laravel\Sso\Models\IdentityGuard;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -62,27 +63,38 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  * each measured once the counters exist, so a completion first costs two
  * updates and a redemption one; the scripted contracts cost nothing:
  *
- * - a reservation is what a completion is (six reads, five writes), and: in T2
- *   the claim's lock, the subject's row, what the identity holds, the subject's
- *   reserved row and what it holds again, the row and the links version, the
- *   code and the flows version, and the binding: eleven reads, ten writes;
+ * - a reservation is what a completion is (six reads, five writes), and: before
+ *   the locks, the plain reads of the subject's row and the claim; in T2 the
+ *   identity's guard, the claim's lock, the subject's row, what the identity
+ *   holds, the subject's reserved row and what it holds again, the row and the
+ *   links version, the code and the flows version, and the binding: thirteen
+ *   reads, eleven writes;
+ * - an ordinary linked sign-in through a connection with linking on takes no
+ *   guard and no claim: the plain read of its row stands where the claim's lock
+ *   stood, so it costs what it did; with the feature off, or linking off, it
+ *   reads neither;
  * - an activation is what a redemption is (four reads, four writes), and: the
- *   reservation's domain id and the claim's lock, the row twice and what the
- *   identity holds, the row and the links version: nine reads, six writes;
- * - a refusal at redemption: eight reads (the row again to delete it), and the
+ *   reservation's identity and domain id, its guard, the claim's lock, the row
+ *   twice and what the identity holds, the row, the links version and the
+ *   guard's mark that the identity has held a domain link: nine reads, eight
+ *   writes;
+ * - a refusal at redemption: nine reads (what the identity holds, read before
+ *   any contract is asked; the row again to delete it), and the guard, the
  *   counter, the single-use record, the code, the row and the links version;
  * - a domain's removal is what it is (four reads, two writes), and the links
  *   version when it deleted anything;
- * - each withdrawal is one delete, and the links version when it deleted anything;
+ * - each withdrawal is one delete, and the links version when it deleted
+ *   anything;
  * - a settings change: the plain read and the lock, the save and the delete,
  *   and the links version when it deleted anything; a change of nothing writes
  *   nothing; a stale caller reads once;
- * - a resolution is one locking read, and for an active link the stamp, or
- *   for one found outside the tenant the row and the links version;
- * - a widening: the rows, the tenants, the connection's lock and its rows, and
- *   the
- *   row and the links version; with none it is the first read; `assertSettled()`
- *   the rows, and the tenants when it finds any.
+ * - a resolution is one locking read, and for an active link of a `sign_in` the
+ *   stamp, or for one found outside the tenant the connection's lock, the row
+ *   read again locked, and the row and the links version; of unknown scope it
+ *   is the read alone, and of another purpose too;
+ * - a widening: the guard, the rows, the connections' lock, the rows locked,
+ *   and the row and the links version; with none it is the guard and the two
+ *   reads of the rows.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -186,30 +198,32 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A reservation is eleven reads and ten writes.
+     * A reservation is thirteen reads and eleven writes.
      *
      * @return void
      */
-    public function testAReservationIsElevenReadsAndTenWrites(): void
+    public function testAReservationIsThirteenReadsAndElevenWrites(): void
     {
         $this->request(self::STATE);
 
-        $result = $this->assertQueryBudget(11, 10, fn (): CompletionResult => $this->completeAtCallback(self::STATE));
+        $result = $this->assertQueryBudget(13, 11, fn (): CompletionResult => $this->completeAtCallback(self::STATE));
 
         self::assertTrue($result->isCompleted());
         self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
     }
 
     /**
-     * An activation is nine reads and six writes, the first sign-in's mark
-     * among them; the next through the connection is five.
+     * An activation is nine reads and eight writes, the guard, its mark that
+     * the identity has held a domain link and the first sign-in's mark among
+     * them; the next through the connection is seven, the guard's mark sent
+     * again and changing nothing.
      *
      * @return void
      */
-    public function testAnActivationIsNineReadsAndSixWrites(): void
+    public function testAnActivationIsNineReadsAndEightWrites(): void
     {
         $first  = $this->reservedCode('a-first-state');
-        $answer = $this->assertQueryBudget(9, 6, fn (): RedemptionResult => $this->admitted($first));
+        $answer = $this->assertQueryBudget(9, 8, fn (): RedemptionResult => $this->admitted($first));
 
         self::assertTrue($answer->isRedeemed());
         self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
@@ -218,22 +232,22 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
 
         $second = $this->reservedCode('a-second-state');
 
-        self::assertTrue($this->assertQueryBudget(9, 5, fn (): RedemptionResult => $this->admitted($second))->isRedeemed());
+        self::assertTrue($this->assertQueryBudget(9, 7, fn (): RedemptionResult => $this->admitted($second))->isRedeemed());
     }
 
     /**
-     * A refusal at redemption is eight reads and five writes: no link is made,
+     * A refusal at redemption is nine reads and six writes: no link is made,
      * and the row is deleted.
      *
      * @return void
      */
-    public function testARefusalAtRedemptionIsEightReadsAndFiveWrites(): void
+    public function testARefusalAtRedemptionIsNineReadsAndSixWrites(): void
     {
         $code = $this->reservedCode(self::STATE);
 
         $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
 
-        $this->assertQueryBudget(8, 5, fn (): RedemptionResult => $this->admitted($code));
+        $this->assertQueryBudget(9, 6, fn (): RedemptionResult => $this->admitted($code));
 
         self::assertSame(0, Link::query()->count());
     }
@@ -307,8 +321,10 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * A resolution is one locking read, and for an active link by a verified
-     * domain the stamp, or, found outside the tenant, the row and the links
-     * version; suspended or reserved it is the read alone.
+     * domain the stamp, or, found outside the tenant, two reads more (the
+     * connection's lock and the row read again locked) and the row and the
+     * links version; of unknown scope, suspended or reserved it is the read
+     * alone.
      *
      * @return void
      */
@@ -320,9 +336,13 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
 
         self::assertTrue($this->assertQueryBudget(1, 1, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isLinked());
 
+        $this->scope->verdict = ScopeVerdict::UNKNOWN;
+
+        self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isScopeUnknown());
+
         $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
 
-        self::assertTrue($this->assertQueryBudget(1, 2, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isSuspended());
+        self::assertTrue($this->assertQueryBudget(3, 2, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isSuspended());
         self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isSuspended());
 
         Link::query()->delete();
@@ -335,8 +355,9 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A widening with nothing to do is one read; with a link, four reads and
-     * two writes; `assertSettled()` one read, and two with a row.
+     * A widening with nothing to do is its guard and two reads of the rows;
+     * with a link, three reads, the connections' lock among them, and the
+     * guard, the row and the links version.
      *
      * @return void
      */
@@ -344,18 +365,39 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     {
         $widen = fn (): int => $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2'));
 
-        self::assertSame(0, $this->assertQueryBudget(1, 0, $widen));
+        self::assertSame(0, $this->assertQueryBudget(2, 1, $widen));
 
         $this->row(LinkState::ACTIVE, 'a', null, null, $this->person->id);
 
-        $this->assertQueryBudget(2, 0, function (): void {
-            $this->connection->getConnection()->transaction(function (): void {
-                app(ScopeWidening::class)->assertSettled($this->person, 'tenant-1');
-            });
-        });
-
-        self::assertSame(1, $this->assertQueryBudget(4, 2, $widen));
+        self::assertSame(1, $this->assertQueryBudget(3, 3, $widen));
         self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
+    }
+
+    /**
+     * An ordinary linked sign-in through a connection with linking on takes no
+     * guard and locks no claim: the plain read of its row stands where the
+     * claim's lock stood, so its cost is unchanged. With the feature off it
+     * reads neither, one read fewer, and takes no guard.
+     *
+     * @return void
+     */
+    public function testAnOrdinaryLinkedSignInTakesNoGuard(): void
+    {
+        $this->row(LinkState::ACTIVE, VerifyingDriver::SUBJECT, null, null, $this->person->id);
+
+        $this->scope->verdict = ScopeVerdict::WITHIN_TENANT;
+
+        $this->request(self::STATE);
+
+        self::assertTrue($this->assertQueryBudget(8, 8, fn (): CompletionResult => $this->completeAtCallback(self::STATE))->isCompleted());
+        self::assertSame(0, IdentityGuard::query()->count());
+
+        config()->set('sso.features.domain_linking', false);
+
+        $this->request('a-second-state');
+
+        self::assertTrue($this->assertQueryBudget(7, 8, fn (): CompletionResult => $this->completeAtCallback('a-second-state'))->isCompleted());
+        self::assertSame(0, IdentityGuard::query()->count());
     }
 
     /**

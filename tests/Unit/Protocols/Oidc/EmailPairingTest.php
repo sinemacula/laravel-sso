@@ -222,6 +222,20 @@ final class EmailPairingTest extends TestCase
     }
 
     /**
+     * A claim named by a URI, as Slack's team is, is read by its whole name,
+     * not as a path: what it holds is the organisation, and nothing else is.
+     *
+     * @return void
+     */
+    public function testAnOrganizationClaimNamedByAUriIsReadWhole(): void
+    {
+        $claims = ['https://slack.com/team_id' => 'T0123', 'team_id' => 'T9999'];
+
+        self::assertSame('T0123', EmailPairing::organization($claims, 'https://slack.com/team_id'));
+        self::assertNull(EmailPairing::organization(['team_id' => 'T9999'], 'https://slack.com/team_id'));
+    }
+
+    /**
      * A pair verified exactly, with one `@` between two parts, gives a linking
      * email from its own source, exactly as asserted, naming no organisation.
      *

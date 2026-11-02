@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Connections\SubjectMigration;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
@@ -302,6 +303,8 @@ final class SubjectMigrationTest extends TestCase
     public function testARelinkedDomainLinkIsFoundByAWidening(): void
     {
         $relinked = $this->relinkedDomainLink();
+
+        $this->app?->instance(Linker::class, app(LinkStore::class));
 
         $widened = $this->connection->getConnection()->transaction(
             static fn (): int => app(ScopeWidening::class)->widened(new IdentityReference($relinked->identity_type, $relinked->identity_id), 'tenant-2'),

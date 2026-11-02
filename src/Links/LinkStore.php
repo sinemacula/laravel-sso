@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Links;
 
-use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -12,23 +11,28 @@ use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionFinder;
 use SineMacula\Laravel\Sso\Contracts\Clock;
-use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\LinkLimit;
+use SineMacula\Laravel\Sso\Contracts\LinkStorage;
 use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
+use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
+use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * The package's link store (SSO-8.2 to SSO-8.4, SSO-1.5): the `Linker` over the
- * links table, and the one place a link is created.
+ * The package's link store (SSO-8.2 to SSO-8.4, SSO-1.5): the
+ * `Contracts\LinkStorage` over the links table, and the one place a link is
+ * created.
  *
  * It is not the default: `Links\NoLinks` is, and links nothing. The application
  * binds this store as `Contracts\Linker`, or `laravel-iam` does, which under it
@@ -45,14 +49,30 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * - no row, or a reservation expired, is `absent`;
  * - a live reservation is `reserved`, and a row suspended is `suspended`;
  * - an active link is `linked`, with `last_used_at` stamped from the clock by
- *   one conditional update, at most once a minute, unless it stands on a
- *   verified domain and `Contracts\PrincipalScope` no longer answers
- *   `within_tenant` for its identity and the result's tenant: the suspension is
- *   then stored, latched (`suspended_at`, the connection's links version
- *   raised), and the answer is `suspended`. Removing the principal later never
- *   restores it; only `confirm()`, from a confirming `link`, does (SSO-8.8). A
- *   principal added and removed between resolutions is what
- *   `Linking\ScopeWidening` catches, through `suspend()`.
+ *   one conditional update, at most once a minute, for a `sign_in` result
+ *   alone, since a `link` or a `reauthenticate` is no sign-in. A link that
+ *   stands on a verified domain asks `Contracts\PrincipalScope` first, for its
+ *   identity and the result's tenant:
+ *   - `within_tenant` goes on;
+ *   - `outside_tenant` stores the suspension, latched (`suspended_at`, the
+ *     connection's links version raised), and revokes the sessions established
+ *     through the link, in one transaction (a savepoint inside the caller's),
+ *     in the established lock order: the link's connection is locked, then the
+ *     link read again by a locking read, and only a link still active by a
+ *     verified domain is suspended, revoked and reported, once. The answer is
+ *     `suspended`. The principal's change was the place to revoke them; this
+ *     repairs what it missed, and asking twice is safe. Removing the principal
+ *     later never restores the link; only `confirm()`, from a confirming
+ *     `link`, does (SSO-8.8). A principal added and removed between resolutions
+ *     is what `Linking\ScopeWidening` catches;
+ *   - `unknown` is `scope_unknown`: this attempt is refused, and nothing is
+ *     stored, suspended or revoked, since uncertainty asserts no widening. An
+ *     implementation that cannot reach its store throws instead.
+ *
+ * A caller inside a transaction of its own locks the result's connection before
+ * it resolves, as the package's completion and redemptions do, so the link is
+ * never locked before its connection; with none open, `resolve()` keeps that
+ * order itself.
  *
  * `create()` makes an active link, in one transaction on the storage connection
  * (a savepoint inside the caller's), in a fixed order: the connection's row is
@@ -83,7 +103,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
-final readonly class LinkStore implements Linker
+final readonly class LinkStore implements LinkStorage
 {
     /** @var int How long, in seconds, a link's last use stands before a resolution stamps it again. */
     public const int LAST_USED_RESOLUTION_SECONDS = 60;
@@ -113,48 +133,16 @@ final readonly class LinkStore implements Linker
 
     /**
      * The number of links the identity holds in the connection, by a locking
-     * read: active and suspended ones, and reserved ones expiring after the
-     * instant. The identity is compared byte for byte, whatever the collation.
+     * read: active and suspended ones, and reserved ones that have not expired.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  \Carbon\CarbonImmutable  $now
      * @return int
      */
-    public static function heldBy(string $connectionId, IdentityReference $identity, CarbonImmutable $now): int
+    #[\Override]
+    public function holdings(string $connectionId, IdentityReference $identity): int
     {
-        $links = Link::query()
-            ->useWritePdo()
-            ->where('identity_type', $identity->type)
-            ->where('identity_id', $identity->id)
-            ->where('connection_id', $connectionId)
-            ->lockForUpdate()
-            ->get()
-            ->all();
-
-        return count(array_filter($links, static fn (Link $link): bool => self::isOwnedBy($link, $identity) && self::isHeld($link, $now)));
-    }
-
-    /**
-     * The most links the identity may hold in the connection, as the binding
-     * answers, refused when it is below one.
-     *
-     * @param  \SineMacula\Laravel\Sso\Contracts\LinkLimit  $binding
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @return int
-     *
-     * @throws \LogicException
-     */
-    public static function limitOf(LinkLimit $binding, IdentityReference $identity, Connection $connection): int
-    {
-        $limit = $binding->maxLinks($identity, $connection);
-
-        if ($limit < 1) {
-            throw new \LogicException(sprintf('The link limit [%s] answered %d; a link limit is at least one.', $binding::class, $limit));
-        }
-
-        return $limit;
+        return LinkHoldings::count($connectionId, $identity, $this->clock->now());
     }
 
     /**
@@ -165,6 +153,7 @@ final readonly class LinkStore implements Linker
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     * @throws \Throwable
      */
     #[\Override]
     public function resolve(VerifiedResult $result): LinkResolution
@@ -187,7 +176,7 @@ final readonly class LinkStore implements Linker
      * the person confirmed it through the `link` purpose, under the locks of
      * the redemption, unless it is already neither.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $locked
      * @param  string  $linkId
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
@@ -195,9 +184,10 @@ final readonly class LinkStore implements Linker
      *
      * @throws \InvalidArgumentException
      */
-    public function confirm(Connection $locked, string $linkId, ?string $application = null, ?RequestReference $reference = null): void
+    #[\Override]
+    public function confirm(SsoConnection $locked, string $linkId, ?string $application = null, ?RequestReference $reference = null): void
     {
-        $link = Link::query()->useWritePdo()->whereKey($linkId)->where('connection_id', $locked->id)->lockForUpdate()->first();
+        $link = Link::query()->useWritePdo()->whereKey($linkId)->where('connection_id', $locked->getConnectionId())->lockForUpdate()->first();
 
         if ($link === null || !$link->domain_provenance) {
             return;
@@ -205,7 +195,7 @@ final readonly class LinkStore implements Linker
 
         $link->forceFill(['state' => LinkState::ACTIVE, 'suspended_at' => null, 'provenance' => LinkOrigin::LINK_PURPOSE])->save();
 
-        self::raiseLinksVersion($locked);
+        self::raiseLinksVersion($locked->getConnectionId());
 
         $this->events->confirmed($locked, self::identityOf($link), $application, $reference);
     }
@@ -214,20 +204,58 @@ final readonly class LinkStore implements Linker
      * Store the locked link's suspension, latched, raise the connection's links
      * version and report it.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Link  $link
+     * @param  string  $linkId
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  string  $connectionId
      * @param  string  $tenantId
      * @param  string  $protocol
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function suspend(Link $link, string $tenantId, string $protocol): void
+    #[\Override]
+    public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol): void
     {
-        $link->forceFill(['state' => LinkState::SUSPENDED, 'suspended_at' => $this->clock->now()])->save();
+        $query = Link::query()->useWritePdo();
+        $now   = UtcDateTime::format($query->getModel(), $this->clock->now());
 
-        Connection::query()->useWritePdo()->whereKey($link->connection_id)->increment('links_version');
+        $query->whereKey($linkId)->update(['state' => LinkState::SUSPENDED->value, 'suspended_at' => $now, 'updated_at' => $now]);
 
-        $this->events->suspended($link->connection_id, $tenantId, $protocol, self::identityOf($link));
+        self::raiseLinksVersion($connectionId);
+
+        $this->events->suspended($connectionId, $tenantId, $protocol, $identity);
+    }
+
+    /**
+     * Revoke the sessions established through the locked link, through the
+     * bound revocation, resolved at that moment, in the caller's transaction.
+     *
+     * @param  string  $linkId
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  string  $connectionId
+     * @param  string  $tenantId
+     * @return void
+     *
+     * @throws \InvalidArgumentException
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     */
+    #[\Override]
+    public function revokeSessions(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId): void
+    {
+        $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityLink($tenantId, $connectionId, $identity, $linkId));
+    }
+
+    /**
+     * The one writer of a reserved row.
+     *
+     * @return \SineMacula\Laravel\Sso\Links\LinkReservations
+     *
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     */
+    #[\Override]
+    public function reservations(): LinkReservations
+    {
+        return $this->container->make(LinkReservations::class);
     }
 
     /**
@@ -235,7 +263,7 @@ final readonly class LinkStore implements Linker
      * identity, unless the subject is linked already or the identity holds as
      * many links in the connection as it may.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
@@ -251,8 +279,9 @@ final readonly class LinkStore implements Linker
      *
      * @SuppressWarnings("php:S107")
      */
+    #[\Override]
     public function create(
-        Connection $connection,
+        SsoConnection $connection,
         LinkSubject $subject,
         IdentityReference $identity,
         LinkOrigin $origin,
@@ -269,11 +298,11 @@ final readonly class LinkStore implements Linker
 
             $locked = $this->lockedConnection($connection);
 
-            if (self::heldBy($locked->id, $identity, $this->clock->now()) >= $this->limit($identity, $locked)) {
+            if ($this->holdings($locked->id, $identity) >= $this->limit($identity, $locked)) {
                 return LinkCreation::linkLimitReached();
             }
 
-            $this->container->make(LinkReservations::class)->replaceExpired($locked, $subject);
+            $this->reservations()->replaceExpired($locked, $subject);
 
             $link = self::inserted($locked, $subject, $identity, $origin);
 
@@ -281,7 +310,7 @@ final readonly class LinkStore implements Linker
                 return LinkCreation::subjectAlreadyLinked();
             }
 
-            self::raiseLinksVersion($locked);
+            self::raiseLinksVersion($locked->id);
 
             $report($locked);
 
@@ -355,9 +384,9 @@ final readonly class LinkStore implements Linker
     }
 
     /**
-     * What the active row resolves to: its identity, once its use is stamped,
-     * unless it stands on a verified domain and its identity is no longer known
-     * to hold only principals of the tenant, which suspends it for good.
+     * What the active row resolves to: its identity, once a sign-in's use is
+     * stamped, unless it stands on a verified domain and its identity's
+     * principals are not known to be within the tenant.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
@@ -365,20 +394,61 @@ final readonly class LinkStore implements Linker
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     * @throws \Throwable
      */
     private function resolvedActive(Link $link, VerifiedResult $result): LinkResolution
     {
         $identity = self::identityOf($link);
+        $verdict  = $link->domain_provenance ? $this->container->make(PrincipalScope::class)->judge($identity, $result->tenantId) : ScopeVerdict::WITHIN_TENANT;
 
-        if ($link->domain_provenance && !$this->container->make(PrincipalScope::class)->judge($identity, $result->tenantId)->isWithinTenant()) {
-            $this->suspend($link, $result->tenantId, $result->protocol);
-
-            return LinkResolution::suspended($identity, $link->id);
+        if ($verdict === ScopeVerdict::OUTSIDE_TENANT) {
+            return $this->latched($link, $result, $identity);
         }
 
-        $this->stampLastUsed($link);
+        if ($verdict === ScopeVerdict::UNKNOWN) {
+            return LinkResolution::scopeUnknown($identity, $link->id);
+        }
+
+        if ($result->purpose === Purpose::SIGN_IN) {
+            $this->stampLastUsed($link);
+        }
 
         return LinkResolution::linked($identity, $link->id);
+    }
+
+    /**
+     * Suspend the link for good, and revoke the sessions established through
+     * it, in one transaction (a savepoint inside the caller's): the link's
+     * connection is locked first, then the link is read again by a locking
+     * read, and only a link still active by a verified domain is suspended and
+     * reported; anything else is resolved again as it is now, under those
+     * locks, so a latch another caller made first is never made twice.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Link  $link
+     * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @return \SineMacula\Laravel\Sso\Links\LinkResolution
+     *
+     * @throws \InvalidArgumentException
+     * @throws \Throwable
+     */
+    private function latched(Link $link, VerifiedResult $result, IdentityReference $identity): LinkResolution
+    {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($link, $result, $identity): LinkResolution {
+
+            $this->connections->findForUpdate($result->tenantId, $link->connection_id);
+
+            $row = Link::query()->useWritePdo()->whereKey($link->id)->lockForUpdate()->first();
+
+            if ($row?->state !== LinkState::ACTIVE || !$row->domain_provenance) {
+                return $this->resolve($result);
+            }
+
+            $this->suspend($link->id, $identity, $link->connection_id, $result->tenantId, $result->protocol);
+            $this->revokeSessions($link->id, $identity, $link->connection_id, $result->tenantId);
+
+            return LinkResolution::suspended($identity, $link->id);
+        });
     }
 
     /**
@@ -409,56 +479,27 @@ final readonly class LinkStore implements Linker
      * that locks the row after this one commits fails to serialise, rather than
      * go on from a snapshot without the link (`SubjectMigration`).
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  string  $connectionId
      * @return void
      */
-    private static function raiseLinksVersion(Connection $locked): void
+    private static function raiseLinksVersion(string $connectionId): void
     {
-        Connection::query()->useWritePdo()->whereKey($locked->id)->increment('links_version');
+        Connection::query()->useWritePdo()->whereKey($connectionId)->increment('links_version');
     }
 
     /**
      * The connection's row, read again locked for update until the transaction
      * ends.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Models\Connection
      *
      * @throws \LogicException
      */
-    private function lockedConnection(Connection $connection): Connection
+    private function lockedConnection(SsoConnection $connection): Connection
     {
-        return $this->connections->findForUpdate($connection->tenant_id, $connection->id)
-            ?? throw new \LogicException(sprintf('No connection [%s] exists to link through.', $connection->id));
-    }
-
-    /**
-     * Whether the link is the identity's, byte for byte.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\Link  $link
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @return bool
-     */
-    private static function isOwnedBy(Link $link, IdentityReference $identity): bool
-    {
-        return $link->identity_type === $identity->type && $link->identity_id === $identity->id;
-    }
-
-    /**
-     * Whether the link counts toward the limit: active or suspended, or
-     * reserved until a moment after now.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\Link  $link
-     * @param  \Carbon\CarbonImmutable  $now
-     * @return bool
-     */
-    private static function isHeld(Link $link, CarbonImmutable $now): bool
-    {
-        if ($link->state !== LinkState::RESERVED) {
-            return true;
-        }
-
-        return $link->reservation_expires_at?->isAfter($now) ?? false;
+        return $this->connections->findForUpdate($connection->getTenantId(), $connection->getConnectionId())
+            ?? throw new \LogicException(sprintf('No connection [%s] exists to link through.', $connection->getConnectionId()));
     }
 
     /**
@@ -474,7 +515,7 @@ final readonly class LinkStore implements Linker
      */
     private function limit(IdentityReference $identity, Connection $connection): int
     {
-        return self::limitOf($this->container->make(LinkLimit::class), $identity, $connection);
+        return LinkHoldings::limitOf($this->container->make(LinkLimit::class), $identity, $connection);
     }
 
     /**

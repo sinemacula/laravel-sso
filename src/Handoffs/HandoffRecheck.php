@@ -20,7 +20,10 @@ use SineMacula\Laravel\Sso\Handoffs\Redemption\ReauthenticationBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\SignInBranch;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
-use SineMacula\Laravel\Sso\Links\LinkReservations;
+use SineMacula\Laravel\Sso\Linking\IdentityLock;
+use SineMacula\Laravel\Sso\Linking\LinkConfirmationGate;
+use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
+use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -43,22 +46,30 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * through another connection is not atomic with them.
  *
  * `lock()` comes first, before the redeemer locks its own code, so every
- * redemption takes the package's lock order (`flows.md`): the tenant's
- * enforcement row, then connection rows in id order, then, for a code bound to
- * a reservation, its domain claim (found by a plain read of the reservation,
- * which `recheck()` confirms under the lock), then the code. Under the
- * package's default `Contracts\Enforcement` (`DatabaseEnforcement`) with the
- * `enforcement` feature on, it asks the bound
+ * redemption takes the package's lock order (`docs/design/linking.md`): the
+ * identity's guard, the tenant's enforcement row, connection rows in id order,
+ * for a code bound to a reservation its domain claim, then the code. A code
+ * bound to a reservation names it, and a `link` code names the identity it was
+ * started for (`$confirming`). The reservation's identity and domain are found
+ * by a plain read of it, which `recheck()` confirms under the lock; the guard
+ * is then taken (`Linking\IdentityLock`). For a `link`, a locking read of the
+ * guard then says whether the identity has ever held an active link by a
+ * verified domain, and a plain read finds the connections holding that
+ * identity's verified domain links, so those are locked in order too: every
+ * link row read later stands under its connection's lock. Any other code takes
+ * no guard. Under the package's default `Contracts\Enforcement`
+ * (`DatabaseEnforcement`) with the `enforcement` feature on, it asks the bound
  * `Contracts\EnforcementInheritance` for the enforcing tenant, locks that
  * tenant's row (inserted unconfigured when it has none,
  * `Enforcement\EnforcementLock`), and then, in one locking statement in id
- * order, the result's connection and the connections the rule names. Otherwise
- * (the feature off, or another contract bound) it locks the connection alone,
- * and asks nothing. A rule change waits for the redeemer's transaction, and its
- * revocation then sees the session the redeemer wrote; a redeemer that waited
- * on a change sees the rule as changed. On PostgreSQL under `REPEATABLE READ`,
- * a redeemer that waited may instead fail to serialise: the error propagates,
- * and the redeemer retries its whole transaction, never a part of it.
+ * order, the result's connection, those connections and the connections the
+ * rule names. Otherwise (the feature off, or another contract bound) it locks
+ * the connections alone, and asks nothing. A rule change waits for the
+ * redeemer's transaction, and its revocation then sees the session the redeemer
+ * wrote; a redeemer that waited on a change sees the rule as changed. On
+ * PostgreSQL under `REPEATABLE READ`, a redeemer that waited may instead fail
+ * to serialise: the error propagates, and the redeemer retries its whole
+ * transaction, never a part of it.
  *
  * `recheck()` takes that lock, for the result's tenant, connection and
  * application (another is a `LogicException`), and answers, in this order, the
@@ -69,12 +80,12 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *    its protocol unavailable or its settings incomplete), as its locked row
  *    shows; or the inheritance contract, asked again, no longer names the
  *    enforcing tenant whose rule is locked, which is never locked out of order.
- * 2. `enforcement_unsatisfied`: the enforcement of the connection's tenant on the
- *    result's application requires sign-in through connections this one is not among.
- *    Under the default contract it is judged from the locked rows; another contract
- *    bound is asked now, and must itself keep a change to its rule from committing
- *    between its answer and the session's commit (a current read alone is not
- *    enough), or the session escapes the change.
+ * 2. `enforcement_unsatisfied`: the enforcement of the connection's tenant on
+ *    the result's application requires sign-in through connections this one is
+ *    not among. Under the default contract it is judged from the locked rows;
+ *    another contract bound is asked now, and must itself keep a change to its
+ *    rule from committing between its answer and the session's commit (a
+ *    current read alone is not enough), or the session escapes the change.
  * 3. the purpose's own rules (`Contracts\PurposeBranch`): `SignInBranch`,
  *    `LinkBranch` or `ReauthenticationBranch`, which compare the link as it is
  *    now with the one observed at completion by its id, so identity equality
@@ -99,9 +110,9 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *
  * A database error and a contract's exception propagate (SSO-11.4). It holds
  * the connection lookup, the drivers' registry, the enforcement contract, the
- * reservations and the container, none of which keeps anything of one
- * redemption for the next (SSO-11.2); resolve it from the container per
- * request.
+ * storage binding, the identity lock and the container, none of which keeps
+ * anything of one redemption for the next (SSO-11.2); resolve it from the
+ * container per request.
  *
  * @api
  *
@@ -116,7 +127,8 @@ final readonly class HandoffRecheck
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionFinder  $connections
      * @param  \SineMacula\Laravel\Sso\Protocols\ProtocolManager  $protocols
      * @param  \SineMacula\Laravel\Sso\Contracts\Enforcement  $enforcement
-     * @param  \SineMacula\Laravel\Sso\Links\LinkReservations  $reservations
+     * @param  \SineMacula\Laravel\Sso\Links\LinkStorageBinding  $storage
+     * @param  \SineMacula\Laravel\Sso\Linking\IdentityLock  $identities
      * @param  \Illuminate\Contracts\Container\Container  $container
      */
     public function __construct(
@@ -131,7 +143,10 @@ final readonly class HandoffRecheck
         private Enforcement $enforcement,
 
         /** Removes the reservation of a code refused after it was consumed. */
-        private LinkReservations $reservations,
+        private LinkStorageBinding $storage,
+
+        /** Locks the identity of a reservation or of a `link`. */
+        private IdentityLock $identities,
 
         /** Resolves the branch of the result's purpose. */
         private Container $container,
@@ -139,15 +154,18 @@ final readonly class HandoffRecheck
 
     /**
      * Take the locks a redemption through the tenant's connection, for the
-     * application, holds before it locks its code: the enforcing tenant's rule,
-     * then the connection and the rule's connections, in id order, under the
-     * default enforcement contract with the feature on; the connection alone
+     * application, holds before it locks its code: the guard of the identity of
+     * the reservation named, or of the `link` it confirms for; the enforcing
+     * tenant's rule, then the connection, those holding that identity's
+     * verified domain links and the rule's connections, in id order, under the
+     * default enforcement contract with the feature on; those connections alone
      * otherwise; then the domain claim of the reservation named, if any.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $application
      * @param  ?string  $reservationId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $confirming
      * @return \SineMacula\Laravel\Sso\Handoffs\RecheckLock
      *
      * @throws \InvalidArgumentException
@@ -155,16 +173,27 @@ final readonly class HandoffRecheck
      * @throws \UnexpectedValueException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    public function lock(string $tenantId, string $connectionId, string $application, ?string $reservationId = null): RecheckLock
+    public function lock(string $tenantId, string $connectionId, string $application, ?string $reservationId = null, ?IdentityReference $confirming = null): RecheckLock
     {
         self::assertInTransaction();
 
-        $enforcement = $this->enforcement instanceof DatabaseEnforcement ? $this->enforcement->lock($tenantId, $application, [$connectionId]) : null;
-        $connection  = $enforcement === null ? $this->connections->findForUpdate($tenantId, $connectionId) : $enforcement->connection($tenantId, $connectionId);
+        $reservation = self::reservationOf($connectionId, $reservationId);
+        $guarded     = $confirming ?? IdentityReference::fromColumns($reservation?->identity_type, $reservation?->identity_id);
 
-        $domain = $connection === null ? null : self::lockedDomain($connectionId, $reservationId);
+        if ($guarded !== null) {
+            $this->identities->acquire($guarded);
+        }
 
-        return RecheckLock::held($tenantId, $connectionId, $application, $connection, $enforcement, $domain);
+        $held        = $confirming !== null && IdentityLock::hasHeldDomainLink($confirming);
+        $ids         = array_values(array_unique([$connectionId, ...($confirming === null ? [] : LinkConfirmationGate::connectionsHolding($confirming))]));
+        $enforcement = $this->enforcement instanceof DatabaseEnforcement ? $this->enforcement->lock($tenantId, $application, $ids) : null;
+        $locked      = $enforcement === null ? $this->lockedConnections($tenantId, $connectionId, $ids) : $enforcement->connections;
+        $connection  = self::connectionOf($locked, $tenantId, $connectionId);
+        $domain      = $connection === null ? null : self::lockedDomain($reservation);
+
+        $lockedIds = array_map(static fn (Connection $row): string => $row->id, $locked);
+
+        return RecheckLock::held($tenantId, $connectionId, $application, $connection, $enforcement, $domain, $guarded, $lockedIds, $held);
     }
 
     /**
@@ -238,7 +267,7 @@ final readonly class HandoffRecheck
             return;
         }
 
-        $this->reservations->deleteRefused($connectionId, $binding->reservationId, $binding->handoffReference);
+        $this->storage->require('Discarding a reservation')->reservations()->deleteRefused($connectionId, $binding->reservationId, $binding->handoffReference);
     }
 
     /**
@@ -372,27 +401,80 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * The domain claim of the reservation named, locked; `null` when none is
-     * named, or the reservation is gone, or its claim is. The reservation is
-     * read plainly to find it, since it is locked only after the code; the
-     * binding is immutable, and the branch confirms it under the lock.
+     * The reservation named, by a plain read, since it is locked only after the
+     * code; what it binds is immutable, and the branch confirms it under the
+     * lock. `null` when none is named, or it is gone.
      *
      * @param  string  $connectionId
      * @param  ?string  $reservationId
-     * @return ?\SineMacula\Laravel\Sso\Models\Domain
+     * @return ?\SineMacula\Laravel\Sso\Models\Link
      */
-    private static function lockedDomain(string $connectionId, ?string $reservationId): ?Domain
+    private static function reservationOf(string $connectionId, ?string $reservationId): ?Link
     {
         if ($reservationId === null) {
             return null;
         }
 
-        $domainId = Link::query()->useWritePdo()
-            ->where('reservation_id', $reservationId)
-            ->where('connection_id', $connectionId)
-            ->value('reservation_domain_id');
+        return Link::query()->useWritePdo()->where('reservation_id', $reservationId)->where('connection_id', $connectionId)->first();
+    }
 
-        return is_string($domainId) ? Domain::query()->useWritePdo()->lockForUpdate()->whereKey($domainId)->first() : null;
+    /**
+     * The domain claim of the reservation, locked; `null` when there is no
+     * reservation, or its claim is gone.
+     *
+     * @param  ?\SineMacula\Laravel\Sso\Models\Link  $reservation
+     * @return ?\SineMacula\Laravel\Sso\Models\Domain
+     */
+    private static function lockedDomain(?Link $reservation): ?Domain
+    {
+        $domainId = $reservation?->reservation_domain_id;
+
+        return $domainId === null ? null : Domain::query()->useWritePdo()->lockForUpdate()->whereKey($domainId)->first();
+    }
+
+    /**
+     * The locked connection with the id, of exactly the tenant, or `null`.
+     *
+     * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $locked
+     * @param  string  $tenantId
+     * @param  string  $connectionId
+     * @return ?\SineMacula\Laravel\Sso\Models\Connection
+     */
+    private static function connectionOf(array $locked, string $tenantId, string $connectionId): ?Connection
+    {
+        foreach ($locked as $connection) {
+
+            if ($connection->id === $connectionId && $connection->tenant_id === $tenantId) {
+                return $connection;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The connections locked when no enforcement took them: the one connection
+     * by its tenant's lookup, or several, in id order, by one locking
+     * statement.
+     *
+     * @param  string  $tenantId
+     * @param  string  $connectionId
+     * @param  list<string>  $ids
+     * @return list<\SineMacula\Laravel\Sso\Models\Connection>
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function lockedConnections(string $tenantId, string $connectionId, array $ids): array
+    {
+        if (count($ids) > 1) {
+            sort($ids, SORT_STRING);
+
+            return array_values(Connection::query()->useWritePdo()->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->all());
+        }
+
+        $connection = $this->connections->findForUpdate($tenantId, $connectionId);
+
+        return $connection === null ? [] : [$connection];
     }
 
     /**

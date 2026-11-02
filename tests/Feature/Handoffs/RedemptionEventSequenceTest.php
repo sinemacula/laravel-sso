@@ -35,6 +35,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
+use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -47,6 +48,7 @@ use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
+use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
@@ -567,15 +569,12 @@ final class RedemptionEventSequenceTest extends TestCase
 
         $caller = $purpose === Purpose::LINK ? new IdentityReference('App\Models\User', '7') : null;
 
-        if ($purpose === Purpose::REAUTHENTICATE) {
-            $redemption = $app->make(HandoffRedemption::class);
-            $connection = $connectionId ?? $this->connection->id;
-            $database   = DB::connection(StorageConnection::name());
+        $redemption = $app->make(HandoffRedemption::class);
+        $connection = $connectionId ?? $this->connection->id;
 
-            return $database->transaction(static fn (): RedemptionResult => $redemption->admit($purpose, $application, $connection, $code, $verifier));
-        }
-
-        return $app->make(HandoffRedemption::class)->redeem($purpose, $application, $connectionId ?? $this->connection->id, $code, $verifier, $caller);
+        return DB::connection(StorageConnection::name())->transaction(
+            static fn (): RedemptionResult => $redemption->redeem($purpose, $application, $connection, $code, $verifier, $caller),
+        );
     }
 
     /**
@@ -663,5 +662,11 @@ final class RedemptionEventSequenceTest extends TestCase
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
         $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
         $this->app?->instance(ReauthenticationSessions::class, new RecordingSessions(ExampleLinks::linkId($this->linked)));
+
+        $storage = new DelegatingLinkStorage(app(LinkStore::class));
+
+        $storage->answering = fn (): LinkResolution => ExampleLinks::resolution($this->linked);
+
+        $this->app?->instance(Linker::class, $storage);
     }
 }

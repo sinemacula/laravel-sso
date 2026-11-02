@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
+use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
@@ -41,6 +42,7 @@ use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
+use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\Fixtures\Secrets\CountingSecretEncrypter;
@@ -692,6 +694,7 @@ final class CompletionServiceTest extends TestCase
         $this->request(['purpose' => 'link', 'identity_type' => 'App\Models\User', 'identity_id' => '7']);
 
         $this->app?->instance(LinkEligibility::class, new AllowingLinkEligibility);
+        $this->app?->instance(Linker::class, new DelegatingLinkStorage(app(LinkStore::class), LinkResolution::absent()));
         $this->linked = null;
 
         $result = $this->completeAtCallback();

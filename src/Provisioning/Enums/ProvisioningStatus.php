@@ -26,9 +26,13 @@ enum ProvisioningStatus: string
     // The link was made, active, with provisioning as its origin
     case CREATED = 'created';
 
-    // The grant is not this dispatch's, is used or closed, or is bound to
-    // another result object
+    // The grant is not this dispatch's, or is used or closed
     case GRANT_INVALID = 'grant_invalid';
+
+    // The listener gave the grant another result object than the event's: a bug
+    // of the listener, which rolls its identity and membership back; the grant
+    // is spent, and recovery is a new flow
+    case GRANT_WRONG_RESULT = 'grant_wrong_result';
 
     // The connection is no longer usable, what was fetched for it has expired,
     // or the request is no longer consumed, unfinished, unvoided and of the
@@ -55,6 +59,7 @@ enum ProvisioningStatus: string
         return match ($this) {
             self::CREATED                => null,
             self::GRANT_INVALID          => FailureReason::PROVISIONING_GRANT_INVALID,
+            self::GRANT_WRONG_RESULT     => FailureReason::PROVISIONING_GRANT_INVALID,
             self::REQUEST_UNAVAILABLE    => FailureReason::CONNECTION_UNAVAILABLE,
             self::EXPIRED                => FailureReason::REQUEST_EXPIRED,
             self::SUBJECT_ALREADY_LINKED => FailureReason::SUBJECT_ALREADY_LINKED,

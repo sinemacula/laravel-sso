@@ -93,13 +93,15 @@ There are two ways in, and they differ only in what protects your own writes:
 |------------------------------------|------------------------------------|----------------|----------------------------------------------------------------------------------|
 | `admit()`                          | Yours, required                    | `true`         | Anything that writes a session: it commits with the consumption, under the locks |
 | `redeem()` inside your transaction | Yours                              | `true`         | The same as `admit()`                                                            |
-| `redeem()` with none open          | Its own, committed when it returns | `false`        | A `link`, which writes no session, or an application that holds no sessions here |
+| `redeem()` with none open          | Its own, committed when it returns | `false`        | A `link` alone, which creates no session                                         |
 
 `admit()` is the session-admission API. With no transaction open on the package's storage connection it throws a
 `LogicException` before the code is touched. Use it for every sign-in: a result that answers `isAdmitted()` false has
-already committed and released its locks, so a session written from it is protected by nothing, and it must never lead
-to one. A `reauthenticate` code, and a code bound to a reservation (linking by a verified domain), must commit with your
-session write, so reaching the standalone path with one is a `LogicException` that leaves the code unconsumed.
+already committed and released its locks, so a session written from it would be protected by nothing. So every `sign_in`
+code, linked, reserved or unlinked, and every `reauthenticate` code, must commit with your session write, and reaching
+the standalone path with one is a `LogicException` that leaves the code unconsumed, and unrecorded in the single-use
+store, so redeeming it again through `admit()` works. An unlinked handoff is redeemed through `admit()` like any other,
+whether or not you go on to write a session.
 
 Both take the caller your application has authenticated as their last argument, an `IdentityReference`:
 
@@ -185,6 +187,7 @@ A refused result carries one of these codes:
 | `enforcement_unsatisfied`             | the tenant now requires sign-in through other connections                                    |
 | `link_changed`                        | the link was removed, replaced, or (for a `sign_in`) appeared where there was none           |
 | `link_suspended`                      | the link is suspended until a confirming `link`                                              |
+| `principal_scope_unknown`             | the link's verified domain provenance needs a scope your contract could not judge, this once |
 | `link_reserved`                       | a live reservation holds the subject, which a `link` waits out                               |
 | `reservation_invalid`                 | the reservation is gone, expired, or a condition of it no longer holds                       |
 | `identity_mismatch`                   | the caller is not the identity the `link` is bound to                                        |
@@ -236,8 +239,9 @@ that consumes its code, on the package's storage connection. It describes what i
 `Handoffs\HandoffBinding`, built from what its issuer stored: everything the issuer was given in its `HandoffGrant`.
 
 It takes the recheck's lock first, before it locks its own code, so every redemption takes the package's lock order (the
-tenant's enforcement, the connections, a reservation's domain claim, the code, the links) and none deadlocks with a
-change:
+identity's guard, the tenant's enforcement, the connections, a reservation's domain claim, the code, the links) and none
+deadlocks with a change. Name the reservation the code holds, and for a `link` the identity it was started for: a `link`
+judged under a lock that does not name it is a `LogicException`.
 
 ```php
 use Illuminate\Support\Facades\DB;
@@ -249,7 +253,13 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 DB::connection(StorageConnection::name())->transaction(function () use ($code, $result, $caller) {
     // The lock comes first, before your code is locked.
     $recheck = app(HandoffRecheck::class);
-    $lock    = $recheck->lock($result->tenantId, $result->connectionId, $result->application, $code->reservationId);
+    $lock    = $recheck->lock(
+        $result->tenantId,
+        $result->connectionId,
+        $result->application,
+        $code->reservationId,                                        // the reservation it holds, if any
+        $result->purpose === Purpose::LINK ? $code->identity : null, // the identity of a `link` flow
+    );
 
     $code->consume(); // your own atomic, single-use consumption, locked after, through this same connection
 

@@ -50,7 +50,9 @@ $this->app->scoped(PrincipalScope::class, YourPrincipalScope::class);
 $this->app->scoped(TenantMembership::class, YourTenantMembership::class);
 ```
 
-An alternative `Linker` cannot hold a reservation, so under one nothing is reserved. An alternative `HandoffIssuer` must
+Your `Linker` must implement `Contracts\LinkStorage`, so that what linking writes is what it resolves: `LinkStore` does,
+and a wrapper of yours may delegate every method to it. Any other is refused before anything is written, with a
+`LogicException` naming the problem, and reported at boot while the feature is on. An alternative `HandoffIssuer` must
 store the reservation's binding with its code and answer the stored expiry and an opaque reference; one that answers no
 reference or a later expiry rolls the completion back.
 
@@ -88,10 +90,15 @@ classification reserves nothing, and an issuer absent from the package's list is
 | A known shared issuer               | `shared`, under exactly its claim, with `organization_value`    |
 | A SAML connection                   | `saml_attribute`, `saml_attribute_format`, `acknowledged: true` |
 
-The package knows `https://accounts.google.com` and `accounts.google.com`, under `hd`; each preset with an organisation
-claim (`google`, `microsoft_entra`, `microsoft_entra_saml`) knows its own issuers; and `sso.linking.shared_issuers` adds
-yours. Configuration can add an issuer but never change or remove a built-in one or one a preset names, whichever claim it
-gives. The value is compared exactly: `Example.com` is not `example.com`.
+The package knows `https://accounts.google.com` and `accounts.google.com`, under `hd`, and `https://slack.com`, under
+`https://slack.com/team_id`; each preset with an organisation claim (`google`, `microsoft_entra`,
+`microsoft_entra_saml`) knows its own issuers; and `sso.linking.shared_issuers` adds yours. Configuration can add an
+issuer but never change or remove a built-in one or one a preset names, whichever claim it gives. The value is compared
+exactly: `Example.com` is not `example.com`.
+
+Microsoft Entra's `common` and `organizations` are tenant-independent authorities, not issuers, and are not on the list:
+the real issuer of a token they lead to names the tenant. Your connection's issuer is that real issuer, and explicit
+classification applies to it; one the `microsoft_entra` preset recognises is `shared`, told apart by `tid`.
 
 An acknowledgement stands for what it was given about. Changing the classification or the SAML attribute without giving
 `acknowledged: true` again clears it. So does changing the issuer itself, the OIDC `issuer` or the SAML `idp_entity_id`,
@@ -126,13 +133,15 @@ merely present on an account does not.
 
 ## The flow
 
-1. An eligible `sign_in` reserves a link in the completion's transaction, and its handoff is bound to the reservation.
-   The two expire together, at the earlier of the request's expiry and the handoff lifetime from now.
+1. An eligible `sign_in` reserves a link in the completion's transaction, under the matched identity's guard, and its
+   handoff is bound to the reservation. An email that moved to another identity between the first read and the lock is
+   `reservation_invalid`, and the person signs in again. The two expire together, at the earlier of the request's expiry
+   and the handoff lifetime from now.
 2. A reservation resolves no sign-in. A second `sign_in` of that subject meanwhile is `link_reserved`, and so is a
    `link`.
 3. Your redemption calls `HandoffRedemption::admit()` inside your transaction, on the package's storage connection, and
    writes the session in the same transaction. Every condition is checked again for that same identity, and the row
-   becomes an active link with verified domain provenance. The standalone `redeem()` refuses such a code with a
+   becomes an active link with verified domain provenance. The standalone `redeem()` refuses every `sign_in` code with a
    `LogicException`.
 4. `LinkCreated` and `LinkActivated` then `HandoffRedeemed` reach your listeners after the commit. Tell the person on
    your existing channels. `LinkActivated` carries the identity, the link, the application and the request's public
@@ -146,11 +155,14 @@ The link keeps its provenance, even across a [subject migration](managing-connec
 revokes its sessions. Whenever the identity holds a principal outside the connection's tenant, the link resolves nothing
 until the person [confirms it](links.md#confirming-it-is-the-person) through the `link` purpose, authenticated
 independently of it, which clears the provenance for good. The suspension is stored and latched: removing the principal
-later does not restore it. Your `PrincipalScope` answering `unknown` latches it too, so a store you cannot reach for the
-moment should throw instead, which refuses nothing and suspends nothing.
+later does not restore it. Your `PrincipalScope` answering `outside_tenant` latches it, and the resolution also revokes
+the sessions established through the link. Answering `unknown` refuses that attempt alone, with
+`principal_scope_unknown`: it creates no suspension and revokes nothing, and a link already suspended stays suspended. A
+store you cannot reach for the moment should throw instead, which refuses nothing and suspends nothing.
 
 Checks at completion and redemption cannot see a principal added and removed between them, so your principal mutation
-has to report it, in its own transaction, on the package's storage connection:
+has to report it, in its own transaction, on the package's storage connection. Call `widened()` first, then take your
+own guard and write the principal:
 
 ```php
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
@@ -158,26 +170,33 @@ use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 DB::connection(config('sso.storage.connection'))->transaction(function () use ($identity, $tenantId): void {
     $widening = app(ScopeWidening::class);
 
-    // First: the package's locks. `null` for a platform principal.
+    // First: the identity's guard, held until this commits. `null` for a platform principal.
     $widening->widened($identity, $tenantId);
 
     // Then your principal guard, then the write.
     $this->lockPrincipals($identity);
     $this->addPrincipal($identity, $tenantId);
-
-    // Last: anything activated between the first call and your guard.
-    $widening->assertSettled($identity, $tenantId);
 });
 ```
 
-`widened()` suspends the identity's domain links in every connection of another tenant, deletes its reservations in
-them, and revokes the sessions established through those links through your `SessionRevocation`, with
+`widened()` takes the identity's guard, which every reservation, activation and confirmation of that identity takes
+first, so none of them can slip past your change: each runs wholly before it and is found, or wholly after it and sees
+your principal. It suspends the identity's domain links in every connection of another tenant, deletes its reservations
+in them, and revokes the sessions established through those links through your `SessionRevocation`, with
 `RevocationScope::identityLink()` and the reason `scope_widened`. It all commits or rolls back with the principal. Bind
 `SessionRevocation` with an implementation writing through the same connection; the default revokes nothing. An adapter
 whose sessions do not record their link revokes the identity's sessions through the connection instead.
 
-`assertSettled()` throwing a `RuntimeException` means a link or a reservation appeared while the change ran. Retry your
-whole transaction. A database's serialisation failure or deadlock is retried the same way.
+`Exceptions\LinkCandidatesChanged` means your transaction's snapshot was older than a link or a reservation it found
+under the lock, which on MySQL's `REPEATABLE READ` happens when your transaction read before it called `widened()` or
+redeemed. Retry your whole transaction. The package's standalone `link` redemption reads nothing before it takes the
+identity's guard, and restarts itself once if it comes to it. A database's serialisation failure or deadlock is retried
+the same way. A change to several identities in one transaction takes them in ascending order of
+`Linking\IdentityLock::digest()`.
+
+This principal-change transaction is the primary place sessions are revoked. A resolution that finds a definite outside
+scope repairs what it missed, revoking through the link in the completion's or the redemption's transaction; asking
+twice for one link is safe.
 
 Link suspension blocks new admissions and reauthentication. A suspended link can never be provisioned or reserved over.
 
@@ -185,13 +204,15 @@ Link suspension blocks new admissions and reauthentication. A suspended link can
 
 Package locks do not serialise your writers unless they take part. An answer read at completion is read again inside
 your redeemer's transaction, and must stay true until that commits. The package's locks always come first, and your
-guards after them, in every path, or your writers will deadlock against an admission: enforcement guard, connections in
-ascending id order, the domain claim, the request, the code, the links, then your guards.
+guards after them, in every path, or your writers will deadlock against an admission: the identity's guard, enforcement
+guard, connections in ascending id order, the domain claim, the request, the code, the links, then your guards. The
+package asks each contract below only once its own locks are held. Its identity guard is taken only by what touches
+linking: an ordinary linked sign-in never pays for it.
 
 | Contract            | What it must guarantee through commit                                                                                                                                          |
 |---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `LinkEmailMatcher`  | A uniqueness guarantee on the verified email, or a guard every writer of a verified email takes. Locking the rows it returned is not enough: another identity can match later. |
-| `PrincipalScope`    | The complete set of principals, `unknown` if it cannot read it all, under a guard every writer of principals takes; the mutation calls `ScopeWidening` as above.               |
+| `PrincipalScope`    | The complete set of principals, `unknown` if it cannot read it all, under a guard every writer of principals takes after calling `ScopeWidening` first, as above.              |
 | `TenantMembership`  | A guard every writer that revokes a membership takes. The acceptance time is the person's, never an administrator's creation time.                                             |
 | `HandoffIssuer`     | The reservation's binding and the expiry written with the code, in the completion's transaction, on the same Laravel connection.                                               |
 | `SessionRevocation` | Writes through the same Laravel connection, so a revocation commits or rolls back with the suspension.                                                                         |

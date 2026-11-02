@@ -4,6 +4,9 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Linking;
 
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
@@ -11,25 +14,34 @@ use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
 use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
 use SineMacula\Laravel\Sso\Contracts\LinkLimit;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\LinkConfirmed;
+use SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
+use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
+use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
+use SineMacula\Laravel\Sso\Linking\IdentityLock;
 use SineMacula\Laravel\Sso\Linking\LinkConfirmationGate;
 use SineMacula\Laravel\Sso\Linking\RefusingLinkConfirmation;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
+use SineMacula\Laravel\Sso\Links\LinkService;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
+use SineMacula\Laravel\Sso\Models\IdentityGuard;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\ComparesIdentitiesWithoutCase;
+use Tests\Concerns\RecordsLockOrder;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -49,9 +61,11 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  */
 #[CoversClass(LinkConfirmationGate::class)]
 #[CoversClass(LinkBranch::class)]
+#[CoversClass(IdentityLock::class)]
+#[CoversClass(HandoffRedemption::class)]
 final class LinkConfirmationTest extends LinkingTestCase
 {
-    use ComparesIdentitiesWithoutCase;
+    use ComparesIdentitiesWithoutCase, RecordsLockOrder;
 
     /** @var string Another subject of the same provider. */
     private const string SECOND_SUBJECT = 'second-subject';
@@ -132,7 +146,15 @@ final class LinkConfirmationTest extends LinkingTestCase
             'provenance'    => LinkOrigin::VERIFIED_DOMAIN,
         ]);
 
-        self::assertTrue(app(LinkConfirmationGate::class)->allows($person, $this->connection));
+        $held = $this->connection->getConnection()->transaction(function () use ($person): array {
+            $lock = app(HandoffRecheck::class)->lock('tenant-1', $this->connection->id, 'web', null, $person);
+
+            return app(LinkConfirmationGate::class)->lockedDomainLinks($person, $lock);
+        });
+
+        self::assertSame([$own->id], $held);
+        self::assertSame([$this->connection->id], LinkConfirmationGate::connectionsHolding($person));
+        self::assertTrue(app(LinkConfirmationGate::class)->allows($person, $this->connection, $held, false));
         self::assertSame([[$person->id, $this->connection->id, [$own->id]]], $this->confirmation->asked);
     }
 
@@ -240,6 +262,326 @@ final class LinkConfirmationTest extends LinkingTestCase
         self::assertSame(FailureReason::INDEPENDENT_AUTHENTICATION_REQUIRED, $this->redeemLink()->reason);
         self::assertSame($first->id, Link::query()->sole()->id);
         self::assertSame([$this->person->id, $this->connection->id, [$first->id]], $this->confirmation->asked[0]);
+    }
+
+    /**
+     * The identity's guard comes first, then every connection holding one of
+     * its domain links with the redemption's own, in one locking statement,
+     * then the code and the links; and every application contract is asked only
+     * then, so its guards come after the package's.
+     *
+     * @return void
+     */
+    public function testAllThePackagesLocksComeBeforeAnyApplicationContract(): void
+    {
+        $this->allowLinks(2);
+
+        $this->linkByDomain();
+
+        $first  = $this->connection->id;
+        $second = $this->anotherConnection();
+
+        $this->connection        = $second;
+        $this->verifying->claims = self::claimsOf(self::SECOND_SUBJECT);
+
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+        $seen       = [];
+
+        $this->app?->instance(LinkEligibility::class, new class ($seen, $this->lockOrder(...)) implements LinkEligibility {
+            /**
+             * Constructor.
+             *
+             * @param  list<list<string>>  $seen
+             * @param  \Closure(): list<string>  $locks
+             */
+            public function __construct(
+
+                /** What the locks were at each judgement. */
+                public array &$seen,
+
+                /** What the locks are. */
+                private \Closure $locks,
+            ) {}
+
+            /**
+             * Record the locks taken so far, and allow it.
+             *
+             * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+             * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+             * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict
+             */
+            #[\Override]
+            public function judge(IdentityReference $identity, SsoConnection $connection): LinkEligibilityVerdict
+            {
+                unset($identity, $connection);
+
+                $this->seen[] = ($this->locks)();
+
+                return LinkEligibilityVerdict::ELIGIBLE;
+            }
+        });
+
+        $this->recordLockOrder();
+
+        self::assertTrue($this->admit($completion, $start, Purpose::LINK, $this->person)->isRedeemed());
+
+        $ids = [$first, $second->id];
+
+        sort($ids, SORT_STRING);
+
+        self::assertSame(['identity guard', 'identity mark', 'connections ' . implode(', ', $ids), 'code', 'link', 'link'], $seen[0]);
+    }
+
+    /**
+     * A domain link in a connection the plain read did not find stands in a
+     * connection that was not locked, and cannot be locked now: the redemption
+     * throws for a retry of the whole transaction, with nothing written and the
+     * code unspent. The retry reaches it, and asks the contract.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testALinkInAConnectionThePlainReadMissedRefusesTheWholeRedemption(): void
+    {
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+        $other      = $this->anotherConnection();
+        $inserted   = false;
+
+        $this->connection->getConnection()->listen(function (QueryExecuted $query) use ($other, &$inserted): void {
+
+            if ($inserted || !str_contains($query->sql, '"provenance"') || !str_starts_with(strtolower($query->sql), 'select')) {
+                return;
+            }
+
+            $inserted = true;
+
+            $this->makeLink($other, 'a-subject-held-elsewhere', [
+                'identity_type' => $this->person->type,
+                'identity_id'   => $this->person->id,
+                'issuer'        => VerifyingDriver::ISSUER,
+                'provenance'    => LinkOrigin::VERIFIED_DOMAIN,
+            ]);
+        });
+
+        try {
+            $this->connection->getConnection()->transaction(fn (): RedemptionResult => $this->admit($completion, $start, Purpose::LINK, $this->person));
+            self::fail('The redemption went on over a link it did not lock.');
+        } catch (LinkCandidatesChanged $exception) {
+            self::assertSame('An identity\'s verified domain links changed before they were locked; retry the whole transaction.', $exception->getMessage());
+        }
+
+        self::assertSame(0, Link::query()->count(), 'What that transaction made rolls back with it.');
+        self::assertNull(HandoffCode::query()->sole()->redeemed_at);
+        self::assertSame([], $this->confirmation->asked);
+    }
+
+    /**
+     * Removing one domain link, through the link service, does not make the
+     * session that survives it independent, nor touch the identity's other
+     * domain link: a contract that answers from the links it is given, and
+     * would pass a caller holding none, is asked about exactly the one left,
+     * and refuses.
+     *
+     * @return void
+     */
+    public function testRemovingALinkDoesNotConfirmTheOtherLinksOfTheIdentity(): void
+    {
+        $this->allowLinks(3);
+
+        $first = $this->linkByDomain();
+        $held  = $this->heldRow(LinkOrigin::VERIFIED_DOMAIN, LinkState::ACTIVE);
+
+        $this->confirmation->fromLinks = static fn (array $ids): LinkConfirmationVerdict => $ids === [] ? LinkConfirmationVerdict::INDEPENDENT : LinkConfirmationVerdict::DEPENDENT;
+
+        self::assertTrue(app(LinkService::class)->remove($this->person, $first->id)->isRemoved());
+
+        $this->verifying->claims = self::claimsOf(self::SECOND_SUBJECT);
+
+        self::assertSame(FailureReason::INDEPENDENT_AUTHENTICATION_REQUIRED, $this->redeemLink()->reason);
+        self::assertSame([[$this->person->id, $this->connection->id, [$held->id]]], $this->confirmation->asked);
+
+        $kept = Link::query()->sole();
+
+        self::assertSame([$held->id, LinkOrigin::VERIFIED_DOMAIN, LinkState::ACTIVE], [$kept->id, $kept->provenance, $kept->state]);
+    }
+
+    /**
+     * Rows of `[whether the identity holds a provisioned link of the second
+     * subject]`: without it the `link` would create that subject's link, and
+     * with it, confirm the one held.
+     *
+     * @return iterable<string, array{0: bool}>
+     */
+    public static function provideLinksAfterARemoval(): iterable
+    {
+        yield 'creating a second subject' => [false];
+        yield 'confirming a subject held' => [true];
+    }
+
+    /**
+     * Once the identity's only domain link is removed, through the link
+     * service, the session that survived it still cannot link: the guard
+     * remembers that the identity held one, so the contract is asked, with no
+     * link left to name, and refuses; nothing is written and the code is spent.
+     *
+     * @param  bool  $provisioned
+     * @return void
+     */
+    #[DataProvider('provideLinksAfterARemoval')]
+    public function testRemovingTheOnlyDomainLinkStillNeedsIndependentAuthentication(bool $provisioned): void
+    {
+        $this->allowLinks(3);
+
+        $first = $this->linkByDomain();
+        $kept  = $provisioned ? $this->makeLink($this->connection, self::SECOND_SUBJECT, [
+            'issuer'        => VerifyingDriver::ISSUER,
+            'identity_type' => $this->person->type,
+            'identity_id'   => $this->person->id,
+            'provenance'    => LinkOrigin::PROVISIONING,
+        ]) : null;
+
+        $this->confirmation->verdict = LinkConfirmationVerdict::DEPENDENT;
+
+        self::assertTrue(app(LinkService::class)->remove($this->person, $first->id)->isRemoved());
+        self::assertNotNull(IdentityGuard::query()->where('identity_hash', IdentityLock::digest($this->person))->sole()->domain_linked_at);
+
+        $this->verifying->claims = self::claimsOf(self::SECOND_SUBJECT);
+
+        $answer = $this->redeemLink();
+
+        self::assertSame(FailureReason::INDEPENDENT_AUTHENTICATION_REQUIRED, $answer->reason);
+        self::assertSame([[$this->person->id, $this->connection->id, []]], $this->confirmation->asked);
+        self::assertSame($provisioned ? [$kept?->id] : [], Link::query()->pluck('id')->all());
+        self::assertSame($provisioned ? LinkOrigin::PROVISIONING : null, $kept === null ? null : Link::query()->sole()->provenance);
+        self::assertSame([], array_values(array_filter($this->recordedEvents(), static fn (object $event): bool => $event instanceof LinkConfirmed)));
+    }
+
+    /**
+     * Removed and then linked again by the domain, the identity is asked about
+     * the new link alone, and a contract that independent authentication passes
+     * lets it confirm; the guard's mark is the first activation's.
+     *
+     * @return void
+     */
+    public function testRemovedAndLinkedAgainByTheDomain(): void
+    {
+        $first  = $this->linkByDomain();
+        $marked = IdentityGuard::query()->sole()->domain_linked_at?->toIso8601String();
+
+        self::assertTrue(app(LinkService::class)->remove($this->person, $first->id)->isRemoved());
+
+        $this->clock->advance(60);
+
+        $again = $this->linkByDomain();
+
+        self::assertNotSame($first->id, $again->id);
+        self::assertSame($marked, IdentityGuard::query()->sole()->domain_linked_at?->toIso8601String());
+
+        $this->confirmation->verdict = LinkConfirmationVerdict::DEPENDENT;
+
+        self::assertSame(FailureReason::INDEPENDENT_AUTHENTICATION_REQUIRED, $this->redeemLink()->reason);
+        self::assertSame([[$this->person->id, $this->connection->id, [$again->id]]], $this->confirmation->asked);
+
+        $this->confirmation->verdict = LinkConfirmationVerdict::INDEPENDENT;
+
+        self::assertTrue($this->redeemLink()->isRedeemed());
+        self::assertSame(LinkOrigin::LINK_PURPOSE, Link::query()->sole()->provenance);
+    }
+
+    /**
+     * An identity that has never held an active domain link is never asked
+     * about, and its guard is never marked: a reservation alone marks nothing.
+     *
+     * @return void
+     */
+    public function testAReservationAloneMarksNothing(): void
+    {
+        $this->start();
+        $this->complete();
+
+        self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
+        self::assertNull(IdentityGuard::query()->sole()->domain_linked_at);
+    }
+
+    /**
+     * A standalone `link` takes the identity's guard before any read in its
+     * transaction: the connection's tenant is read before it opens, so the
+     * guard's upsert is its first statement.
+     *
+     * @return void
+     */
+    public function testAStandaloneLinkTakesTheGuardBeforeAnyRead(): void
+    {
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+        $sequence   = [];
+        $database   = DB::connection(StorageConnection::name());
+
+        $database->listen(static function (QueryExecuted $query) use (&$sequence): void {
+            $sequence[] = strtolower($query->sql);
+        });
+
+        $database->getEventDispatcher()?->listen(TransactionBeginning::class, static function () use (&$sequence): void {
+            $sequence[] = 'begin';
+        });
+
+        self::assertSame(0, $database->transactionLevel());
+        self::assertTrue($this->redeemStandalone($completion->handoff?->code->reveal(), $start->verifier?->reveal())->isRedeemed());
+
+        $begin = (int) array_search('begin', $sequence, true);
+
+        self::assertMatchesRegularExpression('/^select ["`]?tenant_id["`]? from/', $sequence[$begin - 1]);
+        self::assertStringStartsWith('insert into "' . StorageConnection::table('identity_guards.table') . '"', $sequence[$begin + 1]);
+    }
+
+    /**
+     * A standalone `link` that comes to a domain link in a connection it did
+     * not lock is rolled back and restarted once, from its transaction, and
+     * then redeems: what the first attempt saw rolls back with it.
+     *
+     * @return void
+     */
+    public function testAStandaloneLinkRestartsOnceWhenItsCandidatesChanged(): void
+    {
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+        $other      = $this->anotherConnection();
+        $inserted   = false;
+        $guards     = 0;
+
+        $this->connection->getConnection()->listen(function (QueryExecuted $query) use ($other, &$inserted, &$guards): void {
+
+            $sql = strtolower($query->sql);
+
+            if (str_starts_with($sql, 'insert into "' . StorageConnection::table('identity_guards.table') . '"')) {
+                $guards++;
+            }
+
+            if ($inserted || !str_contains($sql, '"provenance"') || !str_starts_with($sql, 'select')) {
+                return;
+            }
+
+            $inserted = true;
+
+            $this->makeLink($other, 'a-subject-held-elsewhere', [
+                'identity_type' => $this->person->type,
+                'identity_id'   => $this->person->id,
+                'issuer'        => VerifyingDriver::ISSUER,
+                'provenance'    => LinkOrigin::VERIFIED_DOMAIN,
+            ]);
+        });
+
+        $answer = $this->redeemStandalone($completion->handoff?->code->reveal(), $start->verifier?->reveal());
+
+        self::assertTrue($answer->isRedeemed());
+        self::assertFalse($answer->isAdmitted());
+        self::assertSame(2, $guards);
+        self::assertSame(LinkOrigin::LINK_PURPOSE, Link::query()->sole()->provenance);
+        self::assertNotNull(HandoffCode::query()->sole()->redeemed_at);
+        self::assertSame([], $this->confirmation->asked);
     }
 
     /**
@@ -372,6 +714,19 @@ final class LinkConfirmationTest extends LinkingTestCase
         self::assertTrue($this->admit($this->complete(), $start)->isRedeemed());
 
         return Link::query()->sole();
+    }
+
+    /**
+     * Redeem the `link` code standalone, with no transaction open, as the
+     * person.
+     *
+     * @param  ?string  $code
+     * @param  ?string  $verifier
+     * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
+     */
+    private function redeemStandalone(?string $code, ?string $verifier): RedemptionResult
+    {
+        return app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, (string) $code, (string) $verifier, $this->person);
     }
 
     /**

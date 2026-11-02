@@ -107,6 +107,29 @@ final class LinkResolutionTest extends TestCase
         self::assertFalse(LinkResolution::linked($holder, 'l')->isHeldBy(new IdentityReference('App\Models\Admin', 'a')));
         self::assertFalse(LinkResolution::absent()->isHeldBy($holder));
         self::assertFalse(LinkResolution::reserved()->isHeldBy($holder));
+        self::assertTrue(LinkResolution::scopeUnknown($holder, 'l')->isHeldBy(new IdentityReference('App\Models\User', 'a')));
+    }
+
+    /**
+     * A link whose scope could not be judged resolves nothing: it names its
+     * holder and its link, and is nothing but of unknown scope.
+     *
+     * @return void
+     */
+    public function testAScopeUnknownResolutionResolvesNothing(): void
+    {
+        $holder     = new IdentityReference('App\Models\User', 'a');
+        $resolution = LinkResolution::scopeUnknown($holder, 'l');
+
+        self::assertNull($resolution->identity);
+        self::assertSame($holder, $resolution->holder);
+        self::assertSame('l', $resolution->linkId);
+        self::assertTrue($resolution->isScopeUnknown());
+        self::assertFalse($resolution->isLinked());
+        self::assertFalse($resolution->isAbsent());
+        self::assertFalse($resolution->isReserved());
+        self::assertFalse($resolution->isSuspended());
+        self::assertFalse(LinkResolution::absent()->isScopeUnknown());
     }
 
     /**
@@ -156,7 +179,7 @@ final class LinkResolutionTest extends TestCase
      */
     public function testTheStatusNamesAreStable(): void
     {
-        self::assertSame(['linked', 'absent', 'reserved', 'suspended'], array_column(LinkResolutionStatus::cases(), 'value'));
+        self::assertSame(['linked', 'absent', 'reserved', 'suspended', 'scope_unknown'], array_column(LinkResolutionStatus::cases(), 'value'));
     }
 
     /**

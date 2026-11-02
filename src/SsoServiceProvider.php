@@ -169,6 +169,7 @@ final class SsoServiceProvider extends ServiceProvider
         '2026_11_03_000000_create_sso_links_table.php',
         '2026_11_03_000001_create_sso_authorization_requests_table.php',
         '2026_11_03_000002_create_sso_handoff_codes_table.php',
+        '2026_11_03_000003_create_sso_identity_guards_table.php',
     ];
 
     /** @var list<class-string<\Illuminate\Console\Command>> The package's console commands, registered in the console only. */

@@ -6,6 +6,7 @@ namespace Tests\Feature\Handoffs;
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
@@ -14,6 +15,7 @@ use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\ProtocolDriver;
 use SineMacula\Laravel\Sso\Contracts\ProtocolSettings;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\AuthorizationRequestStarted;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\HandoffIssued;
@@ -348,7 +350,11 @@ final class FullFlowTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier);
+        $redemption = $app->make(HandoffRedemption::class);
+
+        return DB::connection(StorageConnection::name())->transaction(
+            fn (): RedemptionResult => $redemption->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier),
+        );
     }
 
     /**

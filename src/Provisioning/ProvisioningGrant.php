@@ -150,12 +150,24 @@ final class ProvisioningGrant implements \JsonSerializable
         $usable     = $this->isUsable();
         $this->used = true;
 
-        if (!$usable || $this->result->getValue() !== $result) {
+        if (!$usable || !$this->isBoundTo($result)) {
             return null;
         }
 
         /** @var string */
         return $this->requestId->getValue();
+    }
+
+    /**
+     * Whether the grant is bound to exactly this result object. It claims
+     * nothing.
+     *
+     * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @return bool
+     */
+    public function isBoundTo(#[\SensitiveParameter] VerifiedResult $result): bool
+    {
+        return $this->result->getValue() === $result;
     }
 
     /**
