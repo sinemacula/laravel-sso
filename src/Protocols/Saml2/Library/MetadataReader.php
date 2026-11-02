@@ -52,7 +52,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
  *    values the reader never reads, and the schema has judged the entity.
  * 5. Its expiry is the earliest `validUntil` of the entity and every descriptor
  *    enclosing it (`cacheDuration` is ignored); one not after the clock's now
- *    is `metadata_expired`.
+ *    is `metadata_expired`. Each must be a real `xs:dateTime`
+ *    (`SchemaDateTime`), an enclosing one too, which the schema never judged,
+ *    or the document is `metadata_invalid`.
  * 6. The entity has exactly one `IDPSSODescriptor` that supports the SAML 2.0
  *    protocol, with a single sign-on service of the HTTP-Redirect or HTTP-POST
  *    binding (the first of each), the connection's current binding preferred,
@@ -93,9 +95,6 @@ final readonly class MetadataReader
         'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect' => 'http_redirect',
         'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST'     => 'http_post',
     ];
-
-    /** @var string An `xs:dateTime`: a date, a time with optional fractions, and an optional zone. */
-    private const string DATE_TIME = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/D';
 
     /**
      * Constructor.
@@ -400,7 +399,9 @@ final readonly class MetadataReader
 
     /**
      * The `xs:dateTime` as an instant in UTC, one with no zone read as UTC; a
-     * form the schema allows beyond a four-digit year is refused.
+     * value that is not a real one (`SchemaDateTime`), or a form the schema
+     * allows beyond a four-digit year, is refused, and so is any failure to
+     * parse one, never quoting the value.
      *
      * @param  string  $value
      * @return \Carbon\CarbonImmutable
@@ -409,11 +410,15 @@ final readonly class MetadataReader
      */
     private static function instant(string $value): CarbonImmutable
     {
-        if (preg_match(self::DATE_TIME, $value) !== 1) {
-            throw new ReadFailure(FailureReason::METADATA_INVALID, 'valid_until');
+        try {
+            if (SchemaDateTime::isValid($value)) {
+                return CarbonImmutable::parse($value, 'UTC')->utc();
+            }
+        } catch (\Throwable) {
+            // Refused below, without the parser's message, which quotes it
         }
 
-        return CarbonImmutable::parse($value, 'UTC')->utc();
+        throw new ReadFailure(FailureReason::METADATA_INVALID, 'valid_until');
     }
 
     /**

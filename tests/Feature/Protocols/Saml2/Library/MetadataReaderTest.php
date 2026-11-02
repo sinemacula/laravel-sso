@@ -28,7 +28,8 @@ use Tests\TestCase;
  * anywhere but its own refused; with anchors, a signature of its own or of its
  * aggregate required and every signature on its path verified, one by another
  * key or tampered with refused; the earliest `validUntil` of the path as the
- * expiry; a document type, an entity or a document over the metadata cap
+ * expiry, one naming no real instant, on the entity or its aggregate, refused
+ * as invalid metadata; a document type, an entity or a document over the cap
  * refused; a signed aggregate of several MiB verified whole; a member other
  * than the pinned entity never validated or modelled, so one the schema or the
  * library refuses never refuses the aggregate, while the pinned entity is
@@ -398,6 +399,97 @@ final class MetadataReaderTest extends TestCase
         $xml = str_replace(' entityID=', ' validUntil="10000-01-01T00:00:00Z" entityID=', self::metadata()->toXml());
 
         self::assertRefused(FailureReason::METADATA_INVALID, 'valid_until', $this->read($xml));
+    }
+
+    /**
+     * Rows of `[valid until]`: a `validUntil` of the schema's form naming no
+     * real instant, by its month, its day or its time.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideUnrealValidUntils(): iterable
+    {
+        yield from [
+            'month 13'                   => ['2026-13-01T00:00:00Z'],
+            'month 00'                   => ['2026-00-01T00:00:00Z'],
+            'day 32'                     => ['2026-12-32T00:00:00Z'],
+            '30 February'                => ['2027-02-30T00:00:00Z'],
+            '29 February, a common year' => ['2027-02-29T00:00:00Z'],
+            'hour 25'                    => ['2026-12-01T25:00:00Z'],
+            'the end of the day and one' => ['2026-12-01T24:00:01Z'],
+            'minute 60'                  => ['2026-12-01T23:60:00Z'],
+            'second 60'                  => ['2026-12-01T23:59:60Z'],
+            'offset +14:01'              => ['2026-12-01T00:00:00+14:01'],
+        ];
+    }
+
+    /**
+     * A `validUntil` naming no real instant on an enclosing aggregate, which
+     * the schema never judges, is refused as invalid metadata, never thrown,
+     * and the refusal names the rule alone.
+     *
+     * @param  string  $validUntil
+     * @return void
+     */
+    #[DataProvider('provideUnrealValidUntils')]
+    public function testAnUnrealValidUntilOnTheAggregateIsRefused(string $validUntil): void
+    {
+        $aggregate = self::metadata()->with(['aggregate' => [self::OTHER]])->toXml();
+        $metadata  = $this->read(str_replace('ID="_aggregate"', 'ID="_aggregate" validUntil="' . $validUntil . '"', $aggregate));
+
+        self::assertRefused(FailureReason::METADATA_INVALID, 'valid_until', $metadata);
+    }
+
+    /**
+     * A `validUntil` naming no real instant on the entity, alone or in an
+     * aggregate, is refused as invalid metadata by the schema.
+     *
+     * @param  string  $validUntil
+     * @return void
+     */
+    #[DataProvider('provideUnrealValidUntils')]
+    public function testAnUnrealValidUntilOnTheEntityIsRefused(string $validUntil): void
+    {
+        $attribute = ' validUntil="' . $validUntil . '" entityID=';
+        $aggregate = self::metadata()->with(['aggregate' => [self::OTHER]])->toXml();
+        $member    = ' entityID="' . self::ENTITY_ID . '"';
+
+        self::assertRefused(FailureReason::METADATA_INVALID, 'schema', $this->read(str_replace(' entityID=', $attribute, self::metadata()->toXml())));
+        self::assertRefused(FailureReason::METADATA_INVALID, 'schema', $this->read(str_replace($member, $attribute . '"' . self::ENTITY_ID . '"', $aggregate)));
+    }
+
+    /**
+     * Rows of `[valid until, expiry]`: a real `validUntil` at a bound on an
+     * enclosing aggregate, and the instant it is read as.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideRealValidUntils(): iterable
+    {
+        yield from [
+            '29 February, a leap year' => ['2028-02-29T00:00:00Z', '2028-02-29T00:00:00+00:00'],
+            'the end of the day'       => ['2026-12-31T24:00:00Z', '2027-01-01T00:00:00+00:00'],
+            'the last second'          => ['2026-12-31T23:59:59Z', '2026-12-31T23:59:59+00:00'],
+            'offset +14:00'            => ['2026-12-01T14:00:00+14:00', '2026-12-01T00:00:00+00:00'],
+            'offset -14:00'            => ['2026-12-01T00:00:00-14:00', '2026-12-01T14:00:00+00:00'],
+        ];
+    }
+
+    /**
+     * A real `validUntil` at a bound on an enclosing aggregate is read as the
+     * instant it names.
+     *
+     * @param  string  $validUntil
+     * @param  string  $expiry
+     * @return void
+     */
+    #[DataProvider('provideRealValidUntils')]
+    public function testARealValidUntilOnTheAggregateIsRead(string $validUntil, string $expiry): void
+    {
+        $aggregate = self::metadata()->with(['aggregate' => [self::OTHER]])->toXml();
+        $metadata  = $this->read(str_replace('ID="_aggregate"', 'ID="_aggregate" validUntil="' . $validUntil . '"', $aggregate));
+
+        self::assertSame($expiry, $metadata->validUntil()?->toIso8601String());
     }
 
     /**

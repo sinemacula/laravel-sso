@@ -36,9 +36,10 @@ use Tests\TestCase;
  * fetches nothing itself and prints how many it queued; each job refreshes its
  * connection while it is still due. With `--sync` it refreshes every due
  * connection itself and prints the count of each outcome. It prints no URL,
- * entity id or value of a connection, exits 0 whatever the outcomes, a second
- * run changes and refreshes nothing, and a run that stopped on an exception
- * exits 1 naming the exception's class alone.
+ * entity id or value of a connection, exits 0 whatever the outcomes, goes on
+ * past a connection whose metadata is malformed, a second run changes and
+ * refreshes nothing, and a run that stopped on an exception exits 1 naming the
+ * exception's class alone.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -235,6 +236,35 @@ final class RefreshMetadataCommandTest extends TestCase
     }
 
     /**
+     * With `--sync`, a connection whose aggregate names an expiry that is no
+     * real instant fails, with its failure and backoff recorded and its claim
+     * released, and the run goes on to refresh the next connection due and
+     * passes.
+     *
+     * @return void
+     */
+    public function testSyncGoesOnPastMalformedMetadata(): void
+    {
+        $malformed = $this->saml(self::FAILING_URL, '01jb0000000000000000000001');
+        $working   = $this->saml(self::URL, '01jb0000000000000000000002');
+        $aggregate = self::idp()->metadata()->with(['aggregate' => ['https://other.example.test/saml']])->toXml();
+
+        $this->fetcher->respond(self::FAILING_URL, FetchResult::fetched(200, [], str_replace('ID="_aggregate"', 'ID="_aggregate" validUntil="2026-13-01T00:00:00Z"', $aggregate)));
+        $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], self::idp()->metadata()->toXml()));
+
+        [$code, $output] = $this->refreshFromConsole(true);
+
+        $failed    = Connection::query()->findOrFail($malformed->id);
+        $refreshed = Connection::query()->findOrFail($working->id);
+
+        self::assertSame([0, ['Metadata refreshed: refreshed 1, failed 1, conflict 0, in_progress 0, rate_limited 0, skipped 0, refused 0']], [$code, $output]);
+        self::assertSame([0, 1, '2026-11-01T09:35:00+00:00'], [$failed->metadata_version, $failed->metadata_refresh_failures, $failed->metadata_refresh_at?->toIso8601String()]);
+        self::assertSame([null, null], [$failed->metadata_claimed_until, $failed->metadata_claim_token]);
+        self::assertSame([1, 0], [$refreshed->metadata_version, $refreshed->metadata_refresh_failures]);
+        self::assertCount(2, $this->fetcher->requests());
+    }
+
+    /**
      * Rows of `[sync]`: queued and inline.
      *
      * @return iterable<string, array{0: bool}>
@@ -286,14 +316,15 @@ final class RefreshMetadataCommandTest extends TestCase
 
     /**
      * A refreshing SAML connection fetching from the URL, trusting the
-     * provider's certificate.
+     * provider's certificate, with the id given, if any.
      *
      * @param  string  $url
+     * @param  ?string  $id
      * @return \SineMacula\Laravel\Sso\Models\Connection
      */
-    private function saml(string $url): Connection
+    private function saml(string $url, ?string $id = null): Connection
     {
-        $connection = $this->makeConnection(['protocol' => 'saml2', 'enabled' => true, 'settings' => [
+        $connection = $this->makeConnection([...($id === null ? [] : ['id' => $id]), 'protocol' => 'saml2', 'enabled' => true, 'settings' => [
             'idp_entity_id'    => FakeSamlIdentityProvider::ENTITY_ID,
             'sso_url'          => FakeSamlIdentityProvider::SSO_URL,
             'sso_binding'      => 'http_redirect',

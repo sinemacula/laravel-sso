@@ -33,8 +33,8 @@ use Tests\TestCase;
  * `NotOnOrAfter` with the skew at, under and over its bound, no `NotBefore`,
  * its `InResponseTo`), never several combined; no bearer confirmation naming
  * another request; other methods ignored; the latest-expiring of the satisfying
- * ones chosen, the first on a tie; and the reason of the candidate that got
- * furthest otherwise.
+ * ones chosen, compared to the microsecond, the first on a tie; and the reason
+ * of the candidate that got furthest otherwise.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -285,6 +285,28 @@ final class BearerConfirmationsTest extends TestCase
     }
 
     /**
+     * Two confirmations ending within one second are told apart to the
+     * microsecond: the later, half a second or a single microsecond on, is
+     * chosen wherever it stands, and only an exact tie goes to the first.
+     *
+     * @return void
+     */
+    public function testComparesExpiriesToTheMicrosecond(): void
+    {
+        $whole = self::ending(self::now()->addSeconds(300));
+        $tied  = self::ending(self::now()->addSeconds(300));
+        $half  = self::ending(self::now()->addSeconds(300)->addMicroseconds(500000));
+        $next  = self::ending(self::now()->addSeconds(300)->addMicrosecond());
+
+        self::assertSame($half, self::chosen([$whole, $half]));
+        self::assertSame($half, self::chosen([$half, $whole]));
+        self::assertSame($next, self::chosen([$whole, $next]));
+        self::assertSame($next, self::chosen([$next, $whole]));
+        self::assertSame($whole, self::chosen([$whole, $tied]));
+        self::assertSame($tied, self::chosen([$tied, $whole]));
+    }
+
+    /**
      * The skew is the context's: with none, a confirmation expires exactly at
      * its `NotOnOrAfter`.
      *
@@ -340,6 +362,18 @@ final class BearerConfirmationsTest extends TestCase
             $values['recipient'],
             $values['in_response_to'],
         );
+    }
+
+    /**
+     * A bearer confirmation that satisfies every rule for the consumed request,
+     * ending at the instant given.
+     *
+     * @param  \Carbon\CarbonImmutable  $notOnOrAfter
+     * @return \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation
+     */
+    private static function ending(CarbonImmutable $notOnOrAfter): SubjectConfirmation
+    {
+        return new SubjectConfirmation(SubjectConfirmation::BEARER, true, null, $notOnOrAfter, self::ACS, self::REQUEST_ID);
     }
 
     /**

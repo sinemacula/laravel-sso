@@ -21,6 +21,10 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation;
  * - the assertion's `IssueInstant` plus `issue_instant_max_age_seconds` plus
  *   the skew, which bounds every record.
  *
+ * Each bound keeps its fractions of a second, and the earliest is chosen to the
+ * microsecond, so the record never ends before the last moment a rule accepts;
+ * a store that keeps whole seconds rounds it up (`DatabaseSingleUseStore`).
+ *
  * Every bound is read from inside the assertion its signature covers, never
  * from the response's envelope, which a replay may carry afresh. Nothing is
  * recorded here: the completion records it under the connection's lock once the

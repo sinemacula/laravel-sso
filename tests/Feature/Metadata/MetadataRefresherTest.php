@@ -53,10 +53,11 @@ use Tests\TestCase;
  * metadata request; an additive certificate voiding nothing, a removed one or
  * a moved endpoint voiding the flows in flight; another entity, a missing
  * signature and a failed fetch recorded as failures, backing off and logged
- * with the reason and the fetch's status alone; a refresh now skipping the
- * backoff but never a held claim; a refused refresh now; no run inside a
- * transaction; and what a refresh applied expiring at the driver after the
- * stale limit, or never with no limit.
+ * with the reason and the fetch's status alone; a malformed aggregate expiry,
+ * or a reader that throws, recorded as a failure of that connection alone, the
+ * run going on; a refresh now skipping the backoff but never a held claim; a
+ * refused refresh now; no run inside a transaction; and what a refresh applied
+ * expiring at the driver after the stale limit, or never with no limit.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -77,6 +78,9 @@ final class MetadataRefresherTest extends TestCase
 
     /** @var string The URL the provider serves its metadata at. */
     private const string URL = 'https://idp.example.test/metadata.xml';
+
+    /** @var string The URL a second provider serves its metadata at. */
+    private const string SECOND_URL = 'https://idp.example.test/second.xml';
 
     /** @var string The single sign-on URL the provider moves to. */
     private const string MOVED_URL = 'https://login.example.test/saml/sso';
@@ -433,6 +437,76 @@ final class MetadataRefresherTest extends TestCase
 
         self::assertSame([RefreshOutcome::FAILED, $reason], [$result->outcome, $result->reason]);
         self::assertSame([FakeSamlIdentityProvider::ENTITY_ID, 0, 1], [$row->settings['idp_entity_id'], $row->metadata_version, $row->metadata_refresh_failures]);
+    }
+
+    /**
+     * An aggregate whose `validUntil` names no real instant fails its
+     * connection's refresh as invalid metadata: the failure is recorded, the
+     * next attempt backs off, the claim is released, nothing is applied and the
+     * value is logged nowhere; the run goes on to refresh the next connection
+     * due.
+     *
+     * @return void
+     */
+    public function testAMalformedAggregateExpiryIsRecordedAndTheRunGoesOn(): void
+    {
+        $this->captureLogs();
+
+        $malformed = $this->saml([], ['id' => '01jb0000000000000000000001']);
+        $next      = $this->saml(['metadata_url' => self::SECOND_URL], ['id' => '01jb0000000000000000000002']);
+        $aggregate = self::metadata()->with(['aggregate' => ['https://other.example.test/saml']])->toXml();
+
+        $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], str_replace('ID="_aggregate"', 'ID="_aggregate" validUntil="2026-13-01T00:00:00Z"', $aggregate)));
+        $this->fetcher->respond(self::SECOND_URL, FetchResult::fetched(200, [], self::metadata()->toXml()));
+
+        $results = $this->refresher()->refreshDue();
+
+        self::assertCount(2, $results);
+        self::assertSame(
+            [$malformed->id, RefreshOutcome::FAILED, FailureReason::METADATA_INVALID, 1, '2026-11-01T09:35:00+00:00'],
+            [$results[0]->connectionId, $results[0]->outcome, $results[0]->reason, $results[0]->failures, $results[0]->nextAttemptAt?->toIso8601String()],
+        );
+        self::assertSame([[RefreshOutcome::REFRESHED, $next->id, [], 1, false]], self::summaries([$results[1]]));
+        self::assertSame([0, 1, '2026-11-01T09:35:00+00:00', null, null], self::refreshState($this->row($malformed)));
+        self::assertSame([[
+            'channel' => 'sso_capture',
+            'level'   => 'warning',
+            'message' => 'sso.metadata.refresh_failed',
+            'context' => ['reason' => 'metadata_invalid', 'fetch_status' => 'fetched'],
+        ]], $this->capturedLogRecords());
+
+        $this->assertNothingLoggedContains('2026-13-01');
+    }
+
+    /**
+     * A reader that throws rather than refusing the document fails the refresh
+     * as invalid metadata, recorded like any other failure, with the exception
+     * logged by its class alone.
+     *
+     * @return void
+     */
+    public function testAReaderThatThrowsIsRecordedAsInvalidMetadata(): void
+    {
+        $this->captureLogs();
+
+        $connection = $this->saml();
+
+        // The cap is read again by the reader once the fetch is done, and
+        // throws then
+        $this->fetcher->respond(self::URL, static function (): FetchResult {
+            config()->set('sso.metadata.max_bytes', 'unreadable');
+
+            return FetchResult::fetched(200, [], self::metadata()->toXml());
+        });
+
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+
+        self::assertSame([RefreshOutcome::FAILED, FailureReason::METADATA_INVALID, 1], [$result->outcome, $result->reason, $result->failures]);
+        self::assertSame([0, 1, '2026-11-01T09:35:00+00:00', null, null], self::refreshState($this->row($connection)));
+        self::assertSame([
+            ['level' => 'warning', 'message' => 'sso.metadata.refresh_contained', 'context' => ['exception' => \InvalidArgumentException::class]],
+            ['level' => 'warning', 'message' => 'sso.metadata.refresh_failed', 'context' => ['reason' => 'metadata_invalid', 'fetch_status' => 'fetched']],
+        ], self::messages($this->capturedLogRecords()));
     }
 
     /**
@@ -931,6 +1005,35 @@ final class MetadataRefresherTest extends TestCase
             static fn (RefreshResult $result): array => [$result->outcome, $result->connectionId, $result->changedSettings, $result->metadataVersion, $result->trustChanged],
             $results,
         );
+    }
+
+    /**
+     * The connection's metadata version, failures in a row, next refresh, claim
+     * and claim token, as stored.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $row
+     * @return list<mixed>
+     */
+    private static function refreshState(Connection $row): array
+    {
+        return [
+            $row->metadata_version,
+            $row->metadata_refresh_failures,
+            $row->metadata_refresh_at?->toIso8601String(),
+            $row->metadata_claimed_until?->toIso8601String(),
+            $row->metadata_claim_token,
+        ];
+    }
+
+    /**
+     * The level, message and context of each log record, in order.
+     *
+     * @param  list<array{channel: string, level: string, message: string, context: array<array-key, mixed>}>  $records
+     * @return list<array{level: string, message: string, context: array<array-key, mixed>}>
+     */
+    private static function messages(array $records): array
+    {
+        return array_map(static fn (array $record): array => ['level' => $record['level'], 'message' => $record['message'], 'context' => $record['context']], $records);
     }
 
     /**

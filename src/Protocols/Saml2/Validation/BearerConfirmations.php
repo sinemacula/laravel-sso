@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Protocols\Saml2\Validation;
 
+use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
@@ -35,8 +36,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation;
  *    for the unsolicited profile (`request_mismatch`).
  *
  * Of the confirmations that satisfy every rule, the one with the latest
- * `NotOnOrAfter` is chosen, the first in document order on a tie, so the replay
- * record's expiry covers every confirmation that could be chosen later. When
+ * `NotOnOrAfter`, compared to the microsecond, is chosen, the first in document
+ * order on a tie, so the replay record's expiry covers every confirmation that
+ * could be chosen later, even one ending a fraction of a second after. When
  * none does, the refusal is the reason of the rule the confirmation that got
  * furthest broke, the first in document order on a tie; with no bearer
  * confirmation at all it is `recipient_mismatch`. Nothing here keeps anything.
@@ -163,7 +165,8 @@ final class BearerConfirmations
 
     /**
      * How the candidate ranks: how many rules it satisfied in order, then, for
-     * one satisfying every rule, when its `NotOnOrAfter` falls.
+     * one satisfying every rule, when its `NotOnOrAfter` falls, to the
+     * microsecond, so two a fraction of a second apart never tie.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation  $candidate
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -172,9 +175,20 @@ final class BearerConfirmations
     private static function rank(SubjectConfirmation $candidate, ValidationContext $context): array
     {
         $progress = self::progress($candidate, $context);
-        $expiry   = $progress === self::RULES ? (int) $candidate->notOnOrAfter()?->getTimestamp() : 0;
+        $expiry   = $progress === self::RULES ? self::microseconds($candidate->notOnOrAfter()) : 0;
 
         return [$progress, $expiry];
+    }
+
+    /**
+     * The instant as microseconds since the Unix epoch, or 0 for none.
+     *
+     * @param  ?\Carbon\CarbonImmutable  $instant
+     * @return int
+     */
+    private static function microseconds(?CarbonImmutable $instant): int
+    {
+        return $instant === null ? 0 : $instant->getTimestamp() * 1000000 + $instant->micro;
     }
 
     /**

@@ -73,6 +73,11 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * warning, through the sanitising logger, with its reason and the fetch's
  * status alone, never the URL, the response or the metadata.
  *
+ * An exception the reader throws for one connection, rather than refusing the
+ * document, is contained there: the metadata is `metadata_invalid`, recorded
+ * like any other failure (the backoff raised, the claim released), with the
+ * exception logged by its class alone, so a run goes on to the next connection.
+ *
  * Every entry refuses to run inside a transaction on the storage connection (a
  * `LogicException`), since a refresh fetches before it writes. A database error
  * propagates (SSO-11.4) and stops a scheduled run. It asks no freshness: the
@@ -254,18 +259,35 @@ final readonly class MetadataRefresher
 
     /**
      * The fetched metadata of the connection's pinned entity, read with its
-     * anchors' certificates, its current binding preferred.
+     * anchors' certificates, its current binding preferred; a reader that
+     * throws, rather than refusing the document, refused it as invalid.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $xml
      * @param  list<string>  $anchors
      * @return \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata
-     *
-     * @throws \InvalidArgumentException
      */
     private function read(Connection $connection, #[\SensitiveParameter] string $xml, array $anchors): IdpMetadata
     {
-        return $this->reader->read($xml, self::setting($connection, Saml2Setting::IDP_ENTITY_ID), $anchors, self::setting($connection, Saml2Setting::SSO_BINDING));
+        try {
+            return $this->reader->read($xml, self::setting($connection, Saml2Setting::IDP_ENTITY_ID), $anchors, self::setting($connection, Saml2Setting::SSO_BINDING));
+        } catch (\Throwable $exception) {
+            $this->contained($exception);
+
+            return IdpMetadata::refused(FailureReason::METADATA_INVALID, 'unreadable');
+        }
+    }
+
+    /**
+     * Log an exception one connection's refresh contained, by its class alone,
+     * since its message could quote what the provider published.
+     *
+     * @param  \Throwable  $exception
+     * @return void
+     */
+    private function contained(\Throwable $exception): void
+    {
+        $this->logger->warning('sso.metadata.refresh_contained', ['exception' => $exception::class]);
     }
 
     /**
