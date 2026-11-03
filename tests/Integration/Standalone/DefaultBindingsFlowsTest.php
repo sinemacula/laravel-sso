@@ -198,7 +198,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
             self::assertFalse(config()->has($key), "The application holds configuration under [{$key}].");
         }
 
-        self::assertSame([], array_values(array_filter(self::SIBLING_CLASSES, class_exists(...))), 'A sibling\'s class autoloads.');
+        self::assertSame([], array_values(array_filter(self::SIBLING_CLASSES, self::isRealSibling(...))), 'A sibling\'s class autoloads.');
 
         foreach (ClassLoader::getRegisteredLoaders() as $loader) {
             self::assertSame([], array_values(array_intersect(self::SIBLING_NAMESPACES, array_keys($loader->getPrefixesPsr4()))));
@@ -208,7 +208,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
 
             foreach (self::SIBLING_NAMESPACES as $namespace) {
                 if (str_starts_with($class, $namespace)) {
-                    return true;
+                    return self::isRealSibling($class);
                 }
             }
 
@@ -216,6 +216,26 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
         });
 
         self::assertSame([], array_values($declared));
+    }
+
+    /**
+     * Whether the class exists and is not one of the example harness's
+     * stand-ins, which mirror a sibling's API under its namespace and are
+     * declared in tests/Integration/Examples.
+     *
+     * @param  string  $class
+     * @return bool
+     */
+    private static function isRealSibling(string $class): bool
+    {
+        if (!class_exists($class) && !interface_exists($class)) {
+            return false;
+        }
+
+        /** @var class-string $class */
+        $file = (string) (new \ReflectionClass($class))->getFileName();
+
+        return !str_starts_with($file, dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Examples' . DIRECTORY_SEPARATOR);
     }
 
     /**
