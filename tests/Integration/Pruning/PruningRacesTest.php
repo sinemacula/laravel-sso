@@ -61,6 +61,11 @@ use Tests\Feature\Linking\LinkingTestCase;
  * failure (SQLSTATE `40001`) of that side is a safe outcome there alone:
  * nothing of it stands.
  *
+ * A session that holds a connection's row lock alone, and touches nothing else,
+ * shows the pruner takes that lock before it deletes a reservation: a race with
+ * an activation cannot, since the delete and the version's update lock what the
+ * activation waits on whether or not the connection was locked first.
+ *
  * An eligible row must be eligible on the pruner's clock and live on the
  * other's, or the other would refuse it for itself. Where that matters the
  * pruner's clock moves on past the expiry in its own process, as a server's
@@ -104,6 +109,12 @@ final class PruningRacesTest extends LinkingTestCase
 
     /** @var int The most a counter's window holds. */
     private const int COUNTER_MAX = 10;
+
+    /** @var string The signal the pruner raises as it sends its delete of a reservation. */
+    private const string DELETING = 'deleting';
+
+    /** @var string The signal the connection's holder raises just before it lets go. */
+    private const string RELEASING = 'releasing';
 
     /**
      * Skip where processes cannot share the database; bind a fresh caller, a
@@ -236,6 +247,53 @@ final class PruningRacesTest extends LinkingTestCase
 
         self::assertSame('refused:reservation_invalid', $reports[1]['result']);
         self::assertNotNull(HandoffCode::query()->sole()->redeemed_at);
+    }
+
+    /**
+     * The pruner locks the connection before it deletes a reservation: another
+     * session holding the connection's row lock alone, before anything touches
+     * the reservation, holds the pruner back until it lets go, and the delete
+     * is sent only then. Neither the delete's own locks nor the version's
+     * update, which a later lock could hide behind, orders it.
+     *
+     * @return void
+     */
+    public function testAPruneWaitsOnTheConnectionBeforeItDeletes(): void
+    {
+        $this->reserved();
+
+        $version = $this->linksVersion();
+        $id      = $this->connection->id;
+
+        $reports = $this->race([
+            fn (): bool => self::storageDatabase()->transaction(function () use ($id): bool {
+
+                Connection::query()->whereKey($id)->lockForUpdate()->sole();
+
+                $this->holdUntilBlocked();
+
+                $deleting = $this->signalled(self::DELETING);
+
+                $this->signal(self::RELEASING);
+
+                return $deleting;
+            }),
+            function (): array {
+
+                $this->awaitSignal(self::HOLDS);
+
+                $held = $this->watchTheDelete();
+
+                return [$this->pruned(null, self::PAST_EXPIRY)[PruneKind::RESERVATIONS->value], $held()];
+            },
+        ]);
+
+        self::assertFalse(self::assertRacerEnded($reports[0], false));
+        self::assertFalse(self::assertRacerEnded($reports[1], false));
+        self::assertFalse($reports[0]['result'], 'The pruner deleted while the connection was held.');
+        self::assertSame([1, false], $reports[1]['result']);
+        self::assertSame(0, Link::query()->count());
+        self::assertSame($version + 1, $this->linksVersion());
     }
 
     /**
@@ -794,6 +852,45 @@ final class PruningRacesTest extends LinkingTestCase
         }
 
         return app(Pruner::class)->run()->deleted;
+    }
+
+    /**
+     * Raise `DELETING` as the pruner sends its first delete of a reservation,
+     * and answer a closure saying whether it was sent while the connection's
+     * holder still held it: `null` when none was sent.
+     *
+     * @return \Closure(): ?bool
+     */
+    private function watchTheDelete(): \Closure
+    {
+        $pattern = self::onTable('delete', StorageConnection::table('links.table'));
+        $held    = null;
+
+        self::storageDatabase()->beforeExecuting(function (string $query) use ($pattern, &$held): void {
+
+            if ($held !== null || preg_match($pattern, strtolower($query)) !== 1) {
+                return;
+            }
+
+            $held = !$this->signalled(self::RELEASING);
+
+            $this->signal(self::DELETING);
+        });
+
+        return static function () use (&$held): ?bool {
+            return $held;
+        };
+    }
+
+    /**
+     * Whether the named signal has been raised.
+     *
+     * @param  string  $name
+     * @return bool
+     */
+    private function signalled(string $name): bool
+    {
+        return is_file($this->raceDirectory . '/signal-' . $name);
     }
 
     /**

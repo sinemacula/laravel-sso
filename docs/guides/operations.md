@@ -93,7 +93,7 @@ of the events each one dispatches need a worker too.
 
 | Command                | 0                                                  | 1                                                                       |
 |------------------------|----------------------------------------------------|-------------------------------------------------------------------------|
-| `sso:prune`            | Complete, or incomplete with the next run to go on | A kind stopped on an exception; what committed before it stands         |
+| `sso:prune`            | Complete, or incomplete with the next run to go on | A kind stopped on an exception, or its log line failed                  |
 | `sso:domains:recheck`  | Every lookup answered                              | A lookup failed, the resolver threw, or the run stopped on an exception |
 | `sso:metadata:refresh` | Whatever the refreshes' outcomes                   | The run stopped on an exception                                         |
 | `sso:keys:expiring`    | However many keys are expiring or have expired     | A warning's dispatch threw, or the run stopped on an exception          |
@@ -145,10 +145,12 @@ Each batch commits by itself, so a run never holds a long transaction, and whate
   committed and which kind failed, and it exits 1. Run it again once the cause has gone: it finds what is left.
 
 A run logs one line, `sso.prune.finished`, with the outcome, the duration, the counts and any failed kind with its
-exception's class. It dispatches no event.
+exception's class. It dispatches no event. When that line cannot be written, the output still gives the counts and any
+failed kind, then names the logger's exception by class, and it exits 1.
 
 From your own code, `app(Pruner::class)->run()` answers a `PruneReport`, and throws `PruneFailedException`, holding the
-report, when a kind failed. It refuses to run inside a transaction on either connection.
+report, when a kind failed or its log line could not be written; `logFailure` then holds what the logger threw. It
+refuses to run inside a transaction on either connection.
 
 `model:prune` on `SingleUseKey` and `RateLimit` keeps working and deletes the same rows, but `sso:prune` covers
 everything and is all you need.

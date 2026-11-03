@@ -72,7 +72,10 @@ what makes each safe on several servers at once. How a domain is rechecked and h
 - A run dispatches no event, being housekeeping and not an administrative change. It logs one line, `sso.prune.finished`,
   through the sanitising logger: `info` when complete, `warning` when incomplete, `error` when failed, with the outcome,
   the instant, the duration, the rows each kind deleted, the kinds incomplete, and each failed kind with its exception's
-  class alone. It never logs a message, a binding or an identifier.
+  class alone. It never logs a message, a binding or an identifier. A logger that throws on that line, a destination
+  that cannot be written say, loses nothing: the run throws `PruneFailedException` all the same, holding the report and
+  any kind's failure, with the logger's exception in `logFailure` (chained when no kind failed), and `sso:prune` prints
+  the counts, each failed kind, and the logger's exception by class, and exits 1.
 - `model:prune` still works on `Models\SingleUseKey` and `Models\RateLimit`, deleting what a run would (`expires_at` and
   `window_ends_at` at or before the clock's now). It is one chunked statement after another with no work cap and no
   report; `sso:prune` is the entry point that covers everything.

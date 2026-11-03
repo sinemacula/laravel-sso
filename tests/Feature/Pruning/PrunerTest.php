@@ -40,6 +40,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Logging\UnwritableLogHandler;
 use Tests\Fixtures\Pruning\TickingClock;
 use Tests\TestCase;
 
@@ -51,7 +52,8 @@ use Tests\TestCase;
  * cap and the drain, the links version, partial failure and starting again, the
  * refusal of an open transaction on either connection, the write connection, a
  * connection of the storage's own and of the counters', renamed and
- * schema-qualified tables, the one log line, and no event.
+ * schema-qualified tables, the one log line and a log that cannot be written,
+ * and no event.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -1149,6 +1151,83 @@ final class PrunerTest extends TestCase
         self::assertSame(array_map(static fn (PruneKind $kind): string => $kind->value, PruneKind::cases()), array_keys($records[0]['context']['deleted']));
         $this->assertNothingLoggedContains($id, $this->connection->id, self::INJECTED_FAILURE, 'sso_authorization_requests');
         $this->assertNoEvents();
+    }
+
+    /**
+     * A summary line the logger refuses after every kind committed throws the
+     * report all the same, the logger's exception chained and kept, and what
+     * was deleted stays deleted.
+     *
+     * @return void
+     */
+    public function testALogThatCannotBeWrittenKeepsTheReport(): void
+    {
+        $now = CarbonImmutable::parse(self::NOW)->subDays(2);
+
+        $this->prunableRow(PruneKind::AUTHORIZATION_REQUESTS, $this->connection, $now);
+        $this->prunableRow(PruneKind::AUTHORIZATION_REQUESTS, $this->connection, $now);
+        $this->prunableRow(PruneKind::RATE_LIMITS, $this->connection, $now);
+
+        $log = UnwritableLogHandler::configure();
+
+        try {
+            $this->pruner()->run();
+            self::fail('A run whose log failed reported success.');
+        } catch (PruneFailedException $exception) {
+            self::assertSame(PruneStatus::COMPLETE, $exception->report->status);
+            self::assertSame(
+                ['authorization_requests' => 2, 'handoff_codes' => 0, 'single_use_keys' => 0, 'reservations' => 0, 'pending_claims' => 0, 'rate_limits' => 1],
+                $exception->report->deleted,
+            );
+            self::assertSame([], $exception->report->failures);
+            self::assertInstanceOf(\UnexpectedValueException::class, $exception->logFailure);
+            self::assertSame($exception->logFailure, $exception->getPrevious());
+            self::assertSame('The prune finished, and its log line failed (UnexpectedValueException).', $exception->getMessage());
+        }
+
+        self::assertSame(1, $log->attempts);
+        self::assertSame([], $this->prunableRowsLeft(PruneKind::AUTHORIZATION_REQUESTS));
+        self::assertSame([], $this->prunableRowsLeft(PruneKind::RATE_LIMITS));
+    }
+
+    /**
+     * A summary line the logger refuses after a kind failed keeps the report
+     * and the kind's failure, which stays the one chained, and names both.
+     *
+     * @return void
+     */
+    public function testALogThatCannotBeWrittenKeepsTheFailure(): void
+    {
+        $now  = CarbonImmutable::parse(self::NOW)->subDays(2);
+        $code = $this->prunableRow(PruneKind::HANDOFF_CODES, $this->connection, $now);
+
+        $this->prunableRow(PruneKind::RATE_LIMITS, $this->connection, $now);
+
+        $this->failStatement(self::onTable('delete', 'sso_handoff_codes'));
+
+        $log = UnwritableLogHandler::configure();
+
+        try {
+            $this->pruner()->run();
+            self::fail('A failed run reported success.');
+        } catch (PruneFailedException $exception) {
+            self::assertSame(PruneStatus::FAILED, $exception->report->status);
+            self::assertSame(
+                ['authorization_requests' => 0, 'handoff_codes' => 0, 'single_use_keys' => 0, 'reservations' => 0, 'pending_claims' => 0, 'rate_limits' => 1],
+                $exception->report->deleted,
+            );
+            self::assertSame(['handoff_codes' => 'Illuminate\Database\QueryException'], $exception->report->failures);
+            self::assertInstanceOf(\UnexpectedValueException::class, $exception->logFailure);
+            self::assertTrue(self::isInjectedFailure($exception->getPrevious()));
+            self::assertSame(
+                'The prune stopped on handoff_codes (Illuminate\Database\QueryException), and its log line failed (UnexpectedValueException).',
+                $exception->getMessage(),
+            );
+        }
+
+        self::assertSame(1, $log->attempts);
+        self::assertSame([$code], $this->prunableRowsLeft(PruneKind::HANDOFF_CODES));
+        self::assertSame([], $this->prunableRowsLeft(PruneKind::RATE_LIMITS));
     }
 
     /**

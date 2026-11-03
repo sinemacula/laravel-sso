@@ -22,7 +22,9 @@ use Symfony\Component\Console\Attribute\AsCommand;
  * with more eligible, which it says, since the next run goes on; `--drain` goes
  * past the cap. It exits 1 when a kind stopped on an exception, printing what
  * committed before it and naming the kind and the exception by class alone,
- * since a message could carry a value read from the database.
+ * since a message could carry a value read from the database. It exits 1 too
+ * when the run's summary could not be logged, printing the counts as ever and
+ * naming the logger's exception by class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,34 +49,53 @@ final class PruneCommand extends Command
         try {
             $report = $pruner->run($this->option('drain') === true);
         } catch (PruneFailedException $exception) {
-            return $this->failed($exception->report);
+            return $this->failed($exception);
         } catch (\Throwable $exception) {
             $this->error(sprintf('The prune stopped on %s.', $exception::class));
 
             return self::FAILURE;
         }
 
-        $this->line(self::summary($report));
-
-        if ($report->status === PruneStatus::INCOMPLETE) {
-            $this->warn('More is eligible: the next run goes on, or run sso:prune --drain.');
-        }
+        $this->printReport($report);
 
         return self::SUCCESS;
     }
 
     /**
-     * Print what committed, and what stopped.
+     * Print what committed, every kind that stopped, and the way on when more
+     * is eligible.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\PruneReport  $report
-     * @return int
+     * @return void
      */
-    private function failed(PruneReport $report): int
+    private function printReport(PruneReport $report): void
     {
         $this->line(self::summary($report));
 
         foreach ($report->failures as $kind => $class) {
             $this->error(sprintf('The prune of %s stopped on %s.', $kind, $class));
+        }
+
+        if ($report->status !== PruneStatus::INCOMPLETE) {
+            return;
+        }
+
+        $this->warn('More is eligible: the next run goes on, or run sso:prune --drain.');
+    }
+
+    /**
+     * Print the report of the run that failed, and the logger's failure when
+     * the summary could not be logged.
+     *
+     * @param  \SineMacula\Laravel\Sso\Pruning\PruneFailedException  $exception
+     * @return int
+     */
+    private function failed(PruneFailedException $exception): int
+    {
+        $this->printReport($exception->report);
+
+        if ($exception->logFailure !== null) {
+            $this->error(sprintf('The prune\'s log line failed on %s.', $exception->logFailure::class));
         }
 
         return self::FAILURE;

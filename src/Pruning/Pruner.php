@@ -36,7 +36,10 @@ use SineMacula\Laravel\Sso\Pruning\Enums\PruneStatus;
  * An exception stops the kind it came from and the others still take their
  * turn. The run then logs its one summary line and throws
  * `PruneFailedException`, holding the report of what committed; a run begun
- * again finds what is left, since what it would delete is still eligible.
+ * again finds what is left, since what it would delete is still eligible. A
+ * summary line the logger refused throws it as well, holding the report, any
+ * kind's failure and the logger's exception, so what committed is never lost to
+ * a log that could not be written.
  *
  * Grace is not what makes this safe. A completion or a redemption delayed past
  * a row's retention is refused by its own expiry checks, and a locked recheck
@@ -105,12 +108,11 @@ final readonly class Pruner
             $sweeps[$target->kind->value] = self::sweep($target, $batch, $cap);
         }
 
-        $report = $this->reportOf($now, $sweeps);
+        $report     = $this->reportOf($now, $sweeps);
+        $logFailure = $this->log($report);
 
-        $this->log($report);
-
-        if ($report->failures !== []) {
-            throw new PruneFailedException($report, self::firstFailure($sweeps));
+        if ($report->failures !== [] || $logFailure !== null) {
+            throw new PruneFailedException($report, self::firstFailure($sweeps) ?? $logFailure, $logFailure);
         }
 
         return $report;
@@ -229,12 +231,14 @@ final readonly class Pruner
 
     /**
      * Log the run's one line: an error when it failed, a warning when it is
-     * incomplete, and for information otherwise.
+     * incomplete, and for information otherwise. Answers what the logger threw,
+     * so the report still reaches the caller, or `null` once the line is
+     * written.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\PruneReport  $report
-     * @return void
+     * @return ?\Throwable
      */
-    private function log(PruneReport $report): void
+    private function log(PruneReport $report): ?\Throwable
     {
         $level = match ($report->status) {
             PruneStatus::COMPLETE   => LogLevel::INFO,
@@ -242,6 +246,12 @@ final readonly class Pruner
             PruneStatus::FAILED     => LogLevel::ERROR,
         };
 
-        $this->logger->log($level, self::LOG_MESSAGE, $report->jsonSerialize());
+        try {
+            $this->logger->log($level, self::LOG_MESSAGE, $report->jsonSerialize());
+        } catch (\Throwable $exception) {
+            return $exception;
+        }
+
+        return null;
     }
 }
