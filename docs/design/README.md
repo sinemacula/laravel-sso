@@ -88,6 +88,18 @@ The current note set is:
   authorisation code request; the callback and the token request; the ID token's validation; UserInfo, provider tokens
   and the email; and what an administrator registers at the provider, each on the driver `oidc-driver.md` and the
   adapter `jose-adapter.md` lay down.
+- `operations.md`: the operations schedule and its opt-in cache mutexes, pruning and its retention, batches, work cap and
+  partial progress, the expiry warnings and their at-least-once delivery, and who cleans up an application's own store.
+- `long-running-processes.md`: what the package promises of the processes it runs in and how the suite proves it: no
+  session, nothing kept between requests or jobs, the write connection, database errors as server errors, and a cache
+  it never needs.
+- `performance-budgets.md`: the deterministic query budgets of every operation and whole flow on both connections,
+  bounded growth across many rows, and the scheduled benches, where their environment and versions appear and why no
+  time gates CI.
+- `transaction-ownership.md`: each transaction of a completion, a redemption and an administrative change, what it
+  writes, which events belong to it, and what stands when it rolls back.
+- `standalone-acceptance.md`: how the package is shown to stand alone: what each seam's default does with no sibling
+  installed, what an application must supply to go further, and how default and adapter acceptance are kept apart.
 
 These documents are secondary to the code and tests, not a replacement for them. If a note and a cited test disagree,
 the test should be treated as authoritative until the mismatch is resolved.

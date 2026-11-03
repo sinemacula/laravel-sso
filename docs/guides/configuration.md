@@ -55,7 +55,8 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `keys.rsa_bits`                                      | `3072`                                          | `SSO_KEYS_RSA_BITS`                           | [Keys and certificates](keys.md)                |
 | `keys.certificate_days`                              | `730`                                           | `SSO_KEYS_CERTIFICATE_DAYS`                   | [Keys and certificates](keys.md)                |
 | `keys.overlap_seconds`                               | `604800`                                        | `SSO_KEYS_OVERLAP_SECONDS`                    | [Keys and certificates](keys.md)                |
-| `keys.expiry_warning_days`                           | `30`                                            | `SSO_KEYS_EXPIRY_WARNING_DAYS`                | [Keys and certificates](keys.md)                |
+| `keys.expiry_thresholds`                             | `[30, 14, 7, 1, 0]`                             |                                               | [Operations](operations.md)                     |
+| `keys.expiry_claim_seconds`                          | `300`                                           | `SSO_KEYS_EXPIRY_CLAIM_SECONDS`               | [Operations](operations.md)                     |
 | `domains.table`                                      | `sso_domains`                                   | `SSO_DOMAINS_TABLE`                           | [Domains](domains.md)                           |
 | `domains.record_name`                                | `_sso-verification`                             | `SSO_DOMAINS_RECORD_NAME`                     | [Domains](domains.md)                           |
 | `domains.refused`                                    | `[]`                                            |                                               | [Domains](domains.md)                           |
@@ -94,6 +95,15 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `rate_limits.redemption.per_ip`                      | 30 per 60 s                                     |                                               | [Rate limits](rate-limits.md)                   |
 | `rate_limits.metadata.per_connection`                | 10 per 3600 s                                   |                                               | [Rate limits](rate-limits.md)                   |
 | `rate_limits.domain_check.per_connection`            | 30 per 3600 s                                   |                                               | [Rate limits](rate-limits.md)                   |
+| `pruning.retention_seconds`                          | `86400`                                         | `SSO_PRUNING_RETENTION_SECONDS`               | [Operations](operations.md)                     |
+| `pruning.batch_size`                                 | `1000`                                          | `SSO_PRUNING_BATCH_SIZE`                      | [Operations](operations.md)                     |
+| `pruning.max_rows_per_kind`                          | `100000`                                        | `SSO_PRUNING_MAX_ROWS_PER_KIND`               | [Operations](operations.md)                     |
+| `operations.cadence.prune`                           | `0 * * * *`                                     | `SSO_OPERATIONS_PRUNE_CADENCE`                | [Operations](operations.md)                     |
+| `operations.cadence.domain_recheck`                  | `0 * * * *`                                     | `SSO_OPERATIONS_DOMAIN_RECHECK_CADENCE`       | [Operations](operations.md)                     |
+| `operations.cadence.metadata_refresh`                | `*/5 * * * *`                                   | `SSO_OPERATIONS_METADATA_REFRESH_CADENCE`     | [Operations](operations.md)                     |
+| `operations.cadence.expiry_report`                   | `0 0 * * *`                                     | `SSO_OPERATIONS_EXPIRY_REPORT_CADENCE`        | [Operations](operations.md)                     |
+| `operations.cache_mutexes`                           | `false`                                         | `SSO_OPERATIONS_CACHE_MUTEXES`                | [Operations](operations.md)                     |
+| `operations.mutex_minutes`                           | `60`                                            | `SSO_OPERATIONS_MUTEX_MINUTES`                | [Operations](operations.md)                     |
 
 ## OIDC limits
 
@@ -284,9 +294,10 @@ php artisan sso:check
 
 It prints `[subject] OK`, `[subject] not enabled` for what is off, or one line per problem, and exits `1` when there is
 a problem. The subjects are `features` (always checked), `extensions`, `storage`, `endpoints`, `applications`, `clock`,
-`secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys`, `mapping`, `domains`, `flows` and `linking` (each
-checked while a protocol is on). The check reads configuration only: it opens no database connection and prints no
-secret or configured value. What the last eleven check is in their guides and sections: [Clock](clock.md),
-[Secrets](secrets.md), [Outbound requests](outbound-requests.md), [Logging](logging.md), [Rate limits](rate-limits.md),
-[Fresh authentication](freshness.md), [Keys and certificates](keys.md), [Managing connections](managing-connections.md),
-[Domains](domains.md), [Flows](#flows) and [Linking by domain](linking-by-domain.md).
+`secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys`, `mapping`, `domains`, `flows`, `linking`, `pruning`
+and `operations` (each checked while a protocol is on). The check reads configuration only: it opens no database
+connection and prints no secret or configured value. What the last thirteen check is in their guides and sections:
+[Clock](clock.md), [Secrets](secrets.md), [Outbound requests](outbound-requests.md), [Logging](logging.md),
+[Rate limits](rate-limits.md), [Fresh authentication](freshness.md), [Keys and certificates](keys.md),
+[Managing connections](managing-connections.md), [Domains](domains.md), [Flows](#flows),
+[Linking by domain](linking-by-domain.md) and [Operations](operations.md).

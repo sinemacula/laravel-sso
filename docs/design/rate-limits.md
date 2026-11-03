@@ -79,8 +79,9 @@ always on, why the counters may live on a connection of their own, and how a ful
 - An attempt below every limit of its flow takes one slot from each counter it names and answers `allowed`.
 - The first attempt in a window creates the counter with one attempt; the first attempt after the window has ended
   restarts it with one attempt.
-- `model:prune` on `Models\RateLimit` deletes the counters whose window has ended by the package's clock
-  (`window_ends_at <= now`); the next attempt would restart them anyway, so pruning only keeps the table small.
+- `sso:prune` (`operations.md`), and `model:prune` on `Models\RateLimit`, delete the counters whose window has ended by
+  the package's clock (`window_ends_at <= now`); the next attempt would restart them anyway, so pruning only keeps the
+  table small.
 
 ## Failure / Edge Cases
 

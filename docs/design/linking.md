@@ -283,6 +283,7 @@ reservation carries the version it was made under.
 - `tests/Feature/Linking/ReauthenticationBranchTest.php`, `ReauthenticationEventSequenceTest.php`,
   `tests/Feature/Completion/ReauthenticationRulesTest.php`,
   `tests/Integration/Linking/ConcurrentReauthenticationTest.php`.
+- `tests/Integration/Combined/RedemptionRacesTest.php`, `ReservationProvisioningRacesTest.php`.
 - `tests/Feature/Completion/CompletionPipelineTest.php`, `tests/Feature/Handoffs/HandoffRecheckTest.php`,
   `tests/Feature/Links/LinkStoreTest.php`.
 

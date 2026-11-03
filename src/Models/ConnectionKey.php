@@ -20,9 +20,10 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * public key (PEM), the SHA-256 fingerprint (of the certificate's DER when
  * there is one, of the public key's otherwise, as `Secrets\MaskedKey` computes
  * it), the certificate's validity (reported, never enforced), when the key was
- * made current, and until when a retiring key is still accepted for decryption.
- * A private key is stored only encrypted, through `Contracts\SecretEncrypter`,
- * and hidden from serialisation; a helper never returns it (SSO-2.5).
+ * made current, until when a retiring key is still accepted for decryption, and
+ * the expiry report's marker and claim (`Keys\ExpiryReport`). A private key is
+ * stored only encrypted, through `Contracts\SecretEncrypter`, and hidden from
+ * serialisation; a helper never returns it (SSO-2.5).
  *
  * Its key is a lower-case ULID and its timestamps come from the package's clock
  * (see `SsoModel`). The table comes from `sso.keys.table`, the connection from
@@ -48,6 +49,9 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property ?\Carbon\CarbonImmutable $not_after
  * @property ?\Carbon\CarbonImmutable $made_current_at
  * @property ?\Carbon\CarbonImmutable $retiring_until
+ * @property ?int $expiry_notified_threshold
+ * @property ?\Carbon\CarbonImmutable $expiry_notified_at
+ * @property ?\Carbon\CarbonImmutable $expiry_claimed_until
  * @property \Carbon\CarbonImmutable $created_at
  * @property \Carbon\CarbonImmutable $updated_at
  */
@@ -91,16 +95,19 @@ final class ConnectionKey extends SsoModel
     protected function casts(): array
     {
         return [
-            'use'             => KeyUse::class,
-            'state'           => KeyState::class,
-            'key_type'        => KeyType::class,
-            'key_bits'        => 'integer',
-            'not_before'      => UtcDateTime::class,
-            'not_after'       => UtcDateTime::class,
-            'made_current_at' => UtcDateTime::class,
-            'retiring_until'  => UtcDateTime::class,
-            'created_at'      => UtcDateTime::class,
-            'updated_at'      => UtcDateTime::class,
+            'use'                       => KeyUse::class,
+            'state'                     => KeyState::class,
+            'key_type'                  => KeyType::class,
+            'key_bits'                  => 'integer',
+            'not_before'                => UtcDateTime::class,
+            'not_after'                 => UtcDateTime::class,
+            'made_current_at'           => UtcDateTime::class,
+            'retiring_until'            => UtcDateTime::class,
+            'expiry_notified_threshold' => 'integer',
+            'expiry_notified_at'        => UtcDateTime::class,
+            'expiry_claimed_until'      => UtcDateTime::class,
+            'created_at'                => UtcDateTime::class,
+            'updated_at'                => UtcDateTime::class,
         ];
     }
 }

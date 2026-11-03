@@ -21,6 +21,8 @@ use SineMacula\Laravel\Sso\Config\Checks\StorageCheck;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Connections\MappingCheck;
 use SineMacula\Laravel\Sso\Console\CheckConfigurationCommand;
+use SineMacula\Laravel\Sso\Console\ExpiringKeysCommand;
+use SineMacula\Laravel\Sso\Console\PruneCommand;
 use SineMacula\Laravel\Sso\Console\RecheckDomainsCommand;
 use SineMacula\Laravel\Sso\Console\RefreshMetadataCommand;
 use SineMacula\Laravel\Sso\Contracts\ApplicationPolicy;
@@ -64,6 +66,7 @@ use SineMacula\Laravel\Sso\Flows\NoReauthenticationSessions;
 use SineMacula\Laravel\Sso\Freshness\FreshnessCheck;
 use SineMacula\Laravel\Sso\Freshness\RefusingFreshness;
 use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
+use SineMacula\Laravel\Sso\Keys\ExpiryNotifier;
 use SineMacula\Laravel\Sso\Keys\KeysCheck;
 use SineMacula\Laravel\Sso\Linking\LinkingCheck;
 use SineMacula\Laravel\Sso\Linking\NoEmailMatches;
@@ -80,6 +83,8 @@ use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Metadata\OidcMetadataSource;
 use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
 use SineMacula\Laravel\Sso\Metadata\SamlMetadataSource;
+use SineMacula\Laravel\Sso\Operations\OperationsCheck;
+use SineMacula\Laravel\Sso\Protocols\DriverScope;
 use SineMacula\Laravel\Sso\Protocols\Oidc\CallbackCompletion;
 use SineMacula\Laravel\Sso\Protocols\Oidc\ClaimsAssembler;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcCheck;
@@ -87,6 +92,8 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Check;
 use SineMacula\Laravel\Sso\Protocols\Saml2\UnsolicitedResponses;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
+use SineMacula\Laravel\Sso\Pruning\Pruner;
+use SineMacula\Laravel\Sso\Pruning\PruningCheck;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
 use SineMacula\Laravel\Sso\RateLimiting\RateLimitsCheck;
 use SineMacula\Laravel\Sso\Results\ProviderDeadlineLimitsSession;
@@ -126,6 +133,8 @@ final class SsoServiceProvider extends ServiceProvider
         'saml2'        => Saml2Check::class,
         'oidc'         => OidcCheck::class,
         'metadata'     => MetadataCheck::class,
+        'pruning'      => PruningCheck::class,
+        'operations'   => OperationsCheck::class,
     ];
 
     /** @var list<class-string> Every package class that takes a PSR-3 logger. Each is given `Logging\SanitizingLogger`, so nothing the package logs skips sanitisation and redaction (SSO-5.7, SSO-9.8); the application's own `LoggerInterface` binding is left alone. A part of the package that logs adds its class here. */
@@ -140,6 +149,8 @@ final class SsoServiceProvider extends ServiceProvider
         ProviderKeys::class,
         CallbackCompletion::class,
         ClaimsAssembler::class,
+        Pruner::class,
+        ExpiryNotifier::class,
     ];
 
     /** @var list<string> The console commands that start long-running or scheduled work: the queue workers, Horizon, the scheduler and the Octane servers. Each is checked as it starts and refused on a problem, as a request is at boot (SSO-12.3); every other command runs, so a misconfigured application can still run `sso:check`, its migrations and the commands that repair it. */
@@ -177,6 +188,8 @@ final class SsoServiceProvider extends ServiceProvider
         CheckConfigurationCommand::class,
         RecheckDomainsCommand::class,
         RefreshMetadataCommand::class,
+        PruneCommand::class,
+        ExpiringKeysCommand::class,
     ];
 
     /**
@@ -203,10 +216,10 @@ final class SsoServiceProvider extends ServiceProvider
      * SSO-8.8); the provider's session deadline limits the application's
      * (SSO-6.10); and handoff codes are the package's own (SSO-9.2). The
      * protocol registry is a singleton that builds its drivers with the
-     * application serving (see `ProtocolManager::driver()`). Each is resolved
-     * only when first used. Every package class that logs is given
-     * `SanitizingLogger` by a contextual binding, never by binding
-     * `LoggerInterface` for the whole application.
+     * application serving, in its present scope (see
+     * `ProtocolManager::driver()`). Each is resolved only when first used.
+     * Every package class that logs is given `SanitizingLogger` by a contextual
+     * binding, never by binding `LoggerInterface` for the whole application.
      *
      * @return void
      */
@@ -242,6 +255,7 @@ final class SsoServiceProvider extends ServiceProvider
         $this->app->singletonIf(ProviderSessionDeadline::class, ProviderDeadlineLimitsSession::class);
         $this->app->scopedIf(HandoffIssuer::class, DatabaseHandoffStore::class);
         $this->app->singletonIf(ProtocolManager::class);
+        $this->app->scoped(DriverScope::class);
         $this->app->when(self::LOGGING_CLASSES)->needs(LoggerInterface::class)->give(SanitizingLogger::class);
         $this->app->bindIf(
             ConfigurationChecker::class,

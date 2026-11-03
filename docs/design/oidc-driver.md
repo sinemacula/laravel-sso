@@ -93,8 +93,8 @@ relying party's description in `oidc-relying-party.md`.
 - A completion and a start each refuse to run inside a transaction already open on the storage connection
   (`StorageConnection::assertNoTransaction()`), so the token request and every other provider call is never made
   inside one.
-- The driver and its collaborators are kept by the protocol manager for the life of the process (and per application
-  under Octane), so none holds connection, flow or result state between calls (SSO-11.2).
+- The driver and its collaborators are kept by the protocol manager for one scope, a request's sandbox or a job, so
+  none holds connection, flow or result state between calls (SSO-11.2).
 
 ## Success Path
 

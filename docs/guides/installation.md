@@ -51,15 +51,17 @@ people sign into (see [Configuration](configuration.md)), then check:
 php artisan sso:check
 ```
 
-Connections keep what they fetch from their identity providers fresh on a schedule, so run the refresh command and a
-queue worker:
+The package has work to run on a schedule: pruning what it no longer needs, checking verified domains again, reporting
+keys nearing expiry, and keeping what connections fetch from their identity providers fresh. Register it in one call,
+and run a queue worker for the refreshes (see [Operations](operations.md)):
 
 ```php
 // bootstrap/app.php
 use Illuminate\Console\Scheduling\Schedule;
+use SineMacula\Laravel\Sso\Operations\OperationsSchedule;
 
 ->withSchedule(function (Schedule $schedule): void {
-    $schedule->command('sso:metadata:refresh')->everyFiveMinutes();
+    app(OperationsSchedule::class)->register($schedule);
 })
 ```
 
@@ -67,8 +69,8 @@ use Illuminate\Console\Scheduling\Schedule;
 php artisan queue:work
 ```
 
-Without them, nothing refreshes, and anything a connection that follows its provider fetched stops being used 30 days
-after it was fetched: see
+Without them nothing is pruned or refreshed, and anything a connection that follows its provider fetched stops being
+used 30 days after it was fetched: see
 [SAML metadata](saml-metadata.md#refreshing-on-a-schedule) and
 [Setting up an OIDC connection](oidc-connections.md#scheduled-refresh). `SSO_METADATA_REFRESH=false` stops the schedule,
 though not the 30 days, and an administrator's refresh still works.

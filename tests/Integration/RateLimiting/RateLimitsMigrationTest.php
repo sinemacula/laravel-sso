@@ -103,7 +103,8 @@ final class RateLimitsMigrationTest extends TestCase
     }
 
     /**
-     * The one secondary index is on the window's end, for pruning.
+     * The one secondary index is on the window's end and the key, in the order
+     * pruning pages by keyset.
      *
      * @return void
      */
@@ -113,7 +114,7 @@ final class RateLimitsMigrationTest extends TestCase
 
         $indexes = array_map(static fn (array $index): array => ['columns' => $index['columns'], 'unique' => $index['unique']], $secondary);
 
-        self::assertSame([['columns' => ['window_ends_at'], 'unique' => false]], $indexes);
+        self::assertSame([['columns' => ['window_ends_at', 'key'], 'unique' => false]], $indexes);
     }
 
     /**

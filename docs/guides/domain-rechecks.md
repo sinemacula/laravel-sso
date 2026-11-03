@@ -7,7 +7,8 @@ verifying a domain.
 
 ## Scheduling it
 
-Run it from the scheduler, hourly:
+Run it from the scheduler, hourly, which [the operations schedule](operations.md) does for you along with the other
+commands, or on its own:
 
 ```php
 // bootstrap/app.php

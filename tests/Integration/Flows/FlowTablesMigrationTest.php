@@ -86,6 +86,7 @@ final class FlowTablesMigrationTest extends TestCase
         ], [
             'sso_links_identity_index'           => ['columns' => ['identity_type', 'identity_id', 'connection_id'], 'unique' => false],
             'sso_links_reservation_domain_index' => ['columns' => ['connection_id', 'reservation_domain_id'], 'unique' => false],
+            'sso_links_reservation_expiry_index' => ['columns' => ['state', 'reservation_expires_at', 'id'], 'unique' => false],
             'sso_links_reservation_unique'       => ['columns' => ['reservation_id'], 'unique' => true],
             'sso_links_subject_unique'           => ['columns' => ['connection_id', 'subject_key'], 'unique' => true],
         ]];
@@ -116,7 +117,7 @@ final class FlowTablesMigrationTest extends TestCase
             'voided_at'         => true,
         ], [
             'sso_authorization_requests_connection_index'    => ['columns' => ['connection_id', 'completed_at'], 'unique' => false],
-            'sso_authorization_requests_expiry_index'        => ['columns' => ['expires_at'], 'unique' => false],
+            'sso_authorization_requests_expiry_index'        => ['columns' => ['expires_at', 'id'], 'unique' => false],
             'sso_authorization_requests_reference_unique'    => ['columns' => ['reference'], 'unique' => true],
             'sso_authorization_requests_saml_request_unique' => ['columns' => ['connection_id', 'saml_request_id'], 'unique' => true],
             'sso_authorization_requests_state_unique'        => ['columns' => ['state_digest'], 'unique' => true],
@@ -148,7 +149,7 @@ final class FlowTablesMigrationTest extends TestCase
         ], [
             'sso_handoff_codes_code_unique'      => ['columns' => ['code_digest'], 'unique' => true],
             'sso_handoff_codes_connection_index' => ['columns' => ['connection_id', 'redeemed_at'], 'unique' => false],
-            'sso_handoff_codes_expiry_index'     => ['columns' => ['expires_at'], 'unique' => false],
+            'sso_handoff_codes_expiry_index'     => ['columns' => ['expires_at', 'id'], 'unique' => false],
         ]];
     }
 

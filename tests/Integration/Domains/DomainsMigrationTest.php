@@ -125,7 +125,7 @@ final class DomainsMigrationTest extends TestCase
         self::assertSame([
             'sso_domains_connection_domain_unique' => ['columns' => ['connection_id', 'domain'], 'unique' => true],
             'sso_domains_domain_index'             => ['columns' => ['domain'], 'unique' => false],
-            'sso_domains_pending_index'            => ['columns' => ['state', 'pending_expires_at'], 'unique' => false],
+            'sso_domains_pending_index'            => ['columns' => ['state', 'pending_expires_at', 'id'], 'unique' => false],
             'sso_domains_recheck_index'            => ['columns' => ['state', 'last_successful_check_at'], 'unique' => false],
             'sso_domains_verified_unique'          => ['columns' => ['verified_domain'], 'unique' => true],
         ], $indexes);

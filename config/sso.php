@@ -327,18 +327,22 @@ return [
     | P-256. A generated self-signed certificate is valid for
     | `certificate_days`, from one day to ten years; its dates are reported,
     | never enforced. A key replaced as current is still accepted for
-    | decryption for `overlap_seconds`, from none to 90 days. A certificate's
-    | expiry is reported as near `expiry_warning_days` ahead, from one day to
-    | a year.
+    | decryption for `overlap_seconds`, from none to 90 days. A key or
+    | certificate is warned of as it reaches each of `expiry_thresholds`, days
+    | before its validity ends: distinct integers from 0 to 365, always
+    | including 0, for one that has ended. `sso:keys:expiring` sends each
+    | warning at least once, one reporter holding the key for
+    | `expiry_claim_seconds` (1 to 3600) as it does.
     |
     */
 
     'keys' => [
-        'table'               => env('SSO_KEYS_TABLE', 'sso_keys'),
-        'rsa_bits'            => env('SSO_KEYS_RSA_BITS', 3072),
-        'certificate_days'    => env('SSO_KEYS_CERTIFICATE_DAYS', 730),
-        'overlap_seconds'     => env('SSO_KEYS_OVERLAP_SECONDS', 604800),
-        'expiry_warning_days' => env('SSO_KEYS_EXPIRY_WARNING_DAYS', 30),
+        'table'                => env('SSO_KEYS_TABLE', 'sso_keys'),
+        'rsa_bits'             => env('SSO_KEYS_RSA_BITS', 3072),
+        'certificate_days'     => env('SSO_KEYS_CERTIFICATE_DAYS', 730),
+        'overlap_seconds'      => env('SSO_KEYS_OVERLAP_SECONDS', 604800),
+        'expiry_thresholds'    => [30, 14, 7, 1, 0],
+        'expiry_claim_seconds' => env('SSO_KEYS_EXPIRY_CLAIM_SECONDS', 300),
     ],
 
     /*
@@ -670,5 +674,56 @@ return [
         'domain_check' => [
             'per_connection' => ['max' => 30, 'decay_seconds' => 3600],
         ],
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Pruning
+    |---------------------------------------------------------------------------
+    |
+    | What `sso:prune` keeps and how much it does at a time. An authorisation
+    | request or a handoff code is kept for `retention_seconds` (0 to 90 days)
+    | past its expiry, for diagnosis: a flow is safe because it checks expiry
+    | and locks what it writes, never because a row is still there. Every other
+    | kind goes as soon as it expires. One statement names at most `batch_size`
+    | rows (1 to 10000). One run looks at no more than `max_rows_per_kind` rows
+    | of each kind (1 to 100000000), so each kind gets its turn, and says
+    | `incomplete` when more was eligible; `sso:prune --drain` goes past it.
+    |
+    */
+
+    'pruning' => [
+        'retention_seconds' => env('SSO_PRUNING_RETENTION_SECONDS', 86400),
+        'batch_size'        => env('SSO_PRUNING_BATCH_SIZE', 1000),
+        'max_rows_per_kind' => env('SSO_PRUNING_MAX_ROWS_PER_KIND', 100000),
+    ],
+
+    /*
+    |---------------------------------------------------------------------------
+    | Operations
+    |---------------------------------------------------------------------------
+    |
+    | What `Operations\OperationsSchedule` registers on the application's
+    | schedule: each command's cadence, a cron expression, or `null` or empty
+    | to leave that command to the application. Every command is safe to run on
+    | several servers at once, so by default the schedule runs them on each and
+    | never touches the cache. `cache_mutexes` opts in to Laravel's
+    | `withoutOverlapping()` and `onOneServer()`, a saving of work and never a
+    | requirement, which need a cache every server shares; a mutex a dead
+    | process leaves behind holds for `mutex_minutes` (1 to 1440), and until
+    | then that command does not run.
+    |
+    */
+
+    'operations' => [
+        'cadence' => [
+            'prune'            => env('SSO_OPERATIONS_PRUNE_CADENCE', '0 * * * *'),
+            'domain_recheck'   => env('SSO_OPERATIONS_DOMAIN_RECHECK_CADENCE', '0 * * * *'),
+            'metadata_refresh' => env('SSO_OPERATIONS_METADATA_REFRESH_CADENCE', '*/5 * * * *'),
+            'expiry_report'    => env('SSO_OPERATIONS_EXPIRY_REPORT_CADENCE', '0 0 * * *'),
+        ],
+
+        'cache_mutexes' => env('SSO_OPERATIONS_CACHE_MUTEXES', false),
+        'mutex_minutes' => env('SSO_OPERATIONS_MUTEX_MINUTES', 60),
     ],
 ];

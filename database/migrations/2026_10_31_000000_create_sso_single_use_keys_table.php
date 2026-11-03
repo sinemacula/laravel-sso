@@ -44,12 +44,15 @@ return new class extends Migration {
 
             // Whole seconds in UTC, whatever the application timezone, so a
             // daylight-saving change never repeats a value; compared with the
-            // store's clock, and indexed for pruning expired keys.
-            $blueprint->dateTime('expires_at', 0)->index();
+            // store's clock.
+            $blueprint->dateTime('expires_at', 0);
 
             // A key is held once in its namespace: the index is what answers
             // `seen`, atomically, however many servers record at once.
             $blueprint->unique(['namespace', 'key_digest']);
+
+            // Pruning reads expired keys in this order, by keyset.
+            $blueprint->index(['expires_at', 'id']);
         });
     }
 

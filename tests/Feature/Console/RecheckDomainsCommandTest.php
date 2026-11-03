@@ -166,6 +166,49 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
     }
 
     /**
+     * A run that died mid-claim, as a server's death does, leaves the lease: an
+     * overlapping or later run skips the claim, to the very second the lease
+     * runs out, and then takes it over. Nothing is written until then, and two
+     * runs over one claim confirm it once.
+     *
+     * @return void
+     */
+    public function testARunThatDiedIsTakenOverOnceItsLeaseRunsOut(): void
+    {
+        $claim = $this->verifiedClaim('example.com', '2026-11-01T09:30:00Z');
+
+        $this->clock->advance(3600);
+
+        $this->dns->answer('_sso-verification.example.com', static function (): never {
+            throw new \RuntimeException('The server died.');
+        });
+
+        [$died] = $this->recheckFromConsole();
+
+        self::assertSame(1, $died);
+
+        $checked = Domain::query()->findOrFail($claim->id)->last_successful_check_at;
+
+        $this->dns->found('_sso-verification.example.com', self::TOKEN);
+
+        $this->clock->advance(DomainRechecker::LEASE_SECONDS - 1);
+
+        [$held, $output] = $this->recheckFromConsole();
+
+        self::assertSame(0, $held);
+        self::assertSame(['Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, skipped 1'], $output);
+        self::assertSame($checked?->toAtomString(), Domain::query()->findOrFail($claim->id)->last_successful_check_at?->toAtomString());
+
+        $this->clock->advance(1);
+
+        [$taken, $output] = $this->recheckFromConsole();
+
+        self::assertSame(0, $taken);
+        self::assertSame(['Domains rechecked: confirmed 1, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, skipped 0'], $output);
+        self::assertNull(Domain::query()->findOrFail($claim->id)->recheck_leased_until);
+    }
+
+    /**
      * Make the tenant's connection's verified claim of the domain, last checked
      * at the time given, with any other attributes as times.
      *

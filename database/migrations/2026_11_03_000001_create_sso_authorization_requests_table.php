@@ -93,13 +93,13 @@ return new class extends Migration {
 
             // A response finds its request by its state's digest, or a SAML
             // response by its connection and request id; a change to a
-            // connection voids its unfinished requests; pruning reads requests
-            // by expiry.
+            // connection voids its unfinished requests; pruning pages requests
+            // by expiry, by keyset.
             $blueprint->unique(['reference'], self::indexName($table, 'reference_unique'));
             $blueprint->unique(['state_digest'], self::indexName($table, 'state_unique'));
             $blueprint->unique(['connection_id', 'saml_request_id'], self::indexName($table, 'saml_request_unique'));
             $blueprint->index(['connection_id', 'completed_at'], self::indexName($table, 'connection_index'));
-            $blueprint->index(['expires_at'], self::indexName($table, 'expiry_index'));
+            $blueprint->index(['expires_at', 'id'], self::indexName($table, 'expiry_index'));
         });
     }
 

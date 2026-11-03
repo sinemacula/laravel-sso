@@ -104,17 +104,17 @@ are a contract.
   nearing-expiry event reports a certificate's end of validity and never enforces it, with no acting identity.
   `administration-events.md` records the rest:
 
-  | Event                | Fields beyond the context                          | Dispatched by                                                  |
-  |----------------------|----------------------------------------------------|----------------------------------------------------------------|
-  | `ConnectionCreated`  | none                                               | `ConnectionService::create()`                                  |
-  | `ConnectionUpdated`  | `changedSettings`, names only                      | `ConnectionService::update()`, `SubjectMigration::migrate()`   |
-  | `ConnectionEnabled`  | none                                               | `ConnectionService::enable()`, when it was disabled            |
-  | `ConnectionDisabled` | none                                               | `ConnectionLifecycle::disable()`, when it was enabled          |
-  | `ConnectionDeleted`  | none                                               | `ConnectionLifecycle::delete()`                                |
-  | `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter` | `KeyService::addNext()`, `trustCertificate()`                  |
-  | `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`     | `KeyService::addNext()` for a use's first key, `makeCurrent()` |
-  | `KeyRetired`         | `keyId`, `use`, `fingerprint`                      | `KeyService::retire()`, `distrustCertificate()`                |
-  | `KeyNearingExpiry`   | `keyId`, `use`, `fingerprint`, `notAfter`          | `Keys\ExpiryReport::report()`                                  |
+  | Event                | Fields beyond the context                                  | Dispatched by                                                  |
+  |----------------------|------------------------------------------------------------|----------------------------------------------------------------|
+  | `ConnectionCreated`  | none                                                       | `ConnectionService::create()`                                  |
+  | `ConnectionUpdated`  | `changedSettings`, names only                              | `ConnectionService::update()`, `SubjectMigration::migrate()`   |
+  | `ConnectionEnabled`  | none                                                       | `ConnectionService::enable()`, when it was disabled            |
+  | `ConnectionDisabled` | none                                                       | `ConnectionLifecycle::disable()`, when it was enabled          |
+  | `ConnectionDeleted`  | none                                                       | `ConnectionLifecycle::delete()`                                |
+  | `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter`         | `KeyService::addNext()`, `trustCertificate()`                  |
+  | `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`             | `KeyService::addNext()` for a use's first key, `makeCurrent()` |
+  | `KeyRetired`         | `keyId`, `use`, `fingerprint`                              | `KeyService::retire()`, `distrustCertificate()`                |
+  | `KeyNearingExpiry`   | `keyId`, `use`, `fingerprint`, `notAfter`, `thresholdDays` | `Keys\ExpiryNotifier::notify()`                                |
 
 ## Success Path
 
@@ -157,7 +157,7 @@ are a contract.
   context and dispatch.
 - `src/Events/ConnectionCreated.php`, `ConnectionUpdated.php`, `ConnectionEnabled.php`, `ConnectionDisabled.php`,
   `ConnectionDeleted.php`, `KeyAdded.php`, `KeyMadeCurrent.php`, `KeyRetired.php`, `KeyNearingExpiry.php`.
-- `src/Keys/ExpiryReport.php`: the nearing-expiry report.
+- `src/Keys/ExpiryReport.php` and `src/Keys/ExpiryNotifier.php`: the nearing-expiry report and its warnings.
 
 ## Authoritative Tests
 

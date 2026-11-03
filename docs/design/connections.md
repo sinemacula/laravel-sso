@@ -65,8 +65,9 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
 - A driver reads a connection only through `Contracts\SsoConnection` (an architecture rule forbids `Protocols` to name
   `Models`), and holds no connection, tenant, flow or result state between calls (SSO-11.2).
 - `Protocols\ProtocolManager` is the registry, in the style of `laravel-authentication`'s `SignInMethodManager`:
-  - a container singleton (`singletonIf`) that builds each driver once for the application serving, and again for each
-    Octane sandbox, keeping drivers registered with `extend()`; a manager given its own container keeps it;
+  - a container singleton (`singletonIf`) that builds each driver once for the application serving, in its present
+    scope, and again for each Octane sandbox and each job, keeping drivers registered with `extend()`; a manager given
+    its own container keeps it;
   - the package's drivers, `saml2` and `oidc`, are reserved: `extend()` refuses them;
   - a driver is registered under a lower-case name of up to 64 characters (a letter, then letters, digits or
     underscores) and resolves only by exactly that name; any other spelling is unknown (`InvalidArgumentException`);

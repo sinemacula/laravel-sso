@@ -66,15 +66,23 @@ return new class extends Migration {
             $blueprint->dateTime('not_after', 0)->nullable();
             $blueprint->dateTime('made_current_at', 0)->nullable();
             $blueprint->dateTime('retiring_until', 0)->nullable();
+
+            // The expiry report's marker, written only once the warning has
+            // been dispatched: the most urgent threshold warned of, in days,
+            // and when; and until when one reporter holds the key to send it.
+            $blueprint->unsignedSmallInteger('expiry_notified_threshold')->nullable();
+            $blueprint->dateTime('expiry_notified_at', 0)->nullable();
+            $blueprint->dateTime('expiry_claimed_until', 0)->nullable();
+
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);
 
             // One row per key or certificate of a use in a connection; the
             // rotation reads a connection's keys of one use by state; the
-            // expiry report reads by the end of validity.
+            // expiry report pages by the end of validity, by keyset.
             $blueprint->unique(['connection_id', 'use', 'fingerprint'], self::indexName($table, 'fingerprint_unique'));
             $blueprint->index(['connection_id', 'use', 'state'], self::indexName($table, 'rotation_index'));
-            $blueprint->index(['not_after'], self::indexName($table, 'expiry_index'));
+            $blueprint->index(['not_after', 'id'], self::indexName($table, 'expiry_index'));
         });
     }
 

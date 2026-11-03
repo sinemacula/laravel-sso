@@ -423,6 +423,17 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
+     * `sso:prune` and `sso:keys:expiring` are registered in the console.
+     *
+     * @return void
+     */
+    public function testRegistersTheOperationsCommands(): void
+    {
+        self::assertArrayHasKey('sso:prune', Artisan::all());
+        self::assertArrayHasKey('sso:keys:expiring', Artisan::all());
+    }
+
+    /**
      * `sso:domains:recheck` is registered in the console.
      *
      * @return void

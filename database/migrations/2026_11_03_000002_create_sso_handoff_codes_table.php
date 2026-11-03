@@ -82,10 +82,11 @@ return new class extends Migration {
             $blueprint->dateTime('updated_at', 0);
 
             // A redemption finds its code by digest; a change to a connection
-            // voids its unredeemed codes; pruning reads codes by expiry.
+            // voids its unredeemed codes; pruning pages codes by expiry, by
+            // keyset.
             $blueprint->unique(['code_digest'], self::indexName($table, 'code_unique'));
             $blueprint->index(['connection_id', 'redeemed_at'], self::indexName($table, 'connection_index'));
-            $blueprint->index(['expires_at'], self::indexName($table, 'expiry_index'));
+            $blueprint->index(['expires_at', 'id'], self::indexName($table, 'expiry_index'));
         });
     }
 

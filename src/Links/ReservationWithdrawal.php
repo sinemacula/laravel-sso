@@ -4,6 +4,8 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Links;
 
+use Illuminate\Support\Facades\DB;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
@@ -25,6 +27,13 @@ use SineMacula\Laravel\Sso\Models\Link;
  * does: a PostgreSQL `REPEATABLE READ` change whose snapshot predates a
  * reservation fails to serialise when it locks the row, rather than miss it.
  *
+ * Pruning has no change to be part of, so `expired()` is its own short
+ * transaction: it locks the connection, deletes only the rows named that are
+ * still reserved and past the cutoff, and raises the version when it deleted
+ * any. An activation that holds the connection's lock finishes first, and the
+ * row it made active is no longer reserved; one that comes after finds no
+ * reservation to activate.
+ *
  * It holds nothing (SSO-11.2). A database error propagates (SSO-11.4).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -34,6 +43,9 @@ use SineMacula\Laravel\Sso\Models\Link;
  */
 final class ReservationWithdrawal
 {
+    /** @var int How many times `expired()` is tried in all when a deadlock rolled it back. */
+    private const int ATTEMPTS = 3;
+
     /**
      * Disallow instantiation; utility container only.
      */
@@ -53,7 +65,7 @@ final class ReservationWithdrawal
             ->toBase()
             ->delete();
 
-        return self::raised($locked, $deleted);
+        return self::raised($locked->id, $deleted);
     }
 
     /**
@@ -73,7 +85,7 @@ final class ReservationWithdrawal
             ->toBase()
             ->delete();
 
-        return self::raised($locked, $deleted);
+        return self::raised($locked->id, $deleted);
     }
 
     /**
@@ -99,21 +111,53 @@ final class ReservationWithdrawal
             $deleted++;
         }
 
-        return self::raised($locked, $deleted);
+        return self::raised($locked->id, $deleted);
+    }
+
+    /**
+     * In a short transaction of its own, lock the connection and delete those
+     * of the reservations named that are still reserved and expired by the
+     * cutoff, as the links table stores times, and answer how many. A
+     * connection gone has no version to raise, and its rows are deleted just
+     * the same.
+     *
+     * @param  string  $connectionId
+     * @param  non-empty-list<string>  $ids
+     * @param  string  $cutoff
+     * @return int
+     *
+     * @throws \Throwable
+     */
+    public static function expired(string $connectionId, array $ids, string $cutoff): int
+    {
+        return DB::connection(StorageConnection::name())->transaction(static function () use ($connectionId, $ids, $cutoff): int {
+
+            Connection::query()->useWritePdo()->whereKey($connectionId)->lockForUpdate()->first();
+
+            $deleted = Link::query()->useWritePdo()
+                ->where('connection_id', $connectionId)
+                ->whereKey($ids)
+                ->where('state', LinkState::RESERVED->value)
+                ->where('reservation_expires_at', '<=', $cutoff)
+                ->toBase()
+                ->delete();
+
+            return self::raised($connectionId, $deleted);
+        }, self::ATTEMPTS);
     }
 
     /**
      * Raise the connection's links version when anything was deleted, and
      * answer how much was.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  string  $connectionId
      * @param  int  $deleted
      * @return int
      */
-    private static function raised(Connection $locked, int $deleted): int
+    private static function raised(string $connectionId, int $deleted): int
     {
         if ($deleted > 0) {
-            Connection::query()->useWritePdo()->whereKey($locked->id)->increment('links_version');
+            Connection::query()->useWritePdo()->whereKey($connectionId)->increment('links_version');
         }
 
         return $deleted;

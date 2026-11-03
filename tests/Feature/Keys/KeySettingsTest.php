@@ -36,7 +36,8 @@ final class KeySettingsTest extends TestCase
         self::assertSame(3072, $settings->rsaBits());
         self::assertSame(730, $settings->certificateDays());
         self::assertSame(604800, $settings->overlapSeconds());
-        self::assertSame(30, $settings->expiryWarningDays());
+        self::assertSame(30, $settings->expiryThresholds()->largest());
+        self::assertSame(300, $settings->expiryClaimSeconds());
         self::assertSame('prime256v1', KeySettings::EC_CURVE);
     }
 
@@ -55,7 +56,8 @@ final class KeySettingsTest extends TestCase
         self::assertSame(KeySettings::DEFAULT_RSA_BITS, $settings->rsaBits());
         self::assertSame(KeySettings::DEFAULT_CERTIFICATE_DAYS, $settings->certificateDays());
         self::assertSame(KeySettings::DEFAULT_OVERLAP_SECONDS, $settings->overlapSeconds());
-        self::assertSame(KeySettings::DEFAULT_EXPIRY_WARNING_DAYS, $settings->expiryWarningDays());
+        self::assertSame(30, $settings->expiryThresholds()->largest());
+        self::assertSame(KeySettings::DEFAULT_EXPIRY_CLAIM_SECONDS, $settings->expiryClaimSeconds());
     }
 
     /**
@@ -76,9 +78,9 @@ final class KeySettingsTest extends TestCase
             'overlap, none'     => ['overlap_seconds', 0, 0],
             'overlap, most'     => ['overlap_seconds', 7776000, 7776000],
             'overlap, a string' => ['overlap_seconds', '3600', 3600],
-            'warning, least'    => ['expiry_warning_days', 1, 1],
-            'warning, most'     => ['expiry_warning_days', 365, 365],
-            'warning, a string' => ['expiry_warning_days', '14', 14],
+            'claim, least'      => ['expiry_claim_seconds', 1, 1],
+            'claim, most'       => ['expiry_claim_seconds', 3600, 3600],
+            'claim, a string'   => ['expiry_claim_seconds', '14', 14],
         ];
     }
 
@@ -109,7 +111,7 @@ final class KeySettingsTest extends TestCase
         $rsa     = 'sso.keys.rsa_bits must be one of 3072, 4096.';
         $days    = 'sso.keys.certificate_days must be an integer from 1 to 3650.';
         $overlap = 'sso.keys.overlap_seconds must be an integer from 0 to 7776000.';
-        $warning = 'sso.keys.expiry_warning_days must be an integer from 1 to 365.';
+        $claim   = 'sso.keys.expiry_claim_seconds must be an integer from 1 to 3600.';
 
         yield from [
             'rsa, 2048'            => ['rsa_bits', 2048, $rsa],
@@ -124,11 +126,11 @@ final class KeySettingsTest extends TestCase
             'overlap, negative'    => ['overlap_seconds', -1, $overlap],
             'overlap, past'        => ['overlap_seconds', 7776001, $overlap],
             'overlap, a float'     => ['overlap_seconds', 60.0, $overlap],
-            'warning, none'        => ['expiry_warning_days', 0, $warning],
-            'warning, past'        => ['expiry_warning_days', 366, $warning],
-            'warning, a boolean'   => ['expiry_warning_days', true, $warning],
-            'warning, signed'      => ['expiry_warning_days', '+30', $warning],
-            'warning, an array'    => ['expiry_warning_days', [30], $warning],
+            'claim, none'          => ['expiry_claim_seconds', 0, $claim],
+            'claim, past'          => ['expiry_claim_seconds', 3601, $claim],
+            'claim, a boolean'     => ['expiry_claim_seconds', true, $claim],
+            'claim, signed'        => ['expiry_claim_seconds', '+30', $claim],
+            'claim, an array'      => ['expiry_claim_seconds', [30], $claim],
             'days, an empty value' => ['certificate_days', '', $days],
         ];
     }
@@ -193,7 +195,7 @@ final class KeySettingsTest extends TestCase
             'rsa_bits'         => $settings->rsaBits(),
             'certificate_days' => $settings->certificateDays(),
             'overlap_seconds'  => $settings->overlapSeconds(),
-            default            => $settings->expiryWarningDays(),
+            default            => $settings->expiryClaimSeconds(),
         };
     }
 }

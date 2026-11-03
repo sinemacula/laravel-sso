@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Performance;
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -22,6 +23,10 @@ use Tests\TestCase;
  * package needs nothing but SELECT, INSERT, UPDATE and DELETE at runtime
  * (SSO-11.7), so one that changes the schema fails the budget.
  *
+ * A test of what the counters cost asks for them on a connection of their own
+ * (`useSeparateCounters()`): the same database engine under another connection
+ * name, recorded apart, so a budget says which statement went to which.
+ *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  *
@@ -29,6 +34,9 @@ use Tests\TestCase;
  */
 abstract class PerformanceContractTestCase extends TestCase
 {
+    /** @var string The connection `useSeparateCounters()` moves the counters to. */
+    protected const string COUNTERS = 'sso_counters';
+
     /** @var list<string> File names of the shipped migrations. */
     private const array MIGRATIONS = [
         '2026_10_31_000000_create_sso_single_use_keys_table.php',
@@ -61,8 +69,14 @@ abstract class PerformanceContractTestCase extends TestCase
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     protected FixedClock $clock;
 
-    /** @var \ArrayObject<int, string> Every statement sent while recording. */
+    /** @var \ArrayObject<int, string> Every statement sent on the storage connection while recording. */
     private \ArrayObject $statements;
+
+    /** @var \ArrayObject<int, string> Every statement sent on the counters' own connection while recording. */
+    private \ArrayObject $counterStatements;
+
+    /** @var bool Whether the counters are on a connection of their own. */
+    private bool $separateCounters = false;
 
     /** @var bool Whether statements are being recorded. */
     private bool $recording = false;
@@ -78,8 +92,9 @@ abstract class PerformanceContractTestCase extends TestCase
     {
         parent::setUp();
 
-        $this->clock      = new FixedClock('2026-10-31T12:00:15Z');
-        $this->statements = new \ArrayObject;
+        $this->clock             = new FixedClock('2026-10-31T12:00:15Z');
+        $this->statements        = new \ArrayObject;
+        $this->counterStatements = new \ArrayObject;
 
         $this->app?->instance(Clock::class, $this->clock);
 
@@ -97,14 +112,19 @@ abstract class PerformanceContractTestCase extends TestCase
     }
 
     /**
-     * Drop the shipped tables, so a persistent database starts the next test
-     * without them.
+     * Drop the shipped tables, the counters' from their own connection when
+     * they moved there, so a persistent database starts the next test without
+     * them.
      *
      * @return void
      */
     #[\Override]
     protected function tearDown(): void
     {
+        if ($this->separateCounters) {
+            Schema::connection(self::COUNTERS)->dropIfExists('sso_rate_limits');
+        }
+
         foreach (self::TABLES as $table) {
             Schema::dropIfExists($table);
         }
@@ -113,19 +133,52 @@ abstract class PerformanceContractTestCase extends TestCase
     }
 
     /**
+     * Move the counters to a connection of their own, on the same engine as the
+     * storage connection and recorded apart. SQLite's is another database in
+     * memory; a server's is the same database, so the table moves rather than
+     * being copied. Call it from `setUp()`, before a counter is written.
+     *
+     * @return void
+     */
+    protected function useSeparateCounters(): void
+    {
+        Schema::dropIfExists('sso_rate_limits');
+
+        Config::set('database.connections.' . self::COUNTERS, Config::array('database.connections.' . Config::string('database.default')));
+        Config::set('sso.rate_limits.connection', self::COUNTERS);
+
+        self::migration(self::MIGRATIONS[1])->up(); // @phpstan-ignore method.notFound
+
+        $this->separateCounters = true;
+
+        DB::connection(self::COUNTERS)->beforeExecuting(function (string $query): void {
+            if (!$this->recording) {
+                return;
+            }
+
+            $this->counterStatements->append($query);
+        });
+    }
+
+    /**
      * Run the callback and assert it sent exactly the reads and writes given,
-     * and nothing but data manipulation; answer what it returned.
+     * and nothing but data manipulation; answer what it returned. Reads and
+     * writes are the storage connection's; those of the counters' own
+     * connection, when `useSeparateCounters()` moved them, are the last two.
      *
      * @template TResult
      *
      * @param  int  $reads
      * @param  int  $writes
      * @param  callable(): TResult  $callback
+     * @param  int  $counterReads
+     * @param  int  $counterWrites
      * @return TResult
      */
-    protected function assertQueryBudget(int $reads, int $writes, callable $callback): mixed
+    protected function assertQueryBudget(int $reads, int $writes, callable $callback, int $counterReads = 0, int $counterWrites = 0): mixed
     {
         $this->statements->exchangeArray([]);
+        $this->counterStatements->exchangeArray([]);
         $this->recording = true;
 
         try {
@@ -134,7 +187,45 @@ abstract class PerformanceContractTestCase extends TestCase
             $this->recording = false;
         }
 
-        $sent       = array_values($this->statements->getArrayCopy());
+        $this->assertStatements('read', 'write', $this->statementsSent(), $reads, $writes);
+        $this->assertStatements('counters\' read', 'counters\' write', $this->counterStatementsSent(), $counterReads, $counterWrites);
+
+        return $result;
+    }
+
+    /**
+     * What the last budget sent on the storage connection, in order.
+     *
+     * @return list<string>
+     */
+    protected function statementsSent(): array
+    {
+        return array_values($this->statements->getArrayCopy());
+    }
+
+    /**
+     * What the last budget sent on the counters' own connection, in order.
+     *
+     * @return list<string>
+     */
+    protected function counterStatementsSent(): array
+    {
+        return array_values($this->counterStatements->getArrayCopy());
+    }
+
+    /**
+     * Assert the statements of one connection are exactly the reads and writes
+     * given, and nothing but data manipulation.
+     *
+     * @param  string  $readName
+     * @param  string  $writeName
+     * @param  list<string>  $sent
+     * @param  int  $reads
+     * @param  int  $writes
+     * @return void
+     */
+    private function assertStatements(string $readName, string $writeName, array $sent, int $reads, int $writes): void
+    {
         $statements = array_values(array_filter($sent, static fn (string $sql): bool => preg_match(self::TRANSACTION, $sql) !== 1));
         $written    = array_filter($statements, static fn (string $sql): bool => preg_match(self::WRITE, $sql) === 1);
         $listed     = implode(' | ', $sent);
@@ -143,10 +234,8 @@ abstract class PerformanceContractTestCase extends TestCase
             static::assertMatchesRegularExpression(self::RUNTIME_STATEMENT, $sql, 'A runtime statement must be data manipulation only.');
         }
 
-        static::assertSame($reads, count($statements) - count($written), "Unexpected read budget. Statements: {$listed}");
-        static::assertCount($writes, $written, "Unexpected write budget. Statements: {$listed}");
-
-        return $result;
+        static::assertSame($reads, count($statements) - count($written), "Unexpected {$readName} budget. Statements: {$listed}");
+        static::assertCount($writes, $written, "Unexpected {$writeName} budget. Statements: {$listed}");
     }
 
     /**

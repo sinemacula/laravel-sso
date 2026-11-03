@@ -66,8 +66,10 @@ back. A database error, a dropped connection or a timeout is always thrown, insi
 
 ## Pruning
 
-A key whose expiry has passed is released by the next record of it, but its row stays until it is pruned. Prune with
-Laravel's `model:prune`, naming the package's model, since it lives outside your `app/Models`:
+A key whose expiry has passed is released by the next record of it, but its row stays until it is pruned, which
+`sso:prune` does along with everything else the package no longer needs: see [Operations](operations.md#pruning).
+Laravel's `model:prune` works too, and takes the same rows, naming the package's model, since it lives outside your
+`app/Models`:
 
 ```php
 use Illuminate\Support\Facades\Schedule;

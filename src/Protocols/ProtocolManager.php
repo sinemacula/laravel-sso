@@ -27,12 +27,13 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
  * `$this->callAfterResolving(ProtocolManager::class, fn ($protocols) =>
  * $protocols->extend('cas', ...));`
  *
- * A singleton that keeps each driver it builds for as long as the same
- * application is serving (the life of the process, except under Octane, where
- * each request's sandbox builds its own), which is why drivers must hold no
- * connection, tenant, flow or result state (SSO-11.2). There is no default
- * driver: every connection names the protocol it runs over, exactly as it was
- * registered.
+ * A singleton that keeps each driver it builds for one scope of the application
+ * serving, which is one request's sandbox under Octane and one job under a
+ * queue worker: a driver holds scoped services, which are forgotten when the
+ * scope ends. A driver is therefore built again, by its creator, after each.
+ * Within a scope it is kept, so it must still hold no connection, tenant, flow
+ * or result state (SSO-11.2). There is no default driver: every connection
+ * names the protocol it runs over, exactly as it was registered.
  *
  * A connection is usable only while it is enabled, its protocol is available
  * and its driver finds it complete (SSO-2.1). `saml2` is available while
@@ -59,6 +60,9 @@ final class ProtocolManager extends Manager
 
     /** @var bool Whether the manager follows the application serving: it was built with the one then serving and given no container since. */
     private bool $followsApplication;
+
+    /** @var ?\SineMacula\Laravel\Sso\Protocols\DriverScope The scope the drivers kept were built in. */
+    private ?DriverScope $scope = null;
 
     /** @var array<string, \SineMacula\Laravel\Sso\Protocols\Preset> The presets an application registered, by name. */
     private array $registeredPresets = [];
@@ -255,15 +259,18 @@ final class ProtocolManager extends Manager
     /**
      * Return the driver registered under the name. A manager built with the
      * application then serving builds its drivers with the application now
-     * serving: drivers built with another application are forgotten first, so
-     * they are built again with this one, and drivers registered with
-     * `extend()` stay registered. A manager given a container of its own, at
-     * construction or through `setContainer()`, keeps it.
+     * serving, in its scope now: drivers built with another application or in
+     * an earlier scope are forgotten first, so they are built again, and
+     * drivers registered with `extend()` stay registered. A manager given a
+     * container of its own, at construction or through `setContainer()`, keeps
+     * it, and the drivers it built.
      *
      * Under Octane each request runs in a sandbox: a copy of the application
      * the worker booted, with the request's own configuration and bindings. A
      * manager resolved at boot would otherwise build every driver with the
-     * booted application, for the life of the worker.
+     * booted application, for the life of the worker. A queue worker keeps one
+     * application and forgets its scoped services before each job, and a driver
+     * kept across that would go on using a job's old ones.
      *
      * @param  mixed  $driver
      * @return mixed
@@ -273,12 +280,8 @@ final class ProtocolManager extends Manager
     #[\Override]
     public function driver(mixed $driver = null): mixed
     {
-        $current = Container::getInstance();
-
-        if ($this->followsApplication && $current !== $this->container) {
-            $this->container = $current;
-            $this->config    = $current->make('config');
-            $this->drivers   = [];
+        if ($this->followsApplication) {
+            $this->followApplication(Container::getInstance());
         }
 
         return parent::driver($driver);
@@ -357,6 +360,27 @@ final class ProtocolManager extends Manager
     protected function createOidcDriver(): OidcDriver
     {
         return $this->container->make(OidcDriver::class);
+    }
+
+    /**
+     * Forget the drivers kept unless they were built with the application given
+     * and in its present scope.
+     *
+     * @param  \Illuminate\Container\Container  $current
+     * @return void
+     */
+    private function followApplication(Container $current): void
+    {
+        $scope = $current->make(DriverScope::class);
+
+        if ($current === $this->container && $scope === $this->scope) {
+            return;
+        }
+
+        $this->container = $current;
+        $this->config    = $current->make('config');
+        $this->drivers   = [];
+        $this->scope     = $scope;
     }
 
     /**

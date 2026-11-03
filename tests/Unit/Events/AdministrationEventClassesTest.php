@@ -84,8 +84,8 @@ final class AdministrationEventClassesTest extends TestCase
         ];
         yield 'key retired' => [new KeyRetired($context, '01jbkey0000000000000000003', KeyUse::SP_ENCRYPTION, self::FINGERPRINT), ['context', 'keyId', 'use', 'fingerprint']];
         yield 'key nearing expiry' => [
-            new KeyNearingExpiry($context, '01jbkey0000000000000000002', KeyUse::IDP_SIGNING, self::FINGERPRINT, $notAfter),
-            ['context', 'keyId', 'use', 'fingerprint', 'notAfter'],
+            new KeyNearingExpiry($context, '01jbkey0000000000000000002', KeyUse::IDP_SIGNING, self::FINGERPRINT, $notAfter, 7),
+            ['context', 'keyId', 'use', 'fingerprint', 'notAfter', 'thresholdDays'],
         ];
     }
 

@@ -245,21 +245,21 @@ connections](managing-connections.md) and [Keys and certificates](keys.md)) is r
 commits, so an audit trail can record who changed which identity provider's trust, and when. Each is in
 `SineMacula\Laravel\Sso\Events` and carries the context above, with the connection's id, its tenant and its protocol.
 
-| Event                   | Fields beyond the context                                 | Dispatched when                                                                 |
-|-------------------------|-----------------------------------------------------------|---------------------------------------------------------------------------------|
-| `ConnectionCreated`     | none                                                      | `ConnectionService::create()` created a connection, disabled                    |
-| `ConnectionUpdated`     | `changedSettings`: the names of what changed              | `update()` or `SubjectMigration::migrate()` changed what the connection holds   |
-| `ConnectionEnabled`     | none                                                      | `enable()` enabled a disabled connection                                        |
-| `ConnectionDisabled`    | none                                                      | `ConnectionLifecycle::disable()` disabled an enabled connection                 |
-| `ConnectionDeleted`     | none                                                      | `ConnectionLifecycle::delete()` deleted a connection and everything it held     |
-| `KeyAdded`              | `keyId`, `use`, `state`, `fingerprint`, `notAfter`        | `KeyService::addNext()` added a key pair, or `trustCertificate()` a certificate |
-| `KeyMadeCurrent`        | `keyId`, `use`, `fingerprint`, `previousKeyId`            | `makeCurrent()` made a key current, or `addNext()` added a use's first key      |
-| `KeyRetired`            | `keyId`, `use`, `fingerprint`                             | `retire()` removed a key, or `distrustCertificate()` a certificate              |
-| `KeyNearingExpiry`      | `keyId`, `use`, `fingerprint`, `notAfter`                 | `ExpiryReport::report()` found its validity ending within the warning, or ended |
-| `MetadataRefreshed`     | `changedSettings`, `metadataVersion`, `trustChanged`      | A metadata refresh validated the identity provider's metadata and applied it    |
-| `MetadataRefreshFailed` | `reason`, `failures`, `nextAttemptAt`                     | A metadata refresh failed; the last good metadata is kept                       |
-| `JwksRefreshed`         | `jwksVersion`, `keysAdded`, `keysRemoved`, `trustChanged` | An ID token's unknown `kid` refetched the connection's JWKS and stored it       |
-| `JwksRefreshFailed`     | `reason`, `nextRefetchAt`                                 | That refetch failed; the stored keys are kept until the cooldown ends           |
+| Event                   | Fields beyond the context                                  | Dispatched when                                                                  |
+|-------------------------|------------------------------------------------------------|----------------------------------------------------------------------------------|
+| `ConnectionCreated`     | none                                                       | `ConnectionService::create()` created a connection, disabled                     |
+| `ConnectionUpdated`     | `changedSettings`: the names of what changed               | `update()` or `SubjectMigration::migrate()` changed what the connection holds    |
+| `ConnectionEnabled`     | none                                                       | `enable()` enabled a disabled connection                                         |
+| `ConnectionDisabled`    | none                                                       | `ConnectionLifecycle::disable()` disabled an enabled connection                  |
+| `ConnectionDeleted`     | none                                                       | `ConnectionLifecycle::delete()` deleted a connection and everything it held      |
+| `KeyAdded`              | `keyId`, `use`, `state`, `fingerprint`, `notAfter`         | `KeyService::addNext()` added a key pair, or `trustCertificate()` a certificate  |
+| `KeyMadeCurrent`        | `keyId`, `use`, `fingerprint`, `previousKeyId`             | `makeCurrent()` made a key current, or `addNext()` added a use's first key       |
+| `KeyRetired`            | `keyId`, `use`, `fingerprint`                              | `retire()` removed a key, or `distrustCertificate()` a certificate               |
+| `KeyNearingExpiry`      | `keyId`, `use`, `fingerprint`, `notAfter`, `thresholdDays` | `ExpiryReport::report()` found it has reached a threshold, or its validity ended |
+| `MetadataRefreshed`     | `changedSettings`, `metadataVersion`, `trustChanged`       | A metadata refresh validated the identity provider's metadata and applied it     |
+| `MetadataRefreshFailed` | `reason`, `failures`, `nextAttemptAt`                      | A metadata refresh failed; the last good metadata is kept                        |
+| `JwksRefreshed`         | `jwksVersion`, `keysAdded`, `keysRemoved`, `trustChanged`  | An ID token's unknown `kid` refetched the connection's JWKS and stored it        |
+| `JwksRefreshFailed`     | `reason`, `nextRefetchAt`                                  | That refetch failed; the stored keys are kept until the cooldown ends            |
 
 A metadata refresh, of a SAML connection's metadata or an OIDC connection's discovery document and JWKS, reports
 `MetadataRefreshed` or `MetadataRefreshFailed`; an OIDC connection's refetch of its JWKS on an unknown `kid` reports
@@ -371,26 +371,9 @@ Event::listen([
 
 ### Keys and certificates nearing expiry
 
-`SineMacula\Laravel\Sso\Keys\ExpiryReport::report()` finds every key and certificate, of every connection, whose
-validity ends within `keys.expiry_warning_days` (30 days by default), or within the days you pass (1 to 365), or has
-already ended. It dispatches one `KeyNearingExpiry` for each, with no acting identity, and returns them as `KeySummary`
-values, earliest end of validity first. A retiring key whose overlap has ended is left out, and so is a key with no end
-of validity.
-
-The expiry is reported, never enforced: an expired certificate is still trusted, since trust comes from the certificate
-you configured, not its dates. The report changes nothing, so run it on a schedule and tell an administrator to rotate:
-
-```php
-use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Schedule;
-use SineMacula\Laravel\Sso\Events\KeyNearingExpiry;
-use SineMacula\Laravel\Sso\Keys\ExpiryReport;
-
-Schedule::call(static fn () => app(ExpiryReport::class)->report())->daily();
-
-Event::listen(KeyNearingExpiry::class, function (KeyNearingExpiry $event): void {
-    SecurityTeam::notify(new CertificateExpiring($event->context()->connectionId, $event->fingerprint, $event->notAfter));
-});
-```
-
-Each run reports every such key again, until it is rotated or removed.
+`php artisan sso:keys:expiring`, through `SineMacula\Laravel\Sso\Keys\ExpiryReport`, dispatches one `KeyNearingExpiry`
+for the most urgent of `keys.expiry_thresholds` a key or certificate has reached, 30, 14, 7 and 1 days before its end of
+validity and 0 once it has ended, with no acting identity. Each warning is sent at least once, so one may arrive twice,
+and a key never goes back to a less urgent one. The expiry is reported, never enforced: an expired certificate is
+still trusted, since trust comes from the certificate you configured, not its dates. See
+[Operations](operations.md#keys-and-certificates-nearing-expiry) for what it promises, and how to schedule it.
