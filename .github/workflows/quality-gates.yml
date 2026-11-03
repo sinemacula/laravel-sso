@@ -125,7 +125,7 @@ jobs:
                     php-version: 8.3
 
             -   name: Run PHPBench suite
-                run: XDEBUG_MODE=off composer bench:ci 2>&1 | tee build/phpbench-console.txt
+                run: mkdir -p build && XDEBUG_MODE=off composer bench:ci 2>&1 | tee build/phpbench-console.txt
 
             -   name: Render benchmark summary
                 if: always()
