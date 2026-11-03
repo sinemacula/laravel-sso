@@ -7,6 +7,7 @@ namespace Tests\Integration\Standalone;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Composer\Autoload\ClassLoader;
+use Illuminate\Foundation\Application;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -220,7 +221,9 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
      * Every seam is on the default the provider binds, and every route is one
      * the test's application added, from a closure of its own. Nothing but
      * those seven is there, under any path, and none of them comes from the
-     * package.
+     * package. Only a route the framework defines in its own source is left
+     * aside, such as the `storage/{path}` routes Laravel 12 serves the local
+     * disk's files on.
      *
      * @return void
      */
@@ -228,8 +231,16 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     {
         $this->assertDefaultBindings();
 
-        $routes = Route::getRoutes()->getRoutes();
-        $uris   = array_map(static fn (RoutingRoute $route): string => $route->uri(), $routes);
+        $framework = dirname((string) (new \ReflectionClass(Application::class))->getFileName(), 2) . DIRECTORY_SEPARATOR;
+
+        $routes = array_values(array_filter(Route::getRoutes()->getRoutes(), static function (RoutingRoute $route) use ($framework): bool {
+
+            $action = $route->getAction('uses');
+
+            return !$action instanceof \Closure || !str_starts_with((string) (new \ReflectionFunction($action))->getFileName(), $framework);
+        }));
+
+        $uris = array_map(static fn (RoutingRoute $route): string => $route->uri(), $routes);
 
         sort($uris);
 

@@ -69,10 +69,24 @@ are a contract.
   - otherwise on the commit of the innermost transaction open on it whose callbacks apply
     (`DatabaseTransactionsManager::callbackApplicableTransactions()`), and never when that transaction, or a savepoint
     it sits in, rolls back;
-  - a transaction open on another connection neither delays nor cancels it, since the writes were not made in it.
+  - a transaction open on another connection neither delays nor cancels it, since the writes were not made in it;
+  - never when the commit of the outermost transaction it waits in fails, then or later.
 
   No package event implements `ShouldDispatchAfterCommit`, which would wait for the last transaction of any connection.
-  The events dispatcher and the transactions manager are resolved on each call, never held.
+  The events dispatcher, the transactions manager and the database manager are resolved on each call, never held.
+- Laravel 12 does not tell its transactions manager when an outermost commit fails
+  (`ManagesTransactions::handleCommitTransactionException()`), so the callbacks waiting on that transaction stay pending
+  and run on the next outermost commit on the connection, which on a long-running worker can be another request's.
+  Laravel 13 drops them. The package does not rely on either: `Events\TransactionGenerations` counts each outermost
+  transaction begun on a connection, from a `TransactionBeginning` listener the service provider registers once, and a
+  savepoint never counts. Each callback carries its connection's generation when it was queued, and dispatches nothing
+  once that has moved on: a transaction that commits runs its callbacks before the next one begins, so only a failed
+  commit leaves one to run under a later generation. A record such a transaction left is found only while the
+  connection has a transaction open, so an event dispatched outside one is still dispatched at once. This covers the
+  application's own outermost transaction on the storage connection as well as the package's.
+- `TransactionGenerations` is a singleton, resolved when the provider boots, never scoped: a late callback can run in a
+  later request or job than the one that queued it, and a count started afresh there could reach the generation it was
+  queued in again. It holds a count by connection name and nothing of a request (SSO-11.2).
 - The unlinked-result event (SSO-8.6) alone is dispatched with `dispatchNow()`: synchronously, inside the flow,
   before any handoff is issued, so a listener can provision the identity in time. A queued listener on it is too late.
 - One failure event, `Events\FlowFailed`, reports every refused operation, with the flow (`Events\Enums\Flow`) and the
@@ -133,6 +147,10 @@ are a contract.
 - Under the transactions manager of Laravel's testing traits, the transaction wrapping each test never commits, so it
   does not defer an event; one opened inside it does.
 - With no transactions manager bound, nothing can be deferred and the event is dispatched at once.
+- A commit that fails drops the events waiting on it, those of a savepoint that committed inside it included, on Laravel
+  12 as on Laravel 13; the next transaction to commit on the connection delivers its own events alone.
+- A connection whose events dispatcher does not deliver `TransactionBeginning` keeps its count, and a callback a failed
+  commit left on it runs as Laravel 12 runs it.
 - A malformed `sso.storage.connection` fails closed with `StorageConnection`'s `InvalidArgumentException` before any
   event is dispatched; a database error propagates.
 - A listener's exception propagates as it does from Laravel's dispatcher: from the dispatch, or from the commit that ran
@@ -146,7 +164,10 @@ are a contract.
 
 - `src/Contracts/SsoEvent.php`, `src/Events/EventContext.php` (`toArray()`).
 - `src/Events/EventContexts.php`: `make()`, the cleaning and the caps.
-- `src/Events/AfterCommitDispatcher.php`: `dispatch()`, `dispatchNow()`, `pendingTransaction()`.
+- `src/Events/AfterCommitDispatcher.php`: `dispatch()`, `dispatchNow()`, `pendingTransaction()`,
+  `hasOpenTransaction()`.
+- `src/Events/TransactionGenerations.php`: `begun()`, `current()`; `src/SsoServiceProvider.php`:
+  `countOutermostTransactions()`.
 - `src/Events/FlowFailed.php`, `src/Events/Enums/Flow.php`, `src/Events/Enums/FailureReason.php`.
 - `src/Database/StorageConnection.php`: `resolvedName()`, the default connection of the dispatch.
 - `tests/Concerns/RecordsEventSequences.php`: the event sequence harness. A flow test records with
@@ -175,10 +196,16 @@ are a contract.
   `testDispatchesAtOnceOutsideATransaction`, `testWaitsForTheStorageConnectionsTransactionToCommit`,
   `testNeverDispatchesAfterARollback`, `testARolledBackSavepointDropsOnlyItsEvents`,
   `testATransactionOnAnotherConnectionDoesNotDefer`, `testTheDefaultConnectionFollowsTheStorageConnection`,
-  `testDispatchNowIsImmediateInsideATransaction`, `testIgnoresTheTransactionWrappingATest`.
+  `testDispatchNowIsImmediateInsideATransaction`, `testIgnoresTheTransactionWrappingATest`,
+  `testNestedSavepointRollbacksDropOnlyTheirEvents`, `testACallbackLeftByAFailedCommitIsDropped`,
+  `testDispatchesAtOnceBesideARecordAFailedCommitLeft`.
+- `tests/Feature/Events/TransactionGenerationsTest.php`
+  `testAConnectionStartsAtNought`, `testEachOutermostBeginAdvancesTheGenerationByOne`,
+  `testASavepointDoesNotAdvanceTheGeneration`, `testTheGenerationIsPerConnection`, `testOneCountServesTheProcess`.
 - `tests/Feature/Events/RecordsEventSequencesTest.php`.
 - `tests/Integration/Events/AfterCommitDispatchTest.php`
   `testAnEventIsDeliveredWhenItsWriteCommits`, `testAnEventIsDroppedWhenItsWriteRollsBack`,
+  `testAChangeWhoseCommitFailsIsNeverReported`, `testTheApplicationsFailedCommitTakesThePackagesEventsWithIt`,
   `testAQueuedListenerReceivesTheFailureIntact`.
 - `tests/Unit/Events/AdministrationEventClassesTest.php`
   `testEachIsAPackageEventReturningItsContext`, `testEachSurvivesASerializeRoundTrip`,
@@ -202,5 +229,6 @@ Update this note when any of the following change:
 - the fields of `EventContext`, their names, or what the projection admits, cleans or caps
 - an event that stops implementing `SsoEvent`, or a new package event
 - the after-commit dispatch, its default connection, or an event that is dispatched synchronously
+- how Laravel's transactions manager treats a failed commit, or how outermost transactions are counted
 - the failure event, its flows, or the rule of one failure event per refused operation
 - a `FailureReason` or `Flow` value

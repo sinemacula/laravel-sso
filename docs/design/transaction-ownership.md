@@ -15,7 +15,11 @@ committed stands, by design. `linking.md` describes the stages, and this note wh
 - Every package event but one waits for the commit of the innermost transaction open on its connection, through
   `Events\AfterCommitDispatcher`, and goes with it on a rollback, a savepoint's included. `ResultUnlinked` alone is
   synchronous, with no package transaction open.
-- A failed commit is a rollback: the events waiting on it are dropped.
+- A failed commit is a rollback: the events waiting on it are dropped, those of a savepoint that committed inside it
+  included, whether the transaction is the package's or the application's own outermost one on the storage connection.
+  Laravel 12 leaves their callbacks pending, to run on the next outermost commit on the connection, perhaps in another
+  request; `AfterCommitDispatcher` drops each one queued under an earlier generation than the connection's
+  (`Events\TransactionGenerations`), so no Laravel version reports a rolled-back change (`event-model.md`).
 - An adapter that writes through the storage connection, inside the transaction the package has open or that it opened
   itself, commits or rolls back with it. One that writes through another connection is not atomic with it. So
   `SessionRevocation`, `ReauthenticationSessions`, a session written after `admit()`, and a listener's identity written
@@ -80,7 +84,7 @@ committed stands, by design. `linking.md` describes the stages, and this note wh
 
 ## Implementation Anchors
 
-- `src/Events/AfterCommitDispatcher.php`.
+- `src/Events/AfterCommitDispatcher.php`, `src/Events/TransactionGenerations.php`.
 - `src/Completion/CompletionPipeline.php`, `src/Completion/ProvisioningOffer.php`,
   `src/Provisioning/ProvisioningHelper.php`.
 - `src/Handoffs/HandoffRedemption.php`, `src/Handoffs/HandoffRecheck.php`.
@@ -94,6 +98,7 @@ committed stands, by design. `linking.md` describes the stages, and this note wh
 - `tests/Integration/Combined/CompletionRollbackTest.php`
 - `tests/Integration/Combined/RedemptionRollbackTest.php`
 - `tests/Integration/Combined/AdministrationRollbackTest.php`
+- `tests/Integration/Events/AfterCommitDispatchTest.php`
 - `tests/Integration/Combined/RedemptionRacesTest.php`
 - `tests/Integration/Combined/ReservationProvisioningRacesTest.php`
 - `tests/Integration/Pruning/PruningRacesTest.php`

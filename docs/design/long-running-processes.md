@@ -28,6 +28,10 @@ the schedule's are in `operations.md`.
   No service holds a connection, tenant, flow or result. No package class holds such a value in a static property.
 - A contract the provider binds as scoped is forgotten after every request and job, an instance given it too. An
   application binds its own through a closure or a concrete class, never through `instance()` alone.
+- `Events\TransactionGenerations` is a singleton, resolved when the provider boots, though it keeps a count between
+  calls: the outermost transactions begun on each connection, by name, for the life of the process. An after-commit
+  callback a failed commit left pending on Laravel 12 can run in a later request or job, and is dropped by comparing
+  generations, which a count scoped to each request could repeat. It holds nothing of a request.
 - `Protocols\ProtocolManager` is a singleton, and a driver holds scoped services: `SecretEncrypter`, `EndpointResolver`
   and `Fetcher`. So the registry keeps a driver for one scope alone, a request's sandbox or a job, knowing the scope by
   the scoped `Protocols\DriverScope`, and builds it again in the next, by its creator when it is a registered driver's.

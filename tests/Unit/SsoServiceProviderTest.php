@@ -42,6 +42,7 @@ use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
 use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
+use SineMacula\Laravel\Sso\Events\TransactionGenerations;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 use SineMacula\Laravel\Sso\Keys\ExpiryNotifier;
@@ -104,6 +105,7 @@ final class SsoServiceProviderTest extends TestCase
         HandoffIssuer::class,
         ProtocolManager::class,
         DriverScope::class,
+        TransactionGenerations::class,
         ConfigurationChecker::class,
     ];
 

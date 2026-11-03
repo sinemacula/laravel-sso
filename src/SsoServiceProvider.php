@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso;
 
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Psr\Log\LoggerInterface;
@@ -58,6 +59,7 @@ use SineMacula\Laravel\Sso\Endpoints\ConfiguredEndpointResolver;
 use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
 use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
+use SineMacula\Laravel\Sso\Events\TransactionGenerations;
 use SineMacula\Laravel\Sso\Evidence\InsufficientEvidence;
 use SineMacula\Laravel\Sso\Fetching\FetcherCheck;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
@@ -220,8 +222,11 @@ final class SsoServiceProvider extends ServiceProvider
      * protocol registry is a singleton that builds its drivers with the
      * application serving, in its present scope (see
      * `ProtocolManager::driver()`). Each is resolved only when first used.
-     * Every package class that logs is given `SanitizingLogger` by a contextual
-     * binding, never by binding `LoggerInterface` for the whole application.
+     * `Events\TransactionGenerations` is a singleton that keeps a count for the
+     * life of the process, never scoped, since an after-commit callback it
+     * guards can outlive the request that queued it. Every package class that
+     * logs is given `SanitizingLogger` by a contextual binding, never by
+     * binding `LoggerInterface` for the whole application.
      *
      * @return void
      */
@@ -258,6 +263,7 @@ final class SsoServiceProvider extends ServiceProvider
         $this->app->scopedIf(HandoffIssuer::class, DatabaseHandoffStore::class);
         $this->app->singletonIf(ProtocolManager::class);
         $this->app->scoped(DriverScope::class);
+        $this->app->singleton(TransactionGenerations::class);
         $this->app->when(self::LOGGING_CLASSES)->needs(LoggerInterface::class)->give(SanitizingLogger::class);
         $this->app->bindIf(
             ConfigurationChecker::class,
@@ -276,7 +282,26 @@ final class SsoServiceProvider extends ServiceProvider
 
         $this->registerPublishing();
         $this->registerCommands();
+        $this->countOutermostTransactions();
         $this->checkConfiguration();
+    }
+
+    /**
+     * Count each outermost transaction begun on a connection, once, for the
+     * after-commit dispatch (see `Events\TransactionGenerations`), as soon as
+     * the events dispatcher is resolved. The counter is resolved here, as the
+     * application boots, so every request and job the process serves shares it,
+     * an Octane sandbox included.
+     *
+     * @return void
+     */
+    private function countOutermostTransactions(): void
+    {
+        $generations = $this->app->make(TransactionGenerations::class);
+
+        $this->callAfterResolving('events', static function (Dispatcher $events) use ($generations): void {
+            $events->listen(TransactionBeginning::class, $generations->begun(...));
+        });
     }
 
     /**

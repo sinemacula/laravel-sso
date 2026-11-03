@@ -65,7 +65,9 @@ trait UsesUnreliableCache
         /** @var \Illuminate\Cache\CacheManager $manager */
         $manager = app(CacheManager::class);
 
-        $manager->extend('sso_unreliable', static fn (mixed $app): mixed => $manager->repository($store));
+        // Not static: Laravel 12 binds a creator to the manager, which a static
+        // closure refuses.
+        $manager->extend('sso_unreliable', fn (mixed $app): mixed => $manager->repository($store));
 
         config()->set('cache.stores.sso_unreliable', ['driver' => 'sso_unreliable']);
         config()->set('cache.default', 'sso_unreliable');

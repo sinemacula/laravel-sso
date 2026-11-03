@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Events;
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\DatabaseTransactionRecord;
 use Illuminate\Database\DatabaseTransactionsManager;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
@@ -19,16 +20,27 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
  * transaction open on another connection neither delays nor cancels the event,
  * since the writes were not made in it.
  *
+ * An event waits only for the transaction it was dispatched in. Laravel 12
+ * leaves the callbacks of an outermost transaction whose commit failed pending,
+ * to run on the next outermost commit on the connection, perhaps in another
+ * request; so each callback carries the generation its connection was in
+ * (`TransactionGenerations`) and dispatches nothing once a later outermost
+ * transaction has begun, since only a failed commit leaves one behind. A record
+ * such a transaction left is found only while the connection has a transaction
+ * open, so an event dispatched outside one is dispatched at once. Laravel 13
+ * drops those callbacks and records itself, and nothing changes there.
+ *
  * The connection is the storage connection unless the caller names another,
  * since every package table lives there. No package event implements
  * `ShouldDispatchAfterCommit`, which would wait for the last transaction of any
  * connection instead.
  *
- * The events dispatcher and the transactions manager are resolved from the
- * container on each call, never held: a dispatcher swapped in later (an
- * `Event::fake()` between the write and its commit) receives the event, and the
- * testing traits' manager, which ignores the transaction wrapping each test, is
- * the one consulted. Nothing of one request is kept for the next (SSO-11.2).
+ * The events dispatcher, the transactions manager and the database manager are
+ * resolved from the container on each call, never held: a dispatcher swapped in
+ * later (an `Event::fake()` between the write and its commit) receives the
+ * event, and the testing traits' manager, which ignores the transaction
+ * wrapping each test, is the one consulted. Nothing of one request is kept for
+ * the next (SSO-11.2).
  *
  * Events report only: nothing that must happen for security depends on a
  * listener, which is what the synchronous contracts are for. A listener's
@@ -65,7 +77,8 @@ final readonly class AfterCommitDispatcher
      */
     public function dispatch(SsoEvent $event, ?string $connection = null): void
     {
-        $pending = $this->pendingTransaction($connection ?? StorageConnection::resolvedName());
+        $name    = $connection ?? StorageConnection::resolvedName();
+        $pending = $this->pendingTransaction($name);
 
         if ($pending === null) {
 
@@ -74,7 +87,15 @@ final readonly class AfterCommitDispatcher
             return;
         }
 
-        $pending->addCallback(function () use ($event): void {
+        $generations = $this->container->make(TransactionGenerations::class);
+        $generation  = $generations->current($name);
+
+        $pending->addCallback(function () use ($event, $generations, $name, $generation): void {
+
+            if ($generations->current($name) !== $generation) {
+                return;
+            }
+
             $this->dispatchNow($event);
         });
     }
@@ -98,6 +119,8 @@ final readonly class AfterCommitDispatcher
     /**
      * The innermost transaction open on the connection whose commit callbacks
      * apply, or `null` when there is none or no transactions manager is bound.
+     * A record found while the connection has no transaction open was left by a
+     * failed commit, and is not one.
      *
      * @param  string  $connection
      * @return ?\Illuminate\Database\DatabaseTransactionRecord
@@ -110,8 +133,21 @@ final readonly class AfterCommitDispatcher
             return null;
         }
 
-        return $manager->callbackApplicableTransactions()->last(
+        $pending = $manager->callbackApplicableTransactions()->last(
             static fn (DatabaseTransactionRecord $transaction): bool => $transaction->connection === $connection,
         );
+
+        return $pending !== null && $this->hasOpenTransaction($connection) ? $pending : null;
+    }
+
+    /**
+     * Whether the connection has a transaction open.
+     *
+     * @param  string  $connection
+     * @return bool
+     */
+    private function hasOpenTransaction(string $connection): bool
+    {
+        return $this->container->make(ConnectionResolverInterface::class)->connection($connection)->transactionLevel() > 0;
     }
 }
