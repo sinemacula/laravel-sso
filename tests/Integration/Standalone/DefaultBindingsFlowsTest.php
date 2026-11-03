@@ -10,6 +10,7 @@ use Composer\Autoload\ClassLoader;
 use Illuminate\Foundation\Application;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -388,7 +389,9 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     /**
      * With unlinked handoffs on, the default store issues a code, holding only
      * its digest, and the default redemption redeems it, with no identity; the
-     * code is then spent, and the connection has completed no sign-in.
+     * code is then spent, and the connection has completed no sign-in. The
+     * redemption signs nobody in, sets no cookie and issues no token: what the
+     * application makes of the result is its own (FEATURES "Useful alone").
      *
      * @param  string  $protocol
      * @return void
@@ -421,6 +424,8 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
         self::assertNull($answer->json('link_id'));
         self::assertNotNull(HandoffCode::query()->sole()->redeemed_at);
         self::assertFalse(Connection::query()->whereKey($connection->id)->sole()->has_completed_sign_in);
+        self::assertSame([], $answer->headers->getCookies());
+        self::assertNull(Auth::guard()->user());
 
         $this->assertEventSequence([AuthorizationRequestStarted::class, ResultVerified::class, ResultUnlinked::class, HandoffIssued::class, HandoffRedeemed::class]);
 

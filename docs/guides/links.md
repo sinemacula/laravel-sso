@@ -20,7 +20,9 @@ public function register(): void
 }
 ```
 
-Under `laravel-iam` this binding is made for you, and the same store answers `laravel-authentication`'s link contract.
+Under `laravel-iam` this binding is made for you, and the same store answers `laravel-authentication`'s link contract:
+`laravel-authentication` stores no links, and its contract answers exactly the link the package admitted (see
+[Integrating with `laravel-iam`](integrating-with-laravel-iam.md#links)).
 
 A result resolves only through a link of the connection it completed through. A tenant that enters another identity
 provider's issuer in its own connection reaches none of that provider's links. The subject is matched byte for byte:
@@ -310,8 +312,10 @@ Removing an identity's last link is allowed; whether the identity can still sign
 ## Revoking sessions
 
 When a link is removed, the package calls the `SessionRevocation` contract inside the transaction that deletes the
-link, with `RevocationScope::identityInConnection()`: the identity's sessions established through the link's
-connection, with the reason `link_removed`. If your binding throws, the link is not removed, nothing is reported, and
+link, with `RevocationScope::identityInConnection()`: the identity's sessions established through that link, with the
+reason `link_removed`. The scope names the connection (`$scope->connectionId`) and the removed link (`$scope->linkId`):
+revoke by the link when your sessions record it, or every session of the identity through the connection when they do
+not, which is broader and never narrower. If your binding throws, the link is not removed, nothing is reported, and
 the exception propagates. Write through the same database connection the package uses, so the revocation commits or
 rolls back with the removal.
 

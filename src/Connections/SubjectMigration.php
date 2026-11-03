@@ -70,7 +70,7 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  *    id order), and, for each link removed rather than relinked, and each
  *    relinked link of verified domain provenance, whose new row a session of
  *    the old one could no longer be reached through, the identity's sessions
- *    through the connection are revoked
+ *    through the old link are revoked, naming the connection and that link's id
  *    (`RevocationScope::identityInConnection`).
  * 6. Each relinked link's identity is linked to its new subject through
  *    `Links\LinkStore::create()` with the origin `migration`, in the order the
@@ -255,7 +255,7 @@ final readonly class SubjectMigration
             $identity = new IdentityReference($link->identity_type, $link->identity_id);
 
             if (!array_key_exists($linkId, $subjects) || $link->domain_provenance) {
-                $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($locked->tenant_id, $locked->id, $identity));
+                $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($locked->tenant_id, $locked->id, $identity, $link->id));
             }
 
             $this->events->removed($locked, $identity, $actor);

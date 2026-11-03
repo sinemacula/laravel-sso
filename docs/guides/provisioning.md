@@ -86,7 +86,7 @@ To attach a subject to an existing identity, use one of the two paths made for i
 
 - the [`link` purpose](starting-a-flow.md), started for an identity your application has authenticated with fresh
   authentication (SSO-8.5);
-- [linking by a verified domain](domains.md), which requires the conditions of SSO-8.8.
+- [linking by a verified domain](linking-by-domain.md), which requires the conditions of SSO-8.8.
 
 The package holds only an opaque identity reference, so it cannot tell when an identity was created: the grant proves
 the authority to provision for this result, not that the identity is new. That the identity is new is your listener's
@@ -157,7 +157,9 @@ link anew. It does not record the response against replay again, select a domain
 
 Allowing unlinked handoffs is for an application that resolves identities itself when it redeems the code; see
 [Completing a Flow](completing-a-flow.md). It applies only to a link that is genuinely absent. Under `laravel-iam` the
-sign-in adapter always requires a linked identity.
+sign-in adapter always requires a linked identity: it keeps `unlinked_handoffs` off and rolls back a redemption that
+admitted none. It provisions on `ResultUnlinked` alone, never on `laravel-authentication`'s own unlinked-result event,
+which is informational (see [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#provisioning)).
 
 ### A provisioned identity can survive a failed sign-in
 

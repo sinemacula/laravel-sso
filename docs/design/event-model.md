@@ -183,6 +183,8 @@ are a contract.
 ## Authoritative Tests
 
 - `tests/Unit/Events/EventContextTest.php`.
+- `tests/Unit/Events/EveryEventClassTest.php`: every package event held to one list of what no event may carry, and
+  only `ResultUnlinked` carrying the result.
 - `tests/Unit/Events/FlowFailedTest.php`
   `testItIsAPackageEventReturningItsContext`, `testItSurvivesASerializeRoundTrip`,
   `testItHoldsNothingBeyondItsContextFlowAndReason`.

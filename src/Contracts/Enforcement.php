@@ -14,10 +14,9 @@ use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
  *
  * It answers from the current stored state, read from the write connection and
  * never from a cache, every time it is asked, so a missed event never preserves
- * access. Under `laravel-iam` it is part of `laravel-authentication`'s tenant
- * authentication policy (AUTH-2.12), asked at sign-in, at the choice of
- * principal, on every switch and on refresh; redeeming a handoff code rechecks
- * it.
+ * access. An adapter folds it into the tenant authentication policy of the
+ * application's sessions, asked at sign-in, at the choice of principal, on
+ * every switch and on refresh; redeeming a handoff code rechecks it.
  *
  * The default, `Enforcement\DatabaseEnforcement`, reads the package's
  * enforcement table for the tenant `Contracts\EnforcementInheritance` names,

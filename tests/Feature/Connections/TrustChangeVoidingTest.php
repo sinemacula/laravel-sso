@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Connections\InFlightVoider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -22,6 +23,7 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
+use SineMacula\Laravel\Sso\Models\Link;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
@@ -39,7 +41,10 @@ use Tests\TestCase;
  * redeemed codes and every other connection's rows as they are. A change that
  * asks another operation or none (the display name, the scopes, the mapping,
  * IdP-initiated sign-in), a refused change, and the rotation of a key of the
- * service provider's own void nothing.
+ * service provider's own void nothing. Rotating a credential (a client secret,
+ * a trusted certificate, a key of the service provider's own) is allowed on a
+ * connection with an active link, which only a change to what subjects mean
+ * refuses.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -317,6 +322,39 @@ final class TrustChangeVoidingTest extends TestCase
         self::assertSame('2026-11-01T09:32:00+00:00', AuthorizationRequest::query()->findOrFail($later['pending'])->voided_at?->toIso8601String());
         self::assertSame('2026-11-01T09:32:00+00:00', HandoffCode::query()->findOrFail($later['unredeemed'])->voided_at?->toIso8601String());
         self::assertSame(self::VOIDED, AuthorizationRequest::query()->findOrFail($rows['pending'])->voided_at?->toIso8601String());
+    }
+
+    /**
+     * Rotating a credential alters no subject, so a connection with an active
+     * link allows it: a client secret, a trusted certificate trusted and then
+     * distrusted, and a key of the service provider's own added, made current
+     * and retired, each succeed and keep the link; changing the issuer of the
+     * same connection is refused with `connection_has_links`.
+     *
+     * @return void
+     */
+    public function testRotatingACredentialIsAllowedWithLinks(): void
+    {
+        $oidc = $this->oidc();
+        $saml = $this->saml();
+        $keys = $this->keys();
+
+        $this->makeLink($oidc);
+        $this->makeLink($saml, 'subject-2');
+
+        self::assertSame(ConnectionStatus::UPDATED, $this->connections()->update(self::TENANT, $oidc->id, ['settings' => ['client_secret' => 'a-rotated-client-secret']])->status);
+        $issuer = $this->connections()->update(self::TENANT, $oidc->id, ['settings' => ['issuer' => 'https://login.example.com']]);
+
+        self::assertSame(FailureReason::CONNECTION_HAS_LINKS, $issuer->reason);
+
+        $certificate = self::keyOf($keys->trustCertificate(self::TENANT, $saml->id, Certificates::distinct(0)));
+        $current     = self::keyOf($keys->addNext(self::TENANT, $saml->id, KeyUse::SP_SIGNING, KeyType::RSA));
+        $next        = self::keyOf($keys->addNext(self::TENANT, $saml->id, KeyUse::SP_SIGNING, KeyType::RSA));
+
+        self::assertTrue($keys->makeCurrent(self::TENANT, $saml->id, $next)->isSucceeded());
+        self::assertTrue($keys->retire(self::TENANT, $saml->id, $current)->isSucceeded());
+        self::assertTrue($keys->distrustCertificate(self::TENANT, $saml->id, $certificate)->isSucceeded());
+        self::assertSame(2, Link::query()->where('state', 'active')->count());
     }
 
     /**

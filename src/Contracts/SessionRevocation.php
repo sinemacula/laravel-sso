@@ -16,12 +16,15 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * transaction, with one of four scopes (`Revocation\RevocationScope`): a tenant
  * whose enforcement changed (the sessions the policy now in force no longer
  * allows), a connection disabled or deleted (every session established through
- * it), an identity whose link through a connection was removed (its sessions
- * established through it), or an identity whose scope widened
- * (`RevocationScope::identityLink()`, reason `scope_widened`: its sessions
- * established through that one link by a verified domain, and no others). An
- * implementation handles every kind; the last needs it to record which link
- * established a session. An implementation writes through that same Laravel
+ * it), an identity whose link through a connection was removed
+ * (`RevocationScope::identityInConnection()`, reason `link_removed`: its
+ * sessions established through that link, named by connection and link id), or
+ * an identity whose scope widened (`RevocationScope::identityLink()`, reason
+ * `scope_widened`: its sessions established through that one link by a verified
+ * domain, and no others). An implementation handles every kind; the last two
+ * are exact when it records which link established a session, and one that does
+ * not revokes the identity's sessions through the connection, which is broader
+ * and never narrower. An implementation writes through that same Laravel
  * connection, so its writes commit or roll back with the change; one that
  * writes elsewhere is not atomic with it. It signals failure by throwing: the
  * exception rolls the change back and propagates as a server error. It never
@@ -30,11 +33,10 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * finds it first.
  *
  * The default, `Revocation\NoSessionRevocation`, does nothing: an application
- * without `laravel-authentication` binds its own, or accepts that existing
- * sessions are untouched by an enforcement change, a disabled or deleted
- * connection, a removed link or a widened scope. `laravel-iam` binds it to
- * `laravel-authentication`'s revocation (AUTH-2.12, AUTH-6.4, AUTH-6.5), which
- * is mandatory for an enforcement change.
+ * that keeps sessions binds its own, or accepts that existing sessions are
+ * untouched by an enforcement change, a disabled or deleted connection, a
+ * removed link or a widened scope. An adapter binds it to the revocation of the
+ * application's authentication, which an enforcement change must never skip.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

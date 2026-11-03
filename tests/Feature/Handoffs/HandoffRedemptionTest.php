@@ -1169,6 +1169,54 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
+     * Rows of `[the code's purpose, whether it resolved to an identity]`: each
+     * code a standalone `link` endpoint may be handed that is not a link.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: bool}>
+     */
+    public static function provideCodesOfAnotherPurpose(): iterable
+    {
+        yield 'a linked sign_in' => [Purpose::SIGN_IN, true];
+        yield 'an unlinked sign_in' => [Purpose::SIGN_IN, false];
+        yield 'a reauthenticate' => [Purpose::REAUTHENTICATE, true];
+    }
+
+    /**
+     * A `sign_in` or `reauthenticate` code presented to the standalone path
+     * asked for a `link` is the client's error, never a `LogicException`: it is
+     * consumed and refused as `purpose_mismatch`, committed, and redeeming it
+     * afterwards for its own purpose is a replay.
+     *
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @param  bool  $linked
+     * @return void
+     *
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    #[DataProvider('provideCodesOfAnotherPurpose')]
+    public function testACodeOfAnotherPurposeAskedForAsALinkIsAPurposeMismatch(Purpose $purpose, bool $linked): void
+    {
+        if (!$linked) {
+            $this->linked = null;
+        }
+
+        $code    = $this->issue($purpose);
+        $refused = app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, self::VERIFIER, new IdentityReference('App\Models\User', '7'));
+
+        self::assertTrue($refused->isRefused());
+        self::assertSame(FailureReason::PURPOSE_MISMATCH, $refused->reason);
+        self::assertNull($refused->result);
+        self::assertFalse($refused->isAdmitted());
+        self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
+        self::assertSame('2026-11-01T09:30:00+00:00', $this->stored($code)->redeemed_at?->toIso8601String());
+        self::assertCount(1, $this->singleUseKeys());
+        self::assertSame(FailureReason::REPLAYED, $this->redeem($code, self::VERIFIER, $purpose)->reason);
+        self::assertFalse($this->reloaded($this->connection)->has_completed_sign_in);
+        self::assertSame([], $this->linkerAsked);
+    }
+
+    /**
      * Issue a code through the package's store for the purpose, linked to the
      * identity the test holds, with the challenge of the verifier, expiring a
      * minute from now unless given.

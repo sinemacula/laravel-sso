@@ -121,8 +121,8 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
   time. A request that stored none admits no token. A token with no `nonce` is `nonce_mismatch`; one of the wrong type
   stopped at step 4.
 - `at_hash` must be the unpadded base64url of the left half of the access token's hash, by the hash of the token's
-  algorithm size (SHA-256, SHA-384 or SHA-512 for `*256`, `*384` and `*512`), compared with `hash_equals()`. An absent
-  one is accepted, as the code flow allows.
+  algorithm size (SHA-256, SHA-384 or SHA-512 for `*256`, `*384` and `*512`), compared with `ConstantTime::equals()`.
+  An absent one is accepted, as the code flow allows.
 
 ### Trust changes
 

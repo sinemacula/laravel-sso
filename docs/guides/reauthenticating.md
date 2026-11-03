@@ -37,7 +37,7 @@ $start = app(AuthorizationRequestService::class)->start(
 ## Redeem through `admit()`
 
 A renewal must commit with the code's consumption, under the locks of the redemption, so `redeem()` with no transaction
-open refuses a `reauthenticate` code with a `LogicException` and leaves it unconsumed.
+open, asked for a `reauthenticate`, throws a `LogicException` and leaves the code unconsumed.
 
 ```php
 use Illuminate\Support\Facades\DB;
@@ -164,14 +164,23 @@ unlinked handoff, is `not_signed_in`.
 | Evidence newly accepted from this authentication, when there is any | Refresh tokens, none issued and none rotated                 |
 |                                                                     | The session's sign-in provenance: connection, link, provider |
 |                                                                     | Evidence accepted earlier, which this does not refresh       |
+|                                                                     | Whether MFA is present, unless this evidence was accepted    |
+|                                                                     | The `amr` values, unless this evidence was accepted          |
+|                                                                     | The last step-up time                                        |
 
 A `reauthenticate` also acknowledges no completed sign-in on the connection, activates no reservation and creates no
-link. A subject held only by a reservation is `identity_mismatch`.
+link. A subject held only by a reservation is `identity_mismatch`. Its answer carries no `provenance`, so the record the
+sign-in captured stays exactly as it was ([Session Provenance](session-provenance.md)).
 
 The time given is the provider's, as its assertion stated it. If your session already holds a later one, from another
 flow redeemed first, keep the later one: under the session's lock, in the redemption's transaction, write `max(current,
 provider_time)`, so a renewal never moves it backwards. That is your adapter's obligation, since the package does not
 hold the session.
+
+Write the renewal once. Under `laravel-iam`, `renewAuthentication()` records the renewal and writes nothing, and the
+adapter makes the one write after `admit()` answers, in the same transaction, through `laravel-authentication`'s
+external re-authentication, which also issues the only access token; it never renews a second time. See
+[Integrating with `laravel-iam`](integrating-with-laravel-iam.md#reauthenticate-one-renewal).
 
 ### Evidence
 

@@ -8,14 +8,14 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 
 /**
- * The output of a completed flow (SSO-8.1, AUTH-3.9): the issuer, subject and
- * connection, under those names; the tenant, protocol, application and
- * purpose; the request's public reference; the mapped attributes, with whether
- * the email's domain is verified for the connection; the identity provider's
- * authentication context; where linking by a verified domain applies, the
- * linking email, kept apart from the mapped attributes; and, for OIDC, the
- * email the provider asserted with its `email_verified` and their one source
- * (SSO-7.7), also kept apart from the mapped attributes.
+ * The output of a completed flow (SSO-8.1): the issuer, subject and connection,
+ * under those names; the tenant, protocol, application and purpose; the
+ * request's public reference; the mapped attributes, with whether the email's
+ * domain is verified for the connection; the identity provider's authentication
+ * context; where linking by a verified domain applies, the linking email, kept
+ * apart from the mapped attributes; and, for OIDC, the email the provider
+ * asserted with its `email_verified` and their one source (SSO-7.7), also kept
+ * apart from the mapped attributes.
  *
  * It exists only after every check of SSO-6 or SSO-7 has passed: only the
  * completion pipeline builds one, from a driver's `VerifiedClaims`, and the

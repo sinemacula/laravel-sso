@@ -46,8 +46,9 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  *    locked, and is `link_not_found` when it has gone or now names another
  *    identity; it is deleted through the model; `Contracts\SessionRevocation`,
  *    resolved from the container at that moment, is called with the identity's
- *    sessions through the connection (`RevocationScope::identityInConnection`);
- *    and `LinkRemoved` is reported after commit.
+ *    sessions through the removed link, naming its connection and its id
+ *    (`RevocationScope::identityInConnection`); and `LinkRemoved` is reported
+ *    after commit.
  *
  * The revocation runs inside the transaction, so an adapter that writes through
  * the same Laravel connection commits or rolls back with the removal (decision
@@ -173,7 +174,7 @@ final readonly class LinkService
 
         $connection->increment('links_version');
 
-        $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($connection->tenant_id, $connection->id, $identity));
+        $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($connection->tenant_id, $connection->id, $identity, $locked->id));
 
         $this->events->removed($connection, $identity, $actor);
 

@@ -1,9 +1,11 @@
 # Configuration
 
 The package's settings live in the published `config/sso.php`, under `sso.`. Every feature is off until the application
-turns it on, and every security check of a feature that is on is always on. A value that is malformed or out of range
-fails closed, naming the key, when it is used, and the configuration of what is enabled is checked when the application
-boots (see [Checking the configuration](#checking-the-configuration)). Settings are read each time they are used.
+turns it on, but for the scheduled metadata refresh, which is on and has nothing to do until a protocol is on (see
+[Features](#features)); and every security check of a feature that is on is always on. A value that is malformed or
+out of range fails closed, naming the key, when it is used, and the configuration of what is enabled is checked when
+the application boots (see [Checking the configuration](#checking-the-configuration)). Settings are read each time they
+are used.
 
 | Key                                                  | Default                                         | Env                                           | See                                             |
 |------------------------------------------------------|-------------------------------------------------|-----------------------------------------------|-------------------------------------------------|

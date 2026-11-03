@@ -25,6 +25,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcLimits;
 use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
+use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
  * Refetches a connection's JWKS on an unknown `kid` (SSO-7.3), at most once per
@@ -431,7 +432,7 @@ final readonly class JwksRefetcher
      */
     private static function isUnchanged(Connection $locked, Connection $read, string $token): bool
     {
-        $owned    = is_string($locked->jwks_claim_token)          && hash_equals($locked->jwks_claim_token, $token);
+        $owned    = is_string($locked->jwks_claim_token)          && ConstantTime::equals($locked->jwks_claim_token, $token);
         $versions = $locked->jwks_version === $read->jwks_version && $locked->trust_version === $read->trust_version;
 
         return $owned && $versions && self::pinned($locked) === self::pinned($read);

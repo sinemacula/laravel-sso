@@ -32,8 +32,11 @@ for the connection the route names, and a response that names a request of anoth
 `connection_mismatch`.
 
 The routes take no session, no CSRF token and no authentication: the response is checked by the completion itself. Put
-them outside the `web` middleware group, or exclude them from CSRF verification, since a SAML response is a cross-site
-POST.
+them outside the `web` middleware group. If your API verifies CSRF tokens anyway, exclude the assertion consumer
+service alone, since a SAML response is a cross-site `POST`; the OIDC callback is a `GET` and needs no exemption
+([Cross-site request forgery](example-application.md#cross-site-request-forgery)). Served from `routes/api.php`, they
+sit under Laravel's `/api` prefix, so `sso.endpoints.base_url` carries it
+([The base URL and the API prefix](example-application.md#the-base-url-and-the-api-prefix)).
 
 ```php
 // routes/api.php

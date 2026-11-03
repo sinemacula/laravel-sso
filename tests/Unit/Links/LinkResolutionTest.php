@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkResolutionStatus;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 
@@ -41,7 +42,33 @@ final class LinkResolutionTest extends TestCase
         self::assertSame($identity, $resolution->identity);
         self::assertSame($identity, $resolution->holder);
         self::assertSame('link-1', $resolution->linkId);
+        self::assertNull($resolution->origin);
         self::assertSame([true, false, false, false], self::predicates($resolution));
+    }
+
+    /**
+     * An active link carries the provenance the linker stated of it, which a
+     * sign-in captures (SSO-9.10); no other status carries one.
+     *
+     * @return void
+     */
+    public function testALinkedResolutionCarriesTheProvenanceStated(): void
+    {
+        $identity = new IdentityReference('App\Models\User', '7');
+
+        foreach (LinkOrigin::cases() as $origin) {
+            self::assertSame($origin, LinkResolution::linked($identity, 'link-1', $origin)->origin);
+        }
+
+        self::assertSame(
+            [null, null, null, null],
+            [
+                LinkResolution::absent()->origin,
+                LinkResolution::reserved()->origin,
+                LinkResolution::suspended($identity, 'link-1')->origin,
+                LinkResolution::scopeUnknown($identity, 'link-1')->origin,
+            ],
+        );
     }
 
     /**

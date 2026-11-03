@@ -1,8 +1,10 @@
 # Localisation
 
-The package puts very few words in front of a person: the page that sends a SAML `AuthnRequest` by HTTP-POST, and the
-bodies of a completion's answers. Every one of them goes through Laravel's translator under the package's `sso`
-namespace, so your translations apply, and a locale you have not translated falls back to English.
+The package puts very few words in front of a person: the bodies of a completion's answers. It also ships the words for
+the page your client builds to send a SAML `AuthnRequest` by HTTP-POST: the package never renders that page, since a
+`post` navigation is a URL and fields ([Starting a Flow](starting-a-flow.md#the-answer)), but its lines are here for the
+page you build. Every one of them goes through Laravel's translator under the package's `sso` namespace, so your
+translations apply, and a locale you have not translated falls back to English.
 
 Everything else the package answers with is a code, not a message: a failure reason (`signature_invalid`,
 `request_expired`), a validation code, the code a failure redirect carries. Word those yourself, in your own
@@ -15,7 +17,7 @@ package's `messages` file, so its full translation key is `sso::messages.{key}`.
 
 | Case                       | Key                        | English                                                                         | Where it appears                                                                               |
 |----------------------------|----------------------------|---------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
-| `POST_NAVIGATION_TITLE`    | `post_navigation.title`    | Signing you in                                                                  | The title of the page that posts an `AuthnRequest` to the identity provider by HTTP-POST       |
+| `POST_NAVIGATION_TITLE`    | `post_navigation.title`    | Signing you in                                                                  | The title of the page your client builds to post an `AuthnRequest` by HTTP-POST                |
 | `POST_NAVIGATION_CONTINUE` | `post_navigation.continue` | Continue                                                                        | The button on that page, for a browser that does not post the request itself                   |
 | `POST_NAVIGATION_NOSCRIPT` | `post_navigation.noscript` | JavaScript is turned off in your browser. Select Continue to finish signing in. | The text on that page shown when JavaScript is turned off                                      |
 | `COMPLETION_INVALID`       | `completion.invalid`       | The sign-in response could not be accepted.                                     | The body of the `400` a completion answers when no trusted redirect target is known            |

@@ -9,6 +9,8 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Fetching\Enums\CredentialKind;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Flows\StartResult;
+use SineMacula\Laravel\Sso\Protocols\Navigation;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
@@ -28,16 +30,18 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
  * unpublished or replaced after a fetch is what the next fetch sees: rotation,
  * an addition and a removal under the same `kid`. `respond()` replaces what an
  * endpoint answers (an error, a timeout as `FetchResult::failed()`, a malformed
- * body). `authorize()` reads the URL the package's start sent the browser to,
- * as the provider's authorisation endpoint would, and grants it a code whose ID
- * token carries the request's nonce, an `at_hash` of its access token and any
- * change a test makes; the callback's query is the grant's `query()`, with the
- * RFC 9207 `iss`.
+ * body). `authorize()` reads the request the package's start sent the browser
+ * with (its `StartResult`, `Navigation` or URL), as the provider's
+ * authorisation endpoint would, and grants it a code whose ID token carries the
+ * request's nonce, an `at_hash` of its access token and any change a test
+ * makes; the callback's query is the grant's `query()`, with the RFC 9207
+ * `iss`.
  *
  * Give a connection its `issuer()`, its `endpoint()`s (or import them from
  * `discoveryUrl()`), its `CLIENT_ID` and the client authentication `register()`
  * names. A second provider is an attacker: its keys are never in the
- * connection's JWKS.
+ * connection's JWKS. Give it the clock the package reads, so its tokens are
+ * issued at the package's now, whatever Laravel's time travel says.
  *
  * It keeps what a test configures and what its endpoints have answered, so it
  * is a test's own object, never bound as a singleton.
@@ -283,20 +287,23 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Grant the authorisation request the URL makes, as the authorisation
-     * endpoint would: a code whose ID token carries the request's nonce and the
-     * `at_hash` of its access token, changed by the tailor when one is given
-     * (which answers a token, or a token's raw text).
+     * Grant the authorisation request the start sent the browser with, as the
+     * authorisation endpoint would: a code whose ID token carries the request's
+     * nonce and the `at_hash` of its access token, changed by the tailor when
+     * one is given (which answers a token, or a token's raw text). The request
+     * is the `StartResult`, its `Navigation`, or the URL the browser went to; a
+     * start that sent it nowhere is a `LogicException`.
      *
-     * @param  string  $url
+     * @param  \SineMacula\Laravel\Sso\Flows\StartResult|\SineMacula\Laravel\Sso\Protocols\Navigation|string  $url
      * @param  ?\Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): (\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken|string)  $tailor
      * @return \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization
      *
+     * @throws \LogicException
      * @throws \Random\RandomException
      */
-    public function authorize(string $url, ?\Closure $tailor = null): FakeAuthorization
+    public function authorize(Navigation|StartResult|string $url, ?\Closure $tailor = null): FakeAuthorization
     {
-        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        parse_str((string) parse_url(Navigations::url($url), PHP_URL_QUERY), $query);
 
         /** @var array<string, string> $parameters */
         $parameters  = array_filter($query, is_string(...));

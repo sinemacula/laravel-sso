@@ -10,6 +10,7 @@ use SineMacula\Laravel\Sso\Evidence\AcceptedEvidence;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RedemptionStatus;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use SineMacula\Laravel\Sso\Sessions\Provenance;
 
 /**
  * How redeeming a handoff code with the package's own redemption helper ended
@@ -22,10 +23,12 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *   for, the session a `reauthenticate` flow was started on, the enforcement
  *   version the completion checked, the latest end of the application's session
  *   the provider's deadline sets (SSO-9.10), the link that established it, the
- *   evidence the evidence contract accepted, and whether it was admitted:
- *   redeemed inside the caller's transaction, so its session write commits with
- *   it. A
- *   result not admitted must never lead to a session;
+ *   evidence the evidence contract accepted, whether it was admitted (redeemed
+ *   inside the caller's transaction, so its session write commits with it),
+ *   and, for an admitted `sign_in` only, the session provenance captured from
+ *   that admission (`Sessions\Provenance`, SSO-9.10), which the adapter writes
+ *   with the session once and never rewrites. A result not admitted must never
+ *   lead to a session;
  * - refused: for the reason given, the first check that refused it; a code
  *   consumed before the refusal stays consumed;
  * - rate limited: the redemption limit for the client's IP address is full,
@@ -65,6 +68,7 @@ final readonly class RedemptionResult implements \JsonSerializable
      * @param  ?string  $linkId
      * @param  ?\SineMacula\Laravel\Sso\Evidence\AcceptedEvidence  $evidence
      * @param  bool  $admitted
+     * @param  ?\SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
      */
     private function __construct(
 
@@ -103,6 +107,9 @@ final readonly class RedemptionResult implements \JsonSerializable
 
         /** Whether it was redeemed inside the caller's transaction. */
         public bool $admitted = false,
+
+        /** The session provenance captured from an admitted `sign_in`; none otherwise. */
+        public ?Provenance $provenance = null,
     ) {}
 
     /**
@@ -157,6 +164,7 @@ final readonly class RedemptionResult implements \JsonSerializable
      * @param  ?string  $linkId
      * @param  ?\SineMacula\Laravel\Sso\Evidence\AcceptedEvidence  $evidence
      * @param  bool  $admitted
+     * @param  ?\SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
      * @return self
      *
      * @SuppressWarnings("php:S107")
@@ -171,6 +179,7 @@ final readonly class RedemptionResult implements \JsonSerializable
         ?string $linkId = null,
         ?AcceptedEvidence $evidence = null,
         bool $admitted = false,
+        ?Provenance $provenance = null,
     ): self {
         return new self(
             RedemptionStatus::REDEEMED,
@@ -183,6 +192,7 @@ final readonly class RedemptionResult implements \JsonSerializable
             linkId: $linkId,
             evidence: $evidence,
             admitted: $admitted,
+            provenance: $provenance,
         );
     }
 

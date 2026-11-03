@@ -60,11 +60,10 @@ Then turn the feature on and each connection's linking, with `sso.connection.tru
 
 ```php
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
-use SineMacula\Laravel\Sso\Linking\DomainLinkEligibility;
 
 $result = app(LinkingPolicyService::class)->change($tenantId, $connectionId, [
     'enabled'            => true,
-    'issuer_class'       => DomainLinkEligibility::SHARED,
+    'issuer_class'       => 'shared', // or 'single_organization'
     'organization_claim' => 'hd',
     'organization_value' => 'example.com',
 ], $actor);
@@ -126,10 +125,10 @@ reported. A response validated under the old settings reserves nothing, and a co
 ## Matching the email
 
 Your matcher receives a `LinkEmailQuery`: the tenant, the email exactly as the protocol asserted it, and its domain
-canonicalised. The package does not touch the local part. Pass the email through your application's normaliser, under
-`laravel-iam` authentication's bindable one. Add no subaddress or dot removal, Unicode folding or confusable matching:
-`a+b@example.com` and `a.b@example.com` are other addresses. Only an email verified in your application counts; one
-merely present on an account does not.
+canonicalised. The package does not touch the local part. Pass the email through your application's normaliser: under
+`laravel-iam`, the adapter passes it through `laravel-authentication`'s bindable identifier normaliser (AUTH-3.1). Add
+no subaddress or dot removal, Unicode folding or confusable matching: `a+b@example.com` and `a.b@example.com` are other
+addresses. Only an email verified in your application counts; one merely present on an account does not.
 
 ## The flow
 

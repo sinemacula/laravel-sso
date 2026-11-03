@@ -146,6 +146,11 @@ The connection's id is the credential reference. The evidence is offered to both
 (AUTH-3.6) and the tenant's requirement (AUTH-2.12). Which factors combine, including the first factor's channel,
 remains `laravel-mfa`'s policy or yours (AUTH-3.12).
 
+These are two gates. This contract accepts provider evidence; `laravel-mfa`'s `CombinationPolicy` decides what accepted
+evidence satisfies, and its default treats the external provider's first factor as a channel only, never counting the
+provider's `amr` as MFA. Accepted `amr` counts as MFA only when the application rebinds that policy to trust the
+provider. See [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#evidence-and-laravel-mfa).
+
 ## Writing your own policy
 
 Implement `Contracts\EvidencePolicy` and answer `AcceptedEvidence` or `null`. Answer from the `VerifiedResult`'s

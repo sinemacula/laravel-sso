@@ -5,6 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Testing;
 
 use Carbon\CarbonImmutable;
+use SineMacula\Laravel\Sso\Flows\StartResult;
+use SineMacula\Laravel\Sso\Protocols\Navigation;
+use SineMacula\Laravel\Sso\Testing\Saml\FakeAuthnRequest;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use SineMacula\Laravel\Sso\Testing\Saml\XmlSigner;
@@ -18,12 +21,22 @@ use SineMacula\Laravel\Sso\Testing\Saml\XmlSigner;
  * library spike, whose hostile cases (signature wrapping, duplicate ids,
  * comment truncation, weak algorithms) it can mount on any response.
  *
- * Trust its `certificate()` on the connection under test, give the connection
- * its `entityId()`, and post a `response()` made for the connection's service
- * provider entity id and assertion consumer service URL to the completion
- * helper, `inResponseTo()` the request the start stored. A second provider is
- * an attacker: its responses carry its own certificate, which the connection
- * never trusts.
+ * Trust its `certificate()` on the connection under test and give the
+ * connection its `entityId()`. Then `receive()` the `AuthnRequest` the start
+ * sent the browser with, as the provider's single sign-on service reads it, and
+ * post the response `respondTo()` makes to the completion helper with the
+ * request's `RelayState`: the response names the request's `ID` as its
+ * `InResponseTo`, is made for its issuer and assertion consumer service URL,
+ * and, when the request forces authentication, states an authentication made at
+ * the instant given. An unsolicited response, which answers no request, is a
+ * `response()` made for the service provider the connection's metadata
+ * describes (`Saml\FakeServiceProvider`). A second provider is an attacker: its
+ * responses carry its own certificate, which the connection never trusts.
+ *
+ * The provider has no clock: each response is made at the instant a test gives
+ * it, the current time when it gives none. Give it the instant of the clock the
+ * package reads, since the package's frozen clock does not follow Laravel's
+ * time travel and Laravel's time does not follow it.
  *
  * Keys are generated per provider unless a test gives its own; generating one
  * takes a few tens of milliseconds, so a test class may keep a provider for all
@@ -130,6 +143,40 @@ final readonly class FakeSamlIdentityProvider
     }
 
     /**
+     * The `AuthnRequest` the start sent the browser to the provider with, read
+     * from an HTTP-Redirect URL or an HTTP-POST form.
+     *
+     * @param  array<array-key, mixed>|\SineMacula\Laravel\Sso\Flows\StartResult|\SineMacula\Laravel\Sso\Protocols\Navigation  $navigation
+     * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeAuthnRequest
+     *
+     * @throws \LogicException
+     */
+    public function receive(array|Navigation|StartResult $navigation): FakeAuthnRequest
+    {
+        return FakeAuthnRequest::fromNavigation($navigation);
+    }
+
+    /**
+     * A valid response to the request at the instant (the current time by
+     * default): made for the request's issuer and assertion consumer service,
+     * naming its `ID` as `InResponseTo`, and, when it forces authentication,
+     * with every authentication statement made at that instant, as a provider
+     * that has just asked the person again states.
+     *
+     * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeAuthnRequest  $request
+     * @param  ?\Carbon\CarbonImmutable  $now
+     * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
+     */
+    public function respondTo(FakeAuthnRequest $request, ?CarbonImmutable $now = null): FakeSamlResponse
+    {
+        $now ??= CarbonImmutable::now('UTC');
+
+        $response = $this->response($request->issuer, $request->assertionConsumerService, $now)->inResponseTo($request->id);
+
+        return $request->forceAuthn ? self::authenticatedAt($response, $now) : $response;
+    }
+
+    /**
      * The provider's metadata, unsigned until asked.
      *
      * @param  string  $ssoUrl
@@ -138,6 +185,21 @@ final readonly class FakeSamlIdentityProvider
     public function metadata(string $ssoUrl = self::SSO_URL): FakeSamlMetadata
     {
         return new FakeSamlMetadata($this->signer(), FakeSamlMetadata::defaults($this->entityId, $ssoUrl, $this->certificate));
+    }
+
+    /**
+     * The response with every authentication statement made at the instant.
+     *
+     * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
+     * @param  \Carbon\CarbonImmutable  $now
+     * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
+     */
+    private static function authenticatedAt(FakeSamlResponse $response, CarbonImmutable $now): FakeSamlResponse
+    {
+        /** @var list<array<string, mixed>> $statements */
+        $statements = $response->option('authn_statements');
+
+        return $response->with(['authn_statements' => array_map(static fn (array $statement): array => [...$statement, 'instant' => $now], $statements)]);
     }
 
     /**

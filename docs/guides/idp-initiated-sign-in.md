@@ -66,10 +66,10 @@ A re-initiated completion answers `CompletionResult::reinitiated()`, which your 
 exactly the one you set, with one query parameter added: `connection`, the connection's id. It is added after a `?`
 when the URL has no query and after an `&` when it has one:
 
-| `idp_initiated_start_url`                   | Where the browser goes                                       |
-|---------------------------------------------|--------------------------------------------------------------|
-| `https://app.example.com/sso/start`         | `https://app.example.com/sso/start?connection=01j…`          |
-| `https://app.example.com/sso/start?via=idp` | `https://app.example.com/sso/start?via=idp&connection=01j…`  |
+| `idp_initiated_start_url`                   | Where the browser goes                                      |
+|---------------------------------------------|-------------------------------------------------------------|
+| `https://app.example.com/sso/start`         | `https://app.example.com/sso/start?connection=01j…`         |
+| `https://app.example.com/sso/start?via=idp` | `https://app.example.com/sso/start?via=idp&connection=01j…` |
 
 The `RelayState` the identity provider posts is never read, so it can never choose where the browser goes. If your
 identity provider puts a deep link there, it is ignored.

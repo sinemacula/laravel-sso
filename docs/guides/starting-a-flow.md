@@ -19,7 +19,7 @@ keeps nothing of one request for the next.
 The package registers no routes. One layout you might use:
 
 ```text
-POST   /auth/sso/authorization-requests     start: {application, purpose, connection, code_challenge?}
+POST   /auth/sso/authorization-requests     start: {application, connection, code_challenge?}
                                             -> {reference, navigation, verifier?}
 ```
 

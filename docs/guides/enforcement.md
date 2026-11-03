@@ -104,7 +104,9 @@ been disabled, the rule is still required and nobody complies until an administr
 turns it off.
 
 Under `laravel-iam` you do not call it yourself: it is folded into `laravel-authentication`'s tenant authentication
-policy (AUTH-2.12), asked at sign-in, at the choice of principal, on every switch and on refresh.
+policy (AUTH-2.12), asked at sign-in, at the choice of principal, on every switch and on refresh. Bearer requests do not
+recheck that policy's version, so a change reaches existing sessions only through the synchronous revocation below. See
+[Integrating with `laravel-iam`](integrating-with-laravel-iam.md#enforcement-in-the-tenant-authentication-policy).
 
 ### Admitting a session while the rule changes
 
@@ -198,11 +200,13 @@ final class RevokeSessions implements SessionRevocation
                 // true, so it must be named: it is exactly what the rule exists to remove
                 ->where(fn (Builder $query) => $query->whereNull('sso_connection_id')
                     ->orWhereNotIn('sso_connection_id', $scope->policy->connectionIds)),
-            RevocationScopeKind::CONNECTION => $sessions->where('tenant_id', $scope->tenantId)
-                ->where('sso_connection_id', $scope->connectionId),
-            default => $sessions->where('tenant_id', $scope->tenantId)
-                ->where('sso_connection_id', $scope->connectionId)
-                ->where('user_id', $scope->identity?->id),
+            // Here `$scope->tenantId` is the connection's tenant, not the tenant a session is active in now, which a
+            // switch changes: connection ids are unique, so never narrow by `tenant_id`
+            RevocationScopeKind::CONNECTION => $sessions->where('sso_connection_id', $scope->connectionId),
+            // A removed link and a widened scope name the link (`$scope->linkId`); with no link column, revoke the
+            // identity's sessions through the connection (`sso_connection_id` and `user_id`), which is broader and
+            // never narrower
+            default => $sessions->where('sso_link_id', $scope->linkId),
         };
 
         // You may leave out the sessions of identities your exemption contract exempts
@@ -227,7 +231,10 @@ final class RevokeSessions implements SessionRevocation
 ```
 
 The tenant scope carries only `$scope->tenantId`, the enforcing tenant: resolving the tenants that inherit its rule is
-yours, and leaving them out leaves their sessions in place. A session established without SSO usually records no
+yours, and leaving them out leaves their sessions in place. A connection's or a link's scope carries the connection's
+tenant, which need not be the tenant a session established through it is active in now: a session that switched its
+active tenant still began through the connection, so match it by the connection or the link alone, never by the tenant
+it is active in. A session established without SSO usually records no
 connection; match it with `whereNull()` alongside `whereNotIn()`, since SQL never counts `NULL` as outside a list.
 
 Write through the same Laravel connection the package uses, so your writes commit or roll back with the change; a
@@ -238,4 +245,6 @@ change is rolled back (no new version, no event) and the exception reaches your 
 as if you revoked what you did not.
 
 Under `laravel-iam` the contract is bound to `laravel-authentication`'s session revocation (AUTH-2.12, AUTH-6.4,
-AUTH-6.5), which runs inside the package's transaction, so you bind nothing.
+AUTH-6.5), which runs inside the package's transaction, so you bind nothing. An enforcement change and a widened scope
+always revoke; a disabled or deleted connection and a removed link revoke unless `laravel-authentication`'s own switch
+for them is off. See [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#revocation).

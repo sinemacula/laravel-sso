@@ -12,10 +12,11 @@ use SineMacula\Laravel\Sso\Evidence\AcceptedEvidence;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\Admission;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 
 /**
  * Pins the frozen shape of what a redemption's checks and writes came to:
- * exactly these four parts, in this order; a refusal carries its outcome and
+ * exactly these five parts, in this order; a refusal carries its outcome and
  * nothing else, and only `passed` counts as passed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -35,13 +36,14 @@ final class AdmissionTest extends TestCase
     {
         $identity  = new IdentityReference('user', '1');
         $evidence  = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd']);
-        $admission = new Admission(RecheckOutcome::PASSED, $identity, 'link-1', $evidence);
+        $admission = new Admission(RecheckOutcome::PASSED, $identity, 'link-1', $evidence, LinkOrigin::VERIFIED_DOMAIN);
 
         self::assertSame([
-            'outcome'  => RecheckOutcome::PASSED,
-            'identity' => $identity,
-            'linkId'   => 'link-1',
-            'evidence' => $evidence,
+            'outcome'        => RecheckOutcome::PASSED,
+            'identity'       => $identity,
+            'linkId'         => 'link-1',
+            'evidence'       => $evidence,
+            'linkProvenance' => LinkOrigin::VERIFIED_DOMAIN,
         ], get_object_vars($admission));
     }
 
@@ -53,10 +55,11 @@ final class AdmissionTest extends TestCase
     public function testEverythingButTheOutcomeDefaultsToNull(): void
     {
         self::assertSame([
-            'outcome'  => RecheckOutcome::PASSED,
-            'identity' => null,
-            'linkId'   => null,
-            'evidence' => null,
+            'outcome'        => RecheckOutcome::PASSED,
+            'identity'       => null,
+            'linkId'         => null,
+            'evidence'       => null,
+            'linkProvenance' => null,
         ], get_object_vars(new Admission(RecheckOutcome::PASSED)));
     }
 
@@ -99,7 +102,7 @@ final class AdmissionTest extends TestCase
     {
         $admission = Admission::refused($outcome);
 
-        self::assertSame(['outcome' => $outcome, 'identity' => null, 'linkId' => null, 'evidence' => null], get_object_vars($admission));
+        self::assertSame(['outcome' => $outcome, 'identity' => null, 'linkId' => null, 'evidence' => null, 'linkProvenance' => null], get_object_vars($admission));
         self::assertFalse($admission->isPassed());
     }
 

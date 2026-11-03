@@ -136,11 +136,12 @@ T3 (`request_expired`). No continuation extends a request's authority.
 `HandoffRedemption::admit()` is the session-admission API: it needs the caller's transaction open on the storage
 connection (a `LogicException` otherwise), and the session the caller writes commits with the consumption, under the
 locks. `redeem()` inside such a transaction is the same. `redeem()` with none open is the standalone path, for a `link`
-alone, which creates no session: it commits before it answers, and `RedemptionResult::isAdmitted()` is false. Every
-`sign_in` code, linked, reserved or unlinked, and every `reauthenticate` code reaching it is a `LogicException` that
-leaves it unconsumed; unlinked handoffs remain available through the transactional API. An adapter redeeming its own
-codes calls `HandoffRecheck`'s `lock()`, naming a code's reservation and a `link`'s identity, `admit()`,
-`discardReservation()` and `acknowledgeSignIn()`, with a `HandoffBinding` of what its issuer stored.
+alone, which creates no session: it commits before it answers, and `RedemptionResult::isAdmitted()` is false. Asking it
+for a `sign_in` (linked, reserved or unlinked) or a `reauthenticate` is a `LogicException` that leaves the code
+unconsumed; unlinked handoffs remain available through the transactional API. A `sign_in` or `reauthenticate` code
+presented where a `link` is asked for is the client's error: it is consumed and refused as `purpose_mismatch`. An
+adapter redeeming its own codes calls `HandoffRecheck`'s `lock()`, naming a code's reservation and a `link`'s identity,
+`admit()`, `discardReservation()` and `acknowledgeSignIn()`, with a `HandoffBinding` of what its issuer stored.
 
 The session's authentication time is an adapter obligation: under its session lock, in the redemption's transaction, it
 writes `max(current, provider_time)`, so a renewal never moves it backwards. The package does not hold the session.
@@ -244,8 +245,8 @@ reservation carries the version it was made under.
   code is issued, and nothing resumes it. A link it made stays made.
 - A listener leaving a transaction open is rolled back and is a `LogicException`.
 - An issuer that binds nothing, or stores a later expiry than it was given, rolls the completion back.
-- The standalone path reaching any code but a `link` is a `LogicException`, with the code unconsumed and nothing
-  recorded in the single-use store.
+- The standalone path asked for any purpose but a `link` is a `LogicException`, with the code unconsumed and nothing
+  recorded in the single-use store; asked for a `link` with a code of another purpose, it is `purpose_mismatch`.
 - A resolution outside the package's locks that latches a suspension locks the link's connection first and the link
   again, and suspends, revokes and reports only a link still active, so two of them latch once.
 

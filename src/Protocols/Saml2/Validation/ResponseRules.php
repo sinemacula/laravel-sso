@@ -13,9 +13,10 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
  * The rules of a SAML response's envelope and its assertion's provenance
  * (SSO-6.2, SSO-6.4, SSO-6.8), in this order, the first broken answering:
  *
- * 1. the response's `Issuer`, when present, and the assertion's `Issuer` each
+ * 1. the response's `Issuer` and the assertion's `Issuer` are each present and
  *    equal the connection's identity provider entity id, compared exactly, or
- *    `issuer_mismatch`;
+ *    `issuer_mismatch`: a response that names no issuer is refused
+ *    whether or not it is signed or encrypted;
  * 2. the response's `Destination` is present and equals the connection's
  *    assertion consumer service URL exactly, whether or not the response is
  *    signed, or `recipient_mismatch`;
@@ -81,7 +82,7 @@ final class ResponseRules
     }
 
     /**
-     * Whether the response's `Issuer` is absent or the identity provider's.
+     * Whether the response names an `Issuer` and it is the identity provider's.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -91,7 +92,7 @@ final class ResponseRules
     {
         $issuer = $response->issuer();
 
-        return $issuer === null || $context->isIdentityProvider($issuer->value());
+        return $issuer !== null && $context->isIdentityProvider($issuer->value());
     }
 
     /**

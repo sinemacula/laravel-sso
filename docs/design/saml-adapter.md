@@ -102,6 +102,7 @@ replay) is the driver's, not the adapter's.
   `tests/Feature/Completion/SamlFixtureCompletionTest.php`: the same fixtures through the public completion path.
 - `tests/Feature/Protocols/Saml2/Library/SamlAdapterTest.php`
 - `tests/Feature/Protocols/Saml2/Library/LibraryInternalsTest.php`
+- `tests/Feature/Protocols/Saml2/Library/PinnedVerifierTest.php`
 - `tests/Feature/Protocols/Saml2/Library/AuthnRequestWriterTest.php`, `MetadataReaderTest.php`,
   `SignedDescriptorTest.php` and `MetadataWriterTest.php`
 - `tests/Unit/Protocols/Saml2/Messages/MessageValuesTest.php`

@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\Admission;
+use SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\ReauthenticationBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext;
@@ -33,10 +34,9 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * The checks every redemption of a handoff code makes again (SSO-4.6, SSO-8.5,
  * SSO-8.8, SSO-9.9), the purpose's writes, and the acknowledgement of a
  * completed sign-in (SSO-4.3): the package's own redemption asks them, and so
- * does an adapter that redeems its own codes (under `laravel-iam`,
- * `laravel-authentication`'s handoff codes, AUTH-3.10), with the verified
- * result its code carries and a `Handoffs\HandoffBinding` of what that code was
- * bound to.
+ * does a redeemer that consumes a code of its own inside its transaction, with
+ * the verified result its code carries and a `Handoffs\HandoffBinding` of what
+ * that code was bound to.
  *
  * Each runs only inside a transaction the redeemer has open on the package's
  * storage connection, the one that consumes its code, so the locks, the checks,
@@ -96,10 +96,11 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *
  * `admit()` is `recheck()` followed by the purpose's writes: activating a
  * reservation, creating or confirming a link, or renewing a session's
- * authentication time, and answers an `Admission`. `discardReservation()`
- * removes the reservation of a code refused after it was consumed, by its
- * identity and handoff reference and never merely by the subject, in the same
- * transaction.
+ * authentication time, and answers an `Admission`, which for a `sign_in`
+ * carries the provenance of the link established as it stood under the lock
+ * (SSO-9.10). `discardReservation()` removes the reservation of a code refused
+ * after it was consumed, by its identity and handoff reference and never merely
+ * by the subject, in the same transaction.
  *
  * `acknowledgeSignIn()` records, on the locked connection, that a `sign_in`
  * through it has been redeemed (SSO-4.3), which enforcement needs before it can
@@ -213,20 +214,13 @@ final readonly class HandoffRecheck
      */
     public function recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ?IdentityReference $caller = null): RecheckOutcome
     {
-        self::assertHeldFor($lock, $result);
-
-        $refusal = $this->refusal($lock);
-
-        if ($refusal !== null || $lock->connection === null) {
-            return $refusal ?? RecheckOutcome::CONNECTION_UNAVAILABLE;
-        }
-
-        return $this->branch($result)->judge(new RedemptionContext($result, $binding, $lock, $lock->connection, $caller));
+        return $this->judged($result, $binding, $lock, $caller)->outcome;
     }
 
     /**
      * Recheck, and make the purpose's writes when it passes, under the lock, in
-     * the redeemer's transaction.
+     * the redeemer's transaction, handing the purpose the provenance of the
+     * link its rules judged, so the admission carries it out (SSO-9.10).
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
@@ -240,13 +234,13 @@ final readonly class HandoffRecheck
      */
     public function admit(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ?IdentityReference $caller = null): Admission
     {
-        $outcome = $this->recheck($result, $binding, $lock, $caller);
+        $judgement = $this->judged($result, $binding, $lock, $caller);
 
-        if ($outcome !== RecheckOutcome::PASSED || $lock->connection === null) {
-            return Admission::refused($outcome);
+        if ($judgement->outcome !== RecheckOutcome::PASSED || $lock->connection === null) {
+            return Admission::refused($judgement->outcome);
         }
 
-        return $this->branch($result)->admit(new RedemptionContext($result, $binding, $lock, $lock->connection, $caller));
+        return $this->branch($result)->admit(new RedemptionContext($result, $binding, $lock, $lock->connection, $caller, $judgement->linkProvenance));
     }
 
     /**
@@ -295,6 +289,33 @@ final readonly class HandoffRecheck
         }
 
         $connection->forceFill(['has_completed_sign_in' => true])->save();
+    }
+
+    /**
+     * What the recheck comes to under the lock: the connection's and
+     * enforcement's refusal, if any, or the purpose's judgement.
+     *
+     * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
+     * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     */
+    private function judged(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ?IdentityReference $caller): Judgement
+    {
+        self::assertHeldFor($lock, $result);
+
+        $refusal = $this->refusal($lock);
+
+        if ($refusal !== null || $lock->connection === null) {
+            return Judgement::of($refusal ?? RecheckOutcome::CONNECTION_UNAVAILABLE);
+        }
+
+        return $this->branch($result)->judge(new RedemptionContext($result, $binding, $lock, $lock->connection, $caller));
     }
 
     /**

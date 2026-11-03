@@ -20,11 +20,16 @@ The package registers no route. The client posts the code and its verifier in th
 neither reaches an access log, a proxy or the browser's history:
 
 ```text
-POST /auth/sso/handoffs
+POST /api/auth/sessions
 Content-Type: application/json
 
-{"code": "<the code from the redirect>", "verifier": "<the verifier the client kept>"}
+{"application": "web", "connection": "<the connection it started through>", "code": "<the code from the redirect>",
+ "verifier": "<the verifier the client kept>"}
 ```
+
+That is the sign-in route of [An example application](example-application.md#the-routes), in `routes/api.php` under
+Laravel's `/api` prefix; a `link` and a `reauthenticate` code each have an authenticated route of their own, so the
+endpoint, never the body, fixes the purpose.
 
 ```php
 namespace App\Http\Controllers;
@@ -85,6 +90,10 @@ response carries your application's credentials. Never echo the code or the veri
 The purpose is your endpoint's, never the request's: a sign-in endpoint redeems `Purpose::SIGN_IN` codes only, and a
 `link` or `reauthenticate` code presented there is refused (SSO-9.9). Give each purpose its own endpoint.
 
+Under `laravel-iam`, its adapter is the code in the transaction: it calls `admit()`, then `laravel-authentication`'s
+external sign-in once, in the same transaction, and may answer a pending session. See
+[Integrating with `laravel-iam`](integrating-with-laravel-iam.md#sign-in).
+
 ## `admit()` or `redeem()`
 
 There are two ways in, and they differ only in what protects your own writes:
@@ -98,10 +107,11 @@ There are two ways in, and they differ only in what protects your own writes:
 `admit()` is the session-admission API. With no transaction open on the package's storage connection it throws a
 `LogicException` before the code is touched. Use it for every sign-in: a result that answers `isAdmitted()` false has
 already committed and released its locks, so a session written from it would be protected by nothing. So every `sign_in`
-code, linked, reserved or unlinked, and every `reauthenticate` code, must commit with your session write, and reaching
-the standalone path with one is a `LogicException` that leaves the code unconsumed, and unrecorded in the single-use
-store, so redeeming it again through `admit()` works. An unlinked handoff is redeemed through `admit()` like any other,
-whether or not you go on to write a session.
+code, linked, reserved or unlinked, and every `reauthenticate` code, must commit with your session write, and asking
+the standalone path for either purpose is a `LogicException` that leaves the code unconsumed, and unrecorded in the
+single-use store, so redeeming it again through `admit()` works. An unlinked handoff is redeemed through `admit()` like
+any other, whether or not you go on to write a session. The purpose your endpoint asks for decides: a client that posts
+a sign-in code to your `link` endpoint gets `purpose_mismatch`, never a server error, and the code is spent.
 
 Both take the caller your application has authenticated as their last argument, an `IdentityReference`:
 
@@ -170,6 +180,9 @@ A redeemed result carries:
 - `evidence`: what your `EvidencePolicy` accepted of the result's own assertion, for a `sign_in` or a `reauthenticate`
   ([Evidence](evidence.md));
   never for a `link`;
+- `provenance`: for an admitted `sign_in` only, the session provenance captured from this redemption, which you write
+  with the session once and later project into the `sso.*` authentication context keys
+  ([Session Provenance](session-provenance.md)); `null` for any other purpose;
 - `isAdmitted()`: whether it was redeemed inside your transaction.
 
 A refused result carries one of these codes:
@@ -233,10 +246,12 @@ Retry only your whole transaction, from the start, and never a part of it.
 
 ## Redeeming codes of your own
 
-An adapter that issues handoff codes of its own (binding `Contracts\HandoffIssuer` to its store, as `laravel-iam`
-binds `laravel-authentication`'s codes) redeems them itself, through `Handoffs\HandoffRecheck`, inside the transaction
-that consumes its code, on the package's storage connection. It describes what its code was bound to with a
-`Handoffs\HandoffBinding`, built from what its issuer stored: everything the issuer was given in its `HandoffGrant`.
+An application that issues handoff codes of its own (binding `Contracts\HandoffIssuer` to its own store) redeems them
+itself, through `Handoffs\HandoffRecheck`, inside the transaction that consumes its code, on the package's storage
+connection. `laravel-iam` does not: the package issues, stores and redeems every code there too, and its adapter redeems
+through `admit()` and `redeem()` (see [Integrating with `laravel-iam`](integrating-with-laravel-iam.md)). An
+application redeeming its own codes describes what each was bound to with a `Handoffs\HandoffBinding`, built from what
+its issuer stored: everything the issuer was given in its `HandoffGrant`.
 
 It takes the recheck's lock first, before it locks its own code, so every redemption takes the package's lock order (the
 identity's guard, the tenant's enforcement, the connections, a reservation's domain claim, the code, the links) and none

@@ -12,6 +12,7 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
  * Writes a refresh of any source (SSO-2.8, SSO-2.13): the transaction, the
@@ -262,7 +263,7 @@ final readonly class RefreshWriter
     private static function isUnchanged(Connection $locked, RefreshClaim $claim): bool
     {
         $claimed = $claim->connection;
-        $owned   = $locked->metadata_claim_token === $claim->token;
+        $owned   = is_string($locked->metadata_claim_token) && ConstantTime::equals($locked->metadata_claim_token, $claim->token);
 
         return $owned && $locked->metadata_version === $claimed->metadata_version && $locked->trust_version === $claimed->trust_version;
     }

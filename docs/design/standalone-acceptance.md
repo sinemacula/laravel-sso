@@ -110,6 +110,10 @@ What each default does, and what an application supplies to go further:
 - `tests/Integration/Standalone/ApplicationBindingsTest.php`
 - `tests/Integration/Standalone/ApplicationIntegrationTest.php`
 - `tests/Integration/Support/StandaloneTestCaseTest.php`
+- `tests/Unit/Architecture/ApplicationBoundaryTest.php`: nothing checks a permission, signs a person in, keeps a session
+  or issues a token.
+- `tests/Unit/SsoServiceProviderTest.php` `testEverySeamBoundBeforeIsKept`: a binding made before the provider
+  registers is kept, for every seam.
 
 ## Change Triggers
 

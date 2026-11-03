@@ -54,8 +54,9 @@ order, and the first that refuses ends the redemption:
    rule names; otherwise the connection alone (gone meanwhile: `connection_unavailable`). Only then is the code row read
    again, locked: gone, or no longer naming the connection and the application its plain read did, it is
    `handoff_unknown`, and no other lock is taken out of order.
-5. On the standalone path, any code but a `link` is a `LogicException`, before the single-use store records it or it is
-   consumed. A code whose `voided_at` is set is `handoff_unknown`.
+5. On the standalone path, asking for any purpose but a `link` is a `LogicException`, before the single-use store
+   records the code or it is consumed; a code of another purpose asked for as a `link` goes on, and step 9 refuses it.
+   A code whose `voided_at` is set is `handoff_unknown`.
 6. A code whose `redeemed_at` is set, or whose digest the single-use store has seen, is `replayed`.
 7. The code is consumed: its digest is recorded in the single-use store until `max(expires_at, now + 1s)` and its
    `redeemed_at` set, in the transaction.
@@ -85,8 +86,10 @@ order, and the first that refuses ends the redemption:
 - A `link` redemption reads, by a locking read under the identity's guard, whether the identity has ever held an active
   link by a verified domain (`domain_linked_at`, stamped at activation and never cleared), and asks
   `Contracts\LinkConfirmation` whenever it has, even when none remains.
-- The standalone path refuses any code but a `link` with a `LogicException` as soon as the code is locked, before the
-  single-use store records it and before it is consumed, so a store that is not transactional keeps nothing either.
+- The standalone path refuses any purpose asked for but a `link` with a `LogicException` as soon as the code is locked,
+  before the single-use store records it and before it is consumed, so a store that is not transactional keeps nothing
+  either. The purpose asked for decides, not the code's: a `sign_in` or `reauthenticate` code posted to a `link`
+  endpoint is the client's error, consumed and refused as `purpose_mismatch`, never a server error.
 - The lock order is `flows.md`'s: for a code bound to a reservation and a `link` code, the identity's guard, then the
   tenant's enforcement row, then connection rows in id order, then the code's. A change that voids a connection's codes
   (BL-37) locks the connection first, so it waits for a redemption that holds it, or the redemption finds the code
@@ -121,8 +124,9 @@ order, and the first that refuses ends the redemption:
 ### The recheck
 
 `Handoffs\HandoffRecheck` (`@api`, resolved per request) is what every redemption checks again, for the package's own
-redemption and for an adapter that redeems codes of its own (under `laravel-iam`, `laravel-authentication`'s handoff
-codes, AUTH-3.10):
+redemption and for an application that issues and redeems codes of its own. Under `laravel-iam` there are none: the
+package issues, stores and redeems every handoff code (the reconciliation of AUTH-3.10 recorded as SSO-9.2/f), and the
+adapter redeems through `HandoffRedemption` (`docs/guides/integrating-with-laravel-iam.md`):
 
 - `lock(string $tenantId, string $connectionId, string $application): Handoffs\RecheckLock` comes first, before the
   redeemer locks its own code. Under `DatabaseEnforcement` with the `enforcement` feature on it calls
@@ -188,10 +192,10 @@ nothing (SSO-10.5).
 
 ## Failure / Edge Cases
 
-- `redeem()` with no transaction open on the storage connection takes only a `link` code, which creates no session.
-  Every `sign_in` code, linked, reserved or unlinked, and every `reauthenticate` code is a `LogicException` there,
-  leaving it unconsumed, since each must commit with the session the caller writes. Unlinked handoffs remain available
-  through `admit()`.
+- `redeem()` with no transaction open on the storage connection redeems only a `link`, which creates no session.
+  Asking it for a `sign_in`, linked, reserved or unlinked, or a `reauthenticate` is a `LogicException` there, leaving
+  the code unconsumed, since each must commit with the session the caller writes. Unlinked handoffs remain available
+  through `admit()`. A `sign_in` or `reauthenticate` code presented to it as a `link` is `purpose_mismatch`, and spent.
 - A replay, or a code the single-use store has seen, is `replayed`, and is written nothing more.
 - A code at its expiry, or after, is `handoff_expired` and consumed; one a second before it is redeemed.
 - A connection disabled or left incomplete since completion is `connection_unavailable` and consumes the code; one
@@ -221,7 +225,8 @@ nothing (SSO-10.5).
 - `tests/Feature/Handoffs/DatabaseHandoffStoreTest.php`: the stored row, digest only, the result encrypted.
 - `tests/Feature/Handoffs/HandoffRedemptionTest.php`: each step's reason in order, consumption on a mismatch, the
   expiry boundaries, voided and seen codes, link, enforcement and connection changes, the completed-sign-in flag,
-  verifier lengths, distinct kinds, the limit, corrupt results and database errors.
+  verifier lengths, distinct kinds, the limit, corrupt results and database errors, the standalone path's refusal of a
+  `sign_in` or `reauthenticate` asked for, and its `purpose_mismatch` for such a code asked for as a `link`.
 - `tests/Feature/Handoffs/HandoffRecheckTest.php`: each outcome and its order, no transaction, another result's lock,
   the lock order (enforcement, then connections in id order) with the feature on and nothing of enforcement with it
   off or another contract bound, an enforcing tenant that moved, the acknowledgement.

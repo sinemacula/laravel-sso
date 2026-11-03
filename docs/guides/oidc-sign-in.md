@@ -33,19 +33,19 @@ provider, so it cannot fail because the provider is down.
 The browser is sent to the connection's authorisation endpoint with these parameters, in this order, encoded per
 RFC 3986:
 
-| Parameter               | What it carries                                                                         |
-|-------------------------|-----------------------------------------------------------------------------------------|
-| `response_type`         | `code`: the authorisation code flow is the only one the package uses                    |
-| `client_id`             | The connection's client id                                                              |
-| `redirect_uri`          | The connection's callback, built from `sso.endpoints` and never from a request          |
-| `scope`                 | The connection's `scopes`, joined by single spaces                                      |
-| `state`                 | A random value of the flow, never the request's public reference                        |
-| `nonce`                 | A random value of the flow, which the ID token must return                              |
-| `code_challenge`        | The S256 challenge of a verifier the package keeps                                      |
-| `code_challenge_method` | `S256`                                                                                  |
-| `max_age`               | The connection's `max_age` when it has one, or `0` for a reauthentication               |
-| `prompt`                | `login` for a reauthentication                                                          |
-| the extra parameters    | The connection's `extra_parameters`, as stored                                          |
+| Parameter               | What it carries                                                                |
+|-------------------------|--------------------------------------------------------------------------------|
+| `response_type`         | `code`: the authorisation code flow is the only one the package uses           |
+| `client_id`             | The connection's client id                                                     |
+| `redirect_uri`          | The connection's callback, built from `sso.endpoints` and never from a request |
+| `scope`                 | The connection's `scopes`, joined by single spaces                             |
+| `state`                 | A random value of the flow, never the request's public reference               |
+| `nonce`                 | A random value of the flow, which the ID token must return                     |
+| `code_challenge`        | The S256 challenge of a verifier the package keeps                             |
+| `code_challenge_method` | `S256`                                                                         |
+| `max_age`               | The connection's `max_age` when it has one, or `0` for a reauthentication      |
+| `prompt`                | `login` for a reauthentication                                                 |
+| the extra parameters    | The connection's `extra_parameters`, as stored                                 |
 
 Register the callback at the provider exactly: `redirect_uri` is compared byte for byte, there and at the token
 endpoint. No `response_mode` is sent, so the provider answers in the query string, the only way the callback accepts.

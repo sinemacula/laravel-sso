@@ -58,18 +58,19 @@ final class SsoCompletionController
 [Completing a flow](completing-a-flow.md) explains what the completion helper checks and when each result is answered.
 
 These routes take no session, no CSRF token and no authentication: the identity provider's response is checked by the
-completion itself. Put them outside the `web` middleware group, or exclude them from CSRF verification, since a SAML
-response is a cross-site POST.
+completion itself. Put them outside the `web` middleware group. If your API verifies CSRF tokens anyway, exclude the
+assertion consumer service alone, since a SAML response is a cross-site `POST`; the OIDC callback is a `GET` and needs
+no exemption ([Cross-site request forgery](example-application.md#cross-site-request-forgery)).
 
 ## What each outcome answers
 
-| Outcome        | Status                                         | `Location`                                      | Body                                          |
-|----------------|------------------------------------------------|-------------------------------------------------|-----------------------------------------------|
-| `completed`    | `303` after a POST, `302` after a GET          | your redirect URI with `code` and `reference`   | `completion.redirecting`                      |
-| `failed`       | `303` after a POST, `302` after a GET          | your redirect URI with `error` and `reference`  | `completion.redirecting`                      |
-| `reinitiated`  | `303` after a POST, `302` after a GET          | the connection's start URL, exactly as set      | `completion.redirecting`                      |
-| `rejected`     | `400`                                          | none                                            | `completion.invalid`                          |
-| `rate_limited` | `429`, with `Retry-After` in seconds           | none                                            | `completion.invalid`                          |
+| Outcome        | Status                                | `Location`                                     | Body                     |
+|----------------|---------------------------------------|------------------------------------------------|--------------------------|
+| `completed`    | `303` after a POST, `302` after a GET | your redirect URI with `code` and `reference`  | `completion.redirecting` |
+| `failed`       | `303` after a POST, `302` after a GET | your redirect URI with `error` and `reference` | `completion.redirecting` |
+| `reinitiated`  | `303` after a POST, `302` after a GET | the connection's start URL, exactly as set     | `completion.redirecting` |
+| `rejected`     | `400`                                 | none                                           | `completion.invalid`     |
+| `rate_limited` | `429`, with `Retry-After` in seconds  | none                                           | `completion.invalid`     |
 
 Any other method (`HEAD`, say) is answered with a `303`. A completion never answers with a `307` or a `308`, which
 would make the browser post the SAML response again, to your redirect URI.
@@ -136,7 +137,7 @@ sessionStorage.removeItem(`sso:${reference}`);
 if (pending === null) {
     // No sign-in was started here with this reference: ignore the response.
 } else if (parameters.has('code')) {
-    await fetch('/auth/sessions', {
+    await fetch('/api/auth/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

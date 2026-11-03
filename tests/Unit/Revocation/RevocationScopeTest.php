@@ -69,20 +69,23 @@ final class RevocationScopeTest extends TestCase
     }
 
     /**
-     * The identity scope names the identity and the connection, for a link
-     * removed.
+     * The identity scope names the identity, the connection and the link that
+     * was removed, so an adapter can revoke exactly that link's sessions.
      *
      * @return void
      */
-    public function testTheIdentityScopeNamesTheIdentityAndTheConnection(): void
+    public function testTheIdentityScopeNamesTheIdentityTheConnectionAndTheLink(): void
     {
         $identity = new IdentityReference('App\Models\User', '7');
-        $scope    = RevocationScope::identityInConnection('tenant-1', 'c-1', $identity);
+        $scope    = RevocationScope::identityInConnection('tenant-1', 'c-1', $identity, 'link-1');
 
         self::assertSame(RevocationScopeKind::IDENTITY_CONNECTION, $scope->kind);
         self::assertSame(RevocationReason::LINK_REMOVED, $scope->reason);
+        self::assertSame('tenant-1', $scope->tenantId);
         self::assertSame($identity, $scope->identity);
         self::assertSame('c-1', $scope->connectionId);
+        self::assertSame('link-1', $scope->linkId);
+        self::assertNull($scope->policy);
     }
 
     /**
@@ -106,16 +109,32 @@ final class RevocationScopeTest extends TestCase
     }
 
     /**
-     * A link scope needs its link.
+     * Rows of `[build]`: each identity scope with an empty link id.
      *
+     * @return iterable<string, array{\Closure(): \SineMacula\Laravel\Sso\Revocation\RevocationScope}>
+     */
+    public static function provideScopesMissingTheirLink(): iterable
+    {
+        $identity = new IdentityReference('App\Models\User', '7');
+
+        yield 'a widened scope' => [static fn (): RevocationScope => RevocationScope::identityLink('tenant-1', 'c-1', $identity, '')];
+
+        yield 'a removed link' => [static fn (): RevocationScope => RevocationScope::identityInConnection('tenant-1', 'c-1', $identity, '')];
+    }
+
+    /**
+     * Each identity scope needs its link, by both constructors.
+     *
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Revocation\RevocationScope  $build
      * @return void
      */
-    public function testALinkScopeNeedsItsLink(): void
+    #[DataProvider('provideScopesMissingTheirLink')]
+    public function testALinkScopeNeedsItsLink(\Closure $build): void
     {
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('A revocation scope of a link names the link.');
 
-        RevocationScope::identityLink('tenant-1', 'c-1', new IdentityReference('App\Models\User', '7'), '');
+        $build();
     }
 
     /**
@@ -132,9 +151,9 @@ final class RevocationScopeTest extends TestCase
 
         yield 'connection, no connection' => [static fn (): RevocationScope => RevocationScope::connection('tenant-1', '', RevocationReason::CONNECTION_DELETED)];
 
-        yield 'identity, no tenant' => [static fn (): RevocationScope => RevocationScope::identityInConnection('', 'c-1', $identity)];
+        yield 'identity, no tenant' => [static fn (): RevocationScope => RevocationScope::identityInConnection('', 'c-1', $identity, 'link-1')];
 
-        yield 'identity, no connection' => [static fn (): RevocationScope => RevocationScope::identityInConnection('tenant-1', '', $identity)];
+        yield 'identity, no connection' => [static fn (): RevocationScope => RevocationScope::identityInConnection('tenant-1', '', $identity, 'link-1')];
 
         yield 'link, no tenant' => [static fn (): RevocationScope => RevocationScope::identityLink('', 'c-1', $identity, 'link-1')];
 

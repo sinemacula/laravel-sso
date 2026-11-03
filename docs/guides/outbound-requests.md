@@ -27,13 +27,13 @@ fetcher refuses to start rather than fall back to PHP streams, and `php artisan 
 
 ## Settings
 
-| Key                               | Default   | Env                                   | Range                                |
-|-----------------------------------|-----------|---------------------------------------|--------------------------------------|
-| `fetcher.timeout_seconds`         | `10`      | `SSO_FETCHER_TIMEOUT_SECONDS`         | `1` to `60`                          |
-| `fetcher.connect_timeout_seconds` | `5`       | `SSO_FETCHER_CONNECT_TIMEOUT_SECONDS` | `1` to `30`, at most the timeout     |
-| `fetcher.max_response_bytes`      | `1048576` | `SSO_FETCHER_MAX_RESPONSE_BYTES`      | `1024` to `10485760` (10 MiB)        |
-| `fetcher.max_redirects`           | `3`       | `SSO_FETCHER_MAX_REDIRECTS`           | `0` to `10`                          |
-| `fetcher.refused_ranges`          | `[]`      |                                       | a list of IPv4 or IPv6 CIDR ranges   |
+| Key                               | Default   | Env                                   | Range                              |
+|-----------------------------------|-----------|---------------------------------------|------------------------------------|
+| `fetcher.timeout_seconds`         | `10`      | `SSO_FETCHER_TIMEOUT_SECONDS`         | `1` to `60`                        |
+| `fetcher.connect_timeout_seconds` | `5`       | `SSO_FETCHER_CONNECT_TIMEOUT_SECONDS` | `1` to `30`, at most the timeout   |
+| `fetcher.max_response_bytes`      | `1048576` | `SSO_FETCHER_MAX_RESPONSE_BYTES`      | `1024` to `10485760` (10 MiB)      |
+| `fetcher.max_redirects`           | `3`       | `SSO_FETCHER_MAX_REDIRECTS`           | `0` to `10`                        |
+| `fetcher.refused_ranges`          | `[]`      |                                       | a list of IPv4 or IPv6 CIDR ranges |
 
 - `timeout_seconds` is the time one fetch may take in all: resolving the host, connecting, the last byte, and every
   redirect it follows, which share the one budget rather than each starting a fresh one. `connect_timeout_seconds` is
@@ -145,13 +145,13 @@ $fetcher->assertFetched('https://idp.example.com/metadata');
 $fetcher->assertFetched('https://idp.example.com/token', FetchPurpose::TOKEN);
 ```
 
-| Method                                                         | What it does                                                          |
-|----------------------------------------------------------------|-----------------------------------------------------------------------|
-| `respond(string $url, FetchResult\|Closure $response)`         | Answers every request to the URL; a closure is given the request      |
-| `fetch(FetchRequest $request)`                                 | Records the request and answers it; throws for a URL with no response |
-| `requests()`                                                   | Every request made, in order                                          |
-| `assertFetched(string $url, ?FetchPurpose $purpose = null)`    | Fails unless the URL was fetched, for the purpose when one is given   |
-| `assertNothingFetched()`                                       | Fails if anything was fetched                                         |
+| Method                                                      | What it does                                                          |
+|-------------------------------------------------------------|-----------------------------------------------------------------------|
+| `respond(string $url, FetchResult\|Closure $response)`      | Answers every request to the URL; a closure is given the request      |
+| `fetch(FetchRequest $request)`                              | Records the request and answers it; throws for a URL with no response |
+| `requests()`                                                | Every request made, in order                                          |
+| `assertFetched(string $url, ?FetchPurpose $purpose = null)` | Fails unless the URL was fetched, for the purpose when one is given   |
+| `assertNothingFetched()`                                    | Fails if anything was fetched                                         |
 
 A URL is matched exactly as the request carries it. A request to a URL you gave no response throws a `LogicException`
 naming the URL, so an unexpected request fails your test instead of passing unnoticed. The fake applies none of the

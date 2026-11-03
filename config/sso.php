@@ -114,8 +114,8 @@ return [
     |   setting; bind your own to answer a per-client address without a schema
     |   change.
     | - `external_sign_in`: whether the application allows sign-in through an
-    |   external provider (default false). Under `laravel-iam` the answer comes
-    |   from `laravel-authentication`'s per-application methods instead.
+    |   external provider (default false). An adapter may answer it from the
+    |   per-application sign-in methods of your authentication instead.
     | - `delivery`: where the handoff code goes on the redirect URI, the
     |   `fragment` (default) or the `query`.
     | - `discovery`: whether the application offers discovery by email domain
@@ -254,7 +254,8 @@ return [
     | `refresh_interval_seconds` later (an hour to a week, default a day);
     | after a failure it waits `backoff_initial_seconds` (a minute to an hour,
     | default 5 minutes), doubling with each failure in a row up to
-    | `backoff_max_seconds` (5 minutes to a day, default 6 hours).
+    | `backoff_max_seconds` (from `backoff_initial_seconds` to a day, default
+    | 6 hours).
     |
     | Whatever was fetched and validated stops being used `stale_limit_seconds`
     | after its own last validated fetch (a day to a year, default 30 days, or
@@ -549,9 +550,9 @@ return [
     | it, the package asks the bound freshness contract whether the caller
     | authenticated within the operation's maximum age, in seconds (1 to
     | 3600). The default contract refuses every operation: bind your own, or
-    | let `laravel-iam` bind `laravel-authentication`'s, before using the
-    | management helpers. Each key is the operation's stable name after `sso.`,
-    | with the dots as underscores (`sso.connection.trust` is
+    | let an adapter bind your authentication's freshness check, before using
+    | the management helpers. Each key is the operation's stable name after
+    | `sso.`, with the dots as underscores (`sso.connection.trust` is
     | `connection_trust`).
     |
     */

@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Config\Repository as ConfigRepository;
 use Illuminate\Foundation\Application;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Clock\SystemClock;
@@ -75,6 +76,16 @@ use Tests\Fixtures\Fetching\StubHostResolver;
 #[CoversClass(SsoServiceProvider::class)]
 final class SsoServiceProviderTest extends TestCase
 {
+    /** @var list<class-string> Every seam the provider binds a default for, each only while nothing is bound to it yet. */
+    private const array SEAMS = [
+        ApplicationPolicy::class, AttemptLimiter::class, Clock::class, DnsResolver::class, EndpointResolver::class,
+        Enforcement::class, EnforcementExemption::class, EnforcementInheritance::class, EvidencePolicy::class,
+        Fetcher::class, Freshness::class, HandoffIssuer::class, HostResolver::class, LinkConfirmation::class,
+        LinkEligibility::class, LinkEmailMatcher::class, LinkLimit::class, Linker::class, PrincipalScope::class,
+        ProviderSessionDeadline::class, ReauthenticationSessions::class, RedirectUriResolver::class,
+        SecretEncrypter::class, SessionRevocation::class, SingleUseStore::class, TenantMembership::class,
+    ];
+
     /** @var list<string> The abstracts registering binds, in order. */
     private const array BOUND = [
         Clock::class,
@@ -200,6 +211,68 @@ final class SsoServiceProviderTest extends TestCase
 
         self::assertSame($clock, $app->make(Clock::class));
         self::assertSame($resolver, $app->make(HostResolver::class));
+    }
+
+    /**
+     * The seams are every contract the provider binds: registering on an
+     * application that binds nothing binds exactly these contracts.
+     *
+     * @return void
+     */
+    public function testTheSeamsAreEveryContractTheProviderBinds(): void
+    {
+        [$app] = self::application();
+
+        (new SsoServiceProvider($app))->register();
+
+        $bound = [];
+
+        foreach (glob(dirname(__DIR__, 2) . '/src/Contracts/*.php') ?: [] as $file) {
+
+            $contract = 'SineMacula\Laravel\Sso\Contracts\\' . basename($file, '.php');
+
+            if (!$app->bound($contract)) {
+                continue;
+            }
+
+            $bound[] = $contract;
+        }
+
+        self::assertSame(self::SEAMS, $bound);
+    }
+
+    /**
+     * Rows of `[seam]`: every seam the provider binds a default for.
+     *
+     * @return iterable<string, array{0: class-string}>
+     */
+    public static function provideSeams(): iterable
+    {
+        foreach (self::SEAMS as $seam) {
+            yield $seam => [$seam];
+        }
+    }
+
+    /**
+     * Whatever the application or another package bound to a seam before the
+     * provider registers is kept, for every seam, never replaced by the
+     * package's default (FEATURES "Adaptable to each consumer").
+     *
+     * @param  class-string  $seam
+     * @return void
+     */
+    #[DataProvider('provideSeams')]
+    public function testEverySeamBoundBeforeIsKept(string $seam): void
+    {
+        [$app] = self::application();
+
+        $bound = self::createStub($seam);
+
+        $app->instance($seam, $bound);
+
+        (new SsoServiceProvider($app))->register();
+
+        self::assertSame($bound, $app->make($seam));
     }
 
     /**

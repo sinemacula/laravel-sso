@@ -37,6 +37,13 @@ final readonly class XmlSigner
         'sha512' => 'http://www.w3.org/2001/04/xmlenc#sha512',
     ];
 
+    /** @var array<string, string> The transforms a reference may list, by short name. */
+    public const array TRANSFORMS = [
+        'enveloped'         => self::ENVELOPED,
+        'exc-c14n'          => self::EXC_C14N,
+        'exc-c14n-comments' => self::EXC_C14N_COMMENTS,
+    ];
+
     /** @var array<string, int> The OpenSSL hash of each signature algorithm but SHA-256, by short name. */
     private const array HASHES = ['rsa-sha1' => OPENSSL_ALGO_SHA1, 'rsa-sha384' => OPENSSL_ALGO_SHA384, 'rsa-sha512' => OPENSSL_ALGO_SHA512];
 
@@ -76,11 +83,14 @@ final readonly class XmlSigner
      * `SIGNATURE_ALGORITHMS`), `digest` (`sha256`, a key of
      * `DIGEST_ALGORITHMS`), `comments` (canonicalise `SignedInfo` with
      * comments), `target` (the element the reference names and digests, the
-     * element itself by default) and `uri` (the reference, `#` and the target's
-     * `ID` by default; `''` digests the whole document).
+     * element itself by default), `uri` (the reference, `#` and the target's
+     * `ID` by default; `''` digests the whole document) and `transforms` (the
+     * keys of `TRANSFORMS` the reference lists, in order: `enveloped` then
+     * `exc-c14n` by default). The digest is always of the exclusive canonical
+     * bytes without comments, whatever the transforms say.
      *
      * @param  \DOMElement  $element
-     * @param  array{algorithm?: string, digest?: string, comments?: bool, target?: \DOMElement, uri?: string}  $options
+     * @param  array{algorithm?: string, digest?: string, comments?: bool, target?: \DOMElement, uri?: string, transforms?: list<string>}  $options
      * @return \DOMElement
      *
      * @throws \LogicException
@@ -119,7 +129,7 @@ final readonly class XmlSigner
      * What `sign()` answers, a DOM failure let through.
      *
      * @param  \DOMElement  $element
-     * @param  array{algorithm?: string, digest?: string, comments?: bool, target?: \DOMElement, uri?: string}  $options
+     * @param  array{algorithm?: string, digest?: string, comments?: bool, target?: \DOMElement, uri?: string, transforms?: list<string>}  $options
      * @return \DOMElement
      *
      * @throws \LogicException
@@ -137,7 +147,7 @@ final readonly class XmlSigner
         $signature = $document->createElementNS(self::NS_DS, 'ds:Signature');
         $info      = $this->signedInfo($document, $algorithm, $options['comments'] ?? false);
 
-        $info->appendChild($this->reference($document, $uri, $digest, (string) $digested));
+        $info->appendChild($this->reference($document, [$uri, $digest, (string) $digested], $options['transforms'] ?? ['enveloped', 'exc-c14n']));
         $signature->appendChild($info);
 
         $value = $signature->appendChild($document->createElementNS(self::NS_DS, 'ds:SignatureValue'));
@@ -173,27 +183,31 @@ final readonly class XmlSigner
     }
 
     /**
-     * The `Reference`, with the enveloped and exclusive canonicalisation
-     * transforms and the digest of the canonical bytes.
+     * The `Reference` to the URI, with the transforms named and the digest of
+     * the canonical bytes.
      *
      * @param  \DOMDocument  $document
-     * @param  string  $uri
-     * @param  string  $digest
-     * @param  string  $digested
+     * @param  array{0: string, 1: string, 2: string}  $digest
+     * @param  list<string>  $names
      * @return \DOMElement
      *
      * @throws \DOMException
      */
-    private function reference(\DOMDocument $document, string $uri, string $digest, string $digested): \DOMElement
+    private function reference(\DOMDocument $document, array $digest, array $names): \DOMElement
     {
+        [$uri, $algorithm, $digested] = $digest;
+
         $reference  = $document->createElementNS(self::NS_DS, 'ds:Reference');
         $transforms = $reference->appendChild($document->createElementNS(self::NS_DS, 'ds:Transforms'));
 
         $reference->setAttribute('URI', $uri);
-        $transforms->appendChild($document->createElementNS(self::NS_DS, 'ds:Transform'))->setAttribute('Algorithm', self::ENVELOPED);
-        $transforms->appendChild($document->createElementNS(self::NS_DS, 'ds:Transform'))->setAttribute('Algorithm', self::EXC_C14N);
-        $reference->appendChild($document->createElementNS(self::NS_DS, 'ds:DigestMethod'))->setAttribute('Algorithm', self::DIGEST_ALGORITHMS[$digest]);
-        $reference->appendChild($document->createElementNS(self::NS_DS, 'ds:DigestValue', base64_encode(hash($digest, $digested, true))));
+
+        foreach ($names as $name) {
+            $transforms->appendChild($document->createElementNS(self::NS_DS, 'ds:Transform'))->setAttribute('Algorithm', self::TRANSFORMS[$name]);
+        }
+
+        $reference->appendChild($document->createElementNS(self::NS_DS, 'ds:DigestMethod'))->setAttribute('Algorithm', self::DIGEST_ALGORITHMS[$algorithm]);
+        $reference->appendChild($document->createElementNS(self::NS_DS, 'ds:DigestValue', base64_encode(hash($algorithm, $digested, true))));
 
         return $reference;
     }

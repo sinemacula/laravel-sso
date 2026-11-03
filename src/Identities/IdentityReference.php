@@ -10,10 +10,9 @@ namespace SineMacula\Laravel\Sso\Identities;
  * package never loads, creates or interprets an identity; it passes the
  * reference to the contracts that do (exemption, revocation, linking).
  *
- * Under `laravel-iam` the type is the identity's morph class and the id its
- * key, as `laravel-authentication`'s events give them (AUTH-9.4). Two
- * references are the same identity only when both strings are equal byte for
- * byte.
+ * For an Eloquent identity the type is its morph class and the id its key, as
+ * the application's authentication events give them. Two references are the
+ * same identity only when both strings are equal byte for byte.
  *
  * @api
  *
@@ -35,7 +34,7 @@ final readonly class IdentityReference implements \JsonSerializable
      */
     public function __construct(
 
-        /** The identity's type (under `laravel-iam`, its morph class). */
+        /** The identity's type (for an Eloquent identity, its morph class). */
         public string $type,
 
         /** The identity's id. */

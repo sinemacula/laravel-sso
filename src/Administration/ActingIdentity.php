@@ -11,8 +11,8 @@ namespace SineMacula\Laravel\Sso\Administration;
  * is the application's authorisation, never the package's; the package only
  * reports who did.
  *
- * Under `laravel-iam` the type is the identity's morph class, as
- * `laravel-authentication`'s events give it (AUTH-9.4).
+ * For an Eloquent identity the type is its morph class, as the application's
+ * authentication events give it.
  *
  * @api
  *
@@ -31,7 +31,7 @@ final readonly class ActingIdentity
      */
     public function __construct(
 
-        /** The identity's type (under `laravel-iam`, its morph class). */
+        /** The identity's type (for an Eloquent identity, its morph class). */
         public string $type,
 
         /** The identity's id. */

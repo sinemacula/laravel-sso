@@ -12,10 +12,9 @@ use Illuminate\Contracts\Support\Arrayable;
  * its tenant and protocol, the application and the purpose, the authorisation
  * request's public reference, the identity and the acting identity, the client
  * the request came from, and, where they apply, the principal, the active
- * tenant, the session and the sign-in method, under the names
- * `laravel-authentication`'s events give them (AUTH-9.4). Every package event
- * carries one, so a single listener on `Contracts\SsoEvent` can attribute them
- * all the same way.
+ * tenant, the session and the sign-in method, under the names the suite's
+ * shared vocabulary gives them (SSO-9.6). Every package event carries one, so a
+ * single listener on `Contracts\SsoEvent` can attribute them all the same way.
  *
  * It holds strings only, fixed when it is built, so it survives a queue
  * unchanged and `toArray()` is the record an audit sink keeps. A part the
@@ -90,7 +89,7 @@ final readonly class EventContext implements Arrayable
         /** Public reference of the authorisation request, the only flow identifier an event carries. */
         public ?string $requestReference = null,
 
-        /** Type of the identity reference (under `laravel-iam`, the identity's morph class). */
+        /** Type of the identity reference (for an Eloquent identity, its morph class). */
         public ?string $identityMorphClass = null,
 
         /** Id of the identity reference. */

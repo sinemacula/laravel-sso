@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RedemptionStatus;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Sessions\Provenance;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
@@ -86,6 +87,22 @@ final class RedemptionResultTest extends TestCase
         self::assertNull($answer->sessionId);
         self::assertNull($answer->enforcementVersion);
         self::assertNull($answer->sessionNotAfter);
+        self::assertNull($answer->provenance);
+    }
+
+    /**
+     * A redeemed answer carries the session provenance it is given, and only a
+     * redeemed answer can: a refusal and a rate limit carry none.
+     *
+     * @return void
+     */
+    public function testARedeemedAnswerCarriesTheProvenanceCaptured(): void
+    {
+        $provenance = new Provenance('connection-1', 'tenant-1', 'saml2');
+
+        self::assertSame($provenance, RedemptionResult::redeemed(ExampleResults::full(), admitted: true, provenance: $provenance)->provenance);
+        self::assertNull(RedemptionResult::refused(FailureReason::HANDOFF_UNKNOWN)->provenance);
+        self::assertNull(RedemptionResult::rateLimited(60)->provenance);
     }
 
     /**

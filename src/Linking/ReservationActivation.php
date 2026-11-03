@@ -97,10 +97,11 @@ final readonly class ReservationActivation
     }
 
     /**
-     * Activate the handoff's reservation, and answer its identity and its link.
+     * Activate the handoff's reservation, and answer its identity, its link and
+     * the provenance the activation gave the link.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
-     * @return array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string}
+     * @return array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string, 2: \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin}
      *
      * @throws \LogicException
      */
@@ -115,7 +116,7 @@ final readonly class ReservationActivation
 
         $this->events->activated($context->connection, $identity, $link->id, $result->application, $result->requestReference);
 
-        return [$identity, $link->id];
+        return [$identity, $link->id, $link->provenance];
     }
 
     /**

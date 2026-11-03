@@ -20,7 +20,9 @@ Reading connections, listing them and every sign-in flow are unaffected: only th
 > [!NOTE]
 > Under `laravel-iam` there is nothing to bind: it binds the contract to `laravel-authentication`'s freshness check
 > (AUTH-3.11), passing each operation's maximum age on as the caller's requirement, so an administrator is asked to
-> authenticate again exactly as for the application's own sensitive changes.
+> authenticate again exactly as for the application's own sensitive changes. The stricter of that requirement and any
+> freshness the application configures for the operation's name applies, so the package's maximum age holds where the
+> application configures none. See [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#freshness).
 
 ## Operations and their maximum ages
 

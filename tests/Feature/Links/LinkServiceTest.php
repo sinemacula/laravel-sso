@@ -321,6 +321,7 @@ final class LinkServiceTest extends TestCase
         self::assertSame('tenant-1', $scope->tenantId);
         self::assertSame($this->connection->id, $scope->connectionId);
         self::assertSame(['type' => 'user', 'id' => '1'], $scope->identity?->jsonSerialize());
+        self::assertSame($link->id, $scope->linkId);
         self::assertNull($scope->policy);
 
         $this->assertEventSequence([LinkRemoved::class]);

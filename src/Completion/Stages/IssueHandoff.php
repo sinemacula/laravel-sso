@@ -22,8 +22,8 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * The `handoff_issuance` step (SSO-9.2, SSO-6.10, SSO-9.10), the last of a
  * completion, inside its locked transaction:
  *
- * 1. the application policy is asked again (AUTH-3.7): an application that no
- *    longer allows sign-in through an external provider refuses with
+ * 1. the application policy is asked again: an application that no longer
+ *    allows sign-in through an external provider refuses with
  *    `application_not_allowed`;
  * 2. a result carrying the provider's session deadline asks the bound
  *    `Contracts\ProviderSessionDeadline` whether it limits the application's

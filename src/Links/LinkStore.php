@@ -35,8 +35,8 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * created.
  *
  * It is not the default: `Links\NoLinks` is, and links nothing. The application
- * binds this store as `Contracts\Linker`, or `laravel-iam` does, which under it
- * also answers `laravel-authentication`'s link contract.
+ * binds this store as `Contracts\Linker`, or an adapter does, answering the
+ * link questions of the application's authentication from it too.
  *
  * `resolve()` finds the row of the result's connection whose `subject_key` is
  * `LinkSubject::of($result)->key()`, by a locking read on the write connection
@@ -384,9 +384,9 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * What the active row resolves to: its identity, once a sign-in's use is
-     * stamped, unless it stands on a verified domain and its identity's
-     * principals are not known to be within the tenant.
+     * What the active row resolves to: its identity and its provenance, once a
+     * sign-in's use is stamped, unless it stands on a verified domain and its
+     * identity's principals are not known to be within the tenant.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
@@ -413,7 +413,7 @@ final readonly class LinkStore implements LinkStorage
             $this->stampLastUsed($link);
         }
 
-        return LinkResolution::linked($identity, $link->id);
+        return LinkResolution::linked($identity, $link->id, $link->provenance);
     }
 
     /**

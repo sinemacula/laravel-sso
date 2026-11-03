@@ -27,19 +27,19 @@ what the request kept is in `oidc-callback.md`.
 
 `AuthorizationUrl::build()` appends these parameters, in exactly this order, to the authorisation endpoint:
 
-| Parameter                 | Value                                                                                   |
-|---------------------------|-----------------------------------------------------------------------------------------|
-| `response_type`           | `code`, the only response type (no implicit or hybrid flow)                             |
-| `client_id`               | The connection's client id                                                              |
-| `redirect_uri`            | The connection's callback from `Contracts\EndpointResolver`, exactly (SSO-5.5)          |
-| `scope`                   | The connection's scopes joined by single spaces, in stored order                        |
-| `state`                   | `StartRequest::$state`, 43 random base64url characters, never the public reference      |
-| `nonce`                   | `StartRequest::$nonce`, 43 random base64url characters                                  |
-| `code_challenge`          | The S256 challenge of `StartRequest::$codeVerifier`, as `Flows\ProtocolState` computes  |
-| `code_challenge_method`   | `S256`                                                                                  |
-| `max_age`                 | `0` for a `reauthenticate`, else the connection's `max_age` when it has one             |
-| `prompt`                  | `login` for a `reauthenticate`                                                          |
-| the extra parameters      | The connection's `extra_parameters`, in stored order                                    |
+| Parameter               | Value                                                                                  |
+|-------------------------|----------------------------------------------------------------------------------------|
+| `response_type`         | `code`, the only response type (no implicit or hybrid flow)                            |
+| `client_id`             | The connection's client id                                                             |
+| `redirect_uri`          | The connection's callback from `Contracts\EndpointResolver`, exactly (SSO-5.5)         |
+| `scope`                 | The connection's scopes joined by single spaces, in stored order                       |
+| `state`                 | `StartRequest::$state`, 43 random base64url characters, never the public reference     |
+| `nonce`                 | `StartRequest::$nonce`, 43 random base64url characters                                 |
+| `code_challenge`        | The S256 challenge of `StartRequest::$codeVerifier`, as `Flows\ProtocolState` computes |
+| `code_challenge_method` | `S256`                                                                                 |
+| `max_age`               | `0` for a `reauthenticate`, else the connection's `max_age` when it has one            |
+| `prompt`                | `login` for a `reauthenticate`                                                         |
+| the extra parameters    | The connection's `extra_parameters`, in stored order                                   |
 
 - `max_age` is sent as configured, `0` included: a `sign_in` through a connection whose `max_age` is `0` sends `0`, and
   one with none sends nothing. For a `reauthenticate` it is always `0`, whatever is configured.

@@ -241,6 +241,7 @@ final class AssertionValidatorTest extends TestCase
     {
         yield from [
             'another issuer'         => [['issuer' => 'https://attacker.example.test'], FailureReason::ISSUER_MISMATCH],
+            'no issuer'              => [['issuer' => null], FailureReason::ISSUER_MISMATCH],
             'another destination'    => [['destination' => 'https://sp.example.test/other'], FailureReason::RECIPIENT_MISMATCH],
             'another request'        => [['in_response_to' => '_request-2'], FailureReason::REQUEST_MISMATCH],
             'no request'             => [['in_response_to' => null], FailureReason::REQUEST_MISMATCH],
@@ -249,8 +250,9 @@ final class AssertionValidatorTest extends TestCase
     }
 
     /**
-     * An unsuccessful response from another issuer, to another destination or
-     * for another request is refused for that, and nothing is logged.
+     * An unsuccessful response from another issuer or naming none, to another
+     * destination or for another request is refused for that, and nothing is
+     * logged.
      *
      * @param  array<string, mixed>  $changes
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason

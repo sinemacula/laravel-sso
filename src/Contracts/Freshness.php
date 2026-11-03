@@ -20,10 +20,10 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
  * package writes nothing on `stale`.
  *
  * The default refuses every operation, so an application that uses the
- * management helpers binds its own; `laravel-iam` binds it to
- * `laravel-authentication`'s freshness check (AUTH-3.11), passing the maximum
- * age on as the caller's requirement. An implementation reads the caller from
- * the request or job being served on each call and keeps nothing of one for the
+ * management helpers binds its own; an adapter to the application's
+ * authentication binds it to that freshness check, passing the maximum age on
+ * as the caller's requirement. An implementation reads the caller from the
+ * request or job being served on each call and keeps nothing of one for the
  * next (SSO-11.2). An error it cannot answer through propagates as a server
  * error; it never answers `fresh` when it cannot tell.
  *

@@ -98,13 +98,18 @@ event's flow did not establish, or that does not apply to it, is `null`.
 | `session_id`                                        | The session, where one applies                                         |
 | `method`                                            | The sign-in method, where one applies                                  |
 
-The names match `laravel-authentication`'s event context, so one audit sink can attribute both packages' events the same
-way. `tenant_id` is the tenant that owns the connection; `active_tenant_id` is the tenant a session acts within.
+The fields are the shared vocabulary's (identity, principal, active tenant, application, session, method and the
+client), but not every key is spelled as `laravel-authentication` spells it: there the identity's and principal's types
+are `identity_type` and `principal_type`, and `tenant_id` is the active tenant. Here `tenant_id` is the tenant that owns
+the connection and `active_tenant_id` the tenant a session acts within. Map each by its meaning, never by the key alone;
+[Integrating with `laravel-iam`](integrating-with-laravel-iam.md#event-context-and-correlation) has the whole mapping.
 
-`request_reference` is the only flow identifier an event carries: use it to correlate the events of one sign-in, here
-and in `laravel-authentication`, which carries the same reference at redemption. No event carries a secret, an
-assertion, a provider token, a verifier, a handoff code, protocol state (`state`, `RelayState`, a nonce), a raw payload
-or a transport header. Mapped attributes appear only on the unlinked-result event, which a provisioning listener needs.
+`request_reference` is the only flow identifier an event carries: use it, with `connection_id`, to correlate the events
+of one sign-in. `ResultVerified` at completion and `HandoffRedeemed` at redemption both carry them, so a sign-in is
+counted once; `laravel-authentication`'s redemption events are to carry the same reference (AUTH-9.4). No event carries
+a secret, an assertion, a provider token, a verifier, a handoff code, protocol state (`state`, `RelayState`, a nonce), a
+raw payload or a transport header. Mapped attributes appear only on the unlinked-result event, which a provisioning
+listener needs.
 
 The client is read from the request being served, and every value is cleaned before it is kept: the IP address only
 when it is a valid IPv4 or IPv6 address, and the user agent and every id with control characters and Unicode

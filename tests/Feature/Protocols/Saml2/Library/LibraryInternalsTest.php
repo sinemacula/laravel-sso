@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\HardenedParser;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\LibraryContainer;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure;
+use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\TestCase;
 
 /**
@@ -21,8 +22,8 @@ use Tests\TestCase;
  * container, set once by the package, kept, a container set by anything else
  * refused, and refusing every service the package never uses; the schema of
  * each kind of document, by absolute path; the entity loader that holds schema
- * validation to the library's own files; and a refusal that names only its
- * rule.
+ * validation to the library's own files, installed for every validation and
+ * removed after it; and a refusal that names only its rule.
  *
  * The library is named here only to observe its container; the package's code
  * names it only inside the adapter.
@@ -192,6 +193,39 @@ final class LibraryInternalsTest extends TestCase
         self::assertNull(HardenedParser::localSchema($directory . '/../../composer.json'));
         self::assertNull(HardenedParser::localSchema($directory . 'x/saml-schema-protocol-2.0.xsd'));
         self::assertNull(HardenedParser::localSchema(null));
+    }
+
+    /**
+     * Schema validation loads every schema through the parser's own entity
+     * loader: a loader the application set beforehand is never asked for the
+     * schemas a valid response needs (though validation loads several), and
+     * once validation ends no loader is left installed.
+     *
+     * @return void
+     *
+     * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
+     */
+    public function testEveryValidationLoadsThroughTheParsersOwnLoader(): void
+    {
+        $asked = [];
+        $xml   = (new FakeSamlIdentityProvider)->response('https://sp.example.test/saml', 'https://sp.example.test/saml/acs')->toXml();
+
+        libxml_set_external_entity_loader(static function (?string $public, ?string $system) use (&$asked): ?string {
+            $asked[] = $system;
+
+            return $system;
+        });
+
+        try {
+            $document = (new HardenedParser)->parse($xml, MessageKind::PROTOCOL, strlen($xml));
+            $loader   = libxml_get_external_entity_loader();
+        } finally {
+            libxml_set_external_entity_loader(null);
+        }
+
+        self::assertSame('Response', $document->documentElement?->localName);
+        self::assertSame([], $asked);
+        self::assertNull($loader);
     }
 
     /**

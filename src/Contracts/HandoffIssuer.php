@@ -8,14 +8,13 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 
 /**
- * Handoff issuer contract (SSO-9.2, AUTH-3.10): issues the single-use,
- * short-lived code that carries a verified result from the API to the client
- * that started the flow, bound to every part of the grant: the purpose, the
- * application, the connection, the request's public reference, the S256
- * challenge of the client's verifier, the identity the result's link resolved
- * to, the identity of a `link` or `reauthenticate` flow and the session of a
- * `reauthenticate` flow, the link the result resolved to, and the reservation
- * it is bound to.
+ * Handoff issuer contract (SSO-9.2): issues the single-use, short-lived code
+ * that carries a verified result from the API to the client that started the
+ * flow, bound to every part of the grant: the purpose, the application, the
+ * connection, the request's public reference, the S256 challenge of the
+ * client's verifier, the identity the result's link resolved to, the identity
+ * of a `link` or `reauthenticate` flow and the session of a `reauthenticate`
+ * flow, the link the result resolved to, and the reservation it is bound to.
  *
  * For a grant naming a reservation (SSO-8.8), an implementation stores that
  * binding and the expiry with the code in the same write, and answers the
@@ -37,10 +36,10 @@ use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
  * answers a code it did not store.
  *
  * The default, `Handoffs\DatabaseHandoffStore`, is the package's own store,
- * which the package's redemption helper redeems; under `laravel-iam` it is
- * bound to `laravel-authentication`'s handoff codes, so there is one kind of
- * code, redeemed by purpose (SSO-9.9). An implementation keeps nothing of one
- * call for the next (SSO-11.2).
+ * which the package's redemption helper redeems: the package issues, stores and
+ * redeems every handoff code, so there is one kind of code, redeemed by purpose
+ * (SSO-9.9), whether the application redeems it alone or through an adapter. An
+ * implementation keeps nothing of one call for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

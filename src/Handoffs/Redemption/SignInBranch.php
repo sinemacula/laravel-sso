@@ -31,6 +31,11 @@ use SineMacula\Laravel\Sso\Links\LinkResolution;
  * once, at redemption and after any activation, and only once an identity is
  * established: an unlinked handoff and a refusal never ask.
  *
+ * The admission carries out the provenance of the link it established
+ * (SSO-9.10): for an existing link, what the linker stated of it in `judge()`,
+ * under the locks; for an activated reservation, what the activation made it.
+ * Neither is read again afterwards.
+ *
  * It holds the linker, the activation, the policy and the clock, none of which
  * keeps anything of one redemption for the next (SSO-11.2).
  *
@@ -68,28 +73,29 @@ final readonly class SignInBranch implements PurposeBranch
      * Judge the code's reservation, or the continuity of its link.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
-     * @return \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
+     * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement
      */
     #[\Override]
-    public function judge(RedemptionContext $context): RecheckOutcome
+    public function judge(RedemptionContext $context): Judgement
     {
         if ($context->binding->reservationId !== null) {
-            return $this->activation->judge($context);
+            return Judgement::of($this->activation->judge($context));
         }
 
         $now = $this->linker->resolve($context->result);
 
         return match (true) {
-            self::isContinuous($now, $context->binding) => RecheckOutcome::PASSED,
-            $now->isSuspended()                         => RecheckOutcome::LINK_SUSPENDED,
-            $now->isScopeUnknown()                      => RecheckOutcome::PRINCIPAL_SCOPE_UNKNOWN,
-            default                                     => RecheckOutcome::LINK_CHANGED,
+            self::isContinuous($now, $context->binding) => new Judgement(RecheckOutcome::PASSED, $now->origin),
+            $now->isSuspended()                         => Judgement::of(RecheckOutcome::LINK_SUSPENDED),
+            $now->isScopeUnknown()                      => Judgement::of(RecheckOutcome::PRINCIPAL_SCOPE_UNKNOWN),
+            default                                     => Judgement::of(RecheckOutcome::LINK_CHANGED),
         };
     }
 
     /**
      * Activate the code's reservation, if it holds one, and answer the identity
-     * it established, its link and the evidence accepted.
+     * it established, its link with that link's provenance, and the evidence
+     * accepted.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Admission
@@ -100,14 +106,15 @@ final readonly class SignInBranch implements PurposeBranch
         $binding  = $context->binding;
         $identity = $binding->linkedIdentity;
         $linkId   = $binding->linkId;
+        $origin   = $context->linkProvenance;
 
         if ($binding->reservationId !== null) {
-            [$identity, $linkId] = $this->activation->activate($context);
+            [$identity, $linkId, $origin] = $this->activation->activate($context);
         }
 
         $evidence = $identity === null ? null : $this->evidence->evaluate($context->result, $context->connection, $this->clock->now());
 
-        return new Admission(RecheckOutcome::PASSED, $identity, $linkId, $evidence);
+        return new Admission(RecheckOutcome::PASSED, $identity, $linkId, $evidence, $origin);
     }
 
     /**

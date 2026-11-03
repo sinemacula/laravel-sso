@@ -6,6 +6,7 @@ namespace Tests\Integration\Standalone;
 
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -63,7 +64,8 @@ use Tests\StandaloneTestCase;
  * application's): every seam an application stands behind bound at once, by
  * `ApplicationSeams`, and each purpose run from start to redemption over both
  * protocols, with provisioning through the helper, enforcement with revocation,
- * and linking by a verified domain from reservation to activation.
+ * and linking by a verified domain from reservation to activation; and every
+ * statement those purposes run only reads or writes rows (SSO-11.7).
  *
  * What a sibling would consume is asserted from the events alone, with nothing
  * queried back from the package's tables, so each event is shown to carry
@@ -232,6 +234,32 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
         $held = ['authorization_request' => 3, 'handoff_code' => 3];
 
         self::assertSame($protocol === self::SAML ? [...$held, 'saml_assertion' => 3] : $held, array_count_values(ApplicationSingleUseStore::namespaces()));
+    }
+
+    /**
+     * Every statement a `link`, a `sign_in` and a `reauthenticate` run on the
+     * storage connection, from start to redemption, is a `SELECT`, an `INSERT`,
+     * an `UPDATE` or a `DELETE`: the package changes no schema at run time,
+     * whatever the engine.
+     *
+     * @param  string  $protocol
+     * @return void
+     */
+    #[DataProvider('provideProtocols')]
+    public function testEveryStatementOfEachPurposeReadsOrWritesRows(string $protocol): void
+    {
+        $connection = $this->connectionOver($protocol, 'statements');
+        $verbs      = [];
+
+        DB::listen(static function (QueryExecuted $query) use (&$verbs): void {
+            $verbs[] = strtolower((string) strtok(ltrim($query->sql, " \t\n\r("), " \t\n\r"));
+        });
+
+        $this->assertALink($connection);
+        $this->assertAReauthentication($connection, $this->assertASignIn($connection), $protocol);
+
+        self::assertSame(['delete', 'insert', 'select', 'update'], array_values(array_unique(array_intersect(['delete', 'insert', 'select', 'update'], $verbs))));
+        self::assertSame([], array_values(array_diff($verbs, ['delete', 'insert', 'select', 'update'])));
     }
 
     /**
