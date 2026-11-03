@@ -219,26 +219,6 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * Whether the class exists and is not one of the example harness's
-     * stand-ins, which mirror a sibling's API under its namespace and are
-     * declared in tests/Integration/Examples.
-     *
-     * @param  string  $class
-     * @return bool
-     */
-    private static function isRealSibling(string $class): bool
-    {
-        if (!class_exists($class) && !interface_exists($class)) {
-            return false;
-        }
-
-        /** @var class-string $class */
-        $file = (string) (new \ReflectionClass($class))->getFileName();
-
-        return !str_starts_with($file, dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Examples' . DIRECTORY_SEPARATOR);
-    }
-
-    /**
      * Every seam is on the default the provider binds, and every route is one
      * the test's application added, from a closure of its own. Nothing but
      * those seven is there, under any path, and none of them comes from the
@@ -766,6 +746,26 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
         self::assertSame($key->id, $warning->keyId);
         self::assertSame(1, $warning->thresholdDays);
         $this->assertDefaultBindings();
+    }
+
+    /**
+     * Whether the class exists and is not one of the example harness's
+     * stand-ins, which mirror a sibling's API under its namespace and are
+     * declared in tests/Integration/Examples.
+     *
+     * @param  string  $class
+     * @return bool
+     */
+    private static function isRealSibling(string $class): bool
+    {
+        if (!class_exists($class) && !interface_exists($class)) {
+            return false;
+        }
+
+        /** @var class-string $class */
+        $file = (string) (new \ReflectionClass($class))->getFileName();
+
+        return !str_starts_with($file, dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Examples' . DIRECTORY_SEPARATOR);
     }
 
     /**
