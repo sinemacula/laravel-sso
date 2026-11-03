@@ -108,8 +108,8 @@ final class ExemptionGateTest extends TestCase
 
         self::assertInstanceOf(ExemptionUsed::class, $event);
         self::assertSame('01jbversionversionversion0', $event->enforcementVersion);
-        self::assertSame('parent', $event->context->tenantId);
-        self::assertSame('child', $event->context->activeTenantId);
+        self::assertSame('parent', $event->context->connectionTenantId);
+        self::assertSame('child', $event->context->tenantId);
         self::assertSame(self::APPLICATION, $event->context->application);
         self::assertSame('App\Models\User', $event->context->identityMorphClass);
         self::assertSame('1', $event->context->identityId);

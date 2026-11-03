@@ -55,36 +55,33 @@ console, with a message naming the key and its range (`sso.fetcher.timeout_secon
 ## Refusing more addresses
 
 The built-in refused ranges cannot be removed. To refuse more (a peered network, a partner's range, your own public
-addresses), list them as CIDR ranges in `config/sso.php`:
+addresses), list them as CIDR ranges in the `fetcher` section of `config/sso.php`:
 
+<!-- snippet: tests/Integration/Examples/OutboundRequests/config/sso.php#outbound-refused-ranges -->
 ```php
 'fetcher' => [
-    // ...
     'refused_ranges' => [
-        '203.0.113.0/24',   // an IPv4 range
-        '198.51.100.7/32',  // one IPv4 address
-        '2001:db8:42::/48', // an IPv6 range
+        '203.0.114.0/24',  // a partner's IPv4 network
+        '198.51.101.7/32', // one of your own public IPv4 addresses
+        '3fff:42::/32',    // an IPv6 range
     ],
 ],
 ```
 
 An IPv4 range is `/0` to `/32` and an IPv6 range `/0` to `/128`. An IPv4 range also refuses that address carried in an
-IPv6 form (`::ffff:203.0.113.5`, `64:ff9b::203.0.113.5`). The list must be a plain list of strings; an entry that is not
+IPv6 form (`::ffff:203.0.114.5`, `64:ff9b::203.0.114.5`). The list must be a plain list of strings; an entry that is not
 a CIDR range fails with its key, `sso.fetcher.refused_ranges.2 must be a CIDR range: ...`.
 
 ## Using an egress proxy
 
 The default fetcher never uses a proxy, including one set in the environment (`HTTPS_PROXY`), because a proxy would
 make its own connection to an address the fetcher did not check. If your network requires outbound traffic to go
-through a proxy, bind your own fetcher in a service provider:
+through a proxy, bind your own `SineMacula\Laravel\Sso\Contracts\Fetcher` in your service provider's `register()`:
 
+<!-- snippet: tests/Integration/Examples/OutboundRequests/EgressProxyServiceProvider.php#outbound-proxied-fetcher -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\Fetcher;
-
-public function register(): void
-{
-    $this->app->scoped(Fetcher::class, ProxiedFetcher::class);
-}
+// One fetcher per request or job, as the package's own is bound
+$this->app->scoped(Fetcher::class, ProxiedFetcher::class);
 ```
 
 Your fetcher takes on what the default one guarantees, and the package relies on it:
@@ -109,40 +106,47 @@ The default resolver asks the system resolver through PHP's `dns_get_record()`, 
 which PHP cannot interrupt, so a slow resolver holds the request or queue worker until it answers. The fetcher counts
 the lookup against the timeout and checks it the moment the lookup returns: one that ran past it fails the fetch as a
 timeout and nothing is sent. What it cannot do is cut the lookup short. If your resolver can be slow, bind a
-`HostResolver` whose lookup is bounded (a DNS client with its own timeout, say) and answers `[]` when that runs out:
+`HostResolver` whose lookup is bounded (a DNS client with its own timeout, say) and answers `[]` when that runs out, in
+your service provider's `register()`:
 
+<!-- snippet: tests/Integration/Examples/OutboundRequests/BoundedDnsServiceProvider.php#outbound-host-resolver -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\HostResolver;
-
-public function register(): void
-{
-    $this->app->singleton(HostResolver::class, BoundedHostResolver::class);
-}
+// One resolver for every request and job: it keeps no state
+$this->app->singleton(HostResolver::class, BoundedHostResolver::class);
 ```
 
 ## A fake fetcher in tests
 
 `SineMacula\Laravel\Sso\Testing\FakeFetcher` answers each URL with the response you give it and records every request,
-so your tests never reach an identity provider. Bind it in place of the package's fetcher:
+so your tests never reach an identity provider. Bind it in place of the package's fetcher, give each URL its response,
+run the code under test, and assert what it fetched:
 
+<!-- snippet: tests/Integration/Examples/OutboundRequests/OutboundRequestsExampleTest.php#outbound-fake-fetcher -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\Fetcher;
-use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
-use SineMacula\Laravel\Sso\Fetching\FetchRequest;
-use SineMacula\Laravel\Sso\Fetching\FetchResult;
-use SineMacula\Laravel\Sso\Testing\FakeFetcher;
+$idp      = new FakeSamlIdentityProvider;
+$provider = new FakeOpenIdProvider('https://op.example.com');
 
-$fetcher = (new FakeFetcher())
-    ->respond('https://idp.example.com/metadata', FetchResult::fetched(200, ['Content-Type' => 'application/xml'], $xml))
-    ->respond('https://idp.example.com/jwks', FetchResult::failed())
-    ->respond('https://idp.example.com/token', fn (FetchRequest $request): FetchResult => FetchResult::fetched(200, [], $json));
+$fetcher = (new FakeFetcher)
+    ->respond('https://idp.example.com/metadata', FetchResult::fetched(200, ['Content-Type' => 'application/xml'], $idp->metadata()->toXml()))
+    ->respond('https://op.example.com/.well-known/openid-configuration', FetchResult::fetched(200, [], (string) json_encode($provider->discovery())))
+    ->respond('https://op.example.com/jwks', FetchResult::failed());
 
-$this->app->instance(Fetcher::class, $fetcher);
+$this->instance(Fetcher::class, $fetcher);
 
-// ... exercise your code ...
+// The code under test: import each provider's metadata
+$saml = app(MetadataImporter::class)->importUrl('tenant-1', null, 'https://idp.example.com/metadata', $idp->entityId);
+$oidc = app(DiscoveryImporter::class)->import('tenant-1', 'https://op.example.com');
 
-$fetcher->assertFetched('https://idp.example.com/metadata');
-$fetcher->assertFetched('https://idp.example.com/token', FetchPurpose::TOKEN);
+self::assertTrue($saml->isProposed());
+self::assertSame(FailureReason::FETCH_FAILED, $oidc->reason);
+
+// A closure builds the response when the request is made
+$fetcher->respond('https://op.example.com/jwks', static fn (): FetchResult => FetchResult::fetched(200, [], (string) json_encode($provider->jwks())));
+
+self::assertTrue(app(DiscoveryImporter::class)->import('tenant-1', 'https://op.example.com')->isProposed());
+
+$fetcher->assertFetched('https://idp.example.com/metadata', FetchPurpose::METADATA);
+$fetcher->assertFetched('https://op.example.com/jwks', FetchPurpose::JWKS);
 ```
 
 | Method                                                      | What it does                                                          |
@@ -153,7 +157,8 @@ $fetcher->assertFetched('https://idp.example.com/token', FetchPurpose::TOKEN);
 | `assertFetched(string $url, ?FetchPurpose $purpose = null)` | Fails unless the URL was fetched, for the purpose when one is given   |
 | `assertNothingFetched()`                                    | Fails if anything was fetched                                         |
 
-A URL is matched exactly as the request carries it. A request to a URL you gave no response throws a `LogicException`
-naming the URL, so an unexpected request fails your test instead of passing unnoticed. The fake applies none of the
-default fetcher's checks; use `FetchResult::refused()` or `FetchResult::failed()` to test how your code handles a
-refused or failed fetch.
+A URL is matched exactly as the request carries it, and a later response to it replaces an earlier one, as the JWKS's
+does above. A request to a URL you gave no response throws a `LogicException` naming the URL, so an unexpected request
+fails your test instead of passing unnoticed. The fake applies none of the default fetcher's checks but one: a request
+that carries its own size cap (a metadata request's) fails as `fetch_failed` when the body you gave is longer. Use
+`FetchResult::refused()` or `FetchResult::failed()` to test how your code handles a refused or failed fetch.

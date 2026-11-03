@@ -78,6 +78,8 @@ final class ResultBuilderTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
+        config()->set('sso.mapping.custom_attributes', ['department']);
+
         $this->createConnectionTables();
         $this->createDomainsTable();
         $this->createFlowTables();

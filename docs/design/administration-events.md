@@ -33,9 +33,9 @@ enforcement events" below; the metadata and link events arrive with their parts 
   `retiring`, or `null` when there was none.
 - Every event is built by `Administration\AdministrationEvents`, one method per event, and its context through the one
   projection, `Events\EventContexts::make()` (see `event-model.md`), from four facts only: the connection's id, its
-  tenant (`tenantId`), its protocol (`saml2`, `oidc` or a registered driver's name), and the acting identity as the
-  application passed it (`actingIdentityMorphClass`, `actingIdentityId`). The time comes from `Contracts\Clock` and the
-  client (`ip`, `userAgent`) from the request being served. Every other field of the context is `null`: an
+  tenant (`connectionTenantId`), its protocol (`saml2`, `oidc` or a registered driver's name), and the acting identity
+  as the application passed it (`actingIdentityMorphClass`, `actingIdentityId`). The time comes from `Contracts\Clock`
+  and the client (`ip`, `userAgent`) from the request being served. Every other field of the context is `null`: an
   administration change has no flow, so no `requestReference`, `application` or `purpose`, and no identity, principal,
   session or method.
 - The acting identity is an `Administration\ActingIdentity`: a type and an id, each a non-empty opaque string (under
@@ -120,9 +120,10 @@ enforcement events" below; the metadata and link events arrive with their parts 
   | `ExemptionUsed`       | `enforcementVersion`                                     | `EnforcementEvents::exemptionUsed()`, from the exemption gate |
 
 - A domain event's context names the connection that claimed the domain, its tenant and protocol, and the acting
-  identity for a change a helper made; a recheck's has none. An enforcement change's context names the tenant and the
-  acting identity, and no connection. An exemption's names the enforcing tenant (`tenantId`), the tenant the session
-  is active in (`activeTenantId`), the application, the identity and the session when the caller passed one.
+  identity for a change a helper made; a recheck's has none. An enforcement change's context names the tenant whose
+  rule changed (`connectionTenantId`) and the acting identity, and no connection. An exemption's names the enforcing
+  tenant (`connectionTenantId`), the active tenant the session acts in (`tenantId`), the application, the identity and
+  the session when the caller passed one.
 - No domain event carries the verification token or a DNS record's value; `failure` is a
   `Domains\Enums\RecheckFailure`, `state` a `Domains\Enums\DomainState`, and every time a `CarbonImmutable` in UTC.
   `EnforcementChanged::$connectionIds` is a list of ids, each once, in id order.

@@ -176,7 +176,7 @@ final class ScopeWideningTest extends LinkingTestCase
         self::assertCount(1, $events);
         self::assertInstanceOf(LinkSuspended::class, $events[0]);
         self::assertSame($this->connection->id, $events[0]->context->connectionId);
-        self::assertSame('tenant-1', $events[0]->context->tenantId);
+        self::assertSame('tenant-1', $events[0]->context->connectionTenantId);
         self::assertSame(VerifyingDriver::NAME, $events[0]->context->protocol);
         self::assertSame($this->person->id, $events[0]->context->identityId);
     }

@@ -9,9 +9,10 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[mapping]`: the caps on what an attribute mapping carries, while the package
- * is in use (SSO-2.10), each read as `MappingLimits` reads it, so the check and
- * the mapping judge it the same way.
+ * `[mapping]`: the caps on what an attribute mapping carries and the custom
+ * keys the application declares, while the package is in use (SSO-2.10), each
+ * read as `MappingLimits` reads it, so the check and the mapping judge it the
+ * same way.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,7 +42,7 @@ final readonly class MappingCheck implements ConfigurationCheck
     }
 
     /**
-     * The three caps.
+     * The two caps and the declared custom keys.
      *
      * @return list<\Closure(): mixed>
      */
@@ -53,7 +54,7 @@ final readonly class MappingCheck implements ConfigurationCheck
         return [
             static fn (): int => $limits->maxValueLength(),
             static fn (): int => $limits->maxValues(),
-            static fn (): int => $limits->maxCustomAttributes(),
+            static fn (): array => $limits->customAttributes(),
         ];
     }
 }

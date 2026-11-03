@@ -351,19 +351,21 @@ return [
     | Attribute mapping
     |---------------------------------------------------------------------------
     |
-    | The caps on what a connection's attribute mapping carries. Mapped values
-    | are profile data, never used to select an identity: the longest value
-    | kept (`max_value_length`, 64 to 65535 characters), the most values one
+    | What a connection's attribute mapping may carry. Mapped values are
+    | profile data, never used to select an identity: the longest value kept
+    | (`max_value_length`, 64 to 65535 characters), the most values one
     | attribute keeps (`max_values`, 1 to 10000, a list of groups say), and the
-    | most custom keys a mapping may declare (`max_custom_attributes`, 0 to
-    | 100).
+    | custom keys your application declares and reads (`custom_attributes`, at
+    | most 100, each a lower-case letter then up to 63 lower-case letters,
+    | digits or underscores, none a standard or reserved key). A connection's
+    | mapping names the standard keys and these alone; none by default.
     |
     */
 
     'mapping' => [
-        'max_value_length'      => env('SSO_MAPPING_MAX_VALUE_LENGTH', 1024),
-        'max_values'            => env('SSO_MAPPING_MAX_VALUES', 100),
-        'max_custom_attributes' => env('SSO_MAPPING_MAX_CUSTOM_ATTRIBUTES', 20),
+        'max_value_length'  => env('SSO_MAPPING_MAX_VALUE_LENGTH', 1024),
+        'max_values'        => env('SSO_MAPPING_MAX_VALUES', 100),
+        'custom_attributes' => [],
     ],
 
     /*

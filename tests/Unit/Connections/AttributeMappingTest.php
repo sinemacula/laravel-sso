@@ -14,8 +14,9 @@ use SineMacula\Laravel\Sso\Connections\SettingViolation;
 
 /**
  * Unit tests for a connection's attribute mapping (SSO-2.10): its defaults per
- * protocol, the targets and sources it refuses, the cap on custom targets, and
- * the profile data it builds, capped and never interpreted.
+ * protocol, the targets and sources it refuses, the custom targets it accepts
+ * only when the application declares them, and the profile data it builds,
+ * capped and never interpreted.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,6 +26,9 @@ use SineMacula\Laravel\Sso\Connections\SettingViolation;
 #[CoversClass(AttributeMapping::class)]
 final class AttributeMappingTest extends TestCase
 {
+    /** @var list<string> The custom keys the application these tests stand for declares. */
+    private const array DECLARED = ['department', 'cost_center_2', 'roles', 'notes'];
+
     /**
      * The OIDC standard claims and the common SAML attributes by their OIDs,
      * and nothing for another protocol.
@@ -198,36 +202,62 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * More custom targets than the cap is `too_many` at the mapping; the
-     * standard targets never count against it.
+     * A custom target the application does not declare is `not_allowed` at its
+     * target, before its source is judged; the standard targets need no
+     * declaration, and with none declared (the default) a mapping names them
+     * alone.
      *
      * @return void
      */
-    public function testCapsTheCustomTargets(): void
+    public function testRefusesACustomTargetTheApplicationDoesNotDeclare(): void
     {
-        $limits = self::limits(['max_custom_attributes' => 2]);
-        $two    = AttributeMapping::defaults('oidc') + ['first' => 'a', 'second' => 'b'];
+        $mapping = AttributeMapping::defaults('oidc') + ['department' => 'dept', 'badge' => 'badge', 'locker' => '', 'Bad' => 'x'];
 
-        self::assertSame([], self::violationsOf(AttributeMapping::fromArray('oidc', $two, $limits)));
-        self::assertSame([['attribute_mapping', 'too_many']], self::violationsOf(AttributeMapping::fromArray('oidc', $two + ['third' => 'c'], $limits)));
         self::assertSame(
-            [['attribute_mapping', 'too_many']],
-            self::violationsOf(AttributeMapping::fromArray('oidc', ['first' => 'a'], self::limits(['max_custom_attributes' => 0]))),
+            [['attribute_mapping.badge', 'not_allowed'], ['attribute_mapping.locker', 'not_allowed'], ['attribute_mapping.Bad', 'invalid_format']],
+            self::violationsOf(AttributeMapping::fromArray('oidc', $mapping, self::limits())),
         );
-        self::assertSame([['attribute_mapping.Bad', 'invalid_format']], self::violationsOf(AttributeMapping::fromArray('oidc', $two + ['Bad' => 'c'], $limits)));
+        self::assertSame(
+            [['attribute_mapping.department', 'not_allowed']],
+            self::violationsOf(AttributeMapping::fromArray('oidc', AttributeMapping::defaults('oidc') + ['department' => 'dept'], self::limits(['custom_attributes' => []]))),
+        );
+        self::assertSame([], self::violationsOf(AttributeMapping::fromArray('saml2', AttributeMapping::defaults('saml2'), self::limits(['custom_attributes' => []]))));
     }
 
     /**
-     * A malformed cap fails closed, naming its key.
+     * A custom target's form: well formed, and neither standard nor reserved.
      *
      * @return void
      */
-    public function testAMalformedCapFailsClosed(): void
+    public function testTellsACustomTargetsForm(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('sso.mapping.max_custom_attributes must be an integer from 0 to 100.');
+        foreach (['department', 'a', 'a' . str_repeat('b', 63), 'cost_center_2'] as $target) {
+            self::assertTrue(AttributeMapping::isCustomTarget($target), $target);
+        }
 
-        AttributeMapping::fromArray('oidc', [], self::limits(['max_custom_attributes' => 101]))->violations();
+        foreach (['email', 'groups', 'tenant_id', 'subject', 'Department', '2fa', 'cost-center', '', 'a' . str_repeat('b', 64)] as $target) {
+            self::assertFalse(AttributeMapping::isCustomTarget($target), $target);
+        }
+    }
+
+    /**
+     * A malformed declaration of custom keys fails closed, naming its key, when
+     * a mapping is judged and when one maps.
+     *
+     * @return void
+     */
+    public function testAMalformedDeclarationFailsClosed(): void
+    {
+        $mapping = AttributeMapping::fromArray('oidc', [], self::limits(['custom_attributes' => ['email']]));
+
+        foreach ([$mapping->violations(...), static fn (): array => $mapping->map([])] as $read) {
+            try {
+                $read();
+                self::fail('A malformed declaration was read.');
+            } catch (\InvalidArgumentException $exception) {
+                self::assertStringStartsWith('sso.mapping.custom_attributes must be a list of at most 100 distinct custom keys', $exception->getMessage());
+            }
+        }
     }
 
     /**
@@ -305,6 +335,27 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
+     * A stored custom target the application no longer declares maps nothing;
+     * the standard targets and the declared ones still map.
+     *
+     * @return void
+     */
+    public function testNeverMapsACustomTargetNoLongerDeclared(): void
+    {
+        $stored = ['email' => 'email', 'department' => 'dept', 'roles' => 'role'];
+        $values = ['email' => 'ada@example.com', 'dept' => 'Engineering', 'role' => 'admin'];
+
+        self::assertSame(
+            ['email' => 'ada@example.com', 'department' => 'Engineering', 'roles' => 'admin'],
+            AttributeMapping::fromArray('oidc', $stored, self::limits())->map($values),
+        );
+        self::assertSame(
+            ['email' => 'ada@example.com', 'roles' => 'admin'],
+            AttributeMapping::fromArray('oidc', $stored, self::limits(['custom_attributes' => ['roles']]))->map($values),
+        );
+    }
+
+    /**
      * A target that could never be stored is never mapped, whatever reaches the
      * mapping.
      *
@@ -341,14 +392,15 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * The caps, from a configuration of their own.
+     * The caps and the declared custom keys, from a configuration of their own:
+     * `DECLARED` unless the settings given declare others.
      *
      * @param  array<string, mixed>  $mapping
      * @return \SineMacula\Laravel\Sso\Connections\MappingLimits
      */
     private static function limits(array $mapping = []): MappingLimits
     {
-        return new MappingLimits(new Repository(['sso' => ['mapping' => $mapping]]));
+        return new MappingLimits(new Repository(['sso' => ['mapping' => $mapping + ['custom_attributes' => self::DECLARED]]]));
     }
 
     /**

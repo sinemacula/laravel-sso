@@ -74,7 +74,7 @@ final readonly class RequestEvents
     {
         $context = $this->contexts->make(
             connectionId: $connection->id,
-            tenantId: $connection->tenant_id,
+            connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,
             application: $request->application,
             purpose: $request->purpose->value,
@@ -113,7 +113,7 @@ final readonly class RequestEvents
     ): void {
         $context = $this->contexts->make(
             connectionId: $connection?->id,
-            tenantId: $connection?->tenant_id,
+            connectionTenantId: $connection?->tenant_id,
             protocol: $connection?->protocol,
             application: $application?->name,
             purpose: $purpose->value,

@@ -69,7 +69,7 @@ final readonly class EventContexts
      * given, each cleaned and capped.
      *
      * @param  ?string  $connectionId
-     * @param  ?string  $tenantId
+     * @param  ?string  $connectionTenantId
      * @param  ?string  $protocol
      * @param  ?string  $application
      * @param  ?string  $purpose
@@ -80,7 +80,7 @@ final readonly class EventContexts
      * @param  ?string  $actingIdentityId
      * @param  ?string  $principalMorphClass
      * @param  ?string  $principalId
-     * @param  ?string  $activeTenantId
+     * @param  ?string  $tenantId
      * @param  ?string  $sessionId
      * @param  ?string  $method
      * @return \SineMacula\Laravel\Sso\Events\EventContext
@@ -89,7 +89,7 @@ final readonly class EventContexts
      */
     public function make(
         ?string $connectionId = null,
-        ?string $tenantId = null,
+        ?string $connectionTenantId = null,
         ?string $protocol = null,
         ?string $application = null,
         ?string $purpose = null,
@@ -100,7 +100,7 @@ final readonly class EventContexts
         ?string $actingIdentityId = null,
         ?string $principalMorphClass = null,
         ?string $principalId = null,
-        ?string $activeTenantId = null,
+        ?string $tenantId = null,
         ?string $sessionId = null,
         ?string $method = null,
     ): EventContext {
@@ -111,7 +111,7 @@ final readonly class EventContexts
             ip: self::ip($request?->ip()),
             userAgent: self::clean($request?->userAgent(), self::USER_AGENT_MAX_LENGTH),
             connectionId: self::field($connectionId),
-            tenantId: self::field($tenantId),
+            connectionTenantId: self::field($connectionTenantId),
             protocol: self::field($protocol),
             application: self::field($application),
             purpose: self::field($purpose),
@@ -122,7 +122,7 @@ final readonly class EventContexts
             actingIdentityId: self::field($actingIdentityId),
             principalMorphClass: self::field($principalMorphClass),
             principalId: self::field($principalId),
-            activeTenantId: self::field($activeTenantId),
+            tenantId: self::field($tenantId),
             sessionId: self::field($sessionId),
             method: self::field($method),
         );

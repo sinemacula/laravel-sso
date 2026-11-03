@@ -4,11 +4,10 @@ Discovery lets a person type their email address instead of choosing their organ
 package takes the address's domain, finds the enabled connection that domain is verified for, and starts the flow
 through it. A domain that routes nowhere leads to your application's own sign-in page instead, in an answer your client
 cannot tell apart from a match by its shape or status, and that is padded to a minimum duration so its timing does not
-give it away either, as long as the match finishes within that duration.
+give it away either, as long as the match finishes within that duration. The helper is `Discovery\DiscoveryService`:
 
+<!-- snippet: tests/Integration/Examples/Discovery/DiscoveryExampleTest.php#discovery-service -->
 ```php
-use SineMacula\Laravel\Sso\Discovery\DiscoveryService;
-
 $discovery = app(DiscoveryService::class);
 ```
 
@@ -19,6 +18,7 @@ keeps nothing of one request for the next.
 
 Discovery is opt-in twice: the `discovery` feature, and each application that offers it.
 
+<!-- snippet: tests/Integration/Examples/Discovery/config/sso.php#discovery-configuration -->
 ```php
 // config/sso.php
 'features' => [
@@ -52,13 +52,17 @@ POST   /auth/sso/discovery     start: {application, email, code_challenge?}
                                -> {reference, navigation, verifier?}
 ```
 
+In your routes file:
+
+<!-- snippet: tests/Integration/Examples/Discovery/routes.php#discovery-route -->
 ```php
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Discovery\DiscoveryService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 
-Route::post('/auth/sso/discovery', function (Request $request, DiscoveryService $discovery) {
+Route::post('/auth/sso/discovery', static function (Request $request, DiscoveryService $discovery): JsonResponse {
     $result = $discovery->start(
         application: $request->string('application')->toString(),
         purpose: Purpose::SIGN_IN,

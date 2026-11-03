@@ -8,16 +8,11 @@ email or any other mapped attribute never selects an identity.
 ## Using the link store
 
 By default nothing is linked: the `Linker` contract is bound to `NoLinks`, so every `sign_in` result is unlinked. Bind
-the package's link store to use the links it stores:
+the package's link store in a service provider's `register()` to use the links it stores:
 
+<!-- snippet: tests/Integration/Examples/Links/AppServiceProvider.php#links-linker-binding -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\Linker;
-use SineMacula\Laravel\Sso\Links\LinkStore;
-
-public function register(): void
-{
-    $this->app->scoped(Linker::class, LinkStore::class);
-}
+$this->app->scoped(Linker::class, LinkStore::class);
 ```
 
 Under `laravel-iam` this binding is made for you, and the same store answers `laravel-authentication`'s link contract:
@@ -35,21 +30,32 @@ Each link records when it was created and when it last resolved a sign-in, to th
 ## How many links an identity may hold
 
 One subject is linked to one identity at most in a connection; that is not configurable. How many links one identity
-may hold in one connection is: by default one. Bind your own `LinkLimit` to allow more:
+may hold in one connection is: by default one. Implement `Contracts\LinkLimit` to allow more; here
+`TwoLinksPerConnection` allows two:
 
+<!-- snippet: tests/Integration/Examples/Links/TwoLinksPerConnection.php#links-limit -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\LinkLimit;
-use SineMacula\Laravel\Sso\Contracts\SsoConnection;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
-
-final readonly class TwoLinksPerConnection implements LinkLimit
+/**
+ * The most links the identity may hold in the connection.
+ *
+ * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+ * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+ * @return int
+ */
+#[\Override]
+public function maxLinks(IdentityReference $identity, SsoConnection $connection): int
 {
-    public function maxLinks(IdentityReference $identity, SsoConnection $connection): int
-    {
-        return 2;
-    }
-}
+    // The same for every identity and connection
+    unset($identity, $connection);
 
+    return 2;
+}
+```
+
+Bind it in a service provider's `register()`:
+
+<!-- snippet: tests/Integration/Examples/Links/AppServiceProvider.php#links-limit-binding -->
+```php
 $this->app->singleton(LinkLimit::class, TwoLinksPerConnection::class);
 ```
 
@@ -66,34 +72,29 @@ which) or `link_limit_reached`, with nothing written.
 
 A `link` flow attaches a subject to an identity your application has already authenticated: an account screen's "connect
 your identity provider" button, say. It is the only way besides a verified domain that a result ever attaches to an
-existing identity (SSO-8.5). It creates no session.
+existing identity (SSO-8.5). It creates no session. Start it for the user your application has authenticated, here
+`$user`:
 
+<!-- snippet: tests/Integration/Examples/Links/LinksExampleTest.php#links-start -->
 ```php
-use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
-use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
-
 $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
 $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, null, $identity);
 ```
 
 The flow then goes as any other does, and its handoff code is redeemed at an endpoint of your own that gives the caller
-it has authenticated:
+it has authenticated, `$user` again, never an identity the request names:
 
+<!-- snippet: tests/Integration/Examples/Links/LinksExampleTest.php#links-redeem -->
 ```php
-use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
-use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
-
-$caller = new IdentityReference($request->user()->getMorphClass(), (string) $request->user()->getKey());
+$caller = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
 $result = app(HandoffRedemption::class)->redeem(
     Purpose::LINK,
     'web',
-    (string) $request->input('connection'),
-    (string) $request->input('code'),
-    (string) $request->input('verifier'),
+    $request->string('connection')->toString(),
+    $request->string('code')->toString(),
+    $request->string('verifier')->toString(),
     $caller,
 );
 ```
@@ -189,33 +190,45 @@ before anyone can confirm. A `link` of an identity that has never held such a li
 
 Answer by how the current session was established, not by which links remain: through any link that had verified
 domain provenance at the time, given, removed since or confirmed since, it is `dependent`. So record, when you admit a
-session from a redemption, whether the link it stood on (`$result->linkId`) had that provenance then.
+session from a redemption, whether the link it stood on (`$result->linkId`) had that provenance then: an admitted
+`sign_in` answers it as `$result->provenance?->linkProvenance`, `LinkOrigin::VERIFIED_DOMAIN` for such a link.
 
+Here `PasswordSessionsConfirm` implements `Contracts\LinkConfirmation`, reading the request's session from your own
+session store (`$this->sessions`, given to its constructor), which recorded that when the session was admitted:
+
+<!-- snippet: tests/Integration/Examples/Links/PasswordSessionsConfirm.php#links-confirmation -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
-use SineMacula\Laravel\Sso\Contracts\SsoConnection;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
-use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
-
-final readonly class PasswordSessionsConfirm implements LinkConfirmation
+/**
+ * Whether the caller's current session is independent of the links.
+ *
+ * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+ * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+ * @param  list<string>  $domainLinkIds
+ * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict
+ */
+#[\Override]
+public function judge(IdentityReference $identity, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict
 {
-    public function __construct(private Sessions $sessions) {}
+    unset($connection);
 
-    public function judge(IdentityReference $identity, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict
-    {
-        // Under the guard your session writers take, through the redeemer's commit
-        $session = $this->sessions->currentLocked($identity);
+    // Locked under your session writers' guard until the redeemer commits
+    $session = $this->sessions->currentLocked($identity);
 
-        // Neither established through a link of verified domain provenance, held now or
-        // before, as recorded when the session was admitted, nor renewed through one
-        $independent = $session !== null
-            && !$session->stoodOnADomainLink()
-            && $session->wasAuthenticatedApartFrom($domainLinkIds);
+    // Neither established through a link of verified domain provenance,
+    // held now or before, as recorded when the session was admitted, nor
+    // renewed through one
+    $independent = $session !== null
+        && !$this->sessions->wasEstablishedOnADomainLink($session)
+        && $this->sessions->wasAuthenticatedApartFrom($session, $domainLinkIds);
 
-        return $independent ? LinkConfirmationVerdict::INDEPENDENT : LinkConfirmationVerdict::DEPENDENT;
-    }
+    return $independent ? LinkConfirmationVerdict::INDEPENDENT : LinkConfirmationVerdict::DEPENDENT;
 }
+```
 
+Bind it in a service provider's `register()`, scoped, since it reads the request's session:
+
+<!-- snippet: tests/Integration/Examples/Links/AppServiceProvider.php#links-confirmation-binding -->
+```php
 $this->app->scoped(LinkConfirmation::class, PasswordSessionsConfirm::class);
 ```
 
@@ -230,30 +243,40 @@ $this->app->scoped(LinkConfirmation::class, PasswordSessionsConfirm::class);
 ## Deciding who may link
 
 `Contracts\LinkEligibility` decides whether an identity may link through a connection, for example only as a member of
-the connection's tenant. Its default, `RefusingLinkEligibility`, refuses everyone.
+the connection's tenant. Its default, `RefusingLinkEligibility`, refuses everyone. Here `MembersMayLink` lets a member
+of the connection's tenant link, reading your own `Membership` model on the package's storage connection
+(`Database\StorageConnection::name()`, `null` for your default connection), where its table lives:
 
+<!-- snippet: tests/Integration/Examples/Links/MembersMayLink.php#links-eligibility -->
 ```php
-use App\Models\Membership;
-use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
-use SineMacula\Laravel\Sso\Contracts\SsoConnection;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
-use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
-
-final readonly class MembersMayLink implements LinkEligibility
+/**
+ * Whether the identity is a member of the connection's tenant.
+ *
+ * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+ * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+ * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict
+ */
+#[\Override]
+public function judge(IdentityReference $identity, SsoConnection $connection): LinkEligibilityVerdict
 {
-    public function judge(IdentityReference $identity, SsoConnection $connection): LinkEligibilityVerdict
-    {
-        $member = Membership::query()
-            ->useWritePdo()
-            ->where('identity_id', $identity->id)
-            ->where('tenant_id', $connection->getTenantId())
-            ->lockForUpdate()
-            ->first();
+    // Read on the package's storage connection, so this lock holds until
+    // the redemption commits
+    $member = Membership::on(StorageConnection::name())
+        ->useWritePdo()
+        ->where('identity_type', $identity->type)
+        ->where('identity_id', $identity->id)
+        ->where('tenant_id', $connection->getTenantId())
+        ->lockForUpdate()
+        ->first();
 
-        return $member !== null ? LinkEligibilityVerdict::ELIGIBLE : LinkEligibilityVerdict::INELIGIBLE;
-    }
+    return $member !== null ? LinkEligibilityVerdict::ELIGIBLE : LinkEligibilityVerdict::INELIGIBLE;
 }
+```
 
+Bind it in a service provider's `register()`:
+
+<!-- snippet: tests/Integration/Examples/Links/AppServiceProvider.php#links-eligibility-binding -->
+```php
 $this->app->singleton(LinkEligibility::class, MembersMayLink::class);
 ```
 
@@ -273,16 +296,13 @@ will deadlock against a redemption.
 `SineMacula\Laravel\Sso\Links\LinkService` lists an identity's links and removes one, for your account and
 administration screens. Who may list or remove whose links is your application's authorisation, so check it first.
 
+<!-- snippet: tests/Integration/Examples/Links/LinksExampleTest.php#links-list-remove -->
 ```php
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
-use SineMacula\Laravel\Sso\Links\LinkService;
-
 $links  = app(LinkService::class);
 $caller = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-$mine = $links->list('me', $caller);                                     // list<LinkSummary>, oldest first
-$some = $links->list(new IdentityReference(User::class, '42'));          // another identity's, for administrators
+$mine = $links->list('me', $caller);                            // list<LinkSummary>, oldest first
+$some = $links->list(new IdentityReference(User::class, '42')); // another identity's, for administrators
 
 $result = $links->remove('me', $linkId, $caller, new ActingIdentity($user->getMorphClass(), (string) $user->getKey()));
 ```

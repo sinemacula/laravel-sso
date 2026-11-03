@@ -25,8 +25,8 @@ completion is in `completion.md`.
   `connection_id` and `request_reference`, from the result; `handoff_challenge`, the client's S256 challenge;
   `identity_type` and `identity_id` (`link`, `reauthenticate`) and `session_id` (`reauthenticate`), from the grant;
   `linked_identity_type` and `linked_identity_id`, what the result's link resolved to at completion; `result`, the
-  JSON of `VerifiedResult::toArray()` encrypted through `Contracts\SecretEncrypter`; `enforcement_version` and
-  `session_not_after` (SSO-9.10); `expires_at`.
+  JSON of `VerifiedResult::toArray()` encrypted through `Contracts\SecretEncrypter`; `session_not_after` (SSO-9.10);
+  `expires_at`. No enforcement version is kept: the redemption answers the version it judges under its own locks.
 - Times are kept to the whole second, so a code expires at most a second before its grant says; the returned
   `IssuedHandoff` carries the expiry as stored. The code is revealed once, on the completion's redirect, and is never
   logged or put in an event.

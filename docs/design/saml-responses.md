@@ -63,9 +63,11 @@ verified elements.
 
 - An unsuccessful status: its `Issuer` and `Destination` are held to the same rules, an absent `Issuer` refused, and
   its `InResponseTo` must be the consumed request's, before it is `provider_error`.
-- `issuer_mismatch`: the response's `Issuer` or the assertion's is absent or is not the connection's entity id. SAML
-  2.0 Profiles §4.1.4.2 lets an unsigned response with a plain assertion leave its `Issuer` out; the package refuses
-  that too, since SSO-6.4 holds both issuers to the entity id.
+- `issuer_mismatch`: the response's `Issuer` or the assertion's is absent or is not the connection's entity id. SAML 2.0
+  Profiles §4.1.4.2 lets an unsigned response with a plain assertion leave its `Issuer` out; the package refuses that
+  too, since SSO-6.4 holds both issuers to the entity id. The recommended default (2026-11-03,
+  [RD-30](requirements.md#recorded-decisions)) is that the response's `Issuer` is always required, successful or not
+  (SSO-6.4, SSO-6.11): one rule that never depends on which parts are signed is simpler to hold and to test.
 - `recipient_mismatch`: the `Destination` is absent, or is not exactly the assertion consumer service, whether or not
   the response is signed (an unsigned response's `Destination` is not authenticated, but its absence is never taken
   as a pass); or no bearer confirmation names the service as its `Recipient`.

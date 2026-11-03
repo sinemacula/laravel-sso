@@ -1060,7 +1060,6 @@ final class ReauthenticationBranchTest extends LinkingTestCase
             linkedIdentity: $this->person,
             identity: $this->person,
             sessionId: self::SESSION,
-            enforcementVersion: 'version-1',
             linkId: $link->id,
         );
 

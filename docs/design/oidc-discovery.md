@@ -113,8 +113,11 @@ and selects among them, is `jose-adapter.md`.
 - A refresh may change only `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `userinfo_endpoint` (set or changed,
   never removed) and `returns_iss` (false to true only), and replaces the JWKS exactly. It never writes the issuer, the
   client id or authentication, a secret, the scopes, the algorithms, the mapping, what a subject means or enforcement.
-  Any of those settings changing, or a key removed or replaced under the same `kid`, calls `voidFor()` exactly once.
-  Additions alone void nothing and leave the trust version as it was.
+  `returns_iss` is outside SSO-2.8's list of what a refresh changes, and the recommended default (2026-11-03,
+  [RD-32](requirements.md#recorded-decisions)) is that a refresh may still turn it on: it only tightens what a callback
+  must carry, and it voids what is in flight as a trust change. Any of those settings changing, or a key removed or
+  replaced under the same `kid`, calls `voidFor()` exactly once. Additions alone void nothing and leave the trust
+  version as it was.
 - `metadata_fetched_at` is the moment the document validated and `jwks_fetched_at` the moment the JWKS did, each carried
   into the commit, so the 30-day stale limit counts from each resource's own validated fetch. A refetch stamps
   `jwks_fetched_at` too. `MetadataExpiry` applies to each as soon as it is stamped, whether or not the connection's

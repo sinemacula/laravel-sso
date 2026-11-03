@@ -5,6 +5,7 @@ request's public reference. Your client then exchanges the code, with the verifi
 redemption endpoint of your API, which answers with whatever your application signs people in with. The package's
 redemption helper does the checking; your application owns the route, the session and the response.
 
+<!-- snippet: tests/Integration/Examples/RedeemingAHandoff/redemptions/link.php#redemption-helper -->
 ```php
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 
@@ -31,56 +32,56 @@ That is the sign-in route of [An example application](example-application.md#the
 Laravel's `/api` prefix; a `link` and a `reauthenticate` code each have an authenticated route of their own, so the
 endpoint, never the body, fixes the purpose.
 
+The controller, say `App\Http\Controllers\SsoHandoffController`, is a `final readonly` class that imports
+`Illuminate\Http\JsonResponse`, `Illuminate\Http\Request` and `Illuminate\Support\Facades\DB` and, from
+`SineMacula\Laravel\Sso`, `Database\StorageConnection`, `Events\Enums\FailureReason`, `Flows\Enums\Purpose` and
+`Handoffs\HandoffRedemption`. Its constructor takes the redemption helper as `$redemptions` and your own sign-ins as
+`$signIns`: `start()` writes a session for an identity, bound to the link it resolved through, and `token()` issues the
+session's credential. Its sign-in action:
+
+<!-- snippet: tests/Integration/Examples/RedeemingAHandoff/SsoHandoffController.php#handoff-controller -->
 ```php
-namespace App\Http\Controllers;
-
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Database\StorageConnection;
-use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
-use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
-
-final class SsoHandoffController
+/**
+ * `POST /api/auth/sessions`: redeem a sign-in handoff.
+ *
+ * @param  \Illuminate\Http\Request  $request
+ * @return \Illuminate\Http\JsonResponse
+ *
+ * @throws \Throwable
+ */
+public function signIn(Request $request): JsonResponse
 {
-    public function __construct(
-        private readonly HandoffRedemption $redemptions,
-    ) {}
+    [$result, $sessionId] = DB::connection(StorageConnection::name())->transaction(function () use ($request): array {
+        $result = $this->redemptions->admit(
+            Purpose::SIGN_IN,
+            'web',                                    // your application's name, as configured
+            $request->string('connection')->value(),  // the connection the client started through
+            $request->string('code')->value(),
+            $request->string('verifier')->value(),
+        );
 
-    public function signIn(Request $request): JsonResponse
-    {
-        $token = null;
+        // Sign in the identity the code's link resolved to, in this same
+        // transaction; an unlinked handoff names none
+        $sessionId = $result->isAdmitted() && $result->linkedIdentity !== null
+            ? $this->signIns->start($result->linkedIdentity, (string) $result->linkId)
+            : null;
 
-        $result = DB::connection(StorageConnection::name())->transaction(function () use ($request, &$token) {
-            $result = $this->redemptions->admit(
-                Purpose::SIGN_IN,
-                'web',                                   // your application's name, as configured
-                (string) $request->input('connection'),  // the connection the client started through
-                (string) $request->input('code'),
-                (string) $request->input('verifier'),
-            );
+        return [$result, $sessionId];
+    });
 
-            if ($result->isAdmitted()) {
-                // Sign in the identity $result->linkedIdentity names, through this same connection.
-                $token = $this->issueYourOwnToken($result);
-            }
-
-            return $result;
-        });
-
-        if ($result->isRateLimited()) {
-            return response()->json(['error' => 'rate_limited'], 429, [
-                'Retry-After'   => (string) $result->retryAfter,
-                'Cache-Control' => 'no-store',
-            ]);
-        }
-
-        if (!$result->isRedeemed()) {
-            return response()->json(['error' => $result->reason?->value], 400, ['Cache-Control' => 'no-store']);
-        }
-
-        return response()->json(['token' => $token], 200, ['Cache-Control' => 'no-store']);
+    if ($result->isRateLimited()) {
+        return response()->json(['error' => 'rate_limited'], 429, [
+            'Retry-After'   => (string) $result->retryAfter,
+            'Cache-Control' => 'no-store',
+        ]);
     }
+
+    if ($sessionId === null) {
+        return response()->json(['error' => ($result->reason ?? FailureReason::UNLINKED)->value], 400, ['Cache-Control' => 'no-store']);
+    }
+
+    // Only now, after the commit, does your token leave
+    return response()->json(['token' => $this->signIns->token($sessionId)], 200, ['Cache-Control' => 'no-store']);
 }
 ```
 
@@ -115,6 +116,7 @@ a sign-in code to your `link` endpoint gets `purpose_mismatch`, never a server e
 
 Both take the caller your application has authenticated as their last argument, an `IdentityReference`:
 
+<!-- snippet: tests/Integration/Examples/RedeemingAHandoff/redemptions/link.php#admit-link -->
 ```php
 $result = $redemptions->admit(Purpose::LINK, 'web', $connectionId, $code, $verifier, $caller);
 ```
@@ -173,7 +175,8 @@ A redeemed result carries:
   unlinked handoff, whose identity your application resolves itself (never from the email or another attribute);
 - `identity`: the identity a `link` or `reauthenticate` flow was started for, and `sessionId` the session a
   `reauthenticate` flow was started on;
-- `enforcementVersion`: the enforcement version the completion checked, and `sessionNotAfter`, the latest end of your
+- `enforcementVersion`: the version of the enforcement the redemption judged under its locks (not the one the
+  completion checked, which a rule change may since have replaced), and `sessionNotAfter`, the latest end of your
   session the provider's deadline sets. Keep both on the session you create (SSO-9.10);
 - `linkId`: the link the identity resolved through, which your session keeps, since a `reauthenticate` accepts only the
   link that established it;
@@ -258,15 +261,21 @@ identity's guard, the tenant's enforcement, the connections, a reservation's dom
 deadlocks with a change. Name the reservation the code holds, and for a `link` the identity it was started for: a `link`
 judged under a lock that does not name it is a `LogicException`.
 
-```php
-use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Database\StorageConnection;
-use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
-use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
-use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
+Your redeemer reads its code plainly from its store first (`$code`: the result it carries and everything its issuer
+stored, or `handoff_unknown` when there is none), then runs the rest in one transaction, given the purpose its endpoint
+redeems, the client's verifier and the caller. It imports `Illuminate\Support\Facades\DB` and, from
+`SineMacula\Laravel\Sso`, `Database\StorageConnection`, `Events\Enums\FailureReason`, `Flows\Enums\Purpose`,
+`Handoffs\HandoffBinding` and `Handoffs\HandoffRecheck`. Your store's `consume()` spends the code exactly once (a
+conditional update of its row, through the storage connection) and answers `replayed` for a code spent before; it then
+refuses a code that has expired, was issued for another purpose, or does not match the verifier, as the package refuses
+its own. The redeemer answers `null` once the code is admitted, or the reason to refuse with:
 
-DB::connection(StorageConnection::name())->transaction(function () use ($code, $result, $caller) {
-    // The lock comes first, before your code is locked.
+<!-- snippet: tests/Integration/Examples/RedeemingAHandoff/OwnHandoffRedemption.php#own-code-redemption -->
+```php
+return DB::connection(StorageConnection::name())->transaction(function () use ($code, $purpose, $verifier, $caller): ?FailureReason {
+    $result = $code->result;
+
+    // The lock comes first, before your code is locked
     $recheck = app(HandoffRecheck::class);
     $lock    = $recheck->lock(
         $result->tenantId,
@@ -276,31 +285,39 @@ DB::connection(StorageConnection::name())->transaction(function () use ($code, $
         $result->purpose === Purpose::LINK ? $code->identity : null, // the identity of a `link` flow
     );
 
-    $code->consume(); // your own atomic, single-use consumption, locked after, through this same connection
+    // Your own atomic, single-use consumption, locked after, through
+    // this same connection, with your own checks: a replay, the expiry,
+    // the purpose your endpoint redeems and the verifier
+    $refusal = $this->codes->consume($code, $purpose, $verifier);
 
     $binding = new HandoffBinding(
-        linkedIdentity: $code->linkedIdentity,     // the identity the result's link resolved to, if any
-        linkId: $code->linkId,                     // the link observed at completion, active or suspended, if any
-        identity: $code->identity,                 // the identity of a `link` or `reauthenticate` flow
-        sessionId: $code->sessionId,               // the session of a `reauthenticate` flow
-        reservationId: $code->reservationId,       // the reservation it holds, if any
-        handoffReference: $code->reference,        // the opaque reference your issuer answered
+        linkedIdentity: $code->linkedIdentity, // the identity the result's link resolved to, if any
+        linkId: $code->linkId,                 // the link observed at completion, active or suspended, if any
+        identity: $code->identity,             // the identity of a `link` or `reauthenticate` flow
+        sessionId: $code->sessionId,           // the session of a `reauthenticate` flow
+        reservationId: $code->reservationId,   // the reservation it holds, if any
+        handoffReference: $code->reference,    // the opaque reference your issuer answered
     );
 
-    $admission = $recheck->admit($result, $binding, $lock, $caller);
+    $admission = $refusal === null ? $recheck->admit($result, $binding, $lock, $caller) : null;
 
-    if (!$admission->isPassed()) {
+    if ($admission === null || !$admission->isPassed()) {
         $recheck->discardReservation($binding, $result->connectionId);
 
-        return $admission->outcome->reason(); // refuse; your code stays consumed
+        return $refusal ?? $admission?->outcome->reason(); // refuse; your code stays consumed
     }
 
     if ($result->purpose === Purpose::SIGN_IN && $admission->identity !== null) {
         $recheck->acknowledgeSignIn($result, $lock);
+
+        // Write the session for the identity, bound to the link it
+        // resolved through, in this same transaction
+        $this->signIns->start($admission->identity, (string) $admission->linkId);
     }
 
-    // Write the session for $admission->identity, bound to $admission->linkId, with $admission->evidence.
-    // A `link` writes nothing further; a `reauthenticate` was renewed by the admission.
+    // A `link` writes nothing further; a `reauthenticate` was renewed
+    // by the admission
+    return null;
 });
 ```
 

@@ -10,11 +10,21 @@ connection's settings in [Managing connections](managing-connections.md#oidc-set
 The package has no routes of its own. Add a `GET` route at the connection's callback, and hand the request to the
 completion helper:
 
+<!-- snippet: tests/Integration/Examples/OidcCallback/routes.php#oidc-callback-route -->
 ```php
 Route::get('/auth/sso/connections/{connection}/callback', [SsoCompletionController::class, 'callback']);
 ```
 
+<!-- snippet: tests/Integration/Examples/OidcCallback/SsoCompletionController.php#oidc-callback-action -->
 ```php
+/**
+ * GET: the OIDC authorisation response the provider sends the browser back
+ * with.
+ *
+ * @param  \Illuminate\Http\Request  $request
+ * @param  string  $connection
+ * @return \SineMacula\Laravel\Sso\Responses\CompletionResponse
+ */
 public function callback(Request $request, string $connection): CompletionResponse
 {
     $result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
@@ -93,6 +103,7 @@ connection missing its credential is not usable, so its callbacks answer `connec
 
 Register the same method at the provider, and give the secret with the settings:
 
+<!-- snippet: tests/Integration/Examples/OidcCallback/OidcCallbackExampleTest.php#oidc-client-secret-post -->
 ```php
 $connections->update($tenantId, $connectionId, ['settings' => [
     'client_id'             => 'the-client-id',

@@ -12,12 +12,13 @@ settings themselves and [Keys](keys.md) for trusted certificates.
 `MetadataImporter` reads the metadata and answers the settings it proposes. Nothing is written or trusted: you show the
 proposal to the administrator, and save what they accept.
 
+<!-- snippet: tests/Integration/Examples/SamlMetadata/admin/import.php#saml-metadata-import -->
 ```php
 use SineMacula\Laravel\Sso\Metadata\MetadataImporter;
 
 $result = app(MetadataImporter::class)->importUrl(
     tenantId: $tenant->id,
-    connectionId: $connection->id, // or null before the connection exists
+    connectionId: $connection?->id, // null before the connection exists
     url: 'https://idp.example.com/metadata.xml',
     entityId: 'https://idp.example.com/saml',
 );
@@ -26,18 +27,22 @@ if ($result->isRateLimited()) {
     return back()->withErrors(['metadata' => "Try again in {$result->retryAfter} seconds."]);
 }
 
-if ($result->isRefused()) {
-    return back()->withErrors(['metadata' => $result->reason->value]);
-}
-
 $proposed = $result->proposed;
 
-$proposed->settings();               // ['idp_entity_id' => ..., 'sso_url' => ..., 'sso_binding' => 'http_redirect']
-$proposed->signingCertificates();    // [['certificate' => '-----BEGIN CERTIFICATE-----...', 'fingerprint' => '...']]
-$proposed->encryptionCertificates(); // the same shape
-$proposed->nameIdFormats();          // ['urn:oasis:names:tc:SAML:2.0:nameid-format:persistent', ...]
-$proposed->validUntil();             // a CarbonImmutable, or null
+if ($proposed === null) {
+    return back()->withErrors(['metadata' => $result->reason?->value]);
+}
+
+$settings   = $proposed->settings();               // the entity id, sign-on URL and binding
+$signing    = $proposed->signingCertificates();    // each certificate with its fingerprint
+$encryption = $proposed->encryptionCertificates(); // the same shape
+$formats    = $proposed->nameIdFormats();          // the NameID formats the provider names
+$validUntil = $proposed->validUntil();             // a CarbonImmutable, or null
 ```
+
+`settings()` holds `idp_entity_id`, `sso_url` and `sso_binding` (such as `http_redirect`). Each certificate is
+a `certificate` PEM with its `fingerprint`, and `nameIdFormats()` lists URIs such as
+`urn:oasis:names:tc:SAML:2.0:nameid-format:persistent`.
 
 `importXml()` takes the document instead of a URL, for metadata an administrator uploads. The entity id is required:
 from aggregate metadata (a federation's `EntitiesDescriptor`) the entity is chosen by that id alone, and metadata that
@@ -50,18 +55,30 @@ MiB and take seconds to fetch and check, so import such a URL from the console o
 Once the administrator has compared the certificate fingerprints with the ones the provider gave them, save the
 proposal:
 
+<!-- snippet: tests/Integration/Examples/SamlMetadata/admin/save.php#saml-metadata-save -->
 ```php
+use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\ImportSaver;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 
-app(ImportSaver::class)->save($tenant->id, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch(), $actor);
+$changes = ['settings' => $proposed->settings()];
+$fetch   = $proposed->fetch(); // null for metadata given as XML
+
+$saved = $fetch === null
+    ? app(ConnectionService::class)->update($tenant->id, $connection->id, $changes, $actor)
+    : app(ImportSaver::class)->save($tenant->id, $connection->id, $changes, $fetch, $actor);
+
+if (!$saved->isSucceeded()) {
+    return back()->withErrors(['metadata' => $saved->reason?->value]);
+}
 
 foreach ($proposed->signingCertificates() as $certificate) {
     app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $certificate['certificate'], $actor);
 }
 ```
 
-Each of those asks the freshness contract, as any trust change does. The proposal never sets the NameID format: choose
+Each of those asks the freshness contract, as any trust change does: a stale caller's save is refused as
+`freshness_required` and goes back before any certificate is trusted. The proposal never sets the NameID format: choose
 `name_id_format` from `nameIdFormats()` yourself.
 
 `save()` makes the update `ConnectionService::update()` would and, on a connection that [follows its metadata
@@ -96,10 +113,12 @@ at least 2048 bits are proposed, since SAML is RSA only until the package's PHP 
 A provider, or a federation, may sign its metadata. Trust the signer's certificate as a metadata signing anchor, and
 every import that names the connection, and every refresh, must then be signed by it:
 
+<!-- snippet: tests/Integration/Examples/SamlMetadata/admin/anchor.php#saml-metadata-anchor -->
 ```php
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Keys\KeyService;
 
-app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $actor, KeyUse::METADATA_SIGNING);
+$trusted = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $actor, KeyUse::METADATA_SIGNING);
 ```
 
 The entity must be covered by a signature that verifies with an anchor (its own, or an enclosing aggregate's), and every
@@ -126,13 +145,19 @@ schedule when it has a [metadata signing anchor](#a-metadata-signing-anchor), or
 A connection with no `metadata_url` never refreshes and has no deadline. Adding an anchor to a connection with a URL
 turns the default on, and removing the last turns it off, with no other change.
 
+<!-- snippet: tests/Integration/Examples/SamlMetadata/admin/follow.php#saml-metadata-follow -->
 ```php
-app(ConnectionService::class)->update($tenant->id, $connection->id, ['settings' => [
+use SineMacula\Laravel\Sso\Connections\ConnectionService;
+use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Keys\KeyService;
+
+$updated = app(ConnectionService::class)->update($tenant->id, $connection->id, ['settings' => [
     'metadata_url' => 'https://idp.example.com/metadata.xml',
 ]], $actor);
 
-// With the provider's or the federation's signing certificate as an anchor, that is all it takes.
-app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $actor, KeyUse::METADATA_SIGNING);
+// With the provider's or the federation's signing certificate as an anchor,
+// that is all it takes.
+$anchored = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $actor, KeyUse::METADATA_SIGNING);
 ```
 
 **Choose what you are trusting.** The two ways of keeping up with a provider's certificates each have a cost:
@@ -169,12 +194,12 @@ the sign-on endpoint, voids them, as the same change by hand would.
 after 30 days: run it from the scheduler, every 5 minutes or more often, with `php artisan schedule:work` or a cron
 entry for `schedule:run`. Each job goes to your application's default queue connection (`database` in a stock Laravel
 install) unless `SSO_METADATA_QUEUE_CONNECTION` says otherwise, so run `php artisan queue:work` for it, unless that
-connection is `sync` or the command runs with `--sync`.
+connection is `sync` or the command runs with `--sync`. Schedule it on the application builder in `bootstrap/app.php`,
+importing `Illuminate\Console\Scheduling\Schedule`:
 
+<!-- snippet: tests/Integration/Examples/SamlMetadata/bootstrap/app.php#saml-metadata-schedule -->
 ```php
 // bootstrap/app.php
-use Illuminate\Console\Scheduling\Schedule;
-
 ->withSchedule(function (Schedule $schedule): void {
     $schedule->command('sso:metadata:refresh')->everyFiveMinutes();
 })
@@ -184,14 +209,15 @@ The command lists the connections due and queues one `RefreshConnectionMetadata`
 connection's id alone, so fetching and checking the metadata runs on a queue worker rather than in the scheduler. Choose
 where it goes and how long it may run:
 
+<!-- snippet: tests/Integration/Examples/SamlMetadata/config/sso.php#saml-metadata-queue -->
 ```php
 // config/sso.php
 'metadata' => [
     'queue' => [
-        'connection'      => env('SSO_METADATA_QUEUE_CONNECTION'), // null: the default queue connection
-        'name'            => env('SSO_METADATA_QUEUE'),            // null: that connection's default queue
-        'timeout_seconds' => 60,                                   // 30 to 3600, at most claim_seconds
-        'tries'           => 1,                                    // a failure is retried by the backoff instead
+        'connection'      => env('SSO_METADATA_QUEUE_CONNECTION'),          // null: the default queue connection
+        'name'            => env('SSO_METADATA_QUEUE'),                     // null: that connection's default queue
+        'timeout_seconds' => env('SSO_METADATA_QUEUE_TIMEOUT_SECONDS', 60), // 30 to 3600, at most claim_seconds
+        'tries'           => env('SSO_METADATA_QUEUE_TRIES', 1),            // a failure is retried by the backoff instead
     ],
 ],
 ```
@@ -227,6 +253,7 @@ one that has already expired, so it is how you recover one the schedule does not
 metadata once to one you keep by hand. It needs only a `metadata_url`. A connection that has not opted in gains no stale
 deadline from it, and the schedule goes on leaving it alone:
 
+<!-- snippet: tests/Integration/Examples/SamlMetadata/admin/refresh.php#saml-metadata-refresh-now -->
 ```php
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
@@ -237,8 +264,8 @@ if ($result->outcome === RefreshOutcome::RATE_LIMITED) {
     return back()->withErrors(['metadata' => "Try again in {$result->retryAfter} seconds."]);
 }
 
-$result->outcome;         // RefreshOutcome::REFRESHED, FAILED, CONFLICT, IN_PROGRESS, RATE_LIMITED or REFUSED
-$result->changedSettings; // ['sso_url', 'idp_signing_certificates'], say
+$outcome = $result->outcome;         // RefreshOutcome::REFRESHED, FAILED, CONFLICT, IN_PROGRESS or REFUSED
+$changed = $result->changedSettings; // ['sso_url', 'idp_signing_certificates'], say
 ```
 
 The acting identity is required: every refresh an administrator asks for is reported as theirs. Each counts against the

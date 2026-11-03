@@ -157,12 +157,12 @@ final class DiscoveryEventSequenceTest extends TestCase
         $this->assertNoFailure();
 
         self::assertSame($this->context([
-            'connection_id'     => $this->connection->id,
-            'tenant_id'         => 'tenant-7',
-            'protocol'          => StartingDriver::NAME,
-            'application'       => 'discovering',
-            'purpose'           => 'sign_in',
-            'request_reference' => $result->reference?->value,
+            'connection_id'        => $this->connection->id,
+            'connection_tenant_id' => 'tenant-7',
+            'protocol'             => StartingDriver::NAME,
+            'application'          => 'discovering',
+            'purpose'              => 'sign_in',
+            'request_reference'    => $result->reference?->value,
         ]), $this->recordedEvents()[0]->context()->toArray());
 
         $this->assertNothingOfTheEmailIsShown('example.com');
@@ -302,7 +302,7 @@ final class DiscoveryEventSequenceTest extends TestCase
 
         self::assertSame($this->context([
             'connection_id'        => $this->connection->id,
-            'tenant_id'            => 'tenant-7',
+            'connection_tenant_id' => 'tenant-7',
             'protocol'             => StartingDriver::NAME,
             'application'          => 'discovering',
             'purpose'              => 'link',
@@ -418,7 +418,7 @@ final class DiscoveryEventSequenceTest extends TestCase
             'ip'                          => self::IP,
             'user_agent'                  => self::USER_AGENT,
             'connection_id'               => null,
-            'tenant_id'                   => null,
+            'connection_tenant_id'        => null,
             'protocol'                    => null,
             'application'                 => null,
             'purpose'                     => null,
@@ -429,7 +429,7 @@ final class DiscoveryEventSequenceTest extends TestCase
             'acting_identity_id'          => null,
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ], $fields);

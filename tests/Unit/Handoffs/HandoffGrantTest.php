@@ -46,7 +46,7 @@ final class HandoffGrantTest extends TestCase
         $linked    = new IdentityReference('user', '1');
         $identity  = new IdentityReference('user', '2');
         $notAfter  = CarbonImmutable::parse('2026-11-01T18:00:00Z');
-        $grant     = new HandoffGrant($result, $challenge, $expires, $linked, $identity, 'session-1', 'version-1', $notAfter);
+        $grant     = new HandoffGrant($result, $challenge, $expires, $linked, $identity, 'session-1', $notAfter);
 
         self::assertSame($result, $grant->result);
         self::assertSame($challenge, $grant->challenge);
@@ -54,7 +54,6 @@ final class HandoffGrantTest extends TestCase
         self::assertSame($linked, $grant->linkedIdentity);
         self::assertSame($identity, $grant->identity);
         self::assertSame('session-1', $grant->sessionId);
-        self::assertSame('version-1', $grant->enforcementVersion);
         self::assertSame($notAfter, $grant->sessionNotAfter);
         self::assertSame(255, HandoffGrant::MAX_ID_LENGTH);
 
@@ -63,7 +62,6 @@ final class HandoffGrantTest extends TestCase
         self::assertNull($bare->linkedIdentity);
         self::assertNull($bare->identity);
         self::assertNull($bare->sessionId);
-        self::assertNull($bare->enforcementVersion);
         self::assertNull($bare->sessionNotAfter);
     }
 
@@ -120,7 +118,7 @@ final class HandoffGrantTest extends TestCase
     }
 
     /**
-     * A session id or enforcement version is 1 to 255 bytes.
+     * A session id or link id is 1 to 255 bytes.
      *
      * @return void
      */
@@ -131,12 +129,12 @@ final class HandoffGrantTest extends TestCase
         $now       = CarbonImmutable::now();
         $again     = ExampleResults::full(Purpose::REAUTHENTICATE);
 
-        self::assertSame(str_repeat('v', 255), (new HandoffGrant(ExampleResults::bare(), $challenge, $now, enforcementVersion: str_repeat('v', 255)))->enforcementVersion);
+        self::assertSame(str_repeat('v', 255), (new HandoffGrant(ExampleResults::bare(), $challenge, $now, linkId: str_repeat('v', 255)))->linkId);
 
         $messages = [];
         $grants   = [
-            static fn (): HandoffGrant => new HandoffGrant(ExampleResults::bare(), $challenge, $now, enforcementVersion: str_repeat('v', 256)),
-            static fn (): HandoffGrant => new HandoffGrant(ExampleResults::bare(), $challenge, $now, enforcementVersion: ''),
+            static fn (): HandoffGrant => new HandoffGrant(ExampleResults::bare(), $challenge, $now, linkId: str_repeat('v', 256)),
+            static fn (): HandoffGrant => new HandoffGrant(ExampleResults::bare(), $challenge, $now, linkId: ''),
             static fn (): HandoffGrant => new HandoffGrant($again, $challenge, $now, identity: $identity, sessionId: str_repeat('s', 256)),
             static fn (): HandoffGrant => new HandoffGrant($again, $challenge, $now, identity: $identity, sessionId: ''),
         ];
@@ -151,8 +149,8 @@ final class HandoffGrantTest extends TestCase
         }
 
         self::assertSame([
-            'A handoff grant\'s enforcement version is 1 to 255 bytes.',
-            'A handoff grant\'s enforcement version is 1 to 255 bytes.',
+            'A handoff grant\'s link id is 1 to 255 bytes.',
+            'A handoff grant\'s link id is 1 to 255 bytes.',
             'A handoff grant\'s session id is 1 to 255 bytes.',
             'A handoff grant\'s session id is 1 to 255 bytes.',
         ], $messages);

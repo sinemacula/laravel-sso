@@ -94,8 +94,10 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  *     `ReauthenticationCompleted` for a `reauthenticate`, and `LinkCreated` and
  *     `LinkActivated` before them for an activated reservation;
  * 16. it answers `redeemed`, with the result, the identity it established, the
- *     flow's identity and session, the enforcement version, the session's
- *     latest end, the link, the evidence accepted, whether it was admitted and,
+ *     flow's identity and session, the version of the enforcement step 13
+ *     judged under the locks (never the one the completion checked, which a
+ *     rule change may since have replaced), the session's latest end, the
+ *     link, the evidence accepted, whether it was admitted and,
  *     for a `sign_in` (which is only ever redeemed admitted, step 5), the
  *     session provenance captured here, inside the transaction, from what the
  *     admission established under the locks (`Sessions\Provenance::capture()`,
@@ -541,12 +543,12 @@ final readonly class HandoffRedemption
             linkedIdentity: $admission->identity,
             identity: IdentityReference::fromColumns($code->identity_type, $code->identity_id),
             sessionId: $code->session_id,
-            enforcementVersion: $code->enforcement_version,
+            enforcementVersion: $admission->enforcementVersion,
             sessionNotAfter: $code->session_not_after,
             linkId: $admission->linkId,
             evidence: $admission->evidence,
             admitted: $admitted,
-            provenance: Provenance::capture($result, $admission, $code->enforcement_version, $code->session_not_after),
+            provenance: Provenance::capture($result, $admission, $code->session_not_after),
         );
     }
 

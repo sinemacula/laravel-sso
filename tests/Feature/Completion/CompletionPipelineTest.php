@@ -31,6 +31,7 @@ use SineMacula\Laravel\Sso\Completion\Stages\ValidateResponse;
 use SineMacula\Laravel\Sso\Completion\UnsolicitedReinitiation;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\CompletionStage;
+use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\Linker;
@@ -70,6 +71,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Enforcement\ListedExemption;
 use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
@@ -496,7 +498,7 @@ final class CompletionPipelineTest extends TestCase
      * connection and the rule's connections in one statement in ascending id
      * order, then the request; the enforcement step judges the policy the
      * locked rows give, carried on the state, with no further read of the rule,
-     * and the handoff carries its version.
+     * and a code is issued.
      *
      * @return void
      */
@@ -524,7 +526,7 @@ final class CompletionPipelineTest extends TestCase
             ['tenant_id' => 'tenant-1', 'enforcing_tenant_id' => 'tenant-1', 'required' => true, 'connection_ids' => $ids, 'version' => $rule->version],
             $this->spied('enforcement')[0]->state->enforcementPolicy?->jsonSerialize(),
         );
-        self::assertSame($rule->version, $this->issuer->grants()[0]->enforcementVersion);
+        self::assertCount(1, $this->issuer->grants());
     }
 
     /**
@@ -547,8 +549,32 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
+     * The completion never asks the exemption contract: an identity it would
+     * exempt is still refused `enforcement_unsatisfied` through a connection
+     * the rule does not list, and the contract is never asked. Only the
+     * adapter's gate asks it.
+     *
+     * @return void
+     */
+    public function testTheCompletionNeverAsksTheExemptionContract(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $exemption = new ListedExemption([new IdentityReference('App\Models\User', '42')]);
+        $other     = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true]);
+
+        $this->app?->instance(EnforcementExemption::class, $exemption);
+        $this->makeEnforcement(['enabled' => true, 'connection_ids' => [$other->id]]);
+        $this->request();
+
+        self::assertSame(['failed', 'enforcement_unsatisfied', 'https://app.example.com/sso', self::REFERENCE], self::summary($this->completeAtCallback()));
+        self::assertSame([], $this->issuer->grants());
+        self::assertSame([], $exemption->asked());
+    }
+
+    /**
      * A tenant with no rule stored is locked through an unconfigured row that
-     * requires nothing; the handoff carries no enforcement version.
+     * requires nothing, at no version, and a code is issued.
      *
      * @return void
      */
@@ -560,7 +586,7 @@ final class CompletionPipelineTest extends TestCase
 
         self::assertTrue($this->completeAtCallback()->isCompleted());
         self::assertNull(TenantEnforcement::query()->sole()->version);
-        self::assertNull($this->issuer->grants()[0]->enforcementVersion);
+        self::assertCount(1, $this->issuer->grants());
     }
 
     /**
@@ -1477,7 +1503,7 @@ final class CompletionPipelineTest extends TestCase
     {
         self::assertSame([null, null, null, null, null], [$context->application, $context->purpose, $context->requestReference, $context->identityId, $context->sessionId]);
 
-        return [$context->connectionId, $context->tenantId, $context->protocol];
+        return [$context->connectionId, $context->connectionTenantId, $context->protocol];
     }
 
     /**

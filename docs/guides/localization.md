@@ -27,15 +27,16 @@ package's `messages` file, so its full translation key is `sso::messages.{key}`.
 
 Resolve `SineMacula\Laravel\Sso\Localization\Messages` from the container and ask it for a message:
 
+<!-- snippet: tests/Integration/Examples/Localization/messages.php#localization-messages -->
 ```php
 use SineMacula\Laravel\Sso\Localization\Enums\Message;
 use SineMacula\Laravel\Sso\Localization\Messages;
 
 $messages = app(Messages::class);
 
-$messages->get(Message::POST_NAVIGATION_TITLE);                        // in the current locale
-$messages->get(Message::POST_NAVIGATION_TITLE, [], 'fr');              // in French
-$messages->get(Message::COMPLETION_REDIRECTING, ['name' => 'Acme']);   // :name replaced, where a line has it
+$title       = $messages->get(Message::POST_NAVIGATION_TITLE);                      // in the current locale
+$french      = $messages->get(Message::POST_NAVIGATION_TITLE, [], 'fr');            // in French
+$redirecting = $messages->get(Message::COMPLETION_REDIRECTING, ['name' => 'Acme']); // :name replaced, where a line has it
 ```
 
 A message is read in the locale you give, or the current locale (`App::setLocale()`), then in your
@@ -60,10 +61,11 @@ This writes `lang/vendor/sso/en/messages.php`. Publishing is optional: you can c
 ## Overriding lines per locale
 
 Laravel reads `lang/vendor/sso/{locale}/messages.php` over the package's lines for that locale, merging the two, so a
-file needs only the lines it changes. To change the English wording of one message:
+file needs only the lines it changes. To change the English wording of one message, in
+`lang/vendor/sso/en/messages.php`:
 
+<!-- snippet: tests/Integration/Examples/Localization/lang/vendor/sso/en/messages.php#localization-override -->
 ```php
-// lang/vendor/sso/en/messages.php
 return [
     'post_navigation' => [
         'continue' => 'Carry on',
@@ -71,10 +73,10 @@ return [
 ];
 ```
 
-To translate the messages into another locale, add a file for it:
+To translate the messages into another locale, add a file for it, here `lang/vendor/sso/fr/messages.php`:
 
+<!-- snippet: tests/Integration/Examples/Localization/lang/vendor/sso/fr/messages.php#localization-french -->
 ```php
-// lang/vendor/sso/fr/messages.php
 return [
     'post_navigation' => [
         'title'    => 'Connexion en cours',

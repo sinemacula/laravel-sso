@@ -9,18 +9,12 @@ identity is ever signed in on any session, and every `reauthenticate` start is r
 
 ## The flow
 
-```php
-use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
-use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+Start it for the identity your application has signed in, an `IdentityReference`, and the session to renew, 1 to 255
+bytes, both from your own authentication and never from the request, with the PKCE challenge the client sends:
 
-$start = app(AuthorizationRequestService::class)->start(
-    'web',
-    Purpose::REAUTHENTICATE,
-    $connectionId,
-    $codeChallenge,
-    $identity,   // the signed-in identity, an IdentityReference
-    $sessionId,  // the session to renew, 1 to 255 bytes
-);
+<!-- snippet: tests/Integration/Examples/Reauthenticating/ReauthenticatingExampleTest.php#reauthenticating-start -->
+```php
+$start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $connectionId, $codeChallenge, $identity, $sessionId);
 ```
 
 1. **Start.** The package asks `standing()` whether the identity is signed in through the connection on the session.
@@ -37,16 +31,13 @@ $start = app(AuthorizationRequestService::class)->start(
 ## Redeem through `admit()`
 
 A renewal must commit with the code's consumption, under the locks of the redemption, so `redeem()` with no transaction
-open, asked for a `reauthenticate`, throws a `LogicException` and leaves the code unconsumed.
+open, asked for a `reauthenticate`, throws a `LogicException` and leaves the code unconsumed. Here `$currentSessionId`
+is the session the caller is using:
 
+<!-- snippet: tests/Integration/Examples/Reauthenticating/ReauthenticatingExampleTest.php#reauthenticating-admit -->
 ```php
-use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Database\StorageConnection;
-use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
-use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
-
 $result = DB::connection(StorageConnection::name())->transaction(
-    fn () => app(HandoffRedemption::class)->admit(
+    static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(
         Purpose::REAUTHENTICATE,
         'web',
         $connectionId,
@@ -55,10 +46,9 @@ $result = DB::connection(StorageConnection::name())->transaction(
     ),
 );
 
-if ($result->isRedeemed() && $result->sessionId !== $currentSessionId) {
-    // The code renewed the session it was started on, which is not this one.
-    // Treat this caller as not reauthenticated.
-}
+// The code renewed the session it was started on: only when that is
+// this caller's own is this caller reauthenticated
+$reauthenticated = $result->isRedeemed() && $result->sessionId === $currentSessionId;
 ```
 
 `admit()` renews the session the code is bound to, the one in `$result->sessionId`, never the one the caller happens to
@@ -69,10 +59,12 @@ Retry a failed redemption only as your whole transaction, never a part of it.
 
 ## Binding the contract
 
-```php
-use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
+Implement `Contracts\ReauthenticationSessions` over your own sessions, here `UserSessions`, and bind it in a service
+provider's `register()`:
 
-$this->app->bind(ReauthenticationSessions::class, YourSessions::class);
+<!-- snippet: tests/Integration/Examples/Reauthenticating/AppServiceProvider.php#reauthenticating-binding -->
+```php
+$this->app->bind(ReauthenticationSessions::class, UserSessions::class);
 ```
 
 Three methods, each with its own obligation:
@@ -89,31 +81,42 @@ the redemption back with the code unconsumed, so use one for a failure, not for 
 ### Locking the session
 
 `lockedStanding()` has to hold the session's row, with a locking read on the package's storage connection, so that a
-logout, a revocation or a change of the session's binding waits for the redemption to commit:
+logout, a revocation or a change of the session's binding waits for the redemption to commit. Here `Session` is your
+Eloquent model of your session table, read and written on the package's storage connection:
 
+<!-- snippet: tests/Integration/Examples/Reauthenticating/UserSessions.php#reauthenticating-locked-standing -->
 ```php
-public function lockedStanding(
-    IdentityReference $identity,
-    string $sessionId,
-    string $application,
-    SsoConnection $connection,
-    string $linkId,
-): SessionStanding {
-    $session = Session::query()
+/**
+ * Whether the identity is signed in on the session, of the application,
+ * through the connection and exactly the link, with the session's row
+ * locked until the redemption's transaction ends.
+ *
+ * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+ * @param  string  $sessionId
+ * @param  string  $application
+ * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+ * @param  string  $linkId
+ * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
+ */
+#[\Override]
+public function lockedStanding(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection, string $linkId): SessionStanding
+{
+    $session = Session::on(StorageConnection::name())
         ->useWritePdo()
         ->lockForUpdate()
         ->whereKey($sessionId)
         ->first();
 
-    $matches = $session !== null
-        && $session->isActive()
-        && $session->identity_type === $identity->type
-        && $session->identity_id === $identity->id
-        && $session->application === $application
-        && $session->connection_id === $connection->getConnectionId()
-        && $session->sso_link_id === $linkId;
+    // Gone or revoked
+    if ($session === null || $session->revoked_at !== null) {
+        return SessionStanding::NOT_SIGNED_IN;
+    }
 
-    return $matches ? SessionStanding::SIGNED_IN : SessionStanding::NOT_SIGNED_IN;
+    // Only its identity, application, connection and exact link
+    $held     = [$session->identity_type, $session->identity_id, $session->application, $session->connection_id, $session->sso_link_id];
+    $expected = [$identity->type, $identity->id, $application, $connection->getConnectionId(), $linkId];
+
+    return $held === $expected ? SessionStanding::SIGNED_IN : SessionStanding::NOT_SIGNED_IN;
 }
 ```
 
@@ -131,14 +134,18 @@ serialise when it locks it. That is a safe outcome: retry the whole transaction.
 The package accepts only the exact link that established the session. Where an identity may hold two links in one
 connection, a second subject does not stand in for the credential being reauthenticated.
 
-So your session has to remember its link. Record it when you write the session at sign-in, inside the same transaction:
+So your session has to remember its link. Record it when you write the session at sign-in, inside the same
+transaction, here under the session's id, `$sessionId`:
 
+<!-- snippet: tests/Integration/Examples/Reauthenticating/ReauthenticatingExampleTest.php#reauthenticating-sign-in -->
 ```php
-DB::connection(StorageConnection::name())->transaction(function () use ($connectionId, $code, $verifier) {
+$signedIn = DB::connection(StorageConnection::name())->transaction(static function () use ($sessionId, $connectionId, $code, $verifier): RedemptionResult {
+
     $result = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $connectionId, $code, $verifier);
 
     if ($result->isAdmitted() && $result->linkedIdentity !== null) {
-        Session::create([
+        Session::on(StorageConnection::name())->create([
+            'id'               => $sessionId,
             'identity_type'    => $result->linkedIdentity->type,
             'identity_id'      => $result->linkedIdentity->id,
             'application'      => 'web',

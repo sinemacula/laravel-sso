@@ -18,13 +18,15 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
+use SineMacula\Laravel\Sso\Sessions\ProvenanceDomain;
 
 /**
  * Unit tests for capturing a session's provenance (SSO-9.7, SSO-9.10): what
  * `capture()` takes from an admitted `sign_in` and from nothing else, the raw
  * context kept only from accepted evidence and under its protocol's own name,
- * both deadlines, and nothing about the person. The stored form, its bounds and
- * its redaction are `StoredProvenanceTest`'s.
+ * only registered methods and a raw context of the stored domain kept, so
+ * neither fails a sign-in, both deadlines, and nothing about the person. The
+ * stored form, its bounds and its redaction are `StoredProvenanceTest`'s.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -32,6 +34,7 @@ use SineMacula\Laravel\Sso\Sessions\Provenance;
  * @internal
  */
 #[CoversClass(Provenance::class)]
+#[CoversClass(ProvenanceDomain::class)]
 final class ProvenanceTest extends TestCase
 {
     /** @var string The subject every result asserts. */
@@ -52,7 +55,10 @@ final class ProvenanceTest extends TestCase
     {
         self::assertSame(1, Provenance::VERSION);
         self::assertSame('saml2', Provenance::SAML2);
-        self::assertSame(255, Provenance::MAX_ID_LENGTH);
+        self::assertSame(
+            [255, 64, 64, 255, 4096],
+            [Provenance::MAX_ID_LENGTH, Provenance::MAX_CONNECTION_ID_LENGTH, Provenance::MAX_VERSION_LENGTH, Provenance::MAX_CONTEXT_LENGTH, Provenance::MAX_STORED_JSON_BYTES],
+        );
         self::assertSame('Y-m-d\TH:i:s.u\Z', Provenance::INSTANT_FORMAT);
         self::assertSame([
             'version',
@@ -83,8 +89,8 @@ final class ProvenanceTest extends TestCase
     public function testAnAdmittedSignInCapturesEveryFact(): void
     {
         $evidence  = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:28:00.000001Z'), ['pwd'], 'urn:example:acr:2');
-        $admission = new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence, LinkOrigin::PROVISIONING);
-        $captured  = Provenance::capture(self::verifiedResult('oidc'), $admission, 'enforcement-7', CarbonImmutable::parse('2026-11-01T17:00:00Z'));
+        $admission = new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence, LinkOrigin::PROVISIONING, 'enforcement-7');
+        $captured  = Provenance::capture(self::verifiedResult('oidc'), $admission, CarbonImmutable::parse('2026-11-01T17:00:00Z'));
 
         self::assertNotNull($captured);
         self::assertSame([
@@ -115,8 +121,8 @@ final class ProvenanceTest extends TestCase
     {
         yield 'oidc' => ['oidc', 'urn:accepted:context', null];
         yield 'saml2' => ['saml2', null, 'urn:accepted:context'];
-        yield 'an application\'s own driver' => ['ldap-bridge', 'urn:accepted:context', null];
-        yield 'a driver named like saml2 by case' => ['SAML2', 'urn:accepted:context', null];
+        yield 'an application\'s own driver' => ['ldap_bridge', 'urn:accepted:context', null];
+        yield 'a driver named like saml2' => ['saml2_bridge', 'urn:accepted:context', null];
         yield 'a driver named like saml' => ['saml', 'urn:accepted:context', null];
     }
 
@@ -132,7 +138,7 @@ final class ProvenanceTest extends TestCase
     public function testTheRawContextIsKeptUnderItsProtocolsName(string $protocol, ?string $acr, ?string $classRef): void
     {
         $evidence = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd'], 'urn:accepted:context');
-        $captured = Provenance::capture(self::verifiedResult($protocol), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence), null, null);
+        $captured = Provenance::capture(self::verifiedResult($protocol), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence), null);
 
         self::assertSame([$protocol, $acr, $classRef], [$captured?->protocol, $captured?->providerAcr(), $captured?->providerAuthnContextClassRef()]);
     }
@@ -146,7 +152,7 @@ final class ProvenanceTest extends TestCase
      */
     public function testNothingButTheTimeIsKeptWithoutAcceptedEvidence(): void
     {
-        $captured = Provenance::capture(self::verifiedResult('saml2'), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1'), null, null);
+        $captured = Provenance::capture(self::verifiedResult('saml2'), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1'), null);
 
         self::assertSame([[], null, null], [$captured?->providerMethods(), $captured?->providerAcr(), $captured?->providerAuthnContextClassRef()]);
         self::assertSame('2026-11-01T09:29:00.123456Z', $captured?->providerAuthenticatedAt?->format(Provenance::INSTANT_FORMAT));
@@ -160,9 +166,75 @@ final class ProvenanceTest extends TestCase
     public function testAcceptedEvidenceWithNoRawContextKeepsNone(): void
     {
         $evidence = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd', 'otp']);
-        $captured = Provenance::capture(self::verifiedResult('oidc'), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence), null, null);
+        $captured = Provenance::capture(self::verifiedResult('oidc'), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence), null);
 
         self::assertSame([['pwd', 'otp'], null, null], [$captured?->providerMethods(), $captured?->providerAcr(), $captured?->providerAuthnContextClassRef()]);
+    }
+
+    /**
+     * Raw context classes outside the stored domain, each under a protocol that
+     * keeps it as `acr` and one that keeps it as `AuthnContextClassRef`.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function unkeptContexts(): iterable
+    {
+        foreach (['oidc', 'saml2'] as $protocol) {
+            yield "{$protocol}: one byte too long" => [$protocol, 'urn:' . str_repeat('a', Provenance::MAX_CONTEXT_LENGTH - 3)];
+            yield "{$protocol}: outside ASCII" => [$protocol, 'urn:niveau:élevé'];
+            yield "{$protocol}: a control character" => [$protocol, "urn:class\n"];
+            yield "{$protocol}: a delete" => [$protocol, "urn:class\x7F"];
+            yield "{$protocol}: not UTF-8" => [$protocol, "urn:\xFF"];
+        }
+    }
+
+    /**
+     * A raw context class outside the stored domain is data, never a decision,
+     * so the sign-in is still captured, with that class kept as `null` and the
+     * accepted methods kept.
+     *
+     * @param  string  $protocol
+     * @param  string  $raw
+     * @return void
+     */
+    #[DataProvider('unkeptContexts')]
+    public function testARawContextOutsideTheStoredDomainIsKeptAsNull(string $protocol, string $raw): void
+    {
+        $evidence = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd', 'otp'], $raw);
+        $captured = Provenance::capture(self::verifiedResult($protocol), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence), null);
+
+        self::assertSame([['pwd', 'otp'], null, null], [$captured?->providerMethods(), $captured?->providerAcr(), $captured?->providerAuthnContextClassRef()]);
+        self::assertSame('link-1', $captured?->linkId);
+    }
+
+    /**
+     * A raw context class of exactly `MAX_CONTEXT_LENGTH` printable bytes is
+     * kept as it is.
+     *
+     * @return void
+     */
+    public function testARawContextAtItsLimitIsKept(): void
+    {
+        $raw      = 'urn:' . str_repeat('~', Provenance::MAX_CONTEXT_LENGTH - 4);
+        $evidence = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd'], $raw);
+        $captured = Provenance::capture(self::verifiedResult('oidc'), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence), null);
+
+        self::assertSame($raw, $captured?->providerAcr());
+    }
+
+    /**
+     * Of the methods an evidence policy accepted, only RFC 8176's registered
+     * values are kept, in their order and each once, so an application's own
+     * policy accepting another never fails a sign-in.
+     *
+     * @return void
+     */
+    public function testOnlyRegisteredMethodsAreKeptEachOnce(): void
+    {
+        $evidence = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['hwk', 'urn:custom:passkey', 'pwd', 'hwk', 'PWD', 'mfa'], 'urn:class');
+        $captured = Provenance::capture(self::verifiedResult('oidc'), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence), null);
+
+        self::assertSame([['hwk', 'pwd', 'mfa'], 'urn:class'], [$captured?->providerMethods(), $captured?->providerAcr()]);
     }
 
     /**
@@ -173,7 +245,7 @@ final class ProvenanceTest extends TestCase
      */
     public function testTheRawDeadlineIsKeptWhenNoCapWasSet(): void
     {
-        $captured = Provenance::capture(self::verifiedResult('saml2'), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1'), null, null);
+        $captured = Provenance::capture(self::verifiedResult('saml2'), new Admission(RecheckOutcome::PASSED, self::person(), 'link-1'), null);
 
         self::assertNotNull($captured);
         self::assertSame('2026-11-01T18:00:00.000000Z', $captured->toArray()['provider_session_deadline']);
@@ -188,7 +260,7 @@ final class ProvenanceTest extends TestCase
      */
     public function testAnUnlinkedAdmissionHasNoLink(): void
     {
-        $captured = Provenance::capture(self::verifiedResult('oidc'), new Admission(RecheckOutcome::PASSED), null, null);
+        $captured = Provenance::capture(self::verifiedResult('oidc'), new Admission(RecheckOutcome::PASSED), null);
 
         self::assertSame([null, null], [$captured?->linkId, $captured?->linkProvenance]);
         self::assertSame([null, null], [$captured?->toArray()['link_id'], $captured?->toArray()['link_provenance']]);
@@ -216,9 +288,9 @@ final class ProvenanceTest extends TestCase
     public function testAnotherPurposeCapturesNothing(Purpose $purpose): void
     {
         $evidence  = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd'], 'urn:class');
-        $admission = new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence, LinkOrigin::LINK_PURPOSE);
+        $admission = new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence, LinkOrigin::LINK_PURPOSE, 'enforcement-1');
 
-        self::assertNull(Provenance::capture(self::verifiedResult('oidc', $purpose), $admission, 'enforcement-1', CarbonImmutable::parse('2026-11-01T17:00:00Z')));
+        self::assertNull(Provenance::capture(self::verifiedResult('oidc', $purpose), $admission, CarbonImmutable::parse('2026-11-01T17:00:00Z')));
     }
 
     /**
@@ -247,7 +319,7 @@ final class ProvenanceTest extends TestCase
     #[DataProvider('refusals')]
     public function testARefusedAdmissionCapturesNothing(RecheckOutcome $outcome): void
     {
-        self::assertNull(Provenance::capture(self::verifiedResult('oidc'), new Admission($outcome, self::person(), 'link-1', null, LinkOrigin::PROVISIONING), null, null));
+        self::assertNull(Provenance::capture(self::verifiedResult('oidc'), new Admission($outcome, self::person(), 'link-1', null, LinkOrigin::PROVISIONING, 'v'), null));
     }
 
     /**
@@ -260,8 +332,8 @@ final class ProvenanceTest extends TestCase
     public function testNothingAboutThePersonIsCaptured(): void
     {
         $evidence = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd'], 'urn:class');
-        $admitted = new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence, LinkOrigin::PROVISIONING);
-        $captured = Provenance::capture(self::verifiedResult('saml2'), $admitted, 'v', null);
+        $admitted = new Admission(RecheckOutcome::PASSED, self::person(), 'link-1', $evidence, LinkOrigin::PROVISIONING, 'v');
+        $captured = Provenance::capture(self::verifiedResult('saml2'), $admitted, null);
         $stored   = (string) json_encode($captured?->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         foreach ([self::SUBJECT, self::ISSUER, self::PROVIDER_SESSION, 'person@example.com', 'staff', 'admins', 'App\\\Models\\\User', '"42"'] as $value) {

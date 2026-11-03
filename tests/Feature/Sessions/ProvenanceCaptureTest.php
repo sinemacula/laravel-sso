@@ -32,6 +32,7 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
+use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext as ProviderContext;
 use SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect;
@@ -53,11 +54,12 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  * admitted `sign_in` captures the connection, its tenant, the protocol, the
  * provider's time, only the evidence accepted at redemption, the exact link and
  * its provenance as the locked admission found it (an activated reservation's
- * `verified_domain`, or an existing link's own), both deadlines and the
- * enforcement version; an unlinked sign-in captures no link; a refusal, a
- * `link` and a `reauthenticate` capture nothing, so a later confirming link or
- * a re-authentication never rewrites what was captured; and the stored form
- * survives a database's JSON column and projects to the same `sso.*` keys.
+ * `verified_domain`, or an existing link's own), both deadlines and the version
+ * of the enforcement judged under the redemption's locks; an unlinked sign-in
+ * captures no link; a refusal, a `link` and a `reauthenticate` capture nothing,
+ * so a later confirming link or a re-authentication never rewrites what was
+ * captured; and the stored form survives a database's JSON column and projects
+ * to the same `sso.*` keys.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -248,10 +250,7 @@ final class ProvenanceCaptureTest extends LinkingTestCase
         self::assertNull($answer->provenance);
         self::assertSame(1, $sessions->renewals());
 
-        $authenticated = AuthenticationContext::of($signIn->provenance)['sso.provider_auth_time'];
-
-        self::assertInstanceOf(CarbonImmutable::class, $authenticated);
-        self::assertSame(self::AUTHENTICATED, $authenticated->format(Provenance::INSTANT_FORMAT));
+        self::assertSame(self::AUTHENTICATED, AuthenticationContext::of($signIn->provenance)['sso.provider_auth_time']);
     }
 
     /**
@@ -368,6 +367,54 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
+     * A rule that changed between the completion and the redemption: the
+     * session keeps the version the redemption judged under its locks, never
+     * the one the completion checked, which the code does not carry.
+     *
+     * @return void
+     */
+    public function testTheSessionKeepsTheVersionReadUnderTheRedemptionsLock(): void
+    {
+        $this->hold(LinkOrigin::PROVISIONING);
+
+        $rule = new class implements Enforcement {
+            /** @var string The version the rule is at now. */
+            public string $version = 'enforcement-7';
+
+            /**
+             * Require nothing, at the version the rule is at now.
+             *
+             * @param  string  $tenantId
+             * @param  string  $application
+             * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy
+             */
+            #[\Override]
+            public function policy(string $tenantId, string $application): EnforcementPolicy
+            {
+                unset($application);
+
+                return EnforcementPolicy::notRequired($tenantId, $tenantId, $this->version);
+            }
+        };
+
+        $this->app?->instance(Enforcement::class, $rule);
+
+        $start      = $this->start();
+        $completion = $this->complete();
+
+        self::assertTrue($completion->isCompleted());
+        self::assertArrayNotHasKey('enforcement_version', HandoffCode::query()->sole()->getAttributes());
+
+        $rule->version = 'enforcement-8';
+
+        $answer = $this->admit($completion, $start);
+
+        self::assertTrue($answer->isRedeemed());
+        self::assertSame(['enforcement-8', 'enforcement-8'], [$answer->enforcementVersion, $answer->provenance?->enforcementVersion]);
+        self::assertSame('enforcement-8', AuthenticationContext::of($answer->provenance)[AuthenticationContext::ENFORCEMENT_VERSION]);
+    }
+
+    /**
      * An unlinked sign-in is captured with no link and no link provenance.
      *
      * @return void
@@ -423,7 +470,7 @@ final class ProvenanceCaptureTest extends LinkingTestCase
         $this->keep(self::SESSION, $answer);
 
         self::assertSame($answer->provenance?->toArray(), Provenance::restore($this->kept(self::SESSION))->toArray());
-        self::assertEquals(AuthenticationContext::of($answer->provenance), AuthenticationContext::fromStored($this->kept(self::SESSION)));
+        self::assertSame(AuthenticationContext::of($answer->provenance), AuthenticationContext::fromStored($this->kept(self::SESSION)));
     }
 
     /**

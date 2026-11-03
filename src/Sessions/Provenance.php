@@ -9,7 +9,6 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\Admission;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
-use SineMacula\Laravel\Sso\Results\AuthenticationContext as ProviderContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
@@ -28,9 +27,9 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * admitted and its provenance as it stood under the redemption's locks; the
  * provider's raw session deadline (`SessionNotOnOrAfter`), and the effective
  * cap it set on the application's session, which is `null` when the provider
- * session deadline contract ignored it; and the enforcement version the
- * redemption carried. Never the subject, the issuer, the provider session's id,
- * an email, groups, any mapped attribute or any token.
+ * session deadline contract ignored it; and the version of the enforcement the
+ * redemption judged under its locks. Never the subject, the issuer, the
+ * provider session's id, an email, groups, any mapped attribute or any token.
  *
  * `capture()` builds it from an admitted `sign_in` only: a `link` or a
  * `reauthenticate` redemption, a refused admission, and anything outside the
@@ -38,6 +37,19 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * confirming `link` never yields a value that could overwrite how a session
  * began. `Handoffs\HandoffRedemption` captures it and answers it on the
  * redemption result for the adapter to write with the session, once.
+ *
+ * Each part keeps to the domain a capture can produce, so the stored form stays
+ * small whatever it holds: the connection id, the link id and the enforcement
+ * version are printable ASCII, the tenant id valid UTF-8 (it is the
+ * application's own opaque id), the protocol a registered driver's name, the
+ * methods RFC 8176's registered values, each at most once, and the raw context
+ * class printable ASCII of at most `MAX_CONTEXT_LENGTH` bytes. With every part
+ * at its limit and every character one that JSON escapes, the stored form
+ * encoded as JSON (`json_encode()` with its default escaping) takes 3,364
+ * bytes, under `MAX_STORED_JSON_BYTES` (`ProvenanceDomain` holds the rules).
+ * `capture()` keeps a raw context class outside that domain as `null`, and
+ * keeps only the registered methods of the accepted evidence, so neither ever
+ * fails a sign-in.
  *
  * `toArray()` is the stored form, versioned (`version` is `1`), with every key
  * present and `null` where a fact was not stated; instants are UTC strings to
@@ -65,8 +77,20 @@ final readonly class Provenance implements \JsonSerializable
     /** @var string The one driver whose raw context class is SAML `AuthnContextClassRef`; every other's is `acr`. */
     public const string SAML2 = Saml2Driver::NAME;
 
-    /** @var int The longest connection id, tenant id, protocol, link id or enforcement version, in bytes. */
+    /** @var int The longest tenant id or link id, in bytes. */
     public const int MAX_ID_LENGTH = 255;
+
+    /** @var int The longest connection id, in bytes: the package's own are 26-character ULIDs. */
+    public const int MAX_CONNECTION_ID_LENGTH = 64;
+
+    /** @var int The longest enforcement version, in bytes. */
+    public const int MAX_VERSION_LENGTH = 64;
+
+    /** @var int The longest raw `acr` or `AuthnContextClassRef` kept, in bytes. */
+    public const int MAX_CONTEXT_LENGTH = 255;
+
+    /** @var int The most bytes the stored form takes as JSON with the default escaping, whatever it holds. */
+    public const int MAX_STORED_JSON_BYTES = 4096;
 
     /** @var string The form an instant is stored in: UTC, to the microsecond. */
     public const string INSTANT_FORMAT = 'Y-m-d\TH:i:s.u\Z';
@@ -161,20 +185,17 @@ final readonly class Provenance implements \JsonSerializable
         // The effective cap on the application's session; kept in UTC
         ?CarbonImmutable $sessionNotAfter = null,
 
-        /** The enforcement version the redemption carried. */
+        /** The version of the enforcement the redemption judged under its locks. */
         public ?string $enforcementVersion = null,
     ) {
-        foreach (['connection id' => $connectionId, 'tenant id' => $tenantId, 'protocol' => $protocol] as $name => $value) {
-            self::assertText($name, $value, self::MAX_ID_LENGTH, false);
-        }
-
-        foreach (['link id' => $linkId, 'enforcement version' => $enforcementVersion] as $name => $value) {
-            self::assertText($name, $value, self::MAX_ID_LENGTH, true);
-        }
-
-        self::assertMethods($methods);
-        self::assertText('acr', $acr, ProviderContext::MAX_VALUE_LENGTH, true);
-        self::assertText('AuthnContextClassRef', $authnContextClassRef, ProviderContext::MAX_VALUE_LENGTH, true);
+        ProvenanceDomain::assertText('connection id', $connectionId, self::MAX_CONNECTION_ID_LENGTH, false);
+        ProvenanceDomain::assertTenant($tenantId);
+        ProvenanceDomain::assertProtocol($protocol);
+        ProvenanceDomain::assertText('link id', $linkId, self::MAX_ID_LENGTH, true);
+        ProvenanceDomain::assertText('enforcement version', $enforcementVersion, self::MAX_VERSION_LENGTH, true);
+        ProvenanceDomain::assertMethods($methods);
+        ProvenanceDomain::assertText('acr', $acr, self::MAX_CONTEXT_LENGTH, true);
+        ProvenanceDomain::assertText('AuthnContextClassRef', $authnContextClassRef, self::MAX_CONTEXT_LENGTH, true);
         self::assertCoherent($acr, $authnContextClassRef, $linkId, $linkProvenance);
 
         $this->providerAuthenticatedAt = $providerAuthenticatedAt?->utc();
@@ -227,26 +248,29 @@ final readonly class Provenance implements \JsonSerializable
     /**
      * Capture the provenance of the admitted `sign_in`: from the verified
      * result its code carried, what the admission established under the locks
-     * (the evidence accepted, the link and its provenance), the enforcement
-     * version and the effective session cap the code was bound to. `null` for
-     * any other purpose, or an admission that did not pass.
+     * (the evidence accepted, the link and its provenance, the version of the
+     * enforcement judged), and the effective session cap the code was bound to.
+     * `null` for any other purpose, or an admission that did not pass. Only the
+     * registered RFC 8176 methods of the accepted evidence are kept, each once,
+     * and a raw context class that is not printable ASCII of at most
+     * `MAX_CONTEXT_LENGTH` bytes is kept as `null`: both are data, never a
+     * decision, so neither fails a sign-in.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\Admission  $admission
-     * @param  ?string  $enforcementVersion
      * @param  ?\Carbon\CarbonImmutable  $sessionNotAfter
      * @return ?self
      *
      * @throws \InvalidArgumentException
      */
-    public static function capture(VerifiedResult $result, Admission $admission, ?string $enforcementVersion, ?CarbonImmutable $sessionNotAfter): ?self
+    public static function capture(VerifiedResult $result, Admission $admission, ?CarbonImmutable $sessionNotAfter): ?self
     {
         if ($result->purpose !== Purpose::SIGN_IN || !$admission->isPassed()) {
             return null;
         }
 
         $evidence = $admission->evidence;
-        $raw      = $evidence?->rawContext();
+        $raw      = ProvenanceDomain::keptContext($evidence?->rawContext());
         $context  = $result->authenticationContext;
 
         return new self(
@@ -254,14 +278,14 @@ final readonly class Provenance implements \JsonSerializable
             $result->tenantId,
             $result->protocol,
             $context->authenticatedAt,
-            $evidence?->methods() ?? [],
+            ProvenanceDomain::registered($evidence?->methods() ?? []),
             $result->protocol === self::SAML2 ? null : $raw,
             $result->protocol === self::SAML2 ? $raw : null,
             $admission->linkId,
             $admission->linkProvenance,
             $context->providerSessionDeadline,
             $sessionNotAfter,
-            $enforcementVersion,
+            $admission->enforcementVersion,
         );
     }
 
@@ -385,50 +409,6 @@ final readonly class Provenance implements \JsonSerializable
             'provider_acr'                     => self::redacted($this->providerAcr()),
             'provider_authn_context_class_ref' => self::redacted($this->providerAuthnContextClassRef()),
         ]);
-    }
-
-    /**
-     * Refuse a string, or a `null` where one is required, that is empty or
-     * longer than the bytes allowed.
-     *
-     * @param  string  $name
-     * @param  ?string  $value
-     * @param  int  $maxBytes
-     * @param  bool  $optional
-     * @return void
-     *
-     * @throws \InvalidArgumentException
-     */
-    private static function assertText(string $name, #[\SensitiveParameter] ?string $value, int $maxBytes, bool $optional): void
-    {
-        $valid = $value === null ? $optional : ($value !== '' && strlen($value) <= $maxBytes);
-
-        if ($valid) {
-            return;
-        }
-
-        throw new \InvalidArgumentException(sprintf('A session provenance\'s %s is 1 to %d bytes%s.', $name, $maxBytes, $optional ? ' or null' : ''));
-    }
-
-    /**
-     * Refuse methods that are not a list of at most 32 strings of 1 to 255
-     * bytes.
-     *
-     * @param  array<array-key, mixed>  $methods
-     * @return void
-     *
-     * @throws \InvalidArgumentException
-     */
-    private static function assertMethods(#[\SensitiveParameter] array $methods): void
-    {
-        $isMethod = static fn (mixed $method): bool => is_string($method) && $method !== '' && strlen($method) <= ProviderContext::MAX_METHOD_LENGTH;
-        $valid    = array_is_list($methods) && count($methods) <= ProviderContext::MAX_METHODS;
-
-        if (!$valid || array_filter($methods, $isMethod) !== $methods) {
-            $message = 'A session provenance keeps a list of at most %d methods of 1 to %d bytes.';
-
-            throw new \InvalidArgumentException(sprintf($message, ProviderContext::MAX_METHODS, ProviderContext::MAX_METHOD_LENGTH));
-        }
     }
 
     /**

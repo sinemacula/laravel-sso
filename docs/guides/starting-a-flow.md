@@ -5,6 +5,8 @@ connection. The API records an authorisation request and answers with its public
 the browser to the identity provider. The package gives you the answer as a value; your application owns the route and
 the response.
 
+<!-- snippet: tests/Integration/Examples/StartingAFlow/service.php#resolve-service -->
+
 ```php
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 
@@ -23,13 +25,16 @@ POST   /auth/sso/authorization-requests     start: {application, connection, cod
                                             -> {reference, navigation, verifier?}
 ```
 
+<!-- snippet: tests/Integration/Examples/StartingAFlow/routes.php#authorization-requests-route -->
+
 ```php
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 
-Route::post('/auth/sso/authorization-requests', function (Request $request, AuthorizationRequestService $requests) {
+Route::post('/auth/sso/authorization-requests', static function (Request $request, AuthorizationRequestService $requests): JsonResponse {
     $result = $requests->start(
         application: $request->string('application')->toString(),
         purpose: Purpose::SIGN_IN,
@@ -92,8 +97,10 @@ nothing and reports one `FlowFailed` event with the reason.
 > An application that offers discovery (`sso.applications.<name>.discovery.enabled`, with the `discovery` feature on)
 > is never told that a named connection is unknown or disabled: the answer is `started`, in the same shape, with a
 > fresh reference, a verifier when no challenge was sent, and a navigation to the application's `fallback_url`. The
-> failure is still reported as `connection_unavailable`. [Discovery](discovery.md) starts a flow from an email address
-> instead of a named connection.
+> failure is still reported as `connection_unavailable`. An application that does not offer discovery has no fallback
+> to answer with, so it is told `connection_unavailable` (a recommended default of 2026-11-03, RD-33 in the
+> [requirement closure matrix](../design/requirements.md#recorded-decisions): there is no fallback answer without
+> discovery). [Discovery](discovery.md) starts a flow from an email address instead of a named connection.
 
 ## The client's duties
 
@@ -124,13 +131,16 @@ API, and of the `state` or `RelayState` sent to the provider, which are random v
 | `link`           | the caller's | none    | the freshness contract is asked `sso.link.create` (see [Freshness](freshness.md)) |
 | `reauthenticate` | the caller's | its id  | `Contracts\ReauthenticationSessions` must answer `signed_in`                      |
 
+<!-- snippet: tests/Integration/Examples/StartingAFlow/caller.php#start-for-the-caller -->
+
 ```php
+use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-$requests->start('web', Purpose::LINK, $connectionId, $challenge, $identity);
-$requests->start('web', Purpose::REAUTHENTICATE, $connectionId, $challenge, $identity, $sessionId);
+$linking          = $requests->start('web', Purpose::LINK, $connectionId, $challenge, $identity);
+$reauthenticating = $requests->start('web', Purpose::REAUTHENTICATE, $connectionId, $challenge, $identity, $sessionId);
 ```
 
 Any other combination, or a session id that is empty or longer than 255 bytes, is an `InvalidArgumentException`: a

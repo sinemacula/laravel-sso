@@ -7,16 +7,17 @@ must be. Most identity providers take it as a URL they fetch, or as a file uploa
 
 `SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions` answers it for a tenant's connection:
 
+<!-- snippet: tests/Integration/Examples/ServiceProviderMetadata/describe.php#service-provider-describe -->
 ```php
 use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 
 $description = app(ServiceProviderDescriptions::class)->describe($tenantId, $connectionId);
 
 if ($description->isAvailable()) {
-    $description->contentType; // 'application/samlmetadata+xml'
-    $description->body;        // the metadata XML
+    $contentType = $description->contentType; // 'application/samlmetadata+xml'
+    $metadata    = $description->body;        // the metadata XML
 } else {
-    $description->reason;      // FailureReason::CONNECTION_UNAVAILABLE or PROTOCOL_UNAVAILABLE
+    $reason = $description->reason; // FailureReason::CONNECTION_UNAVAILABLE or PROTOCOL_UNAVAILABLE
 }
 ```
 
@@ -31,19 +32,21 @@ The package builds the metadata URL, and the entity id, from `sso.endpoints.base
 `sso.endpoints.paths.metadata` (see [Configuration](configuration.md)). Your application owns the route: register it
 at the same path, so the URL the metadata names is the URL that serves it.
 
+<!-- snippet: tests/Integration/Examples/ServiceProviderMetadata/metadata-route.php#service-provider-metadata-route -->
 ```php
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 
-Route::get(config('sso.endpoints.paths.metadata'), function (
+Route::get(config('sso.endpoints.paths.metadata'), static function (
     Request $request,
     string $connection,
     ServiceProviderDescriptions $descriptions,
-) {
-    // However your application resolves the tenant it serves: the host, a
-    // route parameter, or a lookup of the connection id in your own records.
-    $tenantId = (string) $request->attributes->get('tenant_id');
+): Response {
+    // However your application resolves the tenant it serves: the host, a route
+    // parameter, or a lookup of the connection id in your own records.
+    $tenantId = $request->attributes->getString('tenant_id');
 
     $description = $descriptions->describe($tenantId, $connection);
 
@@ -191,14 +194,22 @@ The `jwks_uri` is stable for the life of the connection, and built by your endpo
 `sso.endpoints.paths.jwks`. The package adds no route: serve it yourself, from a route that needs no authentication,
 since it is the provider that fetches it and it holds public keys alone. The package gives you the body:
 
+<!-- snippet: tests/Integration/Examples/ServiceProviderMetadata/jwks-route.php#service-provider-jwks-route -->
 ```php
-Route::get('/auth/sso/connections/{connection}/jwks', function (string $connection, ServiceProviderDescriptions $descriptions) {
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Route;
+use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
+
+Route::get(config('sso.endpoints.paths.jwks'), static function (string $connection, ServiceProviderDescriptions $descriptions): Response {
     $keys = $descriptions->publicKeys($connection);
 
     abort_unless($keys->isAvailable(), 404);
 
-    return response($keys->body, 200, ['Content-Type' => $keys->contentType, 'Cache-Control' => 'public, max-age=300']);
-});
+    return response($keys->body, 200, [
+        'Content-Type'  => $keys->contentType,
+        'Cache-Control' => 'public, max-age=300',
+    ]);
+})->name('sso.jwks');
 ```
 
 `publicKeys()` takes the connection's id alone, whichever tenant it belongs to, since the provider names no tenant. Keep

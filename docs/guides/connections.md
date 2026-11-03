@@ -37,6 +37,8 @@ Each protocol is a driver behind `SineMacula\Laravel\Sso\Contracts\ProtocolDrive
 `SineMacula\Laravel\Sso\Protocols\ProtocolManager` under the name a connection's `protocol` holds. The package ships
 `saml2` and `oidc`, each available while its switch in `sso.features` is on:
 
+<!-- snippet: tests/Integration/Examples/Connections/config/sso.php#protocol-switches -->
+
 ```php
 'features' => [
     'saml2' => env('SSO_SAML2', false),
@@ -44,18 +46,16 @@ Each protocol is a driver behind `SineMacula\Laravel\Sso\Contracts\ProtocolDrive
 ],
 ```
 
-> [!NOTE]
-> The SAML and OIDC drivers read and validate their settings, but their sign-in flows are still being built: until they
-> are, no connection over either is usable, and every flow through one is refused.
+While a protocol's switch is off, no connection over it is created, and its existing connections are not usable.
 
 ## Registering your own protocol
 
 Register a driver of your own under a lower-case name (a letter, then up to 63 letters, digits or underscores) once the
 registry resolves, from a service provider's `register()`:
 
-```php
-use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
+<!-- snippet: tests/Integration/Examples/Connections/AppServiceProvider.php#register-protocol -->
 
+```php
 $this->callAfterResolving(ProtocolManager::class, function (ProtocolManager $protocols): void {
     $protocols->extend('cas', fn () => new CasDriver);
 });
@@ -71,16 +71,17 @@ and which may change what existing subjects mean.
 ## When a connection is used
 
 A connection is used only while it is usable: enabled, its protocol available, and its driver finding it complete
-(settings, secrets, keys and certificates):
+(settings, secrets, keys and certificates). Its summary from `Connections\ConnectionService` says whether it is now:
+
+<!-- snippet: tests/Integration/Examples/Connections/ConnectionsExampleTest.php#connection-usable -->
 
 ```php
-use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
-
-app(ProtocolManager::class)->isUsable($connection);
+$usable = app(ConnectionService::class)->get($tenantId, $connectionId)?->usable;
 ```
 
-A connection that is not usable is refused by every flow with `connection_unavailable`, the same answer whether it is
-unknown, disabled or incomplete.
+A driver, or a contract of yours given the connection as an `SsoConnection`, asks the registry the same question with
+`ProtocolManager::isUsable($connection)`. A connection that is not usable is refused by every flow with
+`connection_unavailable`, the same answer whether it is unknown, disabled or incomplete.
 
 ## Presets
 
@@ -97,15 +98,22 @@ and every check applies as it does to settings entered by hand.
 | `microsoft_entra_saml` | `saml2`  | Binding, persistent NameID, signed assertions, Entra's claim names               |
 
 Google and Microsoft Entra ID serve many organisations from one issuer; their presets name the claim (`hd`, `tid`)
-that says which organisation a sign-in belongs to. Register a preset of your own for a protocol that is registered:
+that says which organisation a sign-in belongs to. Register a preset of your own, a
+`SineMacula\Laravel\Sso\Protocols\Preset`, for a protocol that is registered, once the registry resolves:
+
+<!-- snippet: tests/Integration/Examples/Connections/AppServiceProvider.php#register-preset -->
 
 ```php
-use SineMacula\Laravel\Sso\Protocols\Preset;
-
-$protocols->registerPreset(new Preset('acme', 'oidc', [
-    'scopes'              => ['openid', 'email', 'profile'],
-    'id_token_algorithms' => ['ES256'],
-], ['email' => 'email']));
+$this->callAfterResolving(ProtocolManager::class, function (ProtocolManager $protocols): void {
+    $protocols->registerPreset(new Preset('acme', 'oidc', [
+        'scopes'              => ['openid', 'email', 'profile'],
+        'id_token_algorithms' => ['ES256'],
+    ], ['email' => 'email']));
+});
 ```
+
+A connection created with `preset: 'acme'` takes those settings and that mapping wherever the administrator gives
+none: unless they give other algorithms, an ID token through it signed with anything but ES256 is refused with
+`signature_invalid`.
 
 A preset never holds a secret, and a shipped preset's name cannot be reused.

@@ -91,7 +91,7 @@ final class JwksEventsTest extends TestCase
         foreach ([$refreshed, $failed] as $event) {
             $context = $event->context();
 
-            self::assertSame([$connection->id, 'tenant-1', 'oidc', null], [$context->connectionId, $context->tenantId, $context->protocol, $context->actingIdentityId]);
+            self::assertSame([$connection->id, 'tenant-1', 'oidc', null], [$context->connectionId, $context->connectionTenantId, $context->protocol, $context->actingIdentityId]);
             self::assertStringNotContainsString('secret-kid', serialize($event));
         }
     }

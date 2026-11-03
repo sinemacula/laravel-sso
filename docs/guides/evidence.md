@@ -10,21 +10,19 @@ until you make it nothing counts.
 
 ## Opting in
 
-The contract's default, `InsufficientEvidence`, accepts nothing. Bind the package's policy to judge each connection's
-stored policy:
+The contract's default, `InsufficientEvidence`, accepts nothing. In your service provider, bind the package's
+`Evidence\ConnectionEvidencePolicy` to `Contracts\EvidencePolicy` to judge each connection's stored policy:
 
+<!-- snippet: tests/Integration/Examples/Evidence/AppServiceProvider.php#evidence-policy -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\EvidencePolicy;
-use SineMacula\Laravel\Sso\Evidence\ConnectionEvidencePolicy;
-
 $this->app->scoped(EvidencePolicy::class, ConnectionEvidencePolicy::class);
 ```
 
-Then give each connection its policy, with `sso.connection.trust` freshness:
+Then give each connection its policy through `Connections\EvidenceSettingsService`, with `sso.connection.trust`
+freshness:
 
+<!-- snippet: tests/Integration/Examples/Evidence/EvidenceExampleTest.php#oidc-evidence-policy -->
 ```php
-use SineMacula\Laravel\Sso\Connections\EvidenceSettingsService;
-
 $result = app(EvidenceSettingsService::class)->set($tenantId, $connectionId, [
     'amr'          => ['pwd', 'otp', 'hwk'],
     'acr'          => ['urn:example:loa:2'],
@@ -37,6 +35,7 @@ $result = app(EvidenceSettingsService::class)->set($tenantId, $connectionId, [
 
 A SAML connection names `authn_context_class_ref` instead, and its combinations name one class each:
 
+<!-- snippet: tests/Integration/Examples/Evidence/EvidenceExampleTest.php#saml-evidence-policy -->
 ```php
 $result = app(EvidenceSettingsService::class)->set($tenantId, $samlConnectionId, [
     'authn_context_class_ref' => ['https://refeds.org/profile/mfa'],
@@ -108,13 +107,14 @@ no evidence.
 
 `$result->evidence` on the redemption's `RedemptionResult` (`$admission->evidence` if you redeem your own codes):
 
+<!-- snippet: tests/Integration/Examples/Evidence/EvidenceExampleTest.php#accepted-evidence -->
 ```php
 $evidence = $result->evidence; // ?AcceptedEvidence
 
-$evidence?->connectionId;      // the credential reference
-$evidence?->authenticatedAt;   // when the provider authenticated the person
-$evidence?->methods();         // only the accepted RFC 8176 methods, as asserted, each once
-$evidence?->rawContext();      // the raw acr or AuthnContextClassRef, as data, listed or not
+$connectionId    = $evidence?->connectionId;    // the credential reference
+$authenticatedAt = $evidence?->authenticatedAt; // when the provider authenticated the person
+$methods         = $evidence?->methods();       // only the accepted RFC 8176 methods, as asserted, each once
+$rawContext      = $evidence?->rawContext();    // the raw acr or AuthnContextClassRef, as data, listed or not
 ```
 
 `rawContext()` is raw on purpose: it is not an accepted class, and it may name something your policy lists nowhere.

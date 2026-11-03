@@ -365,7 +365,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
         self::assertTrue($changed->enabled);
         self::assertSame([$satisfying->id], $changed->connectionIds);
         self::assertNull($changed->previousVersion);
-        self::assertSame(self::TENANT, $changed->context->tenantId);
+        self::assertSame(self::TENANT, $changed->context->connectionTenantId);
         self::assertSame($actor->id, $changed->context->actingIdentityId);
 
         $this->startRecordingEvents();
@@ -680,7 +680,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
         $context = $event->context();
 
         self::assertSame($connection->id, $context->connectionId);
-        self::assertSame(self::TENANT, $context->tenantId);
+        self::assertSame(self::TENANT, $context->connectionTenantId);
         self::assertSame($connection->protocol, $context->protocol);
         self::assertSame(self::FLOW_APPLICATION, $context->application);
         self::assertSame($purpose->value, $context->purpose);

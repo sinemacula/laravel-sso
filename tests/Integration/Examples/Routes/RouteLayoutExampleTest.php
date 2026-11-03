@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\Routes;
 
-use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Foundation\Http\Middleware\Concerns\ExcludesPaths;
@@ -167,9 +166,8 @@ final class RouteLayoutExampleTest extends ExampleTestCase
         $began   = $renewed[AuthenticationContext::PROVIDER_AUTH_TIME];
 
         // The renewal leaves the provenance of the sign-in alone
-        self::assertEquals($context, $renewed);
-        self::assertInstanceOf(CarbonImmutable::class, $began);
-        self::assertSame('2026-11-01T09:29:00Z', $began->toIso8601ZuluString());
+        self::assertSame($context, $renewed);
+        self::assertSame('2026-11-01T09:29:00.000000Z', $began);
 
         $this->actingAs(User::of('person-1', self::TENANT, 'session-elsewhere'))
             ->postJson('/api/auth/sso/reauthentications/authorization-requests', ['application' => self::APPLICATION, 'connection' => $this->connectionId])

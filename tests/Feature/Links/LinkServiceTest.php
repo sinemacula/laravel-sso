@@ -329,7 +329,7 @@ final class LinkServiceTest extends TestCase
         $context = $this->recordedEvents()[0]->context();
 
         self::assertSame($this->connection->id, $context->connectionId);
-        self::assertSame('tenant-1', $context->tenantId);
+        self::assertSame('tenant-1', $context->connectionTenantId);
         self::assertSame('oidc', $context->protocol);
         self::assertSame('user', $context->identityMorphClass);
         self::assertSame('1', $context->identityId);

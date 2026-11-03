@@ -35,8 +35,11 @@ your `config/logging.php` configures:
 SSO_LOG_CHANNEL=sso
 ```
 
+Here, in `config/logging.php`, the `sso` channel is a daily file under your storage directory:
+
+<!-- snippet: tests/Integration/Examples/Logging/config/logging.php#logging-channel -->
+
 ```php
-// config/logging.php
 'channels' => [
     'sso' => [
         'driver' => 'daily',
@@ -100,10 +103,12 @@ Built in:
 ## Adding redacted keys
 
 If your own adapters pass the package something else that must never be logged (a key management service's token, a
-tenant's API key), add its key name. Added keys join the built-in ones; none can be removed:
+tenant's API key), add its key name in your published `config/sso.php`. Added keys join the built-in ones; none can be
+removed:
+
+<!-- snippet: tests/Integration/Examples/Logging/config/sso.php#logging-settings -->
 
 ```php
-// config/sso.php
 'logging' => [
     'channel'               => env('SSO_LOG_CHANNEL'),
     'max_diagnostic_length' => env('SSO_LOG_MAX_DIAGNOSTIC_LENGTH', 512),
@@ -117,31 +122,38 @@ The value must be a list of names, each holding at least one letter or digit; an
 ## Logging from your own adapters
 
 An adapter you bind for the package (an encrypter, a resolver, a store) can log through the same logger, so its lines
-get the same treatment and land on the same channel:
+get the same treatment and land on the same channel. Here `KmsSecretEncrypter`, a `final readonly` class that implements
+`Contracts\SecretEncrypter`, takes your key management service's client (`KmsClient`, which throws `KmsException`) and
+`Logging\SanitizingLogger` in its constructor, and logs a refusal of the service through the logger before it throws:
+
+<!-- snippet: tests/Integration/Examples/Logging/KmsSecretEncrypter.php#logging-adapter-decrypt -->
 
 ```php
-use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
-use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
-
-final readonly class KmsSecretEncrypter implements SecretEncrypter
+/**
+ * The secret the key management service decrypts from the ciphertext; a
+ * refusal is logged through the package's logger and thrown as a
+ * `RuntimeException`, which the package treats as a server error.
+ *
+ * @param  string  $ciphertext
+ * @return string
+ *
+ * @throws \RuntimeException
+ */
+#[\Override]
+public function decrypt(string $ciphertext): string
 {
-    public function __construct(private KmsClient $kms, private SanitizingLogger $logger) {}
+    try {
+        return $this->kms->decrypt($ciphertext);
+    } catch (KmsException $exception) {
+        $this->logger->error('KMS decrypt failed.', ['exception' => $exception]);
 
-    public function decrypt(string $ciphertext): string
-    {
-        try {
-            return $this->kms->decrypt($ciphertext);
-        } catch (KmsException $exception) {
-            $this->logger->error('KMS decrypt failed.', ['exception' => $exception]);
-
-            throw new \RuntimeException('The secret could not be decrypted.', 0, $exception);
-        }
+        throw new \RuntimeException('The secret could not be decrypted.', 0, $exception);
     }
-
-    // encrypt() ...
 }
 ```
 
-The exception reaches the channel as its class, sanitised message and code, never its trace.
+Its `encrypt()` does the same. The exception reaches the channel as its class, sanitised message and code, never its
+trace: with `x-api-key` added to the redacted keys above, a refusal whose message names the API key the call carried
+reaches it as `Decrypt on alias/sso was refused for x-api-key=[redacted]`.
 
 Redaction is a backstop, not a licence: log the public reference and a reason, never a secret on purpose.

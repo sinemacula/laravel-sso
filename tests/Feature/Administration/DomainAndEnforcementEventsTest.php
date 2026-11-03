@@ -113,7 +113,7 @@ final class DomainAndEnforcementEventsTest extends TestCase
 
         foreach ([$failed, $restored, $lapsed] as $event) {
             self::assertSame($connection->id, $event->context()->connectionId);
-            self::assertSame('tenant-1', $event->context()->tenantId);
+            self::assertSame('tenant-1', $event->context()->connectionTenantId);
             self::assertSame('saml2', $event->context()->protocol);
             self::assertNull($event->context()->actingIdentityId);
             self::assertStringNotContainsString($domain->verification_token, serialize($event));
@@ -141,7 +141,7 @@ final class DomainAndEnforcementEventsTest extends TestCase
         self::assertSame(['c-1', 'c-2'], $event->connectionIds);
         self::assertSame('01jbversion000000000000002', $event->version);
         self::assertSame('01jbversion000000000000001', $event->previousVersion);
-        self::assertSame('tenant-1', $event->context->tenantId);
+        self::assertSame('tenant-1', $event->context->connectionTenantId);
         self::assertSame('42', $event->context->actingIdentityId);
         self::assertNull($event->context->connectionId);
     }
@@ -162,8 +162,8 @@ final class DomainAndEnforcementEventsTest extends TestCase
 
         self::assertInstanceOf(ExemptionUsed::class, $event);
         self::assertSame('01jbversion000000000000003', $event->enforcementVersion);
-        self::assertSame('parent-1', $event->context->tenantId);
-        self::assertSame('child-1', $event->context->activeTenantId);
+        self::assertSame('parent-1', $event->context->connectionTenantId);
+        self::assertSame('child-1', $event->context->tenantId);
         self::assertSame('web', $event->context->application);
         self::assertSame('App\Models\User', $event->context->identityMorphClass);
         self::assertSame('7', $event->context->identityId);

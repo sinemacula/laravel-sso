@@ -20,41 +20,64 @@ Only a genuinely unlinked `sign_in` is offered. These are never offered:
 
 ## Writing the listener
 
+The listener is a class of your application, here `ProvisionNewPerson`, which takes `Provisioning\ProvisioningHelper`
+by injection. It creates a new `User`, named from the mapped `display_name`, and their membership of the result's
+tenant, each a model of yours stored on the package's storage connection, and links the result to the user, all in one
+transaction on that connection, which it commits only when the helper answers `created`:
+
+<!-- snippet: tests/Integration/Examples/Provisioning/ProvisionNewPerson.php#provisioning-listener -->
+
 ```php
-use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Database\StorageConnection;
-use SineMacula\Laravel\Sso\Events\ResultUnlinked;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
-use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
+/**
+ * Take the helper that links the result to the new person.
+ *
+ * @param  \SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper  $provisioning
+ */
+public function __construct(
 
-final class ProvisionNewPerson
+    /** Links the result to a new identity, once, with the event's grant. */
+    private ProvisioningHelper $provisioning,
+) {}
+
+/**
+ * Create a new user and their membership, and link the result to them, in
+ * one transaction on the package's storage connection.
+ *
+ * @param  \SineMacula\Laravel\Sso\Events\ResultUnlinked  $event
+ * @return void
+ *
+ * @throws \Throwable
+ */
+public function handle(ResultUnlinked $event): void
 {
-    public function __construct(private readonly ProvisioningHelper $provisioning) {}
+    $storage = DB::connection(StorageConnection::name());
 
-    public function handle(ResultUnlinked $event): void
-    {
-        DB::connection(StorageConnection::name())->beginTransaction();
+    $storage->beginTransaction();
 
-        try {
-            $user = User::create(['name' => $event->result->attributes['name'] ?? 'New person']);
+    try {
+        // Always a new user: never one found by an attribute
+        $user = User::create(['name' => $event->result->attributes['display_name'] ?? 'New person']);
 
-            $user->memberships()->create(['tenant_id' => $event->result->tenantId]);
+        $user->memberships()->create(['tenant_id' => $event->result->tenantId]);
 
-            $answer = $this->provisioning->link(
-                $event->grant,
-                $event->result,
-                new IdentityReference(User::class, (string) $user->getKey()),
-            );
-        } catch (\Throwable $exception) {
-            DB::connection(StorageConnection::name())->rollBack();
+        $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-            throw $exception;
-        }
+        $answer = $this->provisioning->link($event->grant, $event->result, $identity);
+    } catch (\Throwable $exception) {
+        $storage->rollBack();
 
-        $answer->isCreated()
-            ? DB::connection(StorageConnection::name())->commit()
-            : DB::connection(StorageConnection::name())->rollBack();
+        throw $exception;
     }
+
+    if (!$answer->isCreated()) {
+
+        // A refusal wrote nothing, so neither does the listener
+        $storage->rollBack();
+
+        return;
+    }
+
+    $storage->commit();
 }
 ```
 
@@ -63,7 +86,9 @@ Bind the package's `Links\LinkStore` as your `Contracts\Linker` ([Links](links.m
 finds the link through the linker. The default linker links nothing, so the helper refuses over it with a
 `LogicException` before it spends the grant or writes anything, since the link would never resolve.
 
-Register the listener synchronously, on the event's class:
+Register the listener synchronously, on the event's class, in a service provider's `boot()`:
+
+<!-- snippet: tests/Integration/Examples/Provisioning/AppServiceProvider.php#provisioning-registration -->
 
 ```php
 Event::listen(ResultUnlinked::class, ProvisionNewPerson::class);

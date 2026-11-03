@@ -16,8 +16,9 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 
 /**
  * Pins the frozen shape of what a redemption's checks and writes came to:
- * exactly these five parts, in this order; a refusal carries its outcome and
- * nothing else, and only `passed` counts as passed.
+ * exactly these six parts, in this order; a refusal carries its outcome and
+ * nothing else, even judged under an enforcement version, and only `passed`
+ * counts as passed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,14 +37,15 @@ final class AdmissionTest extends TestCase
     {
         $identity  = new IdentityReference('user', '1');
         $evidence  = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd']);
-        $admission = new Admission(RecheckOutcome::PASSED, $identity, 'link-1', $evidence, LinkOrigin::VERIFIED_DOMAIN);
+        $admission = new Admission(RecheckOutcome::PASSED, $identity, 'link-1', $evidence, LinkOrigin::VERIFIED_DOMAIN, 'enforcement-2');
 
         self::assertSame([
-            'outcome'        => RecheckOutcome::PASSED,
-            'identity'       => $identity,
-            'linkId'         => 'link-1',
-            'evidence'       => $evidence,
-            'linkProvenance' => LinkOrigin::VERIFIED_DOMAIN,
+            'outcome'            => RecheckOutcome::PASSED,
+            'identity'           => $identity,
+            'linkId'             => 'link-1',
+            'evidence'           => $evidence,
+            'linkProvenance'     => LinkOrigin::VERIFIED_DOMAIN,
+            'enforcementVersion' => 'enforcement-2',
         ], get_object_vars($admission));
     }
 
@@ -55,12 +57,37 @@ final class AdmissionTest extends TestCase
     public function testEverythingButTheOutcomeDefaultsToNull(): void
     {
         self::assertSame([
-            'outcome'        => RecheckOutcome::PASSED,
-            'identity'       => null,
-            'linkId'         => null,
-            'evidence'       => null,
-            'linkProvenance' => null,
+            'outcome'            => RecheckOutcome::PASSED,
+            'identity'           => null,
+            'linkId'             => null,
+            'evidence'           => null,
+            'linkProvenance'     => null,
+            'enforcementVersion' => null,
         ], get_object_vars(new Admission(RecheckOutcome::PASSED)));
+    }
+
+    /**
+     * A passed admission judged under an enforcement version keeps every part
+     * and takes that version in place of the one it had.
+     *
+     * @return void
+     */
+    public function testAPassedAdmissionTakesTheVersionItWasJudgedUnder(): void
+    {
+        $identity  = new IdentityReference('user', '1');
+        $evidence  = new AcceptedEvidence('connection-1', CarbonImmutable::parse('2026-11-01T09:29:00Z'), ['pwd']);
+        $admission = new Admission(RecheckOutcome::PASSED, $identity, 'link-1', $evidence, LinkOrigin::PROVISIONING, 'completion-version');
+
+        self::assertSame([
+            'outcome'            => RecheckOutcome::PASSED,
+            'identity'           => $identity,
+            'linkId'             => 'link-1',
+            'evidence'           => $evidence,
+            'linkProvenance'     => LinkOrigin::PROVISIONING,
+            'enforcementVersion' => 'redemption-version',
+        ], get_object_vars($admission->under('redemption-version')));
+        self::assertNull($admission->under(null)->enforcementVersion);
+        self::assertSame('completion-version', $admission->enforcementVersion);
     }
 
     /**
@@ -101,8 +128,11 @@ final class AdmissionTest extends TestCase
     public function testARefusalCarriesOnlyItsOutcome(RecheckOutcome $outcome): void
     {
         $admission = Admission::refused($outcome);
+        $expected  = ['outcome' => $outcome, 'identity' => null, 'linkId' => null, 'evidence' => null, 'linkProvenance' => null, 'enforcementVersion' => null];
 
-        self::assertSame(['outcome' => $outcome, 'identity' => null, 'linkId' => null, 'evidence' => null, 'linkProvenance' => null], get_object_vars($admission));
+        self::assertSame($expected, get_object_vars($admission));
+        self::assertSame($expected, get_object_vars($admission->under('enforcement-1')));
+        self::assertSame($admission, $admission->under('enforcement-1'));
         self::assertFalse($admission->isPassed());
     }
 

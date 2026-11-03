@@ -87,7 +87,7 @@ final readonly class LinkEvents
     ): void {
         $context = $this->contexts->make(
             connectionId: $connection->getConnectionId(),
-            tenantId: $connection->getTenantId(),
+            connectionTenantId: $connection->getTenantId(),
             protocol: $connection->getProtocol(),
             application: $application,
             purpose: $purpose?->value,
@@ -115,7 +115,7 @@ final readonly class LinkEvents
     {
         $context = $this->contexts->make(
             connectionId: $connection->id,
-            tenantId: $connection->tenant_id,
+            connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,
             identityMorphClass: $identity->type,
             identityId: $identity->id,
@@ -147,7 +147,7 @@ final readonly class LinkEvents
 
         $context = $this->contexts->make(
             connectionId: $connection->id,
-            tenantId: $connection->tenant_id,
+            connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,
             application: $application,
             purpose: Purpose::SIGN_IN->value,
@@ -174,7 +174,7 @@ final readonly class LinkEvents
     {
         $context = $this->contexts->make(
             connectionId: $connection->getConnectionId(),
-            tenantId: $connection->getTenantId(),
+            connectionTenantId: $connection->getTenantId(),
             protocol: $connection->getProtocol(),
             application: $application,
             purpose: Purpose::LINK->value,
@@ -201,7 +201,7 @@ final readonly class LinkEvents
     {
         $context = $this->contexts->make(
             connectionId: $connectionId,
-            tenantId: $tenantId,
+            connectionTenantId: $tenantId,
             protocol: $protocol,
             identityMorphClass: $identity->type,
             identityId: $identity->id,

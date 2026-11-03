@@ -8,13 +8,15 @@ and keys and their refresh in [Setting Up An OIDC Connection](oidc-connections.m
 
 ## Algorithms
 
-`id_token_algorithms` lists what your provider may sign ID tokens with. It defaults to `RS256`.
+`id_token_algorithms` lists what your provider may sign ID tokens with. It defaults to `RS256`. A connection whose
+provider also signs with `ES256` allows both:
+
+<!-- snippet: tests/Integration/Examples/OidcIdTokens/OidcIdTokensExampleTest.php#oidc-id-token-algorithms -->
 
 ```php
-'settings' => [
-    // ...
+$updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
     'id_token_algorithms' => ['RS256', 'ES256'],
-],
+]]);
 ```
 
 Allow only what your provider uses. `RS256` to `RS512`, `PS256` to `PS512` and `ES256` to `ES512` can be listed; `none`
@@ -37,11 +39,12 @@ explains what happens when a token names a `kid` the connection does not hold.
 An ID token's `aud` must hold your connection's `client_id`. By default nothing else may appear in it. If your provider
 adds another audience, such as an API, list it:
 
+<!-- snippet: tests/Integration/Examples/OidcIdTokens/OidcIdTokensExampleTest.php#oidc-trusted-audiences -->
+
 ```php
-'settings' => [
-    // ...
+$updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
     'trusted_audiences' => ['https://api.acme.example'],
-],
+]]);
 ```
 
 Three rules go with it:
@@ -59,13 +62,14 @@ client.
 Set `max_age` when a sign-in must follow a recent authentication at the provider. It is sent on every authorisation
 request, in seconds from 0 to a week, and the ID token must then carry `auth_time`. A positive `max_age` is an age: no
 older than it plus the clock skew when the callback runs. A `max_age` of 0 asks the provider to authenticate afresh, and
-is held to the request instead.
+is held to the request instead. A connection whose sign-ins must follow an authentication within the hour sets:
+
+<!-- snippet: tests/Integration/Examples/OidcIdTokens/OidcIdTokensExampleTest.php#oidc-max-age -->
 
 ```php
-'settings' => [
-    // ...
+$updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
     'max_age' => 3600,
-],
+]]);
 ```
 
 Some providers only send `auth_time` when asked, and `max_age` asks. A provider that ignores it has its sign-ins refused

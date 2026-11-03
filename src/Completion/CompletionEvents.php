@@ -123,7 +123,7 @@ final readonly class CompletionEvents
      */
     public function reinitiated(Connection $connection): void
     {
-        $context = $this->contexts->make(connectionId: $connection->id, tenantId: $connection->tenant_id, protocol: $connection->protocol);
+        $context = $this->contexts->make(connectionId: $connection->id, connectionTenantId: $connection->tenant_id, protocol: $connection->protocol);
 
         $this->dispatcher->dispatch(new UnsolicitedResponseReinitiated($context));
     }
@@ -144,7 +144,7 @@ final readonly class CompletionEvents
 
         return $this->contexts->make(
             connectionId: $connection?->id,
-            tenantId: $connection?->tenant_id,
+            connectionTenantId: $connection?->tenant_id,
             protocol: $connection?->protocol,
             application: $state->application?->name,
             purpose: $consumed?->purpose->value,

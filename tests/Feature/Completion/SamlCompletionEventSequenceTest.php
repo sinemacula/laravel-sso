@@ -173,7 +173,10 @@ final class SamlCompletionEventSequenceTest extends TestCase
         foreach ($this->recordedEvents() as $event) {
             $context = $event->context();
 
-            self::assertSame($expected, [$context->connectionId, $context->tenantId, $context->protocol, $context->application, $context->purpose, $context->requestReference]);
+            self::assertSame(
+                $expected,
+                [$context->connectionId, $context->connectionTenantId, $context->protocol, $context->application, $context->purpose, $context->requestReference],
+            );
         }
     }
 

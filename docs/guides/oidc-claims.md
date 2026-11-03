@@ -11,14 +11,17 @@ endpoint, what happens when it fails, where each value of the verified result co
 UserInfo is off by default, and the ID token alone is then read: the provider is not called a second time.
 
 Turn it on with `fetch_userinfo` when your provider leaves claims you need out of the ID token. The connection must then
-name `userinfo_endpoint`, or it is incomplete. Turning it on or off is a trust change, as a change to an endpoint is.
+name `userinfo_endpoint`, or it is incomplete and starts nothing. Turning it on or off is a trust change, as a change to
+an endpoint is, so a flow already in flight through the connection is refused `connection_unavailable`. Here a
+connection turns it on with its endpoint:
+
+<!-- snippet: tests/Integration/Examples/OidcClaims/OidcClaimsExampleTest.php#oidc-fetch-userinfo -->
 
 ```php
-'settings' => [
-    // ...
-    'userinfo_endpoint' => 'https://idp.acme.example/oauth2/userinfo',
+$updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
+    'userinfo_endpoint' => 'https://idp.acme.example/userinfo',
     'fetch_userinfo'    => true,
-],
+]]);
 ```
 
 ## UserInfo fails closed
@@ -85,14 +88,16 @@ as false.
 | No email                       | No email, or UserInfo is off | none                                  |
 
 Read it from the verified result. The email is kept exactly as the provider sent it, and is shown only through
-`email()`:
+`email()`. Its `source` is `LinkingEmailSource::ID_TOKEN` or `LinkingEmailSource::USERINFO`:
+
+<!-- snippet: tests/Integration/Examples/OidcClaims/OidcClaimsExampleTest.php#oidc-asserted-email -->
 
 ```php
 $asserted = $result->assertedEmail;
 
-$asserted?->email();    // The email, exactly as asserted
-$asserted?->verified;   // true, false or null (unknown)
-$asserted?->source;     // LinkingEmailSource::ID_TOKEN or ::USERINFO
+$email    = $asserted?->email();  // The email, exactly as asserted
+$verified = $asserted?->verified; // Verified, not verified, or unknown when null
+$source   = $asserted?->source;   // Where both came from: the ID token or UserInfo
 ```
 
 `email_verified` is informational. Decide for yourself what your application does with it, and do not treat a provider's
@@ -105,13 +110,16 @@ exactly `true` and the email has one `@` between a local part and a domain, and 
 
 The connection's `attribute_mapping` reads from the ID token's claims with UserInfo's laid over them, so **UserInfo
 wins** for a claim both state and the ID token's stands for a claim only it states. See [Managing
-connections](managing-connections.md) for the mapping's rules and caps.
+connections](managing-connections.md) for the mapping's rules and caps. Under the default mapping, an ID token stating
+`{"name": "A Person", "given_name": "A"}` and UserInfo answering
+`{"sub": "...", "name": "Ada Person", "family_name": "Person"}` give exactly these three attributes:
+
+<!-- snippet: tests/Integration/Examples/OidcClaims/OidcClaimsExampleTest.php#oidc-mapped-attributes -->
 
 ```php
-// The ID token: {"name": "A Person", "given_name": "A"}
-// UserInfo:     {"sub": "...", "name": "Ada Person", "family_name": "Person"}
-
-$result->attributes; // ['given_name' => 'A', 'family_name' => 'Person', 'display_name' => 'Ada Person']
+$givenName   = $result->attributes['given_name'];   // "A": the ID token's alone
+$familyName  = $result->attributes['family_name'];  // "Person": UserInfo's alone
+$displayName = $result->attributes['display_name']; // "Ada Person": UserInfo's name wins
 ```
 
 The one exception is `email`, which the mapping reads as the pair's, or finds absent when there is no pair, so under the

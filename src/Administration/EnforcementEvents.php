@@ -59,7 +59,7 @@ final readonly class EnforcementEvents
     public function changed(TenantEnforcement $enforcement, ?string $previousVersion, ?ActingIdentity $actor): void
     {
         $context = $this->contexts->make(
-            tenantId: $enforcement->tenant_id,
+            connectionTenantId: $enforcement->tenant_id,
             actingIdentityMorphClass: $actor?->type,
             actingIdentityId: $actor?->id,
         );
@@ -85,11 +85,11 @@ final readonly class EnforcementEvents
     public function exemptionUsed(EnforcementPolicy $policy, string $application, IdentityReference $identity, ?string $sessionId = null): void
     {
         $context = $this->contexts->make(
-            tenantId: $policy->enforcingTenantId,
+            connectionTenantId: $policy->enforcingTenantId,
             application: $application,
             identityMorphClass: $identity->type,
             identityId: $identity->id,
-            activeTenantId: $policy->tenantId,
+            tenantId: $policy->tenantId,
             sessionId: $sessionId,
         );
 

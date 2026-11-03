@@ -3,16 +3,19 @@
 Some things the package accepts must be accepted once only: a SAML assertion (a replayed assertion is refused), an
 authorisation request (consumed by the completion it started) and a handoff code (redeemed once). Each is recorded
 through one contract, `SineMacula\Laravel\Sso\Contracts\SingleUseStore`, which records a key once in its namespace
-until an expiry and answers whether it was new:
+until an expiry and answers whether it was new. Your application can record its own keys in it too, in a namespace of
+its own, such as the token of an invitation that may be accepted once, until the invitation closes:
 
+<!-- snippet: tests/Integration/Examples/SingleUseStore/accept-invitation.php#record-once -->
 ```php
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 
-$outcome = app(SingleUseStore::class)->record('handoff_code', $code, $expiresAt);
+$outcome = app(SingleUseStore::class)->record('invitation', $token, $expiresAt);
 
 if ($outcome !== SingleUseOutcome::RECORDED) {
-    // `seen`: already used, refuse it.
+    // `seen`: already accepted, so refuse it
+    return response()->json(['error' => 'invitation_used'], 409);
 }
 ```
 
@@ -104,10 +107,12 @@ guarantee the default does:
 - **Careful with the key**: it may be a secret, so keep only a digest of it, and never log it or put it in an exception
   message.
 
-```php
-use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
+One that does keeps only each key's digest, in a table of your own on the storage connection, where a primary key on
+the namespace and the digest decides which of two concurrent records goes in. Bind it in your service provider:
 
-$this->app->scoped(SingleUseStore::class, MySingleUseStore::class);
+<!-- snippet: tests/Integration/Examples/SingleUseStore/AppServiceProvider.php#single-use-store-binding -->
+```php
+$this->app->scoped(SingleUseStore::class, ApplicationSingleUseStore::class);
 ```
 
 Bind it scoped (or as a plain binding), not as a singleton, if it holds anything from one request or job to the next.

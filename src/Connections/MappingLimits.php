@@ -8,17 +8,21 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The caps on what an attribute mapping carries (SSO-2.10), read from
- * `sso.mapping` on each call (SSO-11.2), each failing closed with an
- * `InvalidArgumentException` naming its key when it is malformed; `[mapping]`
- * reports the same at boot.
+ * What an attribute mapping may carry (SSO-2.10), read from `sso.mapping` on
+ * each call (SSO-11.2), each failing closed with an `InvalidArgumentException`
+ * naming its key when it is malformed; `[mapping]` reports the same at boot.
  *
  * - `max_value_length`: the longest mapped value kept, 64 to 65535 characters
  *   (default 1024).
  * - `max_values`: the most values one mapped attribute keeps (a list of groups,
  *   say), 1 to 10000 (default 100).
- * - `max_custom_attributes`: the most custom keys a connection's mapping may
- *   declare beside the standard ones, 0 to 100 (default 20).
+ * - `custom_attributes`: the custom keys the application declares, which a
+ *   connection's mapping may name beside the standard ones: a list of at most
+ *   `MAX_CUSTOM_ATTRIBUTES` distinct keys, each of a custom target's form and
+ *   none a standard or reserved target (default none, so a mapping names the
+ *   standard targets alone). The application declares them, never a tenant
+ *   administrator, so a key the application's code does not read is never
+ *   mapped.
  *
  * Mapped values are profile data: a value past a cap is refused when a mapping
  * is saved and cut when a result is built, never used to select an identity.
@@ -34,8 +38,11 @@ final readonly class MappingLimits
     /** @var int The most values of one attribute kept when none is configured. */
     public const int DEFAULT_MAX_VALUES = 100;
 
-    /** @var int The most custom keys a mapping may declare when none is configured. */
-    public const int DEFAULT_MAX_CUSTOM_ATTRIBUTES = 20;
+    /** @var int The most custom keys the application may declare. */
+    public const int MAX_CUSTOM_ATTRIBUTES = 100;
+
+    /** @var string The key the custom keys are declared under. */
+    private const string CUSTOM_ATTRIBUTES = 'sso.mapping.custom_attributes';
 
     /**
      * Constructor.
@@ -73,14 +80,50 @@ final readonly class MappingLimits
     }
 
     /**
-     * The most custom keys a connection's mapping may declare.
+     * The custom keys the application declares, in the order given.
      *
-     * @return int
+     * @return list<string>
      *
      * @throws \InvalidArgumentException
      */
-    public function maxCustomAttributes(): int
+    public function customAttributes(): array
     {
-        return IntegerSetting::read($this->config, 'sso.mapping.max_custom_attributes', self::DEFAULT_MAX_CUSTOM_ATTRIBUTES, 0, 100);
+        $declared = $this->config->get(self::CUSTOM_ATTRIBUTES, []);
+
+        if (!is_array($declared) || !array_is_list($declared) || count($declared) > self::MAX_CUSTOM_ATTRIBUTES) {
+            throw self::malformedCustomAttributes();
+        }
+
+        $keys = [];
+
+        foreach ($declared as $key) {
+
+            if (!is_string($key) || !AttributeMapping::isCustomTarget($key)) {
+                throw self::malformedCustomAttributes();
+            }
+
+            $keys[] = $key;
+        }
+
+        if (count(array_unique($keys)) !== count($keys)) {
+            throw self::malformedCustomAttributes();
+        }
+
+        return $keys;
+    }
+
+    /**
+     * The failure of a malformed declaration of custom keys.
+     *
+     * @return \InvalidArgumentException
+     */
+    private static function malformedCustomAttributes(): \InvalidArgumentException
+    {
+        return new \InvalidArgumentException(sprintf(
+            '%s must be a list of at most %d distinct custom keys, each a lower-case letter then up to 63 lower-case letters, digits or underscores, '
+            . 'and none a standard or reserved key.',
+            self::CUSTOM_ATTRIBUTES,
+            self::MAX_CUSTOM_ATTRIBUTES,
+        ));
     }
 }

@@ -109,6 +109,7 @@ final class TrustChangeVoidingTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.oidc', true);
         config()->set('sso.features.idp_initiated', true);
+        config()->set('sso.mapping.custom_attributes', ['department']);
 
         $this->createConnectionTables();
         $this->createFlowTables();

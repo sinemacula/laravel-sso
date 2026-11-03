@@ -87,7 +87,7 @@ final class DomainClaimTest extends DomainServiceTestCase
         self::assertSame('_sso-verification.example.com', $event->recordName);
         self::assertSame('2026-11-08T09:30:00+00:00', $event->pendingExpiresAt->toAtomString());
         self::assertSame($this->connection->id, $event->context->connectionId);
-        self::assertSame(self::TENANT, $event->context->tenantId);
+        self::assertSame(self::TENANT, $event->context->connectionTenantId);
         self::assertSame('oidc', $event->context->protocol);
         self::assertSame('App\Models\User', $event->context->actingIdentityMorphClass);
         self::assertSame('42', $event->context->actingIdentityId);

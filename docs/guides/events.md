@@ -8,14 +8,17 @@ application must enforce belongs in the package's contracts, which are called sy
 
 Every package event implements `SineMacula\Laravel\Sso\Contracts\SsoEvent` and carries one
 `SineMacula\Laravel\Sso\Events\EventContext`, returned by `context()`. Laravel delivers an event to the listeners of the
-interfaces it implements, so one listener on the contract receives them all:
+interfaces it implements, so one listener on the contract receives them all. Here, in a service provider's `boot()`, it
+writes each event's record (`context()->toArray()`) to an `audit` log channel under the event's name:
 
+<!-- snippet: tests/Integration/Examples/Events/listeners/every-event.php#every-event-listener -->
 ```php
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
-Event::listen(SsoEvent::class, function (SsoEvent $event): void {
-    // $event->context()->toArray() is the record to keep
+Event::listen(SsoEvent::class, static function (SsoEvent $event): void {
+    Log::channel('audit')->info(class_basename($event), $event->context()->toArray());
 });
 ```
 
@@ -33,8 +36,9 @@ AuditLog::map(FlowFailed::class, SsoAuditMapper::class);
 
 The mapper implements `laravel-audit-log`'s `SineMacula\Laravel\AuditLog\Contracts\EventMapper`, whose `map(object
 $event, PendingRecord $record): ?PendingRecord` fills the record and returns it, or returns `null` to skip the event.
-Give each event an explicit code rather than deriving one from the class name, and correlate the records of one flow by
-the connection and the request's public reference, skipping the correlation when an event has no reference:
+Give each event an explicit code rather than deriving one from the class name, record it for the active tenant when the
+event names one and for the connection's tenant otherwise, and correlate the records of one flow by the connection and
+the request's public reference, skipping the correlation when an event has no reference:
 
 ```php
 use SineMacula\Laravel\AuditLog\Contracts\EventMapper;
@@ -60,8 +64,10 @@ final class SsoAuditMapper implements EventMapper
             $record->by(Reference::of($context['identity_morph_class'], $context['identity_id']));
         }
 
-        if ($context['tenant_id'] !== null) {
-            $record->forTenant($context['tenant_id']);
+        $tenant = $context['tenant_id'] ?? $context['connection_tenant_id'];
+
+        if ($tenant !== null) {
+            $record->forTenant($tenant);
         }
 
         if ($context['request_reference'] !== null) {
@@ -86,7 +92,7 @@ event's flow did not establish, or that does not apply to it, is `null`.
 | `occurred_at`                                       | When the event was built, ISO 8601 UTC to the microsecond              |
 | `ip`, `user_agent`                                  | The client of the request being served                                 |
 | `connection_id`                                     | The connection the event concerns                                      |
-| `tenant_id`                                         | The tenant the connection belongs to                                   |
+| `connection_tenant_id`                              | The tenant that owns the connection, or the enforcement rule           |
 | `protocol`                                          | `saml2`, `oidc`, or a registered driver's name                         |
 | `application`                                       | The application the flow is for                                        |
 | `purpose`                                           | `sign_in`, `link` or `reauthenticate`                                  |
@@ -94,15 +100,17 @@ event's flow did not establish, or that does not apply to it, is `null`.
 | `identity_morph_class`, `identity_id`               | The identity, once the flow resolved one                               |
 | `acting_identity_morph_class`, `acting_identity_id` | The identity acting, for administration, as your application passes it |
 | `principal_morph_class`, `principal_id`             | The session's principal, where one applies                             |
-| `active_tenant_id`                                  | The tenant a session is active in, where one applies                   |
+| `tenant_id`                                         | The active tenant, the one the person is acting in, where one applies  |
 | `session_id`                                        | The session, where one applies                                         |
 | `method`                                            | The sign-in method, where one applies                                  |
 
 The fields are the shared vocabulary's (identity, principal, active tenant, application, session, method and the
-client), but not every key is spelled as `laravel-authentication` spells it: there the identity's and principal's types
-are `identity_type` and `principal_type`, and `tenant_id` is the active tenant. Here `tenant_id` is the tenant that owns
-the connection and `active_tenant_id` the tenant a session acts within. Map each by its meaning, never by the key alone;
-[Integrating with `laravel-iam`](integrating-with-laravel-iam.md#event-context-and-correlation) has the whole mapping.
+client), and `tenant_id` means what it means across the suite: the active tenant, the tenant the person is acting in.
+The tenant that owns the connection is `connection_tenant_id`. The two differ when a session acts in a child tenant
+under a parent's enforcement, and most events name only the connection's tenant, so `tenant_id` is `null` on them. Not
+every key is spelled as `laravel-authentication` spells it (there the identity's and principal's types are
+`identity_type` and `principal_type`); [Integrating with
+`laravel-iam`](integrating-with-laravel-iam.md#event-context-and-correlation) has the whole mapping.
 
 `request_reference` is the only flow identifier an event carries: use it, with `connection_id`, to correlate the events
 of one sign-in. `ResultVerified` at completion and `HandoffRedeemed` at redemption both carry them, so a sign-in is
@@ -292,8 +300,9 @@ the answer. No administration event carries a secret, a private key, a ciphertex
 ### Domain and enforcement events
 
 A connection's domains (see [Domains](domains.md)) and a tenant's enforcement report their changes the same way, once
-the change commits. A domain event's context names the connection that claimed the domain, its tenant and protocol;
-an enforcement event's names the tenant.
+the change commits. A domain event's context names the connection that claimed the domain, its tenant
+(`connection_tenant_id`) and protocol; an enforcement event's names the tenant whose rule changed, as
+`connection_tenant_id`, since the rule is that tenant's choice of its connections.
 
 | Event                 | Fields beyond the context                                | Dispatched when                                                                                   |
 |-----------------------|----------------------------------------------------------|---------------------------------------------------------------------------------------------------|
@@ -309,29 +318,35 @@ an enforcement event's names the tenant.
 `domain` is the normalised domain, `recordName` the name its TXT record is looked up at, and `failure` a
 `RecheckFailure`: `record_absent` or `record_changed`, which suspend linking by the domain at once and set `lapsesAt`,
 or `lookup_failed`, which changes nothing. No domain event carries the verification token or a record's value. An
-`ExemptionUsed` context names the enforcing tenant as `tenant_id`, the tenant the session is active in as
-`active_tenant_id`, the application, the identity and the session when the caller has one.
+`ExemptionUsed` context names the enforcing tenant as `connection_tenant_id`, the active tenant the session acts in as
+`tenant_id`, the application, the identity and the session when the caller has one.
 
 ### The acting identity
 
-Each helper takes the identity making the change as its last argument, an `ActingIdentity` of a type and an id as your
-application knows them; under `laravel-iam`, the identity's morph class and key. It reaches the context as
-`acting_identity_morph_class` and `acting_identity_id`, and is `null` when you pass none. The package never decides who
-may make a change: authorise the user first, then pass them so the event says who did.
+Each helper takes the identity making the change as its last argument, a
+`SineMacula\Laravel\Sso\Administration\ActingIdentity` of a type and an id as your application knows them; under
+`laravel-iam`, the identity's morph class and key. It reaches the context as `acting_identity_morph_class` and
+`acting_identity_id`, and is `null` when you pass none. The package never decides who may make a change: authorise the
+user first, then pass them so the event says who did. Here `$connections` is the `ConnectionService`:
 
+<!-- snippet: tests/Integration/Examples/Events/EventsExampleTest.php#acting-identity -->
 ```php
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
-
 $actor = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
 
-$connections->update($tenantId, $connectionId, ['settings' => ['token_endpoint' => $url]], $actor);
+$updated = $connections->update($tenantId, $connectionId, ['settings' => ['token_endpoint' => $url]], $actor);
 ```
+
+The `ConnectionUpdated` it reports names `token_endpoint` in `changedSettings`, and the user as the acting identity. An
+`ActingIdentity` with an empty type or id is an `InvalidArgumentException`, and a change the helper refuses, such as one
+to another tenant's connection (`connection_not_found`), reports nothing.
 
 ### Recording an audit trail
 
 Listen on the administration events you keep, and store the context's record with the event's own fields. A queued
-listener receives them as a synchronous one does, and only once the change has committed:
+listener receives them as a synchronous one does, and only once the change has committed. Here, in a service
+provider's `boot()`, each is stored as one of the application's own `AuditEntry` rows:
 
+<!-- snippet: tests/Integration/Examples/Events/listeners/audit-trail.php#audit-trail-listener -->
 ```php
 use Illuminate\Support\Facades\Event;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
@@ -353,22 +368,23 @@ Event::listen([
     KeyAdded::class,
     KeyMadeCurrent::class,
     KeyRetired::class,
-], function (SsoEvent $event): void {
+], static function (SsoEvent $event): void {
     $context = $event->context();
+    $details = match (true) {
+        $event instanceof ConnectionUpdated => ['changed' => $event->changedSettings],
+        $event instanceof KeyAdded          => ['key_id' => $event->keyId, 'use' => $event->use->value, 'fingerprint' => $event->fingerprint],
+        $event instanceof KeyMadeCurrent    => ['key_id' => $event->keyId, 'replaced' => $event->previousKeyId],
+        $event instanceof KeyRetired        => ['key_id' => $event->keyId, 'fingerprint' => $event->fingerprint],
+        default                             => [],
+    };
 
     AuditEntry::create([
         'event'         => class_basename($event),
-        'tenant_id'     => $context->tenantId,
+        'tenant_id'     => $context->connectionTenantId,
         'connection_id' => $context->connectionId,
         'actor_type'    => $context->actingIdentityMorphClass,
         'actor_id'      => $context->actingIdentityId,
-        'details'       => match (true) {
-            $event instanceof ConnectionUpdated => ['changed' => $event->changedSettings],
-            $event instanceof KeyAdded          => ['key_id' => $event->keyId, 'use' => $event->use->value, 'fingerprint' => $event->fingerprint],
-            $event instanceof KeyMadeCurrent    => ['key_id' => $event->keyId, 'replaced' => $event->previousKeyId],
-            $event instanceof KeyRetired        => ['key_id' => $event->keyId, 'fingerprint' => $event->fingerprint],
-            default                             => [],
-        },
+        'details'       => $details,
         'context'       => $context->toArray(),
     ]);
 });

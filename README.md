@@ -98,6 +98,7 @@ SSO_SAML2=true
 SSO_BASE_URL=https://api.example.com/api
 ```
 
+<!-- snippet: tests/Integration/Examples/Readme/config/sso.php#readme-applications -->
 ```php
 // config/sso.php
 'applications' => [
@@ -108,17 +109,17 @@ SSO_BASE_URL=https://api.example.com/api
 ],
 ```
 
-Check it, and register the package's scheduled work, which needs a queue worker for metadata refreshes:
+Check it, and register the package's scheduled work on the application builder in `bootstrap/app.php`, importing
+`Illuminate\Console\Scheduling\Schedule` and `SineMacula\Laravel\Sso\Operations\OperationsSchedule`; metadata refreshes
+need a queue worker:
 
 ```bash
 php artisan sso:check
 ```
 
+<!-- snippet: tests/Integration/Examples/Readme/bootstrap/app.php#readme-schedule -->
 ```php
 // bootstrap/app.php
-use Illuminate\Console\Scheduling\Schedule;
-use SineMacula\Laravel\Sso\Operations\OperationsSchedule;
-
 ->withSchedule(function (Schedule $schedule): void {
     app(OperationsSchedule::class)->register($schedule);
 })

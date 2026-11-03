@@ -3,12 +3,11 @@
 A tenant proves it controls an email domain by publishing a DNS TXT record, and the domain is then verified for one of
 its connections. Only a verified domain routes discovery, marks an email as belonging to its connection, or allows
 linking by email. Your administration screens claim, verify and remove domains through
-`SineMacula\Laravel\Sso\Domains\DomainService`; who may do so is your application's authorisation, so check it before
-you call the service.
+`SineMacula\Laravel\Sso\Domains\DomainService`, resolved from the container for each request; who may do so is your
+application's authorisation, so check it before you call the service.
 
+<!-- snippet: tests/Integration/Examples/Domains/DomainsExampleTest.php#domain-service -->
 ```php
-use SineMacula\Laravel\Sso\Domains\DomainService;
-
 $domains = app(DomainService::class);
 ```
 
@@ -19,15 +18,17 @@ $domains = app(DomainService::class);
 
 ## Claiming a domain
 
+Name who is acting with a `SineMacula\Laravel\Sso\Administration\ActingIdentity`, for an Eloquent user its morph class
+and key, which the `DomainClaimed` event carries:
+
+<!-- snippet: tests/Integration/Examples/Domains/DomainsExampleTest.php#domain-claim -->
 ```php
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
+$actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
+$result = $domains->claim($tenantId, $connectionId, 'Example.COM', $actor);
 
-$result = $domains->claim($tenant->id, $connectionId, 'Example.COM', new ActingIdentity($user->getMorphClass(), (string) $user->getKey()));
-
-if ($result->isSucceeded()) {
-    $record = $result->domain->recordName;          // _sso-verification.example.com
-    $value  = $result->domain->verificationToken(); // 64 lower-case hex characters
-}
+// A successful claim carries the domain; a refusal carries none
+$record = $result->domain?->recordName;          // _sso-verification.example.com
+$value  = $result->domain?->verificationToken(); // 64 lower-case hex characters
 ```
 
 Show the administrator the record name and the token: they publish a TXT record at that name whose value is exactly the
@@ -53,8 +54,9 @@ afterwards gives it a new token.
 
 ## Verifying a domain
 
+<!-- snippet: tests/Integration/Examples/Domains/DomainsExampleTest.php#domain-verify -->
 ```php
-$result = $domains->verify($tenant->id, $connectionId, 'example.com', $actor);
+$result = $domains->verify($tenantId, $connectionId, 'example.com', $actor);
 ```
 
 The package looks the TXT record up and verifies the domain only when one of the records at the name is exactly the
@@ -72,12 +74,13 @@ token. On success the result is `verified`, and the domain is verified for this 
 A domain that is already verified answers `unchanged` with nothing looked up. A lapsed domain can be verified again,
 and counts from its new verification time.
 
-## Removing and reading domains
+## Reading and removing domains
 
+<!-- snippet: tests/Integration/Examples/Domains/DomainsExampleTest.php#domain-read-remove -->
 ```php
-$domains->remove($tenant->id, $connectionId, 'example.com', $actor);  // in any state
-$domains->get($tenant->id, $connectionId, 'example.com');             // ?DomainSummary
-$domains->list($tenant->id, $connectionId);                           // ?list<DomainSummary>, oldest first
+$domain  = $domains->get($tenantId, $connectionId, 'example.com');            // ?DomainSummary
+$listed  = $domains->list($tenantId, $connectionId);                          // ?list<DomainSummary>, oldest first
+$removed = $domains->remove($tenantId, $connectionId, 'example.com', $actor); // in any state
 ```
 
 Removing a verified domain stops it routing discovery and allowing linking at once, and frees it for another
@@ -92,31 +95,33 @@ Lookups go through `SineMacula\Laravel\Sso\Contracts\DnsResolver`. The default a
 `dns_get_record()`, which has no timeout of its own: a slow resolver holds the request or the scheduled command as long
 as the system allows. Bind your own for a bounded deadline, DNSSEC validation or DNS over HTTPS. The default queries the
 fully qualified name (with a trailing dot), so a search domain in `resolv.conf` never answers for it; yours must resolve
-the name as absolute too. It answers a
-`DnsLookup`: `found` with the records, `absent`, or `lookupFailed()` when it cannot tell, and must never answer `absent`
-when it could not look the name up.
+the name as absolute too. It answers a `DnsLookup`: `found` with the records, `absent`, or `lookupFailed()` when it
+cannot tell, and must never answer `absent` when it could not look the name up. Bind yours in a service provider; here
+`DohResolver` asks a DNS over HTTPS service for the absolute name, with a deadline of two seconds, and answers
+`lookupFailed()` for an error status, an unreadable answer or a failed connection:
 
+<!-- snippet: tests/Integration/Examples/Domains/AppServiceProvider.php#dns-resolver -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\DnsResolver;
-
-$this->app->scoped(DnsResolver::class, MyDohResolver::class);
+$this->app->scoped(DnsResolver::class, DohResolver::class);
 ```
 
 ## Testing
 
 `SineMacula\Laravel\Sso\Testing\FakeDnsResolver` answers each name with what your test gives it and fails loudly on a
-name it has no answer for:
+name it has no answer for; `SineMacula\Laravel\Sso\Domains\Enums\DomainStatus` names how each operation ended:
 
+<!-- snippet: tests/Integration/Examples/Domains/DomainsExampleTest.php#fake-dns-resolver -->
 ```php
-use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
+$this->instance(DnsResolver::class, $dns = new FakeDnsResolver);
 
-$this->app->instance(DnsResolver::class, $dns = new FakeDnsResolver);
+$domains = app(DomainService::class);
+$claimed = $domains->claim($tenantId, $connectionId, 'example.com')->domain;
 
-$claimed = $domains->claim($tenantId, $connectionId, 'example.com');
+self::assertNotNull($claimed);
 
-$dns->publishes($claimed->domain);              // or ->absent($name), ->failing($name), ->found($name, ...$records)
+$dns->publishes($claimed); // or absent(), failing() or found() with records of your own
 
-$domains->verify($tenantId, $connectionId, 'example.com');
+self::assertSame(DomainStatus::VERIFIED, $domains->verify($tenantId, $connectionId, 'example.com')->status);
 
 $dns->assertLookedUp('_sso-verification.example.com', 1);
 ```

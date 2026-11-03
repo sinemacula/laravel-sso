@@ -115,6 +115,7 @@ final class ConnectionServiceTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.oidc', true);
         config()->set('sso.freshness.max_age_seconds.connection_trust', self::TRUST_MAX_AGE);
+        config()->set('sso.mapping.custom_attributes', ['department']);
 
         $this->createConnectionTables();
         $this->createFlowTables();
@@ -201,7 +202,7 @@ final class ConnectionServiceTest extends TestCase
 
         self::assertInstanceOf(ConnectionCreated::class, $event);
         self::assertSame($summary->id, $event->context->connectionId);
-        self::assertSame(self::TENANT, $event->context->tenantId);
+        self::assertSame(self::TENANT, $event->context->connectionTenantId);
         self::assertSame('oidc', $event->context->protocol);
         self::assertSame('user', $event->context->actingIdentityMorphClass);
         self::assertSame('42', $event->context->actingIdentityId);
@@ -624,6 +625,32 @@ final class ConnectionServiceTest extends TestCase
             [['attribute_mapping.tenant_id', 'reserved']],
             self::violationsOf($this->service()->update(self::TENANT, $id, ['attribute_mapping' => ['tenant_id' => 'tid']])),
         );
+    }
+
+    /**
+     * A custom target the application does not declare in
+     * `sso.mapping.custom_attributes` is refused as `not_allowed` at its
+     * target, on creation and on update, and nothing is stored; once declared,
+     * the same mapping is saved.
+     *
+     * @return void
+     */
+    public function testRefusesACustomTargetTheApplicationDoesNotDeclare(): void
+    {
+        $id      = $this->createOidc();
+        $mapping = ['attribute_mapping' => ['badge_number' => 'badge']];
+
+        self::assertSame([['attribute_mapping.badge_number', 'not_allowed']], self::violationsOf($this->service()->update(self::TENANT, $id, $mapping)));
+        self::assertArrayNotHasKey('badge_number', $this->stored($id)->attribute_mapping);
+
+        $created = $this->service()->create(self::TENANT, 'oidc', 'Badges', [], ['badge_number' => 'badge']);
+
+        self::assertSame([['attribute_mapping.badge_number', 'not_allowed']], self::violationsOf($created));
+
+        config()->set('sso.mapping.custom_attributes', ['department', 'badge_number']);
+
+        self::assertSame(['attribute_mapping'], $this->service()->update(self::TENANT, $id, $mapping)->changedSettings);
+        self::assertSame('badge', $this->stored($id)->attribute_mapping['badge_number'] ?? null);
     }
 
     /**

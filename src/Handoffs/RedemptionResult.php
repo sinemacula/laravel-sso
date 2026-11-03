@@ -20,14 +20,15 @@ use SineMacula\Laravel\Sso\Sessions\Provenance;
  * - redeemed: the code was consumed now and every check passed; it carries the
  *   verified result, the identity its link resolved to at completion (and still
  *   resolves to), the identity a `link` or `reauthenticate` flow was started
- *   for, the session a `reauthenticate` flow was started on, the enforcement
- *   version the completion checked, the latest end of the application's session
- *   the provider's deadline sets (SSO-9.10), the link that established it, the
- *   evidence the evidence contract accepted, whether it was admitted (redeemed
- *   inside the caller's transaction, so its session write commits with it),
- *   and, for an admitted `sign_in` only, the session provenance captured from
- *   that admission (`Sessions\Provenance`, SSO-9.10), which the adapter writes
- *   with the session once and never rewrites. A result not admitted must never
+ *   for, the session a `reauthenticate` flow was started on, the version of the
+ *   enforcement the redemption judged under its locks, the latest end of the
+ *   application's session the provider's deadline sets (SSO-9.10), the link
+ *   that established it, the evidence the evidence contract accepted, whether
+ *   it was admitted (redeemed inside the caller's transaction, so its session
+ *   write commits with it), and, for an admitted `sign_in` only, the session
+ *   provenance captured from that admission (`Sessions\Provenance`, SSO-9.10),
+ *   which the adapter writes with the session once and never rewrites. A result
+ *   not admitted must never
  *   lead to a session;
  * - refused: for the reason given, the first check that refused it; a code
  *   consumed before the refusal stays consumed;
@@ -93,7 +94,7 @@ final readonly class RedemptionResult implements \JsonSerializable
         /** The session a `reauthenticate` flow was started on. */
         public ?string $sessionId = null,
 
-        /** The enforcement version the completion checked (SSO-4.6, SSO-9.10). */
+        /** The version of the enforcement judged under the redemption's locks (SSO-4.6, SSO-9.10). */
         public ?string $enforcementVersion = null,
 
         /** The latest end of the application's session the provider's deadline sets. */

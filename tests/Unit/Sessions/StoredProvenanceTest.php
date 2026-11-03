@@ -8,8 +8,10 @@ use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use SineMacula\Laravel\Sso\Evidence\EvidenceRules;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
+use SineMacula\Laravel\Sso\Sessions\ProvenanceDomain;
 use Tests\Concerns\DumpsValues;
 
 /**
@@ -26,9 +28,13 @@ use Tests\Concerns\DumpsValues;
  * @internal
  */
 #[CoversClass(Provenance::class)]
+#[CoversClass(ProvenanceDomain::class)]
 final class StoredProvenanceTest extends TestCase
 {
     use DumpsValues;
+
+    /** @var int The flags the stored form is measured with: JSON's default escaping, a float kept a float. */
+    private const int JSON = JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION;
 
     /**
      * Instants are kept in UTC to the microsecond, whatever zone they were
@@ -115,6 +121,155 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
+     * A provenance of each protocol with every fact, and one with every
+     * optional part `null`.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Sessions\Provenance}>
+     */
+    public static function provenances(): iterable
+    {
+        yield 'saml2 with every fact' => [self::full()];
+        yield 'oidc with every fact' => [new Provenance(
+            'connection-1',
+            'tenant-1',
+            'oidc',
+            CarbonImmutable::parse('2026-11-01T09:29:00.123456Z'),
+            ['pwd'],
+            'urn:acr',
+            null,
+            'link-1',
+            LinkOrigin::PROVISIONING,
+            CarbonImmutable::parse('2026-11-01T18:00:00Z'),
+            CarbonImmutable::parse('2026-11-01T17:00:00Z'),
+            'enforcement-7',
+        )];
+        yield 'every optional part null' => [new Provenance('connection-1', 'tenant-1', 'oidc')];
+    }
+
+    /**
+     * The stored form is a non-empty map with string keys whose values are
+     * plain: the version an integer, every other value a string, `null` or a
+     * list of strings, and no array nested in the list. So it is stored the
+     * same by anything that keeps plain values, and comes back from JSON
+     * exactly as it went in.
+     *
+     * @param  \SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
+     * @return void
+     *
+     * @throws \JsonException
+     */
+    #[DataProvider('provenances')]
+    public function testTheStoredFormHoldsOnlyPlainValues(Provenance $provenance): void
+    {
+        $stored = $provenance->toArray();
+
+        self::assertSame(Provenance::STORED_KEYS, array_keys($stored));
+        self::assertSame(Provenance::VERSION, $stored['version']);
+
+        foreach (array_slice($stored, 1) as $key => $value) {
+
+            $plain = $value === null || is_string($value) || (is_array($value) && array_is_list($value) && array_filter($value, is_string(...)) === $value);
+
+            self::assertTrue($plain, "{$key} is not a string, null or a list of strings.");
+        }
+
+        $json = json_encode($stored, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+
+        self::assertSame($stored, json_decode($json, true, flags: JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * The stored form at its worst, encoded as JSON with the default escaping
+     * (`json_encode()` with only `JSON_PRESERVE_ZERO_FRACTION` beside the
+     * exception flag), takes 3,364 bytes, within `MAX_STORED_JSON_BYTES`, and
+     * holds only plain values.
+     *
+     * @return void
+     *
+     * @throws \JsonException
+     */
+    public function testTheWorstStoredFormFitsItsBound(): void
+    {
+        $stored = self::worst()->toArray();
+        $json   = json_encode($stored, self::JSON);
+
+        self::assertSame(3364, strlen($json));
+        self::assertLessThanOrEqual(Provenance::MAX_STORED_JSON_BYTES, strlen($json));
+        self::assertSame(4096, Provenance::MAX_STORED_JSON_BYTES);
+        self::assertSame($stored, json_decode($json, true, flags: JSON_THROW_ON_ERROR));
+
+        foreach (array_slice($stored, 1) as $key => $value) {
+            self::assertTrue($value === null || is_string($value) || (is_array($value) && array_is_list($value) && array_filter($value, is_string(...)) === $value), $key);
+        }
+    }
+
+    /**
+     * The worst stored form holds every part at its limit, with every character
+     * one JSON escapes the most, and names every stored key: so a key added, or
+     * a limit loosened, changes what it takes and fails here.
+     *
+     * @return void
+     *
+     * @throws \JsonException
+     */
+    public function testTheWorstStoredFormHoldsEveryPartAtItsLimit(): void
+    {
+        $stored  = self::worst()->toArray();
+        $longest = max(array_map(static fn (LinkOrigin $origin): int => strlen($origin->value), LinkOrigin::cases()));
+        $instant = strlen(CarbonImmutable::parse('9999-12-31T23:59:59.999999Z')->format(Provenance::INSTANT_FORMAT));
+
+        self::assertSame(Provenance::STORED_KEYS, array_keys($stored));
+        self::assertSame(EvidenceRules::RFC_8176_METHODS, $stored['provider_amr']);
+        self::assertSame(LinkOrigin::VERIFIED_DOMAIN->value, $stored['link_provenance']);
+        self::assertSame(15, $longest);
+        self::assertSame(27, $instant);
+        self::assertSame([
+            'version'                          => 1,
+            'connection_id'                    => 2 * Provenance::MAX_CONNECTION_ID_LENGTH + 2,
+            'tenant_id'                        => 6 * Provenance::MAX_ID_LENGTH            + 2,
+            'protocol'                         => 64                                       + 2,
+            'provider_auth_time'               => $instant                                 + 2,
+            'provider_amr'                     => strlen(json_encode(EvidenceRules::RFC_8176_METHODS, self::JSON)),
+            'provider_acr'                     => 2 * Provenance::MAX_CONTEXT_LENGTH + 2,
+            'provider_authn_context_class_ref' => strlen('null'),
+            'link_id'                          => 2 * Provenance::MAX_ID_LENGTH      + 2,
+            'link_provenance'                  => $longest                           + 2,
+            'provider_session_deadline'        => $instant                           + 2,
+            'session_not_after'                => $instant                           + 2,
+            'enforcement_version'              => 2 * Provenance::MAX_VERSION_LENGTH + 2,
+        ], array_map(static fn (mixed $value): int => strlen(json_encode($value, self::JSON)), $stored));
+    }
+
+    /**
+     * The escaping the worst case assumes: JSON's default escaping takes no
+     * more than two bytes for a byte of printable ASCII, and no more than six
+     * for a byte of any valid UTF-8, whatever its length.
+     *
+     * @return void
+     *
+     * @throws \JsonException
+     */
+    public function testNoByteEscapesToMoreThanTheWorstCaseAssumes(): void
+    {
+        $printable = 0;
+        $any       = 0;
+
+        foreach ([...array_map(chr(...), range(0, 0x7F)), "\u{80}", "\u{7FF}", "\u{800}", "\u{FFFF}", "\u{10000}", "\u{10FFFF}"] as $character) {
+
+            $escaped = (strlen(json_encode($character, self::JSON)) - 2) / strlen($character);
+            $any     = max($any, $escaped);
+
+            if (preg_match('/^[\x20-\x7E]$/D', $character) !== 1) {
+                continue;
+            }
+
+            $printable = max($printable, $escaped);
+        }
+
+        self::assertSame([2, 6], [$printable, $any]);
+    }
+
+    /**
      * Each way a stored form is not one this version wrote.
      *
      * @return iterable<string, array{0: array<array-key, mixed>}>
@@ -138,7 +293,16 @@ final class StoredProvenanceTest extends TestCase
         yield 'a numeric connection' => [array_replace($stored, ['connection_id' => 7])];
         yield 'no tenant' => [array_replace($stored, ['tenant_id' => null])];
         yield 'no protocol' => [array_replace($stored, ['protocol' => null])];
-        yield 'an overlong protocol' => [array_replace($stored, ['protocol' => str_repeat('p', 256)])];
+        yield 'an overlong protocol' => [array_replace($stored, ['protocol' => str_repeat('p', 65)])];
+        yield 'a protocol not a driver\'s name' => [array_replace($stored, ['protocol' => 'SAML2'])];
+        yield 'an overlong connection' => [array_replace($stored, ['connection_id' => str_repeat('c', 65)])];
+        yield 'a tenant not UTF-8' => [array_replace($stored, ['tenant_id' => "tenant-\xFF"])];
+        yield 'a method not registered' => [array_replace($stored, ['provider_amr' => ['pwd', 'passkey']])];
+        yield 'a method twice' => [array_replace($stored, ['provider_amr' => ['pwd', 'pwd']])];
+        yield 'a raw context outside ASCII' => [array_replace($stored, ['provider_authn_context_class_ref' => 'urn:élevé'])];
+        yield 'an overlong raw context' => [array_replace($stored, ['provider_authn_context_class_ref' => str_repeat('u', 256)])];
+        yield 'a link outside ASCII' => [array_replace($stored, ['link_id' => 'lién'])];
+        yield 'an overlong enforcement version' => [array_replace($stored, ['enforcement_version' => str_repeat('v', 65)])];
         yield 'methods as a string' => [array_replace($stored, ['provider_amr' => 'pwd'])];
         yield 'methods as null' => [array_replace($stored, ['provider_amr' => null])];
         yield 'methods keyed' => [array_replace($stored, ['provider_amr' => ['first' => 'pwd']])];
@@ -185,34 +349,52 @@ final class StoredProvenanceTest extends TestCase
     public static function bounds(): iterable
     {
         $long    = static fn (int $length): string => str_repeat('a', $length);
-        $methods = 'A session provenance keeps a list of at most 32 methods of 1 to 255 bytes.';
+        $methods = 'A session provenance keeps a list of RFC 8176\'s registered methods, each at most once.';
+        $tenant  = 'A session provenance\'s tenant id is 1 to 255 bytes of UTF-8.';
+        $driver  = 'A session provenance\'s protocol is a driver\'s name: a lower-case letter, then up to 63 of them, digits or underscores.';
 
-        yield 'a connection of 255 bytes' => [[$long(255), 't', 'p'], null];
-        yield 'a connection of 256 bytes' => [[$long(256), 't', 'p'], self::bytes('connection id', 255, false)];
-        yield 'an empty connection' => [['', 't', 'p'], self::bytes('connection id', 255, false)];
-        yield 'an empty tenant' => [['c', '', 'p'], self::bytes('tenant id', 255, false)];
-        yield 'a tenant of 256 bytes' => [['c', $long(256), 'p'], self::bytes('tenant id', 255, false)];
-        yield 'an empty protocol' => [['c', 't', ''], self::bytes('protocol', 255, false)];
-        yield 'a protocol of 255 bytes' => [['c', 't', $long(255)], null];
+        yield 'a connection of 64 bytes' => [[$long(64), 't', 'p'], null];
+        yield 'a connection of 65 bytes' => [[$long(65), 't', 'p'], self::bytes('connection id', 64, false)];
+        yield 'an empty connection' => [['', 't', 'p'], self::bytes('connection id', 64, false)];
+        yield 'a connection of every printable character' => [[' ~!"#$%&\'()*+,-./09:;<=>?@AZ[\]^_`az{|}', 't', 'p'], null];
+        yield 'a connection with a control character' => [["c\t", 't', 'p'], self::bytes('connection id', 64, false)];
+        yield 'a connection with a delete' => [["c\x7F", 't', 'p'], self::bytes('connection id', 64, false)];
+        yield 'a connection outside ASCII' => [['connexión', 't', 'p'], self::bytes('connection id', 64, false)];
+        yield 'an empty tenant' => [['c', '', 'p'], $tenant];
+        yield 'a tenant of 255 bytes' => [['c', $long(255), 'p'], null];
+        yield 'a tenant of 256 bytes' => [['c', $long(256), 'p'], $tenant];
+        yield 'a tenant outside ASCII' => [['c', 'locataire-é', 'p'], null];
+        yield 'a tenant with a control character' => [['c', "tenant\n", 'p'], null];
+        yield 'a tenant not UTF-8' => [['c', "tenant-\xFF", 'p'], $tenant];
+        yield 'an empty protocol' => [['c', 't', ''], $driver];
+        yield 'a protocol of 64 bytes' => [['c', 't', $long(64)], null];
+        yield 'a protocol of 65 bytes' => [['c', 't', $long(65)], $driver];
+        yield 'a protocol by case' => [['c', 't', 'SAML2'], $driver];
+        yield 'a protocol with a hyphen' => [['c', 't', 'ldap-bridge'], $driver];
+        yield 'a protocol from a digit' => [['c', 't', '2saml'], $driver];
         yield 'a link of 255 bytes' => [['c', 't', 'p', 'linkId' => $long(255)], null];
         yield 'a link of 256 bytes' => [['c', 't', 'p', 'linkId' => $long(256)], self::bytes('link id', 255, true)];
         yield 'an empty link' => [['c', 't', 'p', 'linkId' => ''], self::bytes('link id', 255, true)];
-        yield 'a version of 255 bytes' => [['c', 't', 'p', 'enforcementVersion' => $long(255)], null];
-        yield 'a version of 256 bytes' => [['c', 't', 'p', 'enforcementVersion' => $long(256)], self::bytes('enforcement version', 255, true)];
-        yield 'an empty version' => [['c', 't', 'p', 'enforcementVersion' => ''], self::bytes('enforcement version', 255, true)];
-        yield 'an acr of 1024 bytes' => [['c', 't', 'p', 'acr' => $long(1024)], null];
-        yield 'an acr of 1025 bytes' => [['c', 't', 'p', 'acr' => $long(1025)], self::bytes('acr', 1024, true)];
-        yield 'an empty acr' => [['c', 't', 'p', 'acr' => ''], self::bytes('acr', 1024, true)];
-        yield 'a class ref of 1024 bytes' => [['c', 't', 'p', 'authnContextClassRef' => $long(1024)], null];
-        yield 'a class ref of 1025 bytes' => [['c', 't', 'p', 'authnContextClassRef' => $long(1025)], self::bytes('AuthnContextClassRef', 1024, true)];
+        yield 'a link outside ASCII' => [['c', 't', 'p', 'linkId' => 'lién'], self::bytes('link id', 255, true)];
+        yield 'a version of 64 bytes' => [['c', 't', 'p', 'enforcementVersion' => $long(64)], null];
+        yield 'a version of 65 bytes' => [['c', 't', 'p', 'enforcementVersion' => $long(65)], self::bytes('enforcement version', 64, true)];
+        yield 'an empty version' => [['c', 't', 'p', 'enforcementVersion' => ''], self::bytes('enforcement version', 64, true)];
+        yield 'a version with a control character' => [['c', 't', 'p', 'enforcementVersion' => "v\x00"], self::bytes('enforcement version', 64, true)];
+        yield 'an acr of 255 bytes' => [['c', 't', 'p', 'acr' => $long(255)], null];
+        yield 'an acr of 256 bytes' => [['c', 't', 'p', 'acr' => $long(256)], self::bytes('acr', 255, true)];
+        yield 'an empty acr' => [['c', 't', 'p', 'acr' => ''], self::bytes('acr', 255, true)];
+        yield 'an acr outside ASCII' => [['c', 't', 'p', 'acr' => 'urn:élevé'], self::bytes('acr', 255, true)];
+        yield 'a class ref of 255 bytes' => [['c', 't', 'p', 'authnContextClassRef' => $long(255)], null];
+        yield 'a class ref of 256 bytes' => [['c', 't', 'p', 'authnContextClassRef' => $long(256)], self::bytes('AuthnContextClassRef', 255, true)];
+        yield 'a class ref with a control character' => [['c', 't', 'p', 'authnContextClassRef' => "urn:\r"], self::bytes('AuthnContextClassRef', 255, true)];
         yield 'both raw contexts' => [['c', 't', 'p', 'acr' => 'a', 'authnContextClassRef' => 'b'], 'A session provenance states an acr or an AuthnContextClassRef, never both.'];
         yield 'a link provenance with its link' => [['c', 't', 'p', 'linkId' => 'l', 'linkProvenance' => LinkOrigin::MIGRATION], null];
         yield 'a link provenance with no link' => [['c', 't', 'p', 'linkProvenance' => LinkOrigin::MIGRATION], 'A session provenance states a link provenance only with its link.'];
         yield 'a link with no provenance' => [['c', 't', 'p', 'linkId' => 'l'], null];
-        yield '32 methods' => [['c', 't', 'p', 'methods' => array_fill(0, 32, 'pwd')], null];
-        yield '33 methods' => [['c', 't', 'p', 'methods' => array_fill(0, 33, 'pwd')], $methods];
-        yield 'a method of 255 bytes' => [['c', 't', 'p', 'methods' => [$long(255)]], null];
-        yield 'a method of 256 bytes' => [['c', 't', 'p', 'methods' => [$long(256)]], $methods];
+        yield 'every registered method' => [['c', 't', 'p', 'methods' => EvidenceRules::RFC_8176_METHODS], null];
+        yield 'a method twice' => [['c', 't', 'p', 'methods' => ['pwd', 'otp', 'pwd']], $methods];
+        yield 'a method not registered' => [['c', 't', 'p', 'methods' => ['pwd', 'passkey']], $methods];
+        yield 'a method by case' => [['c', 't', 'p', 'methods' => ['PWD']], $methods];
         yield 'an empty method' => [['c', 't', 'p', 'methods' => ['pwd', '']], $methods];
         yield 'methods keyed' => [['c', 't', 'p', 'methods' => [1 => 'pwd']], $methods];
         yield 'a method not a string' => [['c', 't', 'p', 'methods' => ['pwd', 7]], $methods];
@@ -297,7 +479,34 @@ final class StoredProvenanceTest extends TestCase
      */
     private static function bytes(string $name, int $maxBytes, bool $optional): string
     {
-        return sprintf('A session provenance\'s %s is 1 to %d bytes%s.', $name, $maxBytes, $optional ? ' or null' : '');
+        return sprintf('A session provenance\'s %s is 1 to %d bytes of printable ASCII%s.', $name, $maxBytes, $optional ? ' or null' : '');
+    }
+
+    /**
+     * The provenance whose stored form takes the most: every part at its limit,
+     * of the characters JSON escapes the most, every registered method, the
+     * longest link provenance and every instant.
+     *
+     * @return \SineMacula\Laravel\Sso\Sessions\Provenance
+     */
+    private static function worst(): Provenance
+    {
+        $instant = CarbonImmutable::parse('2026-11-01T09:29:00.123456Z');
+
+        return new Provenance(
+            str_repeat('"', Provenance::MAX_CONNECTION_ID_LENGTH),
+            str_repeat("\x01", Provenance::MAX_ID_LENGTH),
+            str_repeat('p', 64),
+            $instant,
+            EvidenceRules::RFC_8176_METHODS,
+            str_repeat('/', Provenance::MAX_CONTEXT_LENGTH),
+            null,
+            str_repeat('\\', Provenance::MAX_ID_LENGTH),
+            LinkOrigin::VERIFIED_DOMAIN,
+            $instant,
+            $instant,
+            str_repeat('/', Provenance::MAX_VERSION_LENGTH),
+        );
     }
 
     /**

@@ -23,20 +23,40 @@ Each limit is `max` attempts (1 to 1000000) in each window of `decay_seconds` (1
 | `rate_limits.metadata.per_connection`                | 10 per 3600 s | connection whose metadata or discovery document is fetched      |
 | `rate_limits.domain_check.per_connection`            | 30 per 3600 s | connection whose domains' DNS records are checked               |
 
+This published block raises the starts allowed from one IP address, for an office behind one NAT address, and keeps
+every other flow and limit at its default:
+
+<!-- snippet: tests/Integration/Examples/RateLimits/config/sso.php#rate-limits-configuration -->
 ```php
 // config/sso.php
 'rate_limits' => [
-    'table'      => env('SSO_RATE_LIMITS_TABLE', 'sso_rate_limits'),
-    'connection' => env('SSO_RATE_LIMITS_CONNECTION'),
+    'authorization_request' => [
+        // An office behind one NAT address starts many sign-ins a minute
+        'per_ip'           => ['max' => 60, 'decay_seconds' => 60],
+        'per_email_domain' => ['max' => 300, 'decay_seconds' => 60],
+    ],
 
     'completion' => [
         'per_ip'         => ['max' => 30, 'decay_seconds' => 60],
         'per_connection' => ['max' => 600, 'decay_seconds' => 60],
     ],
 
-    // ... every other flow, each with every one of its limits
+    'redemption' => [
+        'per_ip' => ['max' => 30, 'decay_seconds' => 60],
+    ],
+
+    'metadata' => [
+        'per_connection' => ['max' => 10, 'decay_seconds' => 3600],
+    ],
+
+    'domain_check' => [
+        'per_connection' => ['max' => 30, 'decay_seconds' => 3600],
+    ],
 ],
 ```
+
+The block's `table` and `connection` keys (see [The table and its connection](#the-table-and-its-connection)) take
+their defaults when it leaves them out, as this one does.
 
 The limits cannot be turned off. A limit that is missing, `null` or malformed (anything but exactly a `max` and a
 `decay_seconds`, each an integer or a string of digits, within range) fails closed: every attempt at its flow throws an
@@ -124,6 +144,7 @@ its result has the reason `rate_limited` and `retryAfter`, the whole seconds (at
 window ends, and the flow emits its one failure event with `rate_limited` (see [Events](events.md)). Answer it with
 HTTP 429 and a `Retry-After` header:
 
+<!-- snippet: tests/Integration/Examples/RateLimits/routes.php#rate-limited-answer -->
 ```php
 if ($result->isRateLimited()) {
     return response()->json(['error' => 'rate_limited'], 429, [
@@ -132,8 +153,10 @@ if ($result->isRateLimited()) {
 }
 ```
 
-The same check is available directly, through the contract, for anything of your own that drives a limited flow:
+The same check is available directly, through the contract, for anything of your own that drives a limited flow, such
+as a hint that tells a person typing their email address whether their organisation signs in through SSO:
 
+<!-- snippet: tests/Integration/Examples/RateLimits/sign-in-hint.php#attempt-limiter -->
 ```php
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
@@ -145,7 +168,8 @@ $result = app(AttemptLimiter::class)->attempt(
 
 Each flow has its own constructor (`authorizationRequest`, `completion`, `redemption`, `metadata`, `domainCheck`),
 naming only what that flow counts. Pass the IP address and the email domain as received; the limiter counts each in
-its canonical form. A `null` IP address (a console command) or email domain (no discovery) is not counted.
+its canonical form. A `null` IP address (a console command) or email domain (no discovery) is not counted. The result is
+allowed, and counted, or rate limited with `retryAfter`, and counted against nothing; answer it as above.
 
 ## Binding another limiter
 

@@ -107,7 +107,6 @@ final readonly class IssueHandoff implements CompletionStage
             linkedIdentity: $state->linkedIdentity,
             identity: IdentityReference::fromColumns($request->identity_type, $request->identity_id),
             sessionId: $request->session_id,
-            enforcementVersion: $state->enforcementVersion,
             sessionNotAfter: $state->sessionNotAfter,
             linkId: $state->resolution?->linkId,
             reservationId: $candidate?->reservationId,

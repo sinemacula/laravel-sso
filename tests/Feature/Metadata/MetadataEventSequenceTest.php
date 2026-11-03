@@ -317,7 +317,14 @@ final class MetadataEventSequenceTest extends TestCase
 
             self::assertSame(
                 [$this->connection->id, self::TENANT, 'saml2', $actingIdentityId, $actingIdentityId === null ? null : 'App\Models\User', null],
-                [$context->connectionId, $context->tenantId, $context->protocol, $context->actingIdentityId, $context->actingIdentityMorphClass, $context->requestReference],
+                [
+                    $context->connectionId,
+                    $context->connectionTenantId,
+                    $context->protocol,
+                    $context->actingIdentityId,
+                    $context->actingIdentityMorphClass,
+                    $context->requestReference,
+                ],
             );
         }
     }

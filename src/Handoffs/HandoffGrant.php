@@ -16,12 +16,11 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * request's public reference; the S256 challenge of the client's verifier; the
  * code's expiry; the identity the result's link resolved to, if any; the
  * identity a `link` or `reauthenticate` flow was started for, and the session a
- * `reauthenticate` flow was started on; the enforcement version checked at
- * completion; and the latest end of the application's session the provider's
- * deadline sets, where the deadline contract says it limits the session; the link
- * the result resolved to, so a link removed and made again is told apart; and the
- * reservation a result holding no link is bound to (SSO-8.8), which expires exactly
- * when the code does.
+ * `reauthenticate` flow was started on; the latest end of the application's
+ * session the provider's deadline sets, where the deadline contract says it
+ * limits the session; the link the result resolved to, so a link removed and
+ * made again is told apart; and the reservation a result holding no link is
+ * bound to (SSO-8.8), which expires exactly when the code does.
  *
  * The completion pipeline builds one and hands it to `Contracts\HandoffIssuer`;
  * the code is bound to every part of it. A grant whose identity or session does
@@ -37,7 +36,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  */
 final readonly class HandoffGrant
 {
-    /** @var int The longest session id or enforcement version, in bytes. */
+    /** @var int The longest session, link or reservation id, in bytes. */
     public const int MAX_ID_LENGTH = 255;
 
     /**
@@ -49,7 +48,6 @@ final readonly class HandoffGrant
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $linkedIdentity
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $sessionId
-     * @param  ?string  $enforcementVersion
      * @param  ?\Carbon\CarbonImmutable  $sessionNotAfter
      * @param  ?string  $linkId
      * @param  ?string  $reservationId
@@ -76,9 +74,6 @@ final readonly class HandoffGrant
         /** The session a `reauthenticate` flow was started on. */
         public ?string $sessionId = null,
 
-        /** The enforcement version the completion checked (SSO-4.6, SSO-9.10). */
-        public ?string $enforcementVersion = null,
-
         /** The latest end of the application's session the provider's deadline sets. */
         public ?CarbonImmutable $sessionNotAfter = null,
 
@@ -94,7 +89,7 @@ final readonly class HandoffGrant
             throw new \InvalidArgumentException('A reservation belongs only to a [sign_in] handoff grant that resolved to no identity.');
         }
 
-        foreach (['session id' => $sessionId, 'enforcement version' => $enforcementVersion, 'link id' => $linkId, 'reservation id' => $reservationId] as $name => $value) {
+        foreach (['session id' => $sessionId, 'link id' => $linkId, 'reservation id' => $reservationId] as $name => $value) {
             if (!self::isOptionalId($value)) {
                 throw new \InvalidArgumentException(sprintf('A handoff grant\'s %s is 1 to %d bytes.', $name, self::MAX_ID_LENGTH));
             }

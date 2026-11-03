@@ -36,7 +36,7 @@ final class ConnectionTenants
     {
         DB::table(self::TABLE)->insert([
             'connection_id' => (string) $event->context->connectionId,
-            'tenant_id'     => (string) $event->context->tenantId,
+            'tenant_id'     => (string) $event->context->connectionTenantId,
         ]);
     }
 

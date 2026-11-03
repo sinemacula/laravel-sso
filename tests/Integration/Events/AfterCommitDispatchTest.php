@@ -302,7 +302,7 @@ final class AfterCommitDispatchTest extends TestCase
             'ip'                          => '203.0.113.7',
             'user_agent'                  => 'Example/1.0',
             'connection_id'               => 'conn_1',
-            'tenant_id'                   => 'tenant_1',
+            'connection_tenant_id'        => 'tenant_1',
             'protocol'                    => 'saml2',
             'application'                 => 'web',
             'purpose'                     => 'sign_in',
@@ -313,7 +313,7 @@ final class AfterCommitDispatchTest extends TestCase
             'acting_identity_id'          => null,
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ], $received->context()->toArray());
@@ -381,7 +381,7 @@ final class AfterCommitDispatchTest extends TestCase
 
         $context = $app->make(EventContexts::class)->make(
             connectionId: 'conn_1',
-            tenantId: 'tenant_1',
+            connectionTenantId: 'tenant_1',
             protocol: 'saml2',
             application: 'web',
             purpose: 'sign_in',

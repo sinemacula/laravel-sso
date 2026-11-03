@@ -8,9 +8,10 @@ link may be [reserved by a verified domain](linking-by-domain.md) or offered for
 [`reauthenticate`](reauthenticating.md) has rules of its own. It answers a `CompletionResult` value; your application
 owns the routes and turns the result into a response.
 
-```php
-use SineMacula\Laravel\Sso\Completion\CompletionService;
+The helper is `Completion\CompletionService`:
 
+<!-- snippet: tests/Integration/Examples/CompletingAFlow/CompletingAFlowExampleTest.php#completion-service -->
+```php
 $completions = app(CompletionService::class);
 ```
 
@@ -38,46 +39,33 @@ service alone, since a SAML response is a cross-site `POST`; the OIDC callback i
 sit under Laravel's `/api` prefix, so `sso.endpoints.base_url` carries it
 ([The base URL and the API prefix](example-application.md#the-base-url-and-the-api-prefix)).
 
-```php
-// routes/api.php
-use App\Http\Controllers\SsoCompletionController;
+In `routes/api.php`, with your controller imported:
 
+<!-- snippet: tests/Integration/Examples/CompletingAFlow/routes.php#completion-routes -->
+```php
 Route::post('/auth/sso/connections/{connection}/assertions', [SsoCompletionController::class, 'assertion']);
 Route::get('/auth/sso/connections/{connection}/callback', [SsoCompletionController::class, 'callback']);
 ```
 
+The controller, say `App\Http\Controllers\SsoCompletionController`, takes the `CompletionService` and the
+`Responses\CompletionResponses` through its constructor, as `$this->completions` and `$this->responses`. Each action
+takes the `Illuminate\Http\Request` and the route's `$connection`, and answers a `Responses\CompletionResponse`. Its
+`assertion()` action receives the SAML response the browser posts:
+
+<!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoCompletionController.php#route-assertion -->
 ```php
-namespace App\Http\Controllers;
+$result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
 
-use Illuminate\Http\Request;
-use SineMacula\Laravel\Sso\Completion\CompletionService;
-use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
-use SineMacula\Laravel\Sso\Responses\CompletionResponse;
-use SineMacula\Laravel\Sso\Responses\CompletionResponses;
+return $this->responses->from($result, $request->getMethod());
+```
 
-final class SsoCompletionController
-{
-    public function __construct(
-        private readonly CompletionService $completions,
-        private readonly CompletionResponses $responses,
-    ) {}
+Its `callback()` action receives the OIDC authorisation response:
 
-    // POST: the SAML response, posted by the browser
-    public function assertion(Request $request, string $connection): CompletionResponse
-    {
-        $result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
+<!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoCompletionController.php#route-callback -->
+```php
+$result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
 
-        return $this->responses->from($result, $request->getMethod());
-    }
-
-    // GET: the OIDC authorisation response
-    public function callback(Request $request, string $connection): CompletionResponse
-    {
-        $result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
-
-        return $this->responses->from($result, $request->getMethod());
-    }
-}
+return $this->responses->from($result, $request->getMethod());
 ```
 
 `CompletionRequest::fromRequest()` keeps the method, the raw query string and the posted fields, and nothing else: it
@@ -163,8 +151,9 @@ listener can create a new identity, its membership and the link just in time: [P
   locks.
 
 The link is then resolved again. A result still unlinked ends with `unlinked` by default. An application that resolves
-identities itself when it redeems the code can allow unlinked handoffs:
+identities itself when it redeems the code can allow unlinked handoffs, in `config/sso.php`:
 
+<!-- snippet: tests/Integration/Examples/CompletingAFlow/CompletingAFlowExampleTest.php#unlinked-handoffs -->
 ```php
 'applications' => [
     'web' => [

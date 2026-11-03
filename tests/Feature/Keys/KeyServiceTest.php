@@ -162,7 +162,7 @@ final class KeyServiceTest extends TestCase
         self::assertSame($key->key->fingerprint, $added->fingerprint);
         self::assertEquals($key->notAfter, $added->notAfter);
         self::assertSame('42', $added->context->actingIdentityId);
-        self::assertSame(self::TENANT, $added->context->tenantId);
+        self::assertSame(self::TENANT, $added->context->connectionTenantId);
 
         self::assertInstanceOf(KeyMadeCurrent::class, $madeCurrent);
         self::assertSame($key->id, $madeCurrent->keyId);

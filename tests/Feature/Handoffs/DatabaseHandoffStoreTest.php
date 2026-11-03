@@ -93,8 +93,8 @@ final class DatabaseHandoffStoreTest extends TestCase
 
     /**
      * A `reauthenticate` grant is stored as one row holding what the code is
-     * bound to, the enforcement version, the session's latest end and the
-     * expiry, stamped now and neither redeemed nor voided.
+     * bound to, the session's latest end and the expiry, stamped now and
+     * neither redeemed nor voided.
      *
      * @return void
      *
@@ -109,7 +109,6 @@ final class DatabaseHandoffStoreTest extends TestCase
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
             identity: new IdentityReference('App\Models\Member', '7'),
             sessionId: 'session-1',
-            enforcementVersion: 'version-1',
             sessionNotAfter: CarbonImmutable::parse('2026-11-01T18:00:00Z'),
         ));
 
@@ -127,7 +126,6 @@ final class DatabaseHandoffStoreTest extends TestCase
             'session_id'           => 'session-1',
             'linked_identity_type' => 'App\Models\User',
             'linked_identity_id'   => '42',
-            'enforcement_version'  => 'version-1',
             'session_not_after'    => '2026-11-01T18:00:00+00:00',
             'expires_at'           => '2026-11-01T09:31:00+00:00',
             'redeemed_at'          => null,
@@ -146,7 +144,6 @@ final class DatabaseHandoffStoreTest extends TestCase
             'session_id'           => $row->session_id,
             'linked_identity_type' => $row->linked_identity_type,
             'linked_identity_id'   => $row->linked_identity_id,
-            'enforcement_version'  => $row->enforcement_version,
             'session_not_after'    => $row->session_not_after?->toIso8601String(),
             'expires_at'           => $row->expires_at->toIso8601String(),
             'redeemed_at'          => $row->redeemed_at,
@@ -160,7 +157,7 @@ final class DatabaseHandoffStoreTest extends TestCase
 
     /**
      * A `sign_in` grant linked to nothing stores no identity, no session, no
-     * linked identity, no version and no session end.
+     * linked identity and no session end.
      *
      * @return void
      *
@@ -178,8 +175,8 @@ final class DatabaseHandoffStoreTest extends TestCase
 
         self::assertSame('sign_in', $row->purpose->value);
         self::assertSame(
-            [null, null, null, null, null, null, null],
-            [$row->identity_type, $row->identity_id, $row->session_id, $row->linked_identity_type, $row->linked_identity_id, $row->enforcement_version, $row->session_not_after],
+            [null, null, null, null, null, null],
+            [$row->identity_type, $row->identity_id, $row->session_id, $row->linked_identity_type, $row->linked_identity_id, $row->session_not_after],
         );
     }
 

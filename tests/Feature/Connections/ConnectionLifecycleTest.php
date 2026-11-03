@@ -211,7 +211,7 @@ final class ConnectionLifecycleTest extends TestCase
 
         self::assertInstanceOf(ConnectionDisabled::class, $event);
         self::assertSame($this->connection->id, $event->context->connectionId);
-        self::assertSame(self::TENANT, $event->context->tenantId);
+        self::assertSame(self::TENANT, $event->context->connectionTenantId);
         self::assertSame('oidc', $event->context->protocol);
         self::assertSame('App\Models\User', $event->context->actingIdentityMorphClass);
         self::assertSame('42', $event->context->actingIdentityId);
@@ -450,7 +450,7 @@ final class ConnectionLifecycleTest extends TestCase
 
         self::assertInstanceOf(ConnectionDeleted::class, $event);
         self::assertSame($this->connection->id, $event->context->connectionId);
-        self::assertSame(self::TENANT, $event->context->tenantId);
+        self::assertSame(self::TENANT, $event->context->connectionTenantId);
         self::assertSame('oidc', $event->context->protocol);
         self::assertSame('42', $event->context->actingIdentityId);
     }

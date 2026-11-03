@@ -43,7 +43,8 @@ enum ViolationCode: string
     // The value is outside the setting's allow-list: an algorithm (any but
     // RSA's for SAML: ECDSA, RSA-PSS or AES-256-GCM, say), a binding, a client
     // authentication method, an authorisation parameter, a key type (any but
-    // RSA for a SAML key)
+    // RSA for a SAML key), a custom mapping target the application does not
+    // declare in `sso.mapping.custom_attributes` (SSO-2.10)
     case NOT_ALLOWED = 'not_allowed';
 
     // The value would set something the package reserves: a parameter the flow

@@ -16,9 +16,11 @@ use SineMacula\Laravel\Sso\Sessions\Provenance;
  * Unit tests for the package's contribution to the authentication context
  * (SSO-9.7): every `sso.*` key with its exact name, value and type; no key at
  * all for a session with no provenance, and every key, `null` where unstated,
- * for one with it; instants as UTC `CarbonImmutable`s to the microsecond, the
- * link's provenance as its enum value; nothing about the person; and a stored
- * form this version did not write refused rather than read as none.
+ * for one with it; every value plain, with the instants as the stored form's
+ * UTC strings to the microsecond and the link's provenance as its enum value,
+ * so a provenance and its stored form project identically; nothing about the
+ * person; and a stored form this version did not write refused rather than read
+ * as none.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -70,6 +72,24 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
+     * The namespace is a lower-case letter and then up to 31 lower-case
+     * letters, digits or underscores, and every key, once its namespace and the
+     * dot are removed, a lower-case letter and then up to 63 of them: the form
+     * an authentication context holds a contributor's keys in.
+     *
+     * @return void
+     */
+    public function testEveryKeyFitsTheContextsKeyForm(): void
+    {
+        self::assertMatchesRegularExpression('/^[a-z][a-z0-9_]{0,31}$/D', AuthenticationContext::NAMESPACE);
+
+        foreach (AuthenticationContext::KEYS as $key) {
+            self::assertStringStartsWith(AuthenticationContext::NAMESPACE . '.', $key);
+            self::assertMatchesRegularExpression('/^[a-z][a-z0-9_]{0,63}$/D', substr($key, strlen(AuthenticationContext::NAMESPACE) + 1), $key);
+        }
+    }
+
+    /**
      * A session with no provenance from the package contributes nothing: no
      * `sso.*` key at all, whether given as none or as nothing stored.
      *
@@ -102,7 +122,30 @@ final class AuthenticationContextTest extends TestCase
         self::assertSame('enforcement-7', $context['sso.enforcement_version']);
         self::assertSame(
             ['2026-11-01T09:29:00.123456Z', '2026-11-01T18:00:00.000000Z', '2026-11-01T17:00:00.000000Z'],
-            [self::instant($context['sso.provider_auth_time']), self::instant($context['sso.provider_session_deadline']), self::instant($context['sso.session_not_after'])],
+            [$context['sso.provider_auth_time'], $context['sso.provider_session_deadline'], $context['sso.session_not_after']],
+        );
+    }
+
+    /**
+     * Each instant is the stored form's string, in UTC from any zone and to the
+     * microsecond exactly, whatever the zone or precision it was given in.
+     *
+     * @return void
+     */
+    public function testEachInstantIsAUtcStringToTheMicrosecond(): void
+    {
+        $context = AuthenticationContext::of(new Provenance(
+            'connection-1',
+            'tenant-1',
+            'oidc',
+            CarbonImmutable::parse('2026-11-01T04:29:00.000001-05:00'),
+            providerSessionDeadline: CarbonImmutable::parse('2026-11-02T00:59:59.999999+01:00'),
+            sessionNotAfter: CarbonImmutable::parse('2026-11-01T23:59:59Z'),
+        ));
+
+        self::assertSame(
+            ['2026-11-01T09:29:00.000001Z', '2026-11-01T23:59:59.999999Z', '2026-11-01T23:59:59.000000Z'],
+            [$context['sso.provider_auth_time'], $context['sso.provider_session_deadline'], $context['sso.session_not_after']],
         );
     }
 
@@ -131,7 +174,7 @@ final class AuthenticationContextTest extends TestCase
         self::assertSame([
             'sso.connection'                       => 'connection-1',
             'sso.tenant'                           => 'tenant-1',
-            'sso.protocol'                         => 'a-custom-driver',
+            'sso.protocol'                         => 'a_custom_driver',
             'sso.provider_auth_time'               => null,
             'sso.provider_amr'                     => [],
             'sso.provider_acr'                     => null,
@@ -141,7 +184,7 @@ final class AuthenticationContextTest extends TestCase
             'sso.provider_session_deadline'        => null,
             'sso.session_not_after'                => null,
             'sso.enforcement_version'              => null,
-        ], AuthenticationContext::of(new Provenance('connection-1', 'tenant-1', 'a-custom-driver')));
+        ], AuthenticationContext::of(new Provenance('connection-1', 'tenant-1', 'a_custom_driver')));
     }
 
     /**
@@ -171,23 +214,51 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * Every value is a PHP scalar, a list of strings, `null` or a UTC
-     * `CarbonImmutable`: no type of the package crosses the seam.
+     * A provenance with every optional part, and one with every optional part
+     * `null`.
      *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Sessions\Provenance}>
+     */
+    public static function provenances(): iterable
+    {
+        yield 'every part' => [self::oidc()];
+        yield 'every optional part null' => [new Provenance('connection-1', 'tenant-1', 'a_custom_driver')];
+    }
+
+    /**
+     * Every value of both projections is plain: `null`, a scalar, or a list of
+     * scalars. No object crosses the seam, neither an instant nor a type of the
+     * package.
+     *
+     * @param  \SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
      * @return void
      */
-    public function testNoValueIsATypeOfThePackage(): void
+    #[DataProvider('provenances')]
+    public function testEveryValueIsPlain(Provenance $provenance): void
     {
-        foreach (AuthenticationContext::of(self::oidc()) as $key => $value) {
+        $projections = ['of' => AuthenticationContext::of($provenance), 'fromStored' => AuthenticationContext::fromStored($provenance->toArray())];
 
-            $allowed = $value === null || is_scalar($value) || (is_array($value) && array_is_list($value) && array_filter($value, is_string(...)) === $value);
+        foreach ($projections as $projection => $context) {
 
-            if ($value instanceof CarbonImmutable) {
-                $allowed = $value->getTimezone()->getName() === 'UTC';
+            self::assertSame(AuthenticationContext::KEYS, array_keys($context), $projection);
+
+            foreach ($context as $key => $value) {
+                self::assertTrue(self::isPlain($value), "{$projection}: {$key} is not a plain value.");
             }
-
-            self::assertTrue($allowed, "{$key} is not a plain value.");
         }
+    }
+
+    /**
+     * A provenance and its stored form project to byte-identical arrays, with
+     * every optional part and with none.
+     *
+     * @param  \SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
+     * @return void
+     */
+    #[DataProvider('provenances')]
+    public function testAProvenanceAndItsStoredFormProjectIdentically(Provenance $provenance): void
+    {
+        self::assertSame(AuthenticationContext::of($provenance), AuthenticationContext::fromStored($provenance->toArray()));
     }
 
     /**
@@ -200,7 +271,7 @@ final class AuthenticationContextTest extends TestCase
     {
         $stored = array_reverse((array) json_decode((string) json_encode(self::oidc()->toArray()), true), true);
 
-        self::assertEquals(AuthenticationContext::of(self::oidc()), AuthenticationContext::fromStored($stored));
+        self::assertSame(AuthenticationContext::of(self::oidc()), AuthenticationContext::fromStored($stored));
         self::assertSame(AuthenticationContext::KEYS, array_keys(AuthenticationContext::fromStored($stored)));
     }
 
@@ -259,7 +330,7 @@ final class AuthenticationContextTest extends TestCase
         $provenance = self::oidc();
         $before     = $provenance->toArray();
 
-        self::assertEquals(AuthenticationContext::of($provenance), AuthenticationContext::of($provenance));
+        self::assertSame(AuthenticationContext::of($provenance), AuthenticationContext::of($provenance));
         self::assertSame($before, $provenance->toArray());
     }
 
@@ -287,17 +358,17 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * The projected instant in the stored form, refusing anything that is not a
-     * UTC `CarbonImmutable`.
+     * Whether the value is `null`, a scalar, or a list of scalars.
      *
      * @param  mixed  $value
-     * @return string
+     * @return bool
      */
-    private static function instant(mixed $value): string
+    private static function isPlain(mixed $value): bool
     {
-        self::assertInstanceOf(CarbonImmutable::class, $value);
-        self::assertSame('UTC', $value->getTimezone()->getName());
+        if (is_array($value)) {
+            return array_is_list($value) && array_filter($value, is_scalar(...)) === $value;
+        }
 
-        return $value->format('Y-m-d\TH:i:s.u\Z');
+        return $value === null || is_scalar($value);
     }
 }

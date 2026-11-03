@@ -96,11 +96,14 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *
  * `admit()` is `recheck()` followed by the purpose's writes: activating a
  * reservation, creating or confirming a link, or renewing a session's
- * authentication time, and answers an `Admission`, which for a `sign_in`
- * carries the provenance of the link established as it stood under the lock
- * (SSO-9.10). `discardReservation()` removes the reservation of a code refused
- * after it was consumed, by its identity and handoff reference and never merely
- * by the subject, in the same transaction.
+ * authentication time, and answers an `Admission`, which carries the version of
+ * the enforcement the connection was judged by under the lock and, for a
+ * `sign_in`, the provenance of the link established as it stood under it
+ * (SSO-9.10). A session keeps that version, never the one the completion
+ * checked, since a rule may change between the two. `discardReservation()`
+ * removes the reservation of a code refused after it was consumed, by its
+ * identity and handoff reference and never merely by the subject, in the same
+ * transaction.
  *
  * `acknowledgeSignIn()` records, on the locked connection, that a `sign_in`
  * through it has been redeemed (SSO-4.3), which enforcement needs before it can
@@ -220,7 +223,8 @@ final readonly class HandoffRecheck
     /**
      * Recheck, and make the purpose's writes when it passes, under the lock, in
      * the redeemer's transaction, handing the purpose the provenance of the
-     * link its rules judged, so the admission carries it out (SSO-9.10).
+     * link its rules judged, so the admission carries it out with the version
+     * of the enforcement judged under the lock (SSO-9.10).
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
@@ -240,7 +244,9 @@ final readonly class HandoffRecheck
             return Admission::refused($judgement->outcome);
         }
 
-        return $this->branch($result)->admit(new RedemptionContext($result, $binding, $lock, $lock->connection, $caller, $judgement->linkProvenance));
+        $context = new RedemptionContext($result, $binding, $lock, $lock->connection, $caller, $judgement->linkProvenance);
+
+        return $this->branch($result)->admit($context)->under($judgement->enforcementVersion);
     }
 
     /**
@@ -309,41 +315,36 @@ final readonly class HandoffRecheck
     {
         self::assertHeldFor($lock, $result);
 
-        $refusal = $this->refusal($lock);
+        $connection = $lock->connection;
+        $policy     = $this->usablePolicy($lock);
 
-        if ($refusal !== null || $lock->connection === null) {
-            return Judgement::of($refusal ?? RecheckOutcome::CONNECTION_UNAVAILABLE);
+        if ($connection === null || $policy === null) {
+            return Judgement::of(RecheckOutcome::CONNECTION_UNAVAILABLE);
         }
 
-        return $this->branch($result)->judge(new RedemptionContext($result, $binding, $lock, $lock->connection, $caller));
+        if (!$policy->isSatisfiedBy($connection->id)) {
+            return Judgement::of(RecheckOutcome::ENFORCEMENT_UNSATISFIED);
+        }
+
+        return $this->branch($result)->judge(new RedemptionContext($result, $binding, $lock, $connection, $caller))->under($policy->version);
     }
 
     /**
-     * Why the redemption is refused before its link is asked about, or `null`:
-     * a connection gone or unusable, or an enforcing tenant that moved, is
-     * `connection_unavailable`; an enforcement the connection does not satisfy,
-     * `enforcement_unsatisfied`.
+     * The enforcement the locked connection is judged by, or `null` when the
+     * redemption is refused as `connection_unavailable` before its link is
+     * asked about: the connection is gone or unusable (and enforcement is then
+     * never asked), or the enforcing tenant moved.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
-     * @return ?\SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
+     * @return ?\SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy
      *
      * @throws \InvalidArgumentException
      */
-    private function refusal(RecheckLock $lock): ?RecheckOutcome
+    private function usablePolicy(RecheckLock $lock): ?EnforcementPolicy
     {
         $connection = $lock->connection;
 
-        if ($connection === null || !$this->protocols->isUsable($connection)) {
-            return RecheckOutcome::CONNECTION_UNAVAILABLE;
-        }
-
-        $policy = $this->policy($lock);
-
-        return match (true) {
-            $policy === null                         => RecheckOutcome::CONNECTION_UNAVAILABLE,
-            !$policy->isSatisfiedBy($connection->id) => RecheckOutcome::ENFORCEMENT_UNSATISFIED,
-            default                                  => null,
-        };
+        return $connection !== null && $this->protocols->isUsable($connection) ? $this->policy($lock) : null;
     }
 
     /**

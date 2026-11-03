@@ -92,7 +92,6 @@ final readonly class DatabaseHandoffStore implements HandoffIssuer
             'link_id'              => $grant->linkId,
             'reservation_id'       => $grant->reservationId,
             'result'               => $this->encrypter->encrypt(json_encode($result->toArray(), JSON_THROW_ON_ERROR)),
-            'enforcement_version'  => $grant->enforcementVersion,
             'session_not_after'    => $grant->sessionNotAfter,
             'expires_at'           => $grant->expiresAt,
         ])->save();

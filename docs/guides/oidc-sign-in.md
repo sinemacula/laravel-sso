@@ -11,6 +11,7 @@ described in [Starting a Flow](starting-a-flow.md); completing it in your API in
 
 You start an OIDC flow as any other, through `AuthorizationRequestService`:
 
+<!-- snippet: tests/Integration/Examples/OidcSignIn/start/sign-in.php#oidc-start-sign-in -->
 ```php
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -22,7 +23,13 @@ $result = app(AuthorizationRequestService::class)->start(
     codeChallenge: $codeChallenge,
 );
 
-return response()->json($result->body(), $result->isStarted() ? 200 : 400, $result->headers());
+$status = match (true) {
+    $result->isStarted()     => 200,
+    $result->isRateLimited() => 429,
+    default                  => 400,
+};
+
+return response()->json($result->body(), $status, $result->headers());
 ```
 
 A started answer's `navigation` is a `redirect`: send the top-level window to its `url`. A start makes no call to the
@@ -93,6 +100,7 @@ Bind `Contracts\ReauthenticationSessions`, which says whether the identity is si
 session: by default the package keeps no sessions, so every `reauthenticate` is refused with `session_ineligible`. Take
 the identity and the session from your own authentication, never from the request body:
 
+<!-- snippet: tests/Integration/Examples/OidcSignIn/start/reauthenticate.php#oidc-start-reauthenticate -->
 ```php
 $result = app(AuthorizationRequestService::class)->start(
     application: 'web',

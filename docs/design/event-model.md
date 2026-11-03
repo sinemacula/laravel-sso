@@ -20,7 +20,7 @@ are a contract.
   | `occurredAt`                                   | When the event was built, from `Contracts\Clock` (a `CarbonImmutable`) |
   | `ip`, `userAgent`                              | The client of the request being served                                 |
   | `connectionId`                                 | The connection the event concerns                                      |
-  | `tenantId`                                     | The tenant the connection belongs to: an opaque string id              |
+  | `connectionTenantId`                           | The tenant that owns the connection, or the enforcement rule           |
   | `protocol`                                     | `saml2`, `oidc`, or a registered driver's name                         |
   | `application`                                  | The configured application the flow is for                             |
   | `purpose`                                      | `sign_in`, `link` or `reauthenticate`                                  |
@@ -28,14 +28,18 @@ are a contract.
   | `identityMorphClass`, `identityId`             | The identity reference, once the flow resolved one                     |
   | `actingIdentityMorphClass`, `actingIdentityId` | The identity acting, for administration, as the application passes it  |
   | `principalMorphClass`, `principalId`           | The session's principal, where one applies                             |
-  | `activeTenantId`                               | The tenant a session is active in, where one applies                   |
+  | `tenantId`                                     | The active tenant, the one the person is acting in, where one applies  |
   | `sessionId`                                    | The session, where one applies                                         |
   | `method`                                       | The sign-in method, where one applies                                  |
 
-  `tenantId` and `activeTenantId` differ: the first is the tenant that owns the connection, the second the tenant a
-  session acts within, which an identity in several tenants may switch. A part the flow did not establish, or that does
-  not apply to the event, is `null`. `toArray()` is the record an audit sink keeps: snake_case keys, and `occurred_at`
-  as an ISO 8601 UTC string to the microsecond.
+  `tenantId` (`tenant_id`) has the suite's meaning: the active tenant, the tenant the person is acting in, which an
+  identity in several tenants may switch. `connectionTenantId` (`connection_tenant_id`) is the tenant that owns the
+  connection, or, for an enforcement event, the tenant whose rule it is; both are opaque string ids. They differ when a
+  session acts in a child tenant under a parent's enforcement, and an event about a connection alone names only the
+  connection's tenant. The owner decided these names (2026-11-03), so that a sink mapping the suite's `tenant_id`
+  reads the same fact from every package. A part the flow did not establish, or that does not apply to the event, is
+  `null`. `toArray()` is the record an audit sink keeps: snake_case keys, and `occurred_at` as an ISO 8601 UTC string to
+  the microsecond.
 - One projection builds every context: `Events\EventContexts::make()`. Nothing else in the package calls
   `new EventContext`. Its parameter list is the admission control: fifteen named fields, each `?string` defaulting to
   `null`, and nothing else. No array and no object is admitted, so a verified result, a request, a raw payload or a set
