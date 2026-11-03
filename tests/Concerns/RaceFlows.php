@@ -330,7 +330,7 @@ trait RaceFlows
     {
         $database = self::storageDatabase();
         $query    = match ($database->getDriverName()) {
-            'pgsql' => 'select count(*) as waiting from pg_stat_activity where pg_backend_pid() = any(pg_blocking_pids(pid))',
+            'pgsql' => 'select count(*) as waiting from (select distinct pid from pg_locks where not granted) as waits where pg_backend_pid() = any(pg_blocking_pids(waits.pid))',
             'mysql' => 'select count(*) as waiting from performance_schema.data_lock_waits as waits '
                 . 'join information_schema.innodb_trx as holder on holder.trx_id = waits.BLOCKING_ENGINE_TRANSACTION_ID '
                 . 'where holder.trx_mysql_thread_id = connection_id()',
