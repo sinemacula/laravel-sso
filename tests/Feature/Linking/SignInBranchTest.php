@@ -129,8 +129,9 @@ final class SignInBranchTest extends LinkingTestCase
         $outcome = DB::connection(StorageConnection::name())->transaction(static function () use ($result, $identity, $linkId): RecheckOutcome {
 
             $recheck = app(HandoffRecheck::class);
+            $lock    = $recheck->lock($result->tenantId, $result->connectionId, $result->application);
 
-            return $recheck->recheck($result, new HandoffBinding($identity, $linkId), $recheck->lock($result->tenantId, $result->connectionId, $result->application));
+            return $recheck->recheck($result, new HandoffBinding($identity, $linkId, trustVersion: 0), $lock);
         });
 
         self::assertSame($expected, $outcome);
@@ -150,7 +151,7 @@ final class SignInBranchTest extends LinkingTestCase
         $this->bindEvidence($accepted);
         $this->bindLinker(LinkResolution::linked($this->person, 'link-7'));
 
-        $admission = $this->admitted(new HandoffBinding($this->person, 'link-7'));
+        $admission = $this->admitted(new HandoffBinding($this->person, 'link-7', trustVersion: 0));
 
         self::assertSame(RecheckOutcome::PASSED, $admission->outcome);
         self::assertSame($this->person, $admission->identity);
@@ -170,7 +171,7 @@ final class SignInBranchTest extends LinkingTestCase
         $this->bindEvidence(new AcceptedEvidence($this->connection->id, $this->clock->now(), ['pwd']));
         $this->bindLinker(LinkResolution::absent());
 
-        $admission = $this->admitted(new HandoffBinding);
+        $admission = $this->admitted(new HandoffBinding(trustVersion: 0));
 
         self::assertSame(RecheckOutcome::PASSED, $admission->outcome);
         self::assertNull($admission->identity);
@@ -189,7 +190,7 @@ final class SignInBranchTest extends LinkingTestCase
         $this->bindEvidence(new AcceptedEvidence($this->connection->id, $this->clock->now(), ['pwd']));
         $this->bindLinker(LinkResolution::absent());
 
-        $admission = $this->admitted(new HandoffBinding($this->person, 'link-7'));
+        $admission = $this->admitted(new HandoffBinding($this->person, 'link-7', trustVersion: 0));
 
         self::assertSame(RecheckOutcome::LINK_CHANGED, $admission->outcome);
         self::assertNull($admission->evidence);

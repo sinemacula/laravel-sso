@@ -25,57 +25,61 @@ Event::listen(SsoEvent::class, static function (SsoEvent $event): void {
 ### Recording them with `laravel-audit-log`
 
 With `laravel-iam` installed there is nothing to wire: it maps the package's events. Without it, register a mapper for
-the events you record, in a service provider's `boot()`:
+the events you record, in a service provider's `boot()`, with `SineMacula\Laravel\AuditLog\Facades\AuditLog` and
+`SineMacula\Laravel\Sso\Events\FlowFailed` imported:
 
+<!-- snippet: tests/Integration/Examples/Events/AuditLogServiceProvider.php#audit-log-map -->
 ```php
-use SineMacula\Laravel\AuditLog\Facades\AuditLog;
-use SineMacula\Laravel\Sso\Events\FlowFailed;
-
 AuditLog::map(FlowFailed::class, SsoAuditMapper::class);
 ```
 
-The mapper implements `laravel-audit-log`'s `SineMacula\Laravel\AuditLog\Contracts\EventMapper`, whose `map(object
-$event, PendingRecord $record): ?PendingRecord` fills the record and returns it, or returns `null` to skip the event.
+The mapper, `final class SsoAuditMapper implements EventMapper`, implements `laravel-audit-log`'s
+`SineMacula\Laravel\AuditLog\Contracts\EventMapper`, whose `map(object $event, PendingRecord $record): ?PendingRecord`
+fills the record and returns it, or returns `null` to skip the event. It imports `EventMapper`, `Records\PendingRecord`
+and `Records\Reference` from `SineMacula\Laravel\AuditLog`, and `Events\FlowFailed` from `SineMacula\Laravel\Sso`.
 Give each event an explicit code rather than deriving one from the class name, record it for the active tenant when the
-event names one and for the connection's tenant otherwise, and correlate the records of one flow by the connection and
-the request's public reference, skipping the correlation when an event has no reference:
+event names one and for the connection's tenant otherwise (a reference, under the type your application refers to its
+tenants by), and correlate the records of one flow by the connection and the request's public reference, skipping the
+correlation when an event has no reference:
 
+<!-- snippet: tests/Integration/Examples/Events/SsoAuditMapper.php#audit-mapper -->
 ```php
-use SineMacula\Laravel\AuditLog\Contracts\EventMapper;
-use SineMacula\Laravel\AuditLog\Records\PendingRecord;
-use SineMacula\Laravel\AuditLog\Records\Reference;
-use SineMacula\Laravel\Sso\Events\FlowFailed;
-
-final class SsoAuditMapper implements EventMapper
+/**
+ * The record of a failed flow, or `null` to skip any other event.
+ *
+ * @param  object  $event
+ * @param  \SineMacula\Laravel\AuditLog\Records\PendingRecord  $record
+ * @return ?\SineMacula\Laravel\AuditLog\Records\PendingRecord
+ */
+#[\Override]
+public function map(#[\SensitiveParameter] object $event, #[\SensitiveParameter] PendingRecord $record): ?PendingRecord
 {
-    public function map(object $event, PendingRecord $record): ?PendingRecord
-    {
-        if (!$event instanceof FlowFailed) {
-            return null;
-        }
-
-        $context = $event->context()->toArray();
-
-        $record->event('sso.flow_failed')
-            ->failed($event->reason->value)
-            ->withProperties(['flow' => $event->flow->value, 'application' => $context['application']]);
-
-        if ($context['identity_morph_class'] !== null && $context['identity_id'] !== null) {
-            $record->by(Reference::of($context['identity_morph_class'], $context['identity_id']));
-        }
-
-        $tenant = $context['tenant_id'] ?? $context['connection_tenant_id'];
-
-        if ($tenant !== null) {
-            $record->forTenant($tenant);
-        }
-
-        if ($context['request_reference'] !== null) {
-            $record->correlatedWith("sso:{$context['connection_id']}:{$context['request_reference']}");
-        }
-
-        return $record;
+    if (!$event instanceof FlowFailed) {
+        return null;
     }
+
+    $context = $event->context()->toArray();
+
+    $record->event('sso.flow_failed')
+        ->failed($event->reason->value)
+        ->withProperties(['flow' => $event->flow->value, 'application' => $context['application']]);
+
+    if ($context['identity_morph_class'] !== null && $context['identity_id'] !== null) {
+        $record->by(Reference::of($context['identity_morph_class'], $context['identity_id']));
+    }
+
+    // The tenant, under the type your application refers to its tenants by
+    $tenant = $context['tenant_id'] ?? $context['connection_tenant_id'];
+
+    if ($tenant !== null) {
+        $record->forTenant(Reference::of('tenant', $tenant));
+    }
+
+    if ($context['request_reference'] !== null) {
+        $record->correlatedWith("sso:{$context['connection_id']}:{$context['request_reference']}");
+    }
+
+    return $record;
 }
 ```
 

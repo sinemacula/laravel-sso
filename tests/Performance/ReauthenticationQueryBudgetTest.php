@@ -285,6 +285,7 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
             result: $result,
             challenge: S256Challenge::fromString('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'),
             expiresAt: $this->clock->now()->addMinute(),
+            trustVersion: $this->connection->trust_version,
             linkedIdentity: $this->identity,
             identity: $this->identity,
             sessionId: self::SESSION,

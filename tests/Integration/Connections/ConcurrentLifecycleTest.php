@@ -533,6 +533,7 @@ final class ConcurrentLifecycleTest extends TestCase
             result: $result,
             challenge: S256Challenge::fromString(self::CHALLENGE),
             expiresAt: CarbonImmutable::parse('2026-11-01T09:31:00Z'),
+            trustVersion: $this->connection->trust_version,
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
             linkId: 'link-42',
         );

@@ -17,9 +17,10 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * if any; the identity a `link` or `reauthenticate` flow was started for, and
  * the session a `reauthenticate` flow was started on. It holds the verified
  * result, serialised and encrypted through `Contracts\SecretEncrypter`, since
- * it carries personal data; the latest end of the application's session the
- * provider's deadline sets (SSO-9.10); when it expires; and when it was
- * redeemed or voided by a change to its connection.
+ * it carries personal data; the connection's trust version when it was issued
+ * (SSO-2.13); the latest end of the application's session the provider's
+ * deadline sets (SSO-9.10); when it expires; and when it was redeemed or voided
+ * by a change to its connection.
  *
  * Its key is a lower-case ULID and its timestamps come from the package's clock
  * (see `SsoModel`). The digest and the encrypted result are hidden from
@@ -47,6 +48,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property ?string $link_id
  * @property ?string $reservation_id
  * @property string $result
+ * @property int $trust_version
  * @property ?\Carbon\CarbonImmutable $session_not_after
  * @property \Carbon\CarbonImmutable $expires_at
  * @property ?\Carbon\CarbonImmutable $redeemed_at
@@ -95,6 +97,7 @@ final class HandoffCode extends SsoModel
     {
         return [
             'purpose'           => Purpose::class,
+            'trust_version'     => 'integer',
             'session_not_after' => UtcDateTime::class,
             'expires_at'        => UtcDateTime::class,
             'redeemed_at'       => UtcDateTime::class,

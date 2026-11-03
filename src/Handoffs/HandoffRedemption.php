@@ -569,6 +569,7 @@ final readonly class HandoffRedemption
             $code->session_id,
             $code->reservation_id,
             $code->id,
+            $code->trust_version,
         );
     }
 

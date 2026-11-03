@@ -99,8 +99,9 @@ Each stage is in `Completion\Stages`.
   `application_not_allowed`. A result carrying the provider's session deadline asks `Contracts\ProviderSessionDeadline`;
   `limits_session` makes the deadline the session's latest end (SSO-6.10); a result with no deadline never asks. It then
   issues through `Contracts\HandoffIssuer` a `Handoffs\HandoffGrant` of the result, the request's S256 challenge, an
-  expiry of the application's `handoff_ttl_seconds` from now, the linked identity, the request's identity and session,
-  the session's latest end, the link and the reservation. A code bound to a reservation expires exactly when it does,
+  expiry of the application's `handoff_ttl_seconds` from now, the connection's `trust_version` as its locked row holds
+  it (SSO-2.13), the linked identity, the request's identity and session, the session's latest end, the link and the
+  reservation. A code bound to a reservation expires exactly when it does,
   and its reference and stored expiry are written to the reservation in the same transaction.
 - A stage run before the steps it needs throws a `LogicException` naming what it needs: the pipeline's mistake.
 

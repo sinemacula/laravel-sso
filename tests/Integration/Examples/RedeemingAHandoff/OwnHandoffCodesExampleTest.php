@@ -4,24 +4,34 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\RedeemingAHandoff;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
+use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Flows\Verifier;
+use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkService;
 use SineMacula\Laravel\Sso\Links\LinkSummary;
+use SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect;
+use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use SineMacula\Laravel\Sso\Sessions\Provenance;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
+use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
+use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -38,6 +48,16 @@ use Tests\Integration\Examples\ExampleTestCase;
  * caller of a `link`, a connection disabled since completion); and the recheck
  * refuses to run outside the application's transaction.
  *
+ * The store keeps the connection's trust version and the session's latest end
+ * each grant carries, as the contract requires (SSO-2.13, SSO-9.10): a change
+ * to the connection's trust between issuance and redemption (its certificates
+ * replaced, one distrusted, an anchor trusted, a disable and an enable) refuses
+ * the code as `connection_unavailable`, though the package never voids the
+ * application's codes, while a certificate added alone refuses nothing, and a
+ * binding naming no trust version is refused; a provider deadline that limits
+ * the session caps the session the redemption writes, and its provenance, and
+ * one the deadline contract ignores caps neither.
+ *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  *
@@ -45,6 +65,7 @@ use Tests\Integration\Examples\ExampleTestCase;
  */
 #[CoversClass(HandoffRecheck::class)]
 #[CoversClass(HandoffBinding::class)]
+#[CoversClass(Provenance::class)]
 final class OwnHandoffCodesExampleTest extends ExampleTestCase
 {
     /** @var \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider The tenant's OpenID provider. */
@@ -83,13 +104,15 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
             $table->string('identity_id')->nullable();
             $table->string('session_id')->nullable();
             $table->string('reservation_id')->nullable();
+            $table->unsignedBigInteger('trust_version');
+            $table->unsignedBigInteger('session_not_after')->nullable();
             $table->unsignedBigInteger('expires_at');
             $table->unsignedBigInteger('consumed_at')->nullable();
         });
 
         $this->instance(HandoffIssuer::class, new OwnHandoffCodes($this->clock));
 
-        $this->signIns = new SignIns;
+        $this->signIns = new SignIns($this->clock);
         $this->instance(SignIns::class, $this->signIns);
 
         $this->provider     = new FakeOpenIdProvider(clock: $this->clock);
@@ -217,6 +240,170 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
+     * Rows of `[change]`: every change to a SAML connection's trust.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideTrustChanges(): iterable
+    {
+        foreach (TrustChanges::ALL as $change) {
+            yield $change => [$change];
+        }
+    }
+
+    /**
+     * A change to the connection's trust between the code's issuance and its
+     * redemption refuses the application's code as `connection_unavailable`
+     * (the package never voids it: the trust version the store kept does), and
+     * signs no one in; the connection, usable again, signs the person in
+     * afresh.
+     *
+     * @param  string  $change
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    #[DataProvider('provideTrustChanges')]
+    public function testATrustChangeRefusesACodeIssuedBeforeIt(string $change): void
+    {
+        [$idp, $connectionId] = $this->linkedThroughSaml();
+
+        $start = $this->startFlow(Purpose::SIGN_IN, $connectionId);
+        $code  = $this->respondAtProvider($idp, $connectionId, $start)->code();
+
+        $signer = (new TrustChanges(self::TENANT, $connectionId, $this->fetcher))->make($change, $idp);
+
+        self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, self::redemptions()->redeem(Purpose::SIGN_IN, $code, self::verifierOf($start)));
+        self::assertSame([], $this->signIns->sessionsOf($this->person));
+
+        $start = $this->startFlow(Purpose::SIGN_IN, $connectionId);
+
+        self::assertNull(self::redemptions()->redeem(Purpose::SIGN_IN, $this->respondAtProvider($signer, $connectionId, $start)->code(), self::verifierOf($start)));
+        self::assertCount(1, $this->signIns->sessionsOf($this->person));
+    }
+
+    /**
+     * Trusting another certificate alone is additive: the code issued before it
+     * is admitted.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAnAddedCertificateRefusesNothing(): void
+    {
+        [$idp, $connectionId] = $this->linkedThroughSaml();
+
+        $start = $this->startFlow(Purpose::SIGN_IN, $connectionId);
+        $code  = $this->respondAtProvider($idp, $connectionId, $start)->code();
+
+        (new TrustChanges(self::TENANT, $connectionId, $this->fetcher))->added($idp);
+
+        self::assertNull(self::redemptions()->redeem(Purpose::SIGN_IN, $code, self::verifierOf($start)));
+        self::assertCount(1, $this->signIns->sessionsOf($this->person));
+    }
+
+    /**
+     * A binding that names no trust version, as a store that did not keep it
+     * would build, is refused as `connection_unavailable`; the same binding
+     * naming the version the store kept passes.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testABindingNamingNoTrustVersionIsRefused(): void
+    {
+        $start = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
+
+        self::assertNull(self::redemptions()->redeem(Purpose::LINK, $this->codeFor($start), self::verifierOf($start), $this->person));
+
+        $start = $this->startFlow(Purpose::SIGN_IN, $this->connectionId);
+        $code  = app(OwnHandoffCodes::class)->find($this->codeFor($start));
+
+        self::assertNotNull($code);
+
+        $storage   = DB::connection(StorageConnection::name());
+        $rechecked = static fn (?int $trustVersion): RecheckOutcome => $storage->transaction(static function () use ($code, $trustVersion): RecheckOutcome {
+            $result  = $code->result;
+            $recheck = app(HandoffRecheck::class);
+            $lock    = $recheck->lock($result->tenantId, $result->connectionId, $result->application);
+
+            return $recheck->recheck($result, new HandoffBinding($code->linkedIdentity, $code->linkId, trustVersion: $trustVersion), $lock);
+        });
+
+        self::assertSame(RecheckOutcome::CONNECTION_UNAVAILABLE, $rechecked(null));
+        self::assertSame(RecheckOutcome::PASSED, $rechecked($code->trustVersion));
+    }
+
+    /**
+     * A provider deadline the deadline contract says limits the session caps
+     * the session the redemption writes, and its provenance records it: the
+     * session's token signs the person in before it, and no one at it.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testALimitingDeadlineCapsTheSession(): void
+    {
+        $deadline  = $this->clock->now()->addHours(2);
+        $sessionId = $this->signedInWithDeadline($deadline);
+        $token     = $this->signIns->token($sessionId);
+
+        self::assertSame('2026-11-01T11:30:00Z', $this->signIns->notAfterOf($sessionId)?->toIso8601ZuluString());
+        self::assertSame(['2026-11-01T11:30:00Z', '2026-11-01T11:30:00Z'], self::deadlinesOf($this->signIns->provenanceOf($sessionId)));
+        self::assertSame($sessionId, $this->signIns->sessionOf($token));
+
+        $this->clock->advance(7199);
+
+        self::assertSame($sessionId, $this->signIns->sessionOf($token));
+
+        $this->clock->advance(1);
+
+        self::assertNull($this->signIns->sessionOf($token));
+        self::assertFalse($this->signIns->isActive($sessionId));
+    }
+
+    /**
+     * A provider deadline the deadline contract ignores caps nothing: the code
+     * carries no latest end, the provenance keeps the provider's deadline with
+     * no cap, and the session outlives the deadline.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAnIgnoredDeadlineLeavesTheSessionUncapped(): void
+    {
+        $this->instance(ProviderSessionDeadline::class, new readonly class implements ProviderSessionDeadline {
+            /**
+             * The application keeps its sessions apart from the provider's.
+             *
+             * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @return \SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect
+             */
+            #[\Override]
+            public function effect(VerifiedResult $result): DeadlineEffect
+            {
+                unset($result);
+
+                return DeadlineEffect::IGNORED;
+            }
+        });
+
+        $sessionId = $this->signedInWithDeadline($this->clock->now()->addHours(2));
+        $token     = $this->signIns->token($sessionId);
+
+        self::assertNull($this->signIns->notAfterOf($sessionId));
+        self::assertSame(['2026-11-01T11:30:00Z', null], self::deadlinesOf($this->signIns->provenanceOf($sessionId)));
+
+        $this->clock->advance(7200);
+
+        self::assertSame($sessionId, $this->signIns->sessionOf($token));
+    }
+
+    /**
      * Outside a transaction on the package's storage connection the recheck
      * takes no lock: it throws a `LogicException`.
      *
@@ -251,6 +438,71 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     private function codeFor(StartResult $start): string
     {
         return $this->respondAtProvider($this->provider, $this->connectionId, $start)->code();
+    }
+
+    /**
+     * A SAML connection of the tenant, reading its metadata from a URL, and the
+     * provider it trusts, with the person linked through it by the
+     * application's own codes.
+     *
+     * @return array{0: \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider, 1: string}
+     *
+     * @throws \Throwable
+     */
+    private function linkedThroughSaml(): array
+    {
+        $idp          = new FakeSamlIdentityProvider;
+        $connectionId = $this->makeSamlConnection($idp, ['metadata_url' => TrustChanges::METADATA_URL]);
+        $start        = $this->startFlow(Purpose::LINK, $connectionId, $this->person);
+
+        self::assertNull(self::redemptions()->redeem(Purpose::LINK, $this->respondAtProvider($idp, $connectionId, $start)->code(), self::verifierOf($start), $this->person));
+
+        return [$idp, $connectionId];
+    }
+
+    /**
+     * Sign the person in through a SAML connection whose provider states the
+     * deadline given, by the application's own code, and answer the session.
+     *
+     * @param  \Carbon\CarbonImmutable  $deadline
+     * @return string
+     *
+     * @throws \Throwable
+     */
+    private function signedInWithDeadline(CarbonImmutable $deadline): string
+    {
+        [$idp, $connectionId] = $this->linkedThroughSaml();
+
+        $statement = [
+            'instant'                 => $this->clock->now()->subMinute(),
+            'session_index'           => '_session-1',
+            'session_not_on_or_after' => $deadline,
+            'class'                   => 'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport',
+        ];
+        $tailor = static fn (FakeSamlResponse $response): FakeSamlResponse => $response->with(['authn_statements' => [$statement]]);
+        $start  = $this->startFlow(Purpose::SIGN_IN, $connectionId);
+
+        self::assertNull(self::redemptions()->redeem(Purpose::SIGN_IN, $this->respondAtProvider($idp, $connectionId, $start, $tailor)->code(), self::verifierOf($start)));
+
+        $sessions = $this->signIns->sessionsOf($this->person);
+
+        self::assertCount(1, $sessions);
+
+        return $sessions[0];
+    }
+
+    /**
+     * The provider's raw session deadline and the cap it set, as the provenance
+     * records them, in UTC.
+     *
+     * @param  ?\SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
+     * @return list<?string>
+     */
+    private static function deadlinesOf(?Provenance $provenance): array
+    {
+        self::assertNotNull($provenance);
+
+        return [$provenance->providerSessionDeadline?->toIso8601ZuluString(), $provenance->sessionNotAfter?->toIso8601ZuluString()];
     }
 
     /**

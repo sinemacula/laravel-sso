@@ -328,6 +328,7 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
             result: $result,
             challenge: S256Challenge::fromString('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'),
             expiresAt: $expiresAt ?? $this->clock->now()->addMinute(),
+            trustVersion: $this->connection->trust_version,
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
             linkId: 'link-42',
             identity: $purpose === Purpose::SIGN_IN ? null : new IdentityReference('App\Models\User', '42'),

@@ -534,6 +534,7 @@ final class RedemptionEventSequenceTest extends TestCase
             result: $result,
             challenge: S256Challenge::fromString(self::CHALLENGE),
             expiresAt: $expiresAt ?? $this->clock->now()->addMinute(),
+            trustVersion: $this->connection->trust_version,
             linkedIdentity: $this->linked,
             identity: $purpose    === Purpose::SIGN_IN ? null : new IdentityReference('App\Models\User', '7'),
             sessionId: $purpose   === Purpose::REAUTHENTICATE ? 'session-1' : null,

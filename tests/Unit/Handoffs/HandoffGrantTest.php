@@ -46,18 +46,19 @@ final class HandoffGrantTest extends TestCase
         $linked    = new IdentityReference('user', '1');
         $identity  = new IdentityReference('user', '2');
         $notAfter  = CarbonImmutable::parse('2026-11-01T18:00:00Z');
-        $grant     = new HandoffGrant($result, $challenge, $expires, $linked, $identity, 'session-1', $notAfter);
+        $grant     = new HandoffGrant($result, $challenge, $expires, 7, $linked, $identity, 'session-1', $notAfter);
 
         self::assertSame($result, $grant->result);
         self::assertSame($challenge, $grant->challenge);
         self::assertSame($expires, $grant->expiresAt);
+        self::assertSame(7, $grant->trustVersion);
         self::assertSame($linked, $grant->linkedIdentity);
         self::assertSame($identity, $grant->identity);
         self::assertSame('session-1', $grant->sessionId);
         self::assertSame($notAfter, $grant->sessionNotAfter);
         self::assertSame(255, HandoffGrant::MAX_ID_LENGTH);
 
-        $bare = new HandoffGrant(ExampleResults::bare(), $challenge, $expires);
+        $bare = new HandoffGrant(ExampleResults::bare(), $challenge, $expires, 0);
 
         self::assertNull($bare->linkedIdentity);
         self::assertNull($bare->identity);
@@ -96,8 +97,9 @@ final class HandoffGrantTest extends TestCase
         $this->expectExceptionObject(new \InvalidArgumentException($message));
 
         $challenge = S256Challenge::fromString(str_repeat('c', 43));
+        $named     = $identity ? new IdentityReference('user', '1') : null;
 
-        new HandoffGrant(ExampleResults::full($purpose), $challenge, CarbonImmutable::now(), identity: $identity ? new IdentityReference('user', '1') : null, sessionId: $session);
+        new HandoffGrant(ExampleResults::full($purpose), $challenge, CarbonImmutable::now(), 0, identity: $named, sessionId: $session);
     }
 
     /**
@@ -110,10 +112,10 @@ final class HandoffGrantTest extends TestCase
         $challenge = S256Challenge::fromString(str_repeat('c', 43));
         $identity  = new IdentityReference('user', '1');
         $now       = CarbonImmutable::now();
-        $again     = new HandoffGrant(ExampleResults::full(Purpose::REAUTHENTICATE), $challenge, $now, identity: $identity, sessionId: 's');
+        $again     = new HandoffGrant(ExampleResults::full(Purpose::REAUTHENTICATE), $challenge, $now, 0, identity: $identity, sessionId: 's');
 
-        self::assertNull((new HandoffGrant(ExampleResults::full(Purpose::SIGN_IN), $challenge, $now))->identity);
-        self::assertSame($identity, (new HandoffGrant(ExampleResults::full(Purpose::LINK), $challenge, $now, identity: $identity))->identity);
+        self::assertNull((new HandoffGrant(ExampleResults::full(Purpose::SIGN_IN), $challenge, $now, 0))->identity);
+        self::assertSame($identity, (new HandoffGrant(ExampleResults::full(Purpose::LINK), $challenge, $now, 0, identity: $identity))->identity);
         self::assertSame('s', $again->sessionId);
     }
 
@@ -129,14 +131,14 @@ final class HandoffGrantTest extends TestCase
         $now       = CarbonImmutable::now();
         $again     = ExampleResults::full(Purpose::REAUTHENTICATE);
 
-        self::assertSame(str_repeat('v', 255), (new HandoffGrant(ExampleResults::bare(), $challenge, $now, linkId: str_repeat('v', 255)))->linkId);
+        self::assertSame(str_repeat('v', 255), (new HandoffGrant(ExampleResults::bare(), $challenge, $now, 0, linkId: str_repeat('v', 255)))->linkId);
 
         $messages = [];
         $grants   = [
-            static fn (): HandoffGrant => new HandoffGrant(ExampleResults::bare(), $challenge, $now, linkId: str_repeat('v', 256)),
-            static fn (): HandoffGrant => new HandoffGrant(ExampleResults::bare(), $challenge, $now, linkId: ''),
-            static fn (): HandoffGrant => new HandoffGrant($again, $challenge, $now, identity: $identity, sessionId: str_repeat('s', 256)),
-            static fn (): HandoffGrant => new HandoffGrant($again, $challenge, $now, identity: $identity, sessionId: ''),
+            static fn (): HandoffGrant => new HandoffGrant(ExampleResults::bare(), $challenge, $now, 0, linkId: str_repeat('v', 256)),
+            static fn (): HandoffGrant => new HandoffGrant(ExampleResults::bare(), $challenge, $now, 0, linkId: ''),
+            static fn (): HandoffGrant => new HandoffGrant($again, $challenge, $now, 0, identity: $identity, sessionId: str_repeat('s', 256)),
+            static fn (): HandoffGrant => new HandoffGrant($again, $challenge, $now, 0, identity: $identity, sessionId: ''),
         ];
 
         foreach ($grants as $grant) {
@@ -164,7 +166,8 @@ final class HandoffGrantTest extends TestCase
      */
     public function testAReservationBindsAnUnlinkedSignIn(): void
     {
-        $grant = new HandoffGrant(ExampleResults::full(Purpose::SIGN_IN), S256Challenge::fromString(str_repeat('c', 43)), CarbonImmutable::now(), reservationId: 'reservation-1');
+        $challenge = S256Challenge::fromString(str_repeat('c', 43));
+        $grant     = new HandoffGrant(ExampleResults::full(Purpose::SIGN_IN), $challenge, CarbonImmutable::now(), 0, reservationId: 'reservation-1');
 
         self::assertSame('reservation-1', $grant->reservationId);
         self::assertNull($grant->linkedIdentity);
@@ -204,6 +207,7 @@ final class HandoffGrantTest extends TestCase
             ExampleResults::full($purpose),
             S256Challenge::fromString(str_repeat('c', 43)),
             CarbonImmutable::now(),
+            0,
             $linked ? $identity : null,
             $named ? $identity : null,
             $session,

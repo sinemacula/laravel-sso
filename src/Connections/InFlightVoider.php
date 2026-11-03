@@ -51,8 +51,12 @@ use SineMacula\Laravel\Sso\Models\HandoffCode;
  *
  * It raises the connection's trust version by one on the locked row, so a flow
  * that holds no request to void (an unsolicited SAML response, which captures
- * the version before it validates) and a metadata refresh (which captures it
- * before it fetches) find the change under the lock and refuse.
+ * the version before it validates), a metadata refresh (which captures it
+ * before it fetches) and a handoff code of any store (whose grant carried the
+ * version at issuance, which `Handoffs\HandoffRecheck` compares under the same
+ * lock) find the change and refuse. An application's own handoff store is never
+ * voided here: the version alone refuses its codes, and voiding the package's
+ * own codes as well is defence in depth.
  *
  * It then calls `reservationsVoided()`, which deletes the connection's open
  * link reservations (`Links\ReservationWithdrawal`), so a trust change, a

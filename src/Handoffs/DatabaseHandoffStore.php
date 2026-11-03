@@ -23,8 +23,10 @@ use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
  * `reauthenticate` flow was started on, the identity the result's link resolved
  * to, the link itself, and the reservation it holds (SSO-8.8); the verified
  * result, as the JSON of `VerifiedResult::toArray()` encrypted through
- * `Contracts\SecretEncrypter`, since it carries personal data; the enforcement
- * version and the session's latest end (SSO-9.10); and the expiry. Times are
+ * `Contracts\SecretEncrypter`, since it carries personal data; the
+ * connection's trust version at issuance (SSO-2.13), which the redemption's
+ * recheck compares with the connection's under its lock; the session's latest
+ * end (SSO-9.10); and the expiry. Times are
  * kept to the whole second, so a code expires at most a second before its grant
  * says; the issued handoff carries the expiry as stored, and the row's id as
  * its opaque reference.
@@ -92,6 +94,7 @@ final readonly class DatabaseHandoffStore implements HandoffIssuer
             'link_id'              => $grant->linkId,
             'reservation_id'       => $grant->reservationId,
             'result'               => $this->encrypter->encrypt(json_encode($result->toArray(), JSON_THROW_ON_ERROR)),
+            'trust_version'        => $grant->trustVersion,
             'session_not_after'    => $grant->sessionNotAfter,
             'expires_at'           => $grant->expiresAt,
         ])->save();

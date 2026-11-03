@@ -68,6 +68,10 @@ return new class extends Migration {
             // The verified result, serialised and encrypted.
             $blueprint->longText('result');
 
+            // The connection's trust version when the code was issued, which a
+            // redemption compares with the connection's under its lock.
+            $blueprint->unsignedBigInteger('trust_version');
+
             // The latest end of the application's session the provider's
             // deadline sets.
             $blueprint->dateTime('session_not_after', 0)->nullable();

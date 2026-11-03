@@ -60,10 +60,11 @@ public function signIn(Request $request): JsonResponse
             $request->string('verifier')->value(),
         );
 
-        // Sign in the identity the code's link resolved to, in this same
+        // Sign in the identity the code's link resolved to, never past the
+        // session's latest end and with how it began, in this same
         // transaction; an unlinked handoff names none
         $sessionId = $result->isAdmitted() && $result->linkedIdentity !== null
-            ? $this->signIns->start($result->linkedIdentity, (string) $result->linkId)
+            ? $this->signIns->start($result->linkedIdentity, (string) $result->linkId, $result->sessionNotAfter, $result->provenance)
             : null;
 
         return [$result, $sessionId];
@@ -199,7 +200,7 @@ A refused result carries one of these codes:
 | `application_mismatch`                | issued for another application                                                               |
 | `connection_mismatch`                 | issued through another connection                                                            |
 | `verifier_mismatch`                   | the verifier is not the one the flow was started with                                        |
-| `connection_unavailable`              | the connection was disabled, deleted or left incomplete since completion                     |
+| `connection_unavailable`              | the connection was disabled, deleted, left incomplete or its trust changed since completion  |
 | `enforcement_unsatisfied`             | the tenant now requires sign-in through other connections                                    |
 | `link_changed`                        | the link was removed, replaced, or (for a `sign_in`) appeared where there was none           |
 | `link_suspended`                      | the link is suspended until a confirming `link`                                              |
@@ -256,6 +257,20 @@ through `admit()` and `redeem()` (see [Integrating with `laravel-iam`](integrati
 application redeeming its own codes describes what each was bound to with a `Handoffs\HandoffBinding`, built from what
 its issuer stored: everything the issuer was given in its `HandoffGrant`.
 
+Two of those your store must keep with the code (`Contracts\HandoffIssuer` requires both):
+
+- **The trust version** (`$grant->trustVersion`): the connection's trust version as the completion read it under the
+  connection's lock. Pass it back as the binding's `trustVersion`. The recheck compares it with the connection's under
+  its lock, and refuses the code as `connection_unavailable` when they differ: the connection's trust changed between
+  issuance and redemption (its certificates replaced, one distrusted, an anchor changed, its settings' trust changed,
+  or the connection disabled and enabled again). The package voids its own codes on such a change too, but never yours:
+  the version alone refuses them. A binding that names no trust version is refused the same way, so a store that does
+  not keep it fails closed. Adding a provider key or certificate alone changes no version, and refuses nothing.
+- **The session's latest end** (`$grant->sessionNotAfter`): set when the provider's deadline limits the session (see
+  [Session provenance](session-provenance.md)), `null` when the deadline contract ignores it or there is none. Keep it
+  exactly, or to the whole second as the package's own store does, never later. Cap the session you write at it, and
+  pass it to `Provenance::capture()` with the admission, so the session and its provenance hold the same deadline.
+
 It takes the recheck's lock first, before it locks its own code, so every redemption takes the package's lock order (the
 identity's guard, the tenant's enforcement, the connections, a reservation's domain claim, the code, the links) and none
 deadlocks with a change. Name the reservation the code holds, and for a `link` the identity it was started for: a `link`
@@ -265,10 +280,10 @@ Your redeemer reads its code plainly from its store first (`$code`: the result i
 stored, or `handoff_unknown` when there is none), then runs the rest in one transaction, given the purpose its endpoint
 redeems, the client's verifier and the caller. It imports `Illuminate\Support\Facades\DB` and, from
 `SineMacula\Laravel\Sso`, `Database\StorageConnection`, `Events\Enums\FailureReason`, `Flows\Enums\Purpose`,
-`Handoffs\HandoffBinding` and `Handoffs\HandoffRecheck`. Your store's `consume()` spends the code exactly once (a
-conditional update of its row, through the storage connection) and answers `replayed` for a code spent before; it then
-refuses a code that has expired, was issued for another purpose, or does not match the verifier, as the package refuses
-its own. The redeemer answers `null` once the code is admitted, or the reason to refuse with:
+`Handoffs\HandoffBinding`, `Handoffs\HandoffRecheck` and `Sessions\Provenance`. Your store's `consume()` spends the code
+exactly once (a conditional update of its row, through the storage connection) and answers `replayed` for a code spent
+before; it then refuses a code that has expired, was issued for another purpose, or does not match the verifier, as the
+package refuses its own. The redeemer answers `null` once the code is admitted, or the reason to refuse with:
 
 <!-- snippet: tests/Integration/Examples/RedeemingAHandoff/OwnHandoffRedemption.php#own-code-redemption -->
 ```php
@@ -297,6 +312,7 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
         sessionId: $code->sessionId,           // the session of a `reauthenticate` flow
         reservationId: $code->reservationId,   // the reservation it holds, if any
         handoffReference: $code->reference,    // the opaque reference your issuer answered
+        trustVersion: $code->trustVersion,     // the connection's trust version it was issued under
     );
 
     $admission = $refusal === null ? $recheck->admit($result, $binding, $lock, $caller) : null;
@@ -311,8 +327,14 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
         $recheck->acknowledgeSignIn($result, $lock);
 
         // Write the session for the identity, bound to the link it
-        // resolved through, in this same transaction
-        $this->signIns->start($admission->identity, (string) $admission->linkId);
+        // resolved through, never outliving the latest end your issuer
+        // stored, with how it began, in this same transaction
+        $this->signIns->start(
+            $admission->identity,
+            (string) $admission->linkId,
+            $code->sessionNotAfter,
+            Provenance::capture($result, $admission, $code->sessionNotAfter),
+        );
     }
 
     // A `link` writes nothing further; a `reauthenticate` was renewed
@@ -333,7 +355,8 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
 - `recheck()` alone judges, and writes nothing but a suspension it finds, which is latched whatever the redemption comes
   to. It takes the lock, and refuses one taken for another tenant, connection or application than the result's with a
   `LogicException`, so it cannot be reached without the locks. It answers `passed` or the first that refuses:
-  `connection_unavailable` (also when the inheritance contract no longer names the tenant whose rule is locked),
+  `connection_unavailable` (also when the binding's trust version is not the connection's, or names none, and when the
+  inheritance contract no longer names the tenant whose rule is locked),
   `enforcement_unsatisfied`, then the purpose's own. Under the default contract it judges enforcement from the locked
   rows.
 - `discardReservation()` removes a refused code's reservation, by its identity and handoff reference and never merely by

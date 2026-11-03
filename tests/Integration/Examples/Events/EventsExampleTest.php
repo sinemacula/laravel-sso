@@ -37,9 +37,8 @@ use Tests\Integration\Examples\ExampleTestCase;
  * runs the real flow or change and asserts what was recorded; a refused change
  * records and reports nothing.
  *
- * The guide's `laravel-audit-log` mapper is not run here: this package does not
- * install that sibling. The keys it reads are asserted on the records the
- * listener on every event keeps.
+ * The guide's `laravel-audit-log` mapper runs in `AuditLogMapperExampleTest`,
+ * against the examples' stand-ins for that sibling's API.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

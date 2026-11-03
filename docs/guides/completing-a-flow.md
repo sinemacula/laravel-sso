@@ -192,7 +192,9 @@ Bind your own in a service provider's `register()`; each default fails closed.
   own to answer `ignored` when your sessions are independent of the provider's.
 - `Contracts\HandoffIssuer`: issues the code, inside the completion's transaction on the package's storage connection.
   An issuer that writes through another connection is not atomic with the completion. An issuer that cannot issue
-  throws, and the completion is rolled back as a server error.
+  throws, and the completion is rolled back as a server error. An issuer of your own keeps the grant's `trustVersion`
+  and `sessionNotAfter` with the code and hands them back at redemption, or its codes are refused there (see
+  [Redeeming codes of your own](redeeming-a-handoff.md#redeeming-codes-of-your-own)).
 
 ## Events
 

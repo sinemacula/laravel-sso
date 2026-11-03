@@ -118,8 +118,9 @@ limiter that cannot count never lets an attempt through.
 A counter whose window has ended is restarted by its next attempt, but its row stays until it is pruned, which
 `sso:prune` does along with everything else the package no longer needs: see [Operations](operations.md#pruning).
 Laravel's `model:prune` works too, and takes the same rows, naming the package's model, since it lives outside your
-`app/Models`:
+`app/Models`, in `routes/console.php`:
 
+<!-- snippet: tests/Integration/Examples/RateLimits/console.php#rate-limits-model-prune -->
 ```php
 use Illuminate\Support\Facades\Schedule;
 use SineMacula\Laravel\Sso\Models\RateLimit;

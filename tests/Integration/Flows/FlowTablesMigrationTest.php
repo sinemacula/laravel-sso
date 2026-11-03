@@ -143,6 +143,7 @@ final class FlowTablesMigrationTest extends TestCase
             'result'               => false,
             'session_id'           => true,
             'session_not_after'    => true,
+            'trust_version'        => false,
             'updated_at'           => false,
             'voided_at'            => true,
         ], [

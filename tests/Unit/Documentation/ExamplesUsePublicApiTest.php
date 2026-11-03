@@ -14,12 +14,14 @@ use Tests\Integration\Examples\Snippets;
  * The public-API gate of the executable examples (SSO-12.4): an application
  * tests its flows with what the package publishes, so every example, and the
  * harness they run on, names only the package's public classes (none marked
- * `@internal`, and no model, since reading a table is not the public API), none
- * of the package's own test traits or fixtures (only the examples' own classes,
- * and the base test case in the harness alone, for the database the suite runs
- * on), names none of the package's tables, and builds no verified result by
- * hand; the application's own tables are its to use. And every public testing
- * helper is in the testing guide, so the guide covers the whole helper surface.
+ * `@internal`, and no model, since reading a table is not the public API, but
+ * for the two `@api` models whose class alone is public, admitted by name with
+ * their reason in `ADMITTED_MODELS`), none of the package's own test traits or
+ * fixtures (only the examples' own classes, and the base test case in the
+ * harness alone, for the database the suite runs on), names none of the
+ * package's tables, and builds no verified result by hand; the application's
+ * own tables are its to use. And every public testing helper is in the testing
+ * guide, so the guide covers the whole helper surface.
  *
  * Names are read as `ScansLibraryNames` reads them, from the source's tokens.
  *
@@ -45,6 +47,12 @@ final class ExamplesUsePublicApiTest extends TestCase
 
     /** @var string The examples' own namespace, which they may name. */
     private const string EXAMPLES = 'Tests\Integration\Examples';
+
+    /** @var array<string, string> The package's models an example may name, by class, with the reason. */
+    private const array ADMITTED_MODELS = [
+        'SineMacula\Laravel\Sso\Models\RateLimit'    => 'docs/guides/rate-limits.md schedules `model:prune` naming its class, the one part of it that is public',
+        'SineMacula\Laravel\Sso\Models\SingleUseKey' => 'docs/guides/single-use-store.md schedules `model:prune` naming its class, the one part of it that is public',
+    ];
 
     /**
      * Rows of `[path]`: every PHP source of the examples and their harness.
@@ -136,7 +144,8 @@ final class ExamplesUsePublicApiTest extends TestCase
      * The gate catches an internal class, a model, a class that does not exist,
      * the package's own test traits and its base test case outside the harness,
      * a table of the package's and a hand-built result, and passes a public
-     * class, the examples' own, and the application's own table.
+     * class, the two admitted models, the examples' own, and the application's
+     * own table.
      *
      * @return void
      */
@@ -148,6 +157,8 @@ final class ExamplesUsePublicApiTest extends TestCase
             use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
             use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
             use SineMacula\Laravel\Sso\Models\Link;
+            use SineMacula\Laravel\Sso\Models\RateLimit;
+            use SineMacula\Laravel\Sso\Models\SingleUseKey;
             use SineMacula\Laravel\Sso\Nothing\Here;
             use Tests\Concerns\FlowRoutes;
             use Tests\Integration\Examples\Application\ExampleSessions;
@@ -232,7 +243,7 @@ final class ExamplesUsePublicApiTest extends TestCase
     {
         $exists = class_exists($name) || interface_exists($name) || enum_exists($name);
 
-        if (!$exists || str_starts_with($name, self::PACKAGE . 'Models\\')) {
+        if (!$exists || (str_starts_with($name, self::PACKAGE . 'Models\\') && !array_key_exists($name, self::ADMITTED_MODELS))) {
             return false;
         }
 

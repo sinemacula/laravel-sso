@@ -93,8 +93,8 @@ final class DatabaseHandoffStoreTest extends TestCase
 
     /**
      * A `reauthenticate` grant is stored as one row holding what the code is
-     * bound to, the session's latest end and the expiry, stamped now and
-     * neither redeemed nor voided.
+     * bound to, the connection's trust version, the session's latest end and
+     * the expiry, stamped now and neither redeemed nor voided.
      *
      * @return void
      *
@@ -106,6 +106,7 @@ final class DatabaseHandoffStoreTest extends TestCase
             result: ExampleResults::full(Purpose::REAUTHENTICATE, self::CONNECTION_ID),
             challenge: S256Challenge::fromString(self::CHALLENGE),
             expiresAt: CarbonImmutable::parse('2026-11-01T09:31:00Z'),
+            trustVersion: 3,
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
             identity: new IdentityReference('App\Models\Member', '7'),
             sessionId: 'session-1',
@@ -126,6 +127,7 @@ final class DatabaseHandoffStoreTest extends TestCase
             'session_id'           => 'session-1',
             'linked_identity_type' => 'App\Models\User',
             'linked_identity_id'   => '42',
+            'trust_version'        => 3,
             'session_not_after'    => '2026-11-01T18:00:00+00:00',
             'expires_at'           => '2026-11-01T09:31:00+00:00',
             'redeemed_at'          => null,
@@ -144,6 +146,7 @@ final class DatabaseHandoffStoreTest extends TestCase
             'session_id'           => $row->session_id,
             'linked_identity_type' => $row->linked_identity_type,
             'linked_identity_id'   => $row->linked_identity_id,
+            'trust_version'        => $row->trust_version,
             'session_not_after'    => $row->session_not_after?->toIso8601String(),
             'expires_at'           => $row->expires_at->toIso8601String(),
             'redeemed_at'          => $row->redeemed_at,
@@ -169,6 +172,7 @@ final class DatabaseHandoffStoreTest extends TestCase
             result: ExampleResults::bare(Purpose::SIGN_IN, self::CONNECTION_ID),
             challenge: S256Challenge::fromString(self::CHALLENGE),
             expiresAt: CarbonImmutable::parse('2026-11-01T09:31:00Z'),
+            trustVersion: 3,
         ));
 
         $row = StoredCode::query()->sole();
@@ -380,6 +384,7 @@ final class DatabaseHandoffStoreTest extends TestCase
             result: $result ?? ExampleResults::bare(Purpose::SIGN_IN, self::CONNECTION_ID),
             challenge: S256Challenge::fromString(self::CHALLENGE),
             expiresAt: $expiresAt ?? CarbonImmutable::parse('2026-11-01T09:31:00Z'),
+            trustVersion: 3,
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
         ));
     }

@@ -329,6 +329,7 @@ final class RedemptionTransactionTest extends TestCase
             result: $result,
             challenge: S256Challenge::fromString('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'),
             expiresAt: CarbonImmutable::parse('2026-11-01T09:31:00Z'),
+            trustVersion: $this->connection->trust_version,
             linkedIdentity: new IdentityReference('App\Models\User', '42'),
             linkId: 'link-42',
         );

@@ -65,7 +65,7 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     {
         parent::setUp();
 
-        $this->signIns = new SignIns;
+        $this->signIns = new SignIns($this->clock);
         $this->instance(SignIns::class, $this->signIns);
 
         Route::post(self::SIGN_IN, [SsoHandoffController::class, 'signIn']);

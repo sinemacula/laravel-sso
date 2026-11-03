@@ -31,7 +31,7 @@ final class HandoffBindingTest extends TestCase
     {
         $linked   = new IdentityReference('user', '1');
         $identity = new IdentityReference('user', '2');
-        $binding  = new HandoffBinding($linked, 'link-1', $identity, 'session-1', 'reservation-1', 'handoff-1');
+        $binding  = new HandoffBinding($linked, 'link-1', $identity, 'session-1', 'reservation-1', 'handoff-1', 3);
 
         self::assertSame([
             'linkedIdentity'   => $linked,
@@ -40,11 +40,13 @@ final class HandoffBindingTest extends TestCase
             'sessionId'        => 'session-1',
             'reservationId'    => 'reservation-1',
             'handoffReference' => 'handoff-1',
+            'trustVersion'     => 3,
         ], get_object_vars($binding));
     }
 
     /**
-     * A binding of nothing is an unlinked `sign_in`'s: every part is `null`.
+     * A binding of nothing is an unlinked `sign_in`'s: every part is `null`,
+     * its trust version included, which the recheck refuses.
      *
      * @return void
      */
@@ -57,6 +59,7 @@ final class HandoffBindingTest extends TestCase
             'sessionId'        => null,
             'reservationId'    => null,
             'handoffReference' => null,
+            'trustVersion'     => null,
         ], get_object_vars(new HandoffBinding));
     }
 
@@ -77,6 +80,7 @@ final class HandoffBindingTest extends TestCase
             'sessionId'        => null,
             'reservationId'    => null,
             'handoffReference' => null,
+            'trustVersion'     => null,
         ], get_object_vars(new HandoffBinding(linkId: 'link-1', identity: $identity)));
     }
 

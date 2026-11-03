@@ -26,6 +26,21 @@ use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
  * and admission, which activate the reservation in its transaction (decision
  * D5).
  *
+ * Every implementation stores, with the code and in the same write, the grant's
+ * `trustVersion` exactly as given, and the grant's `sessionNotAfter`, the
+ * effective latest end of the session, exactly or to the whole second as the
+ * package's own store keeps it, never later; its redeemer answers them back as
+ * stored. The trust version goes in the `Handoffs\HandoffBinding` it hands
+ * `Handoffs\HandoffRecheck`, which refuses the code as `connection_unavailable`
+ * when the connection's trust version under the lock is another (SSO-2.13: a
+ * trust change since issuance, a disable and a later enable included), or when
+ * the binding names none, so a store that keeps no trust version fails closed
+ * rather than redeem a code across a trust change. The session's latest end
+ * goes to `Sessions\Provenance::capture()` with the admission, and caps the
+ * session the redeemer writes, which never outlives it (SSO-9.10). A `null`
+ * `sessionNotAfter` is stored as `null`: the deadline contract ignored the
+ * provider's deadline, or there was none, and the session is not capped by it.
+ *
  * The completion pipeline asks it once per completed flow, inside the
  * completion's transaction on the storage connection, after rechecking that the
  * application allows sign-in through an external provider; an implementation

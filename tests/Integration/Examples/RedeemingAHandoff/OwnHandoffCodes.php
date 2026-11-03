@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\RedeemingAHandoff;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -26,9 +27,12 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * package's: it issues each code inside the completion's transaction, into the
  * application's own table on the package's storage connection, keeping only the
  * code's digest, the verified result encrypted, and everything else the grant
- * names; it reads a code back plainly; and it consumes one atomically, exactly
- * once, inside the redeemer's transaction, then checks it as the package checks
- * its own (the expiry, the purpose and the verifier).
+ * names, the connection's trust version and the session's latest end among
+ * them, as the contract requires (the latest end to the whole second, as the
+ * package's own store keeps it, so never later); it reads a code back plainly,
+ * with both; and it consumes one atomically, exactly once, inside the
+ * redeemer's transaction, then checks it as the package checks its own (the
+ * expiry, the purpose and the verifier).
  *
  * It keeps nothing of one call for the next (SSO-11.2).
  *
@@ -79,6 +83,8 @@ final readonly class OwnHandoffCodes implements HandoffIssuer
             'identity_id'          => $grant->identity?->id,
             'session_id'           => $grant->sessionId,
             'reservation_id'       => $grant->reservationId,
+            'trust_version'        => $grant->trustVersion,
+            'session_not_after'    => $grant->sessionNotAfter?->getTimestamp(),
             'expires_at'           => $grant->expiresAt->getTimestamp(),
         ]);
 
@@ -154,6 +160,8 @@ final readonly class OwnHandoffCodes implements HandoffIssuer
             identity: IdentityReference::fromColumns(self::value($row, 'identity_type'), self::value($row, 'identity_id')),
             sessionId: self::value($row, 'session_id'),
             reservationId: self::value($row, 'reservation_id'),
+            trustVersion: self::integer($row, 'trust_version'),
+            sessionNotAfter: self::instant($row, 'session_not_after'),
         );
     }
 
@@ -189,6 +197,35 @@ final readonly class OwnHandoffCodes implements HandoffIssuer
         $value = $row[$column] ?? null;
 
         return is_scalar($value) ? (string) $value : null;
+    }
+
+    /**
+     * A column of the row as an integer, or `null` when it holds none.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  string  $column
+     * @return ?int
+     */
+    private static function integer(array $row, string $column): ?int
+    {
+        $value = self::value($row, $column);
+
+        return $value === null ? null : (int) $value;
+    }
+
+    /**
+     * A column of the row, seconds since the epoch, as an instant in UTC, or
+     * `null` when it holds none.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  string  $column
+     * @return ?\Carbon\CarbonImmutable
+     */
+    private static function instant(array $row, string $column): ?CarbonImmutable
+    {
+        $seconds = self::integer($row, $column);
+
+        return $seconds === null ? null : CarbonImmutable::createFromTimestampUTC($seconds);
     }
 
     /**

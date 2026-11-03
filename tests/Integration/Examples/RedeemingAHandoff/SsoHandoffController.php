@@ -61,10 +61,11 @@ final readonly class SsoHandoffController
                 $request->string('verifier')->value(),
             );
 
-            // Sign in the identity the code's link resolved to, in this same
+            // Sign in the identity the code's link resolved to, never past the
+            // session's latest end and with how it began, in this same
             // transaction; an unlinked handoff names none
             $sessionId = $result->isAdmitted() && $result->linkedIdentity !== null
-                ? $this->signIns->start($result->linkedIdentity, (string) $result->linkId)
+                ? $this->signIns->start($result->linkedIdentity, (string) $result->linkId, $result->sessionNotAfter, $result->provenance)
                 : null;
 
             return [$result, $sessionId];

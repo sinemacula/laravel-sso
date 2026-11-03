@@ -78,8 +78,13 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * 1. `connection_unavailable`: the result's connection is gone, belongs to
  *    another tenant than the result names, or is no longer usable (disabled, or
  *    its protocol unavailable or its settings incomplete), as its locked row
- *    shows; or the inheritance contract, asked again, no longer names the
- *    enforcing tenant whose rule is locked, which is never locked out of order.
+ *    shows; its trust version under the lock is not the one the binding says
+ *    the code was issued under, or the binding names none (SSO-2.13), so a
+ *    trust change, a disable and a later enable included, refuses every code
+ *    issued before it whichever store holds it, while a change that only adds a
+ *    key or certificate raises no version and refuses nothing; or the
+ *    inheritance contract, asked again, no longer names the enforcing tenant
+ *    whose rule is locked, which is never locked out of order.
  * 2. `enforcement_unsatisfied`: the enforcement of the connection's tenant on
  *    the result's application requires sign-in through connections this one is
  *    not among. Under the default contract it is judged from the locked rows;
@@ -298,8 +303,8 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * What the recheck comes to under the lock: the connection's and
-     * enforcement's refusal, if any, or the purpose's judgement.
+     * What the recheck comes to under the lock: the connection's, its trust
+     * version's and enforcement's refusal, if any, or the purpose's judgement.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
@@ -316,7 +321,7 @@ final readonly class HandoffRecheck
         self::assertHeldFor($lock, $result);
 
         $connection = $lock->connection;
-        $policy     = $this->usablePolicy($lock);
+        $policy     = self::isIssuedUnder($binding, $connection) ? $this->usablePolicy($lock) : null;
 
         if ($connection === null || $policy === null) {
             return Judgement::of(RecheckOutcome::CONNECTION_UNAVAILABLE);
@@ -327,6 +332,19 @@ final readonly class HandoffRecheck
         }
 
         return $this->branch($result)->judge(new RedemptionContext($result, $binding, $lock, $connection, $caller))->under($policy->version);
+    }
+
+    /**
+     * Whether the locked connection's trust version is exactly the one the
+     * binding says the code was issued under; a binding naming none never is.
+     *
+     * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
+     * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return bool
+     */
+    private static function isIssuedUnder(HandoffBinding $binding, ?Connection $connection): bool
+    {
+        return $connection !== null && $binding->trustVersion !== null && $binding->trustVersion === $connection->trust_version;
     }
 
     /**

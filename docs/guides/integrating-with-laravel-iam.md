@@ -53,7 +53,11 @@ for an application that issues codes of its own. AUTH-3.10's obligations hold th
 60-second default lifetime capped at 300, stored only as a hash, bound to the purpose, the application, the connection,
 the request's public reference, the verifier's S256 challenge, the identity of a `link` and the session of a
 `reauthenticate`, and consumed atomically. A handoff code, a request reference and a verifier are three kinds, never
-accepted as one another or as a token (AUTH-5.7).
+accepted as one another or as a token (AUTH-5.7). Each code also keeps the connection's trust version it was issued
+under: a change to the connection's trust before the code is redeemed (its certificates replaced, one distrusted, an
+anchor changed, or the connection disabled and enabled again) voids it and refuses it, so the adapter's `admit()`
+answers `handoff_unknown`, and never signs anyone in against the connection as it was; a certificate added alone
+changes nothing.
 
 ## The transaction rule
 
@@ -617,39 +621,41 @@ The adapter's contributor reads the stored form the adapter handed authenticatio
 authentication's own fields: they are the narrower record (no protocol, no link provenance, one deadline, whole
 seconds), and the projection never rebuilds the package's provenance from them. It projects the stored form through
 `AuthenticationContext::fromStored()` and answers the keys without their `sso.` prefix, each value as the projection
-answers it:
+answers it. The adapter's `final readonly class SsoContextContributor implements AuthenticationContextContributor`
+imports `Context\ContributionSubject` and `Contracts\AuthenticationContextContributor` from
+`SineMacula\Laravel\Authentication`, and `Sessions\AuthenticationContext` from `SineMacula\Laravel\Sso`:
 
+<!-- snippet: tests/Integration/Examples/IntegratingWithLaravelIam/SsoContextContributor.php#iam-context-contributor -->
 ```php
-use SineMacula\Laravel\Authentication\Context\ContributionSubject;
-use SineMacula\Laravel\Authentication\Contracts\AuthenticationContextContributor;
-use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
-
-final readonly class SsoContextContributor implements AuthenticationContextContributor
+/**
+ * The session's `sso` keys, without their prefix.
+ *
+ * @param  \SineMacula\Laravel\Authentication\Context\ContributionSubject  $subject
+ * @return array<string, mixed>
+ */
+#[\Override]
+public function contribute(ContributionSubject $subject): array
 {
-    public function contribute(ContributionSubject $subject): array
-    {
-        // Provenance::toArray(), passed as the provider context at sign-in
-        // (PR #129); null for a session this package did not establish.
-        $stored = $subject->provenance()?->providerContext?->toArray();
+    // Provenance::toArray(), passed as the provider context at sign-in
+    // (PR #129); null for a session this package did not establish.
+    $stored = $subject->provenance()?->providerContext?->toArray();
 
-        $keys = [];
+    $keys = [];
 
-        foreach (AuthenticationContext::fromStored($stored) as $key => $value) {
-            $keys[substr($key, strlen(AuthenticationContext::NAMESPACE) + 1)] = $value; // sso.connection -> connection
-        }
-
-        return $keys;
+    foreach (AuthenticationContext::fromStored($stored) as $key => $value) {
+        $keys[substr($key, strlen(AuthenticationContext::NAMESPACE) + 1)] = $value; // sso.connection -> connection
     }
+
+    return $keys;
 }
 ```
 
 Without PR #129, `$stored` is the adapter's own row for `$subject->session?->getSessionIdentifier()` instead, read on
 the write connection. The contributor is registered in the adapter's service provider's `boot()`, never in
-configuration:
+configuration, with `SineMacula\Laravel\Authentication\Context\ContextContributors` imported:
 
+<!-- snippet: tests/Integration/Examples/IntegratingWithLaravelIam/AdapterServiceProvider.php#iam-contributors -->
 ```php
-use SineMacula\Laravel\Authentication\Context\ContextContributors;
-
 $this->app->make(ContextContributors::class)->register('sso', SsoContextContributor::class);
 ```
 

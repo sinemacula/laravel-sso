@@ -349,7 +349,9 @@ final class ResultBuilderTest extends TestCase
             $claims   = new VerifiedClaims('https://op.example.com', 'sub-1', null, ['given' => 'Ada'], new AuthenticationContext, null, $asserted);
             $result   = $this->build($claims);
 
-            $app->make(DatabaseHandoffStore::class)->issue(new HandoffGrant($result, S256Challenge::fromString(self::CHALLENGE), $this->clock->now()->addMinute()));
+            $grant = new HandoffGrant($result, S256Challenge::fromString(self::CHALLENGE), $this->clock->now()->addMinute(), $this->connection->trust_version);
+
+            $app->make(DatabaseHandoffStore::class)->issue($grant);
 
             $row = StoredCode::query()->sole();
 

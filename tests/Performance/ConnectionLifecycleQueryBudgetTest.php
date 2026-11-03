@@ -210,6 +210,7 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
             'request_reference' => $request->reference,
             'handoff_challenge' => str_repeat('c', 43),
             'result'            => '',
+            'trust_version'     => $this->connection->trust_version,
             'expires_at'        => $now->addMinute(),
         ])->save();
     }

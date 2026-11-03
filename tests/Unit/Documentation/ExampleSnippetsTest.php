@@ -15,9 +15,10 @@ use Tests\Integration\Examples\Snippets;
  * guide or the README is followed by a fenced block that is exactly that region
  * of that source, so changing an example without its snippet, or a snippet
  * without its example, fails here. Every region an example opens is shown
- * somewhere, so no example is kept for a snippet nobody reads. Every other PHP
- * block is listed, with its reason, in `UnsourcedSnippets`, so the code no test
- * runs is known and cannot grow unnoticed.
+ * somewhere, so no example is kept for a snippet nobody reads. Every PHP block
+ * is such a snippet: none is exempt, so no guide shows code no test runs. A
+ * sibling package's API the guides call runs against the examples' stand-ins
+ * for it (`Examples\SiblingStandIns`).
  *
  * The examples themselves run in the Integration suite, against the public API
  * alone (`ExamplesUsePublicApiTest`); this reads files and covers no code.
@@ -104,14 +105,14 @@ final class ExampleSnippetsTest extends TestCase
     }
 
     /**
-     * Every PHP block of a guide or the README is a marked snippet, or is
-     * listed in `UnsourcedSnippets` with its reason; and every block listed
-     * there is still an unmarked PHP block. A new block that no example runs
-     * fails here until it is taken from one, or listed.
+     * Every PHP block of a guide or the README is a marked snippet, held to the
+     * executed example it is taken from: no block is exempt, whatever the
+     * reason, so a block no example runs fails here, by its document and its
+     * place among that document's PHP blocks.
      *
      * @return void
      */
-    public function testEveryPhpBlockIsASnippetOrListedWithItsReason(): void
+    public function testEveryPhpBlockIsASnippet(): void
     {
         $unmarked = [];
 
@@ -122,11 +123,11 @@ final class ExampleSnippetsTest extends TestCase
                     continue;
                 }
 
-                $unmarked[$document][$place] = UnsourcedSnippets::FENCES[$document][$place] ?? 'unlisted';
+                $unmarked[] = "{$document}#{$place}";
             }
         }
 
-        self::assertSame(UnsourcedSnippets::FENCES, $unmarked);
+        self::assertSame([], $unmarked, 'These PHP blocks are taken from no executed example.');
     }
 
     /**

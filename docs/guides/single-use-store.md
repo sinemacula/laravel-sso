@@ -72,8 +72,9 @@ back. A database error, a dropped connection or a timeout is always thrown, insi
 A key whose expiry has passed is released by the next record of it, but its row stays until it is pruned, which
 `sso:prune` does along with everything else the package no longer needs: see [Operations](operations.md#pruning).
 Laravel's `model:prune` works too, and takes the same rows, naming the package's model, since it lives outside your
-`app/Models`:
+`app/Models`, in `routes/console.php`:
 
+<!-- snippet: tests/Integration/Examples/SingleUseStore/console.php#single-use-model-prune -->
 ```php
 use Illuminate\Support\Facades\Schedule;
 use SineMacula\Laravel\Sso\Models\SingleUseKey;

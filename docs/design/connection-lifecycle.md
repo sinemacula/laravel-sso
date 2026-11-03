@@ -59,7 +59,11 @@ so a provider's next certificate can be trusted ahead of its switch without void
 any change to the metadata signing anchors, voids. Each voiding change raises the connection's trust version, which
 every authorisation request stores when it starts: a start whose connection's trust version moved between its read and
 its insert stores nothing, and a completion whose request's trust version is not the connection's is refused at
-consumption and again under its lock, as a voided one is. A refused or unchanged change voids nothing.
+consumption and again under its lock, as a voided one is. Every handoff code keeps the trust version it was issued
+under, and `HandoffRecheck` refuses one whose version is not the connection's under the redemption's lock as
+`connection_unavailable`: the package's codes are voided as well, and an application's own, which the package never
+voids, are refused by the version alone (`handoffs.md`). Enabling a disabled connection raises the version too, so a
+code issued before a disable is never redeemed after the enable. A refused or unchanged change voids nothing.
 
 ### Disabling and deleting
 

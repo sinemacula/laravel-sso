@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Sessions\Provenance;
 
 /**
  * The redemption of an application's own handoff codes of
@@ -19,8 +20,11 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
  * the result it carries, then, in one transaction on the package's storage
  * connection, takes `HandoffRecheck`'s lock first, consumes and checks its own
  * code after it, describes what the code was bound to with a `HandoffBinding`,
- * and admits it, discarding the reservation of every refusal and writing the
- * session of an admitted `sign_in` in that same transaction.
+ * the trust version it was issued under included, and admits it, discarding the
+ * reservation of every refusal and writing the session of an admitted `sign_in`
+ * in that same transaction: capped at the session's latest end the code
+ * carries, with the provenance captured from that admission and that same
+ * latest end.
  *
  * It answers `null` when the code is admitted, or the reason it is refused; a
  * refusal commits, and spends the code.
@@ -108,6 +112,7 @@ final readonly class OwnHandoffRedemption
                 sessionId: $code->sessionId,           // the session of a `reauthenticate` flow
                 reservationId: $code->reservationId,   // the reservation it holds, if any
                 handoffReference: $code->reference,    // the opaque reference your issuer answered
+                trustVersion: $code->trustVersion,     // the connection's trust version it was issued under
             );
 
             $admission = $refusal === null ? $recheck->admit($result, $binding, $lock, $caller) : null;
@@ -122,8 +127,14 @@ final readonly class OwnHandoffRedemption
                 $recheck->acknowledgeSignIn($result, $lock);
 
                 // Write the session for the identity, bound to the link it
-                // resolved through, in this same transaction
-                $this->signIns->start($admission->identity, (string) $admission->linkId);
+                // resolved through, never outliving the latest end your issuer
+                // stored, with how it began, in this same transaction
+                $this->signIns->start(
+                    $admission->identity,
+                    (string) $admission->linkId,
+                    $code->sessionNotAfter,
+                    Provenance::capture($result, $admission, $code->sessionNotAfter),
+                );
             }
 
             // A `link` writes nothing further; a `reauthenticate` was renewed
