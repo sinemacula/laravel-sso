@@ -9,7 +9,8 @@ use SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome;
 /**
  * What one run of the scheduled domain recheck did (SSO-3.3, SSO-11.12): an
  * entry for every verified claim it selected, in the order it checked them, and
- * how many ended with each outcome.
+ * how many ended with each outcome. A claim the resolver threw on is an entry
+ * of its own outcome, `resolver_threw`, never counted as a failed lookup.
  *
  * It holds ids, domains, outcomes and times: never a verification token or a
  * DNS record's value.
@@ -51,6 +52,16 @@ final readonly class RecheckReport implements \JsonSerializable
     public function hasLookupFailures(): bool
     {
         return $this->count(RecheckOutcome::LOOKUP_FAILED) > 0;
+    }
+
+    /**
+     * Whether the resolver threw, rather than answered, for at least one claim.
+     *
+     * @return bool
+     */
+    public function hasResolverThrows(): bool
+    {
+        return $this->count(RecheckOutcome::RESOLVER_THREW) > 0;
     }
 
     /**

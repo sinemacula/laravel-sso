@@ -118,7 +118,8 @@ what makes each safe on several servers at once. How a domain is rechecked and h
 
 - `sso:domains:recheck` and `sso:metadata:refresh`, OIDC included, were audited against overlapping commands, duplicate
   queued jobs, worker death, expired leases and claims, takeover, administrative changes during a lookup or fetch, and an
-  old worker writing after takeover. Their database coordination holds, and no behaviour changed.
+  old worker writing after takeover. Their database coordination holds, and no behaviour changed. Since then, a domain
+  recheck contains a resolver that throws (below).
 - Idempotence here is of effects, not of activity. Overlapping metadata commands queue duplicate jobs, since neither has
   claimed anything; the duplicates apply nothing. A later domain recheck moves its successful-check time, as it should.
 
@@ -144,8 +145,11 @@ what makes each safe on several servers at once. How a domain is rechecked and h
   key recorded again.
 - PostgreSQL `REPEATABLE READ` callers whose snapshot predates a pruned reservation fail to serialise on the raised
   `links_version`, rather than reason from what is gone.
-- A resolver bound by the application must answer `lookup_failed` rather than throw: a throw stops the recheck run, as
-  `domain-rechecks.md` records, and the same claim comes first again once its lease has run out.
+- A resolver bound by the application should answer `lookup_failed` rather than throw, but a throw no longer stops the
+  recheck run: the claim is left as it was but for its lease, which is released, it is reported as `resolver_threw`,
+  never as a failed lookup, the exception is logged by its class alone, and the run goes on to the other claims, as
+  `domain-rechecks.md` records. The command still exits non-zero, so monitoring notices. Only what the resolver throws
+  is contained; a database error still stops the run.
 
 ## Implementation Anchors
 
@@ -174,6 +178,7 @@ what makes each safe on several servers at once. How a domain is rechecked and h
 - `tests/Feature/Console/ExpiringKeysCommandTest.php`
 - `tests/Feature/Metadata/RefreshAcrossServersTest.php`
 - `tests/Feature/Console/RecheckDomainsCommandTest.php`
+- `tests/Feature/Domains/DomainRecheckerTest.php`
 
 ## Change Triggers
 

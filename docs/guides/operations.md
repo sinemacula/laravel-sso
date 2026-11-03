@@ -91,15 +91,18 @@ of the events each one dispatches need a worker too.
 
 ## Exit codes
 
-| Command                | 0                                                  | 1                                                               |
-|------------------------|----------------------------------------------------|-----------------------------------------------------------------|
-| `sso:prune`            | Complete, or incomplete with the next run to go on | A kind stopped on an exception; what committed before it stands |
-| `sso:domains:recheck`  | Every lookup answered                              | A lookup failed, or the run stopped on an exception             |
-| `sso:metadata:refresh` | Whatever the refreshes' outcomes                   | The run stopped on an exception                                 |
-| `sso:keys:expiring`    | However many keys are expiring or have expired     | A warning's dispatch threw, or the run stopped on an exception  |
+| Command                | 0                                                  | 1                                                                       |
+|------------------------|----------------------------------------------------|-------------------------------------------------------------------------|
+| `sso:prune`            | Complete, or incomplete with the next run to go on | A kind stopped on an exception; what committed before it stands         |
+| `sso:domains:recheck`  | Every lookup answered                              | A lookup failed, the resolver threw, or the run stopped on an exception |
+| `sso:metadata:refresh` | Whatever the refreshes' outcomes                   | The run stopped on an exception                                         |
+| `sso:keys:expiring`    | However many keys are expiring or have expired     | A warning's dispatch threw, or the run stopped on an exception          |
 
-An exception is named by its class alone, since its message could carry a value read from the database. Hook
-`onFailure()`, or watch the scheduler's output, to hear of a non-zero exit.
+An exception is named by its class alone, since its message could carry a value read from the database. A DNS resolver
+you bind should answer `lookup_failed` rather than throw; if it throws, the recheck leaves that domain as it was,
+releases it for the next run, prints it as `resolver_threw`, logs a warning naming the exception's class
+(`sso.domains.recheck_resolver_threw`), and goes on to the other domains, so one bad answer never holds the rest back.
+A database error still stops the run. Hook `onFailure()`, or watch the scheduler's output, to hear of a non-zero exit.
 
 ## Pruning
 

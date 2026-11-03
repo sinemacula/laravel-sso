@@ -51,6 +51,7 @@ use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Contracts\TenantMembership;
+use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\DomainsCheck;
 use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
 use SineMacula\Laravel\Sso\Endpoints\ConfiguredEndpointResolver;
@@ -151,6 +152,7 @@ final class SsoServiceProvider extends ServiceProvider
         ClaimsAssembler::class,
         Pruner::class,
         ExpiryNotifier::class,
+        DomainRechecker::class,
     ];
 
     /** @var list<string> The console commands that start long-running or scheduled work: the queue workers, Horizon, the scheduler and the Octane servers. Each is checked as it starts and refused on a problem, as a request is at boot (SSO-12.3); every other command runs, so a misconfigured application can still run `sso:check`, its migrations and the commands that repair it. */

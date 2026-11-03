@@ -6,6 +6,7 @@ namespace Tests\Feature\Domains;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -29,6 +30,8 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
+use Tests\Concerns\CapturesLogs;
+use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Fixtures\Domains\RecordingWithdrawal;
 
 /**
@@ -39,11 +42,13 @@ use Tests\Fixtures\Domains\RecordingWithdrawal;
  * transaction, and starts a grace period fixed when it began, during which the
  * domain still routes; a record back within it restores the domain; past it the
  * domain lapses without a lookup and is free for another connection; a failed
- * lookup changes nothing but the lease; pending and lapsed claims are left
- * alone; a claim changed or leased by another server is skipped, and so is a
- * lookup that outlasts its lease; a domain verified again counts from its new
- * time; every read is on the write connection; and the claims are read in
- * chunks, in order.
+ * lookup changes nothing but the lease; a resolver that throws is contained,
+ * releasing the lease and writing nothing else, never lapsing the domain, while
+ * the run goes on and a database error still stops it; pending and lapsed
+ * claims are left alone; a claim changed or leased by another server is
+ * skipped, and so is a lookup that outlasts its lease; a domain verified again
+ * counts from its new time; every read is on the write connection; and the
+ * claims are read in chunks, in order.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -55,6 +60,8 @@ use Tests\Fixtures\Domains\RecordingWithdrawal;
 #[CoversClass(RecheckEntry::class)]
 final class DomainRecheckerTest extends DomainServiceTestCase
 {
+    use CapturesLogs, FailsDatabaseStatements;
+
     /** @var string The record name the default claim is looked up at. */
     private const string RECORD = '_sso-verification.example.com';
 
@@ -63,6 +70,9 @@ final class DomainRecheckerTest extends DomainServiceTestCase
 
     /** @var int The linking maximum age the predicates are judged with. */
     private const int MAX_AGE = 86400;
+
+    /** @var string The message every contained throw is logged with. */
+    private const string THREW = 'sso.domains.recheck_resolver_threw';
 
     /**
      * A record that still carries the token moves the last successful check to
@@ -372,6 +382,218 @@ final class DomainRecheckerTest extends DomainServiceTestCase
 
         self::assertFalse(DomainStanding::allowsLinking(self::reload($plain), $later, self::MAX_AGE));
         self::assertTrue(DomainStanding::routes(self::reload($plain), $later));
+    }
+
+    /**
+     * A resolver that throws on the least recently confirmed of three claims,
+     * one suspended, is contained: the claim's row is as it was, its lease
+     * released, its lapse time reported as it stands, nothing is reported for
+     * it and it is no failed lookup; the other two are checked; one warning
+     * names the exception's class alone.
+     *
+     * @return void
+     */
+    public function testAResolverThatThrowsIsContainedAndTheRunGoesOn(): void
+    {
+        $this->captureLogs();
+
+        $thrower = $this->verifiedClaim('first.example.com', [
+            'last_successful_check_at' => CarbonImmutable::parse('2026-10-31T09:30:00Z'),
+            'linking_suspended_at'     => CarbonImmutable::parse('2026-10-31T10:30:00Z'),
+            'lapses_at'                => CarbonImmutable::parse('2026-11-03T10:30:00Z'),
+        ]);
+
+        $this->verifiedClaim('second.example.com');
+        $this->verifiedClaim('third.example.com');
+
+        $this->clock->advance(3600);
+        $this->throwOn('_sso-verification.first.example.com');
+        $this->dns->found('_sso-verification.second.example.com', self::TOKEN)->found('_sso-verification.third.example.com', self::TOKEN);
+
+        $before = self::storedRow($thrower);
+        $report = $this->runRecheck();
+        $entry  = $report->entries[0];
+
+        self::assertSame(
+            [RecheckOutcome::RESOLVER_THREW, RecheckOutcome::CONFIRMED, RecheckOutcome::CONFIRMED],
+            array_map(static fn (RecheckEntry $checked): RecheckOutcome => $checked->outcome, $report->entries),
+        );
+        self::assertSame([$thrower->id, 'first.example.com', '2026-11-03T10:30:00+00:00'], [$entry->domainId, $entry->domain, $entry->lapsesAt?->toAtomString()]);
+        self::assertSame($before, self::storedRow($thrower));
+        self::assertNull($before['recheck_leased_until']);
+        self::assertTrue($report->hasResolverThrows());
+        self::assertFalse($report->hasLookupFailures());
+        self::assertSame(0, $report->count(RecheckOutcome::LOOKUP_FAILED));
+        self::assertSame('2026-11-01T10:30:00+00:00', Domain::query()->where('domain', 'third.example.com')->sole()->last_successful_check_at?->toAtomString());
+        $this->assertNoEvents();
+        $this->assertLoggedOnce(\RuntimeException::class);
+        $this->assertNothingLoggedContains('SERVFAIL', 'first.example.com', $thrower->id);
+    }
+
+    /**
+     * The next run is fair: the claim the resolver threw on is not held, so it
+     * is checked again in its place, as the least recently confirmed, and every
+     * other claim is checked after it, none skipped. An overlapping run at the
+     * same instant checks it again too, and once the resolver answers it is
+     * confirmed at once.
+     *
+     * @return void
+     */
+    public function testTheNextRunChecksTheThrowerAgainInItsPlace(): void
+    {
+        $this->captureLogs();
+
+        $thrower = $this->verifiedClaim('first.example.com', ['last_successful_check_at' => CarbonImmutable::parse('2026-10-31T09:30:00Z')]);
+        $second  = $this->verifiedClaim('second.example.com');
+        $third   = $this->verifiedClaim('third.example.com');
+
+        $this->clock->advance(3600);
+        $this->throwOn('_sso-verification.first.example.com');
+        $this->dns->found('_sso-verification.second.example.com', self::TOKEN)->found('_sso-verification.third.example.com', self::TOKEN);
+
+        $this->runRecheck();
+        $this->clock->advance(3600);
+
+        $others = [$second->id, $third->id];
+
+        sort($others, SORT_STRING);
+
+        $next = $this->runRecheck();
+
+        self::assertSame([$thrower->id, ...$others], array_map(static fn (RecheckEntry $checked): string => $checked->domainId, $next->entries));
+        self::assertSame(
+            [RecheckOutcome::RESOLVER_THREW, RecheckOutcome::CONFIRMED, RecheckOutcome::CONFIRMED],
+            array_map(static fn (RecheckEntry $checked): RecheckOutcome => $checked->outcome, $next->entries),
+        );
+        self::assertSame(0, $next->count(RecheckOutcome::SKIPPED));
+
+        $overlapping = $this->runRecheck();
+
+        $again = array_map(static fn (RecheckEntry $checked): array => [$checked->domainId, $checked->outcome], $overlapping->entries);
+
+        self::assertSame([[$thrower->id, RecheckOutcome::RESOLVER_THREW]], $again);
+
+        $this->dns->found('_sso-verification.first.example.com', self::TOKEN);
+        $this->clock->advance(3600);
+
+        $fixed = $this->runRecheck();
+
+        self::assertSame([$thrower->id, RecheckOutcome::CONFIRMED], [$fixed->entries[0]->domainId, $fixed->entries[0]->outcome]);
+        self::assertSame('2026-11-01T12:30:00+00:00', self::reload($thrower)->last_successful_check_at?->toAtomString());
+        $this->dns->assertLookedUp('_sso-verification.first.example.com', 4);
+        self::assertCount(3, $this->capturedLogRecords());
+    }
+
+    /**
+     * A resolver that throws on every run, however long, never lapses the
+     * domain nor suspends it, and never moves its check: the row stays as it
+     * was, and nothing is reported. Linking by it still stops on its own once
+     * its last successful check is older than the linking maximum age, while it
+     * still routes.
+     *
+     * @return void
+     */
+    public function testRepeatedThrowsNeverLapseADomain(): void
+    {
+        $this->captureLogs();
+
+        $claim  = $this->verifiedClaim();
+        $before = self::storedRow($claim);
+
+        $this->throwOn(self::RECORD);
+
+        $outcomes = [];
+
+        for ($run = 0; $run < 5; $run++) {
+
+            $this->clock->advance(86400);
+
+            $entries    = $this->runRecheck()->entries;
+            $outcomes[] = [$entries[0]->outcome, $entries[0]->lapsesAt];
+        }
+
+        $row = self::reload($claim);
+
+        self::assertSame(array_fill(0, 5, [RecheckOutcome::RESOLVER_THREW, null]), $outcomes);
+        self::assertSame($before, self::storedRow($claim));
+        self::assertSame(DomainState::VERIFIED, $row->state);
+        self::assertSame('example.com', $row->verified_domain);
+        self::assertNull($row->lapses_at);
+        self::assertNull($row->linking_suspended_at);
+        self::assertFalse(DomainStanding::allowsLinking($row, $this->clock->now(), self::MAX_AGE));
+        self::assertTrue(DomainStanding::routes($row, $this->clock->now()));
+        self::assertCount(5, $this->capturedLogRecords());
+        $this->assertNoEvents();
+    }
+
+    /**
+     * A resolver that throws after its lookup outlasted the lease, and another
+     * server took the claim over, leaves that server's lease: only this check's
+     * own lease is released.
+     *
+     * @return void
+     */
+    public function testAResolverThatThrowsAfterATakeoverLeavesTheOtherServersLease(): void
+    {
+        $this->captureLogs();
+
+        $claim = $this->verifiedClaim();
+
+        $this->clock->advance(3600);
+
+        $other = $this->clock->now()->addSeconds((2 * DomainRechecker::LEASE_SECONDS) + 1);
+
+        $this->dns->answer(self::RECORD, function () use ($claim, $other): never {
+
+            $this->clock->advance(DomainRechecker::LEASE_SECONDS + 1);
+
+            Domain::query()->whereKey($claim->id)->update(['recheck_leased_until' => UtcDateTime::format(new Domain, $other)]);
+
+            throw new \RuntimeException('Too slow.');
+        });
+
+        $report = $this->runRecheck();
+
+        self::assertSame(RecheckOutcome::RESOLVER_THREW, $report->entries[0]->outcome);
+        self::assertSame($other->toAtomString(), self::reload($claim)->recheck_leased_until?->toAtomString());
+        $this->assertLoggedOnce(\RuntimeException::class);
+    }
+
+    /**
+     * Only what the resolver throws is contained: a database error releasing
+     * the lease of a claim it threw on propagates and stops the run, leaving
+     * the lease to expire and the next claim unchecked.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testADatabaseErrorAfterAThrowStillStopsTheRun(): void
+    {
+        $this->captureLogs();
+
+        $thrower = $this->verifiedClaim('first.example.com', ['last_successful_check_at' => CarbonImmutable::parse('2026-10-31T09:30:00Z')]);
+
+        $this->verifiedClaim('second.example.com');
+
+        $this->clock->advance(3600);
+        $this->throwOn('_sso-verification.first.example.com');
+        $this->dns->found('_sso-verification.second.example.com', self::TOKEN);
+        $this->failStatement(self::onTable('update', 'sso_domains'), 2);
+
+        $caught = null;
+
+        try {
+            $this->runRecheck();
+        } catch (QueryException $exception) {
+            $caught = $exception;
+        }
+
+        self::assertTrue(self::isInjectedFailure($caught));
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertSame($this->clock->now()->addSeconds(DomainRechecker::LEASE_SECONDS)->toAtomString(), self::reload($thrower)->recheck_leased_until?->toAtomString());
+        $this->dns->assertLookedUp('_sso-verification.second.example.com', 0);
+        $this->assertLoggedOnce(\RuntimeException::class);
     }
 
     /**
@@ -689,6 +911,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
      * Run the recheck as the container builds it.
      *
      * @return \SineMacula\Laravel\Sso\Domains\RecheckReport
+     *
+     * @throws \Throwable
      */
     private function runRecheck(): RecheckReport
     {
@@ -751,6 +975,46 @@ final class DomainRecheckerTest extends DomainServiceTestCase
         });
 
         return $seen;
+    }
+
+    /**
+     * Make the resolver throw at the name, with a message that carries the name
+     * and a provider's text, as an application's resolver might.
+     *
+     * @param  string  $name
+     * @return void
+     */
+    private function throwOn(string $name): void
+    {
+        $this->dns->answer($name, static function (string $asked): never {
+            throw new \RuntimeException("SERVFAIL from ns1.provider.test for {$asked}");
+        });
+    }
+
+    /**
+     * Assert that one warning was logged, of a resolver that threw, naming the
+     * exception's class and nothing else.
+     *
+     * @param  class-string<\Throwable>  $class
+     * @return void
+     */
+    private function assertLoggedOnce(string $class): void
+    {
+        self::assertSame(
+            [['channel' => 'sso_capture', 'level' => 'warning', 'message' => self::THREW, 'context' => ['exception' => $class]]],
+            $this->capturedLogRecords(),
+        );
+    }
+
+    /**
+     * The claim's row as the database holds it, every column as stored.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
+     * @return array<string, mixed>
+     */
+    private static function storedRow(Domain $claim): array
+    {
+        return (array) DB::connection(StorageConnection::name())->table('sso_domains')->where('id', $claim->id)->first();
     }
 
     /**

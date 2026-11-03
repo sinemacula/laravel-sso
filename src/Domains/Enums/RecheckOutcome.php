@@ -8,12 +8,12 @@ namespace SineMacula\Laravel\Sso\Domains\Enums;
  * How the scheduled check of one verified domain ended (SSO-3.3, SSO-11.12), as
  * a `Domains\RecheckEntry` reports it.
  *
- * Two outcomes confirm the domain, one of them after its record had gone; four
+ * Two outcomes confirm the domain, one of them after its record had gone; five
  * are failures: its record went and linking by it was suspended, its record is
  * still gone within the grace period, it lapsed at the end of the grace period,
- * or the lookup failed, which changes nothing. `skipped` means this run left
- * the claim alone: another server held its lease, or it changed, was removed or
- * lost its connection while it was being checked.
+ * the lookup failed, or the resolver threw; the last two change nothing.
+ * `skipped` means this run left the claim alone: another server held its lease,
+ * or it changed, was removed or lost its connection while it was being checked.
  *
  * Backed, and stable once released: a value is never renamed or reused.
  *
@@ -44,20 +44,24 @@ enum RecheckOutcome: string
     // The resolver could not answer; nothing changed
     case LOOKUP_FAILED = 'lookup_failed';
 
+    // The resolver threw instead of answering; nothing changed but the lease,
+    // which was released
+    case RESOLVER_THREW = 'resolver_threw';
+
     // This run left it alone: leased by another server, or changed meanwhile
     case SKIPPED = 'skipped';
 
     /**
      * Whether the outcome is a failure of the domain's check: a record gone, a
-     * lapse or a lookup that failed.
+     * lapse, a lookup that failed or a resolver that threw.
      *
      * @return bool
      */
     public function isFailure(): bool
     {
         return match ($this) {
-            self::SUSPENDED, self::STILL_FAILING, self::LAPSED, self::LOOKUP_FAILED => true,
-            default                                                                 => false,
+            self::SUSPENDED, self::STILL_FAILING, self::LAPSED, self::LOOKUP_FAILED, self::RESOLVER_THREW => true,
+            default                                                                                       => false,
         };
     }
 }

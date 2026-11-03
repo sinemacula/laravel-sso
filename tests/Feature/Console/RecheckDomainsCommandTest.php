@@ -6,18 +6,24 @@ namespace Tests\Feature\Console;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Console\RecheckDomainsCommand;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Models\Domain;
+use Tests\Concerns\CapturesLogs;
+use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Feature\Domains\DomainServiceTestCase;
 
 /**
  * Feature tests for `sso:domains:recheck` (SSO-3.3, SSO-11.12): a line for each
  * domain whose check did more than confirm it, the count of each outcome, a
- * non-zero exit when a lookup failed or the run stopped on an exception (named
- * by its class alone), and a second run that changes and reports nothing new.
+ * non-zero exit when a lookup failed, when the resolver threw (contained, the
+ * run going on, logged by class alone) or when the run stopped on a database
+ * error (named by its class alone), and a second run that changes and reports
+ * nothing new.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,11 +33,13 @@ use Tests\Feature\Domains\DomainServiceTestCase;
 #[CoversClass(RecheckDomainsCommand::class)]
 final class RecheckDomainsCommandTest extends DomainServiceTestCase
 {
+    use CapturesLogs, FailsDatabaseStatements;
+
     /** @var string The token `makeDomain()` gives a claim. */
     private const string TOKEN = 'abababababababababababababababababababababababababababababababab';
 
     /** @var string The summary of a run that checked nothing. */
-    private const string NOTHING = 'Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, skipped 0';
+    private const string NOTHING = 'Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, resolver_threw 0, skipped 0';
 
     /**
      * With no verified domain, the run prints the summary alone and passes.
@@ -75,7 +83,7 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
             "[lapsed] lapsing.example.com (connection {$id})",
             "[restored] restored.example.com (connection {$id})",
             "[suspended] absent.example.com (connection {$id})",
-            'Domains rechecked: confirmed 1, restored 1, suspended 1, still_failing 0, lapsed 1, lookup_failed 0, skipped 0',
+            'Domains rechecked: confirmed 1, restored 1, suspended 1, still_failing 0, lapsed 1, lookup_failed 0, resolver_threw 0, skipped 0',
         ], $output);
     }
 
@@ -97,7 +105,7 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
         self::assertSame(1, $code);
         self::assertSame([
             "[lookup_failed] example.com (connection {$id})",
-            'Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 1, skipped 0',
+            'Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 1, resolver_threw 0, skipped 0',
         ], $output);
     }
 
@@ -135,30 +143,105 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
 
         self::assertSame([
             "[still_failing] absent.example.com (connection {$id})",
-            'Domains rechecked: confirmed 1, restored 0, suspended 0, still_failing 1, lapsed 0, lookup_failed 0, skipped 0',
+            'Domains rechecked: confirmed 1, restored 0, suspended 0, still_failing 1, lapsed 0, lookup_failed 0, resolver_threw 0, skipped 0',
         ], $later);
     }
 
     /**
-     * A run stopped by an exception fails, naming the exception's class and
+     * A resolver that throws on one of three claims, the least recently
+     * confirmed, is contained: the other two are checked, the thrower's row is
+     * as it was, its lease released, the run fails and prints it as
+     * `resolver_threw`, and one warning names the exception's class and nothing
+     * it carried.
+     *
+     * @return void
+     */
+    public function testAResolverThatThrowsIsContainedAndTheRunGoesOn(): void
+    {
+        $id = $this->connection->id;
+
+        $this->captureLogs();
+
+        $thrower = $this->verifiedClaim('first.example.com', '2026-10-31T09:30:00Z');
+
+        $this->verifiedClaim('second.example.com', '2026-11-01T08:30:00Z');
+        $this->verifiedClaim('third.example.com', '2026-11-01T09:30:00Z');
+
+        $this->clock->advance(3600);
+        $this->dns
+            ->answer('_sso-verification.first.example.com', static function (string $name): never {
+                throw new \RuntimeException("SERVFAIL from ns1.provider.test for {$name}");
+            })
+            ->absent('_sso-verification.second.example.com')
+            ->found('_sso-verification.third.example.com', self::TOKEN);
+
+        $before = self::storedRow($thrower);
+
+        [$code, $output] = $this->recheckFromConsole();
+
+        self::assertSame(1, $code);
+        self::assertSame([
+            "[resolver_threw] first.example.com (connection {$id})",
+            "[suspended] second.example.com (connection {$id})",
+            'Domains rechecked: confirmed 1, restored 0, suspended 1, still_failing 0, lapsed 0, lookup_failed 0, resolver_threw 1, skipped 0',
+        ], $output);
+        self::assertSame($before, self::storedRow($thrower));
+        self::assertNull($before['recheck_leased_until']);
+        self::assertStringNotContainsString('SERVFAIL', implode("\n", $output));
+
+        $this->dns->assertLookedUp('_sso-verification.first.example.com', 1);
+        $this->dns->assertLookedUp('_sso-verification.second.example.com', 1);
+        $this->dns->assertLookedUp('_sso-verification.third.example.com', 1);
+
+        self::assertSame([
+            ['channel' => 'sso_capture', 'level' => 'warning', 'message' => 'sso.domains.recheck_resolver_threw', 'context' => ['exception' => \RuntimeException::class]],
+        ], $this->capturedLogRecords());
+        $this->assertNothingLoggedContains('SERVFAIL', 'provider.test', 'first.example.com', $thrower->id);
+    }
+
+    /**
+     * A resolver that throws fails the run even when no lookup failed.
+     *
+     * @return void
+     */
+    public function testAResolverThatThrowsAloneFailsTheRun(): void
+    {
+        $this->verifiedClaim('example.com', '2026-11-01T09:30:00Z');
+        $this->clock->advance(3600);
+
+        $this->dns->answer('_sso-verification.example.com', static function (): never {
+            throw new \LogicException('The resolver is misconfigured.');
+        });
+
+        [$code, $output] = $this->recheckFromConsole();
+
+        self::assertSame(1, $code);
+        self::assertSame('Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, resolver_threw 1, skipped 0', $output[1]);
+    }
+
+    /**
+     * A run stopped by a database error fails, naming the exception's class and
      * nothing it carried; the claim it was checking keeps its lease only until
      * the lease expires.
      *
      * @return void
      */
-    public function testAnExceptionStopsTheRunNamingItsClassAlone(): void
+    public function testADatabaseErrorStopsTheRunNamingItsClassAlone(): void
     {
         $claim = $this->verifiedClaim('example.com', '2026-11-01T09:30:00Z');
 
         $this->clock->advance(3600);
+        $this->dns->found('_sso-verification.example.com', self::TOKEN);
+        $this->failStatement(self::onTable('update', 'sso_domains'), 2);
 
         [$code, $output] = $this->recheckFromConsole();
 
         $leasedUntil = Domain::query()->findOrFail($claim->id)->recheck_leased_until;
 
         self::assertSame(1, $code);
-        self::assertSame(['The domain recheck stopped on LogicException.'], $output);
-        self::assertStringNotContainsString('_sso-verification', implode("\n", $output));
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertSame(['The domain recheck stopped on Illuminate\Database\QueryException.'], $output);
+        self::assertStringNotContainsString(self::INJECTED_FAILURE, implode("\n", $output));
         self::assertSame(
             $this->clock->now()->addSeconds(DomainRechecker::LEASE_SECONDS)->toAtomString(),
             $leasedUntil?->toAtomString(),
@@ -179,9 +262,8 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
 
         $this->clock->advance(3600);
 
-        $this->dns->answer('_sso-verification.example.com', static function (): never {
-            throw new \RuntimeException('The server died.');
-        });
+        $this->dns->found('_sso-verification.example.com', self::TOKEN);
+        $this->failStatement(self::onTable('update', 'sso_domains'), 2);
 
         [$died] = $this->recheckFromConsole();
 
@@ -189,14 +271,12 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
 
         $checked = Domain::query()->findOrFail($claim->id)->last_successful_check_at;
 
-        $this->dns->found('_sso-verification.example.com', self::TOKEN);
-
         $this->clock->advance(DomainRechecker::LEASE_SECONDS - 1);
 
         [$held, $output] = $this->recheckFromConsole();
 
         self::assertSame(0, $held);
-        self::assertSame(['Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, skipped 1'], $output);
+        self::assertSame(['Domains rechecked: confirmed 0, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, resolver_threw 0, skipped 1'], $output);
         self::assertSame($checked?->toAtomString(), Domain::query()->findOrFail($claim->id)->last_successful_check_at?->toAtomString());
 
         $this->clock->advance(1);
@@ -204,7 +284,7 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
         [$taken, $output] = $this->recheckFromConsole();
 
         self::assertSame(0, $taken);
-        self::assertSame(['Domains rechecked: confirmed 1, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, skipped 0'], $output);
+        self::assertSame(['Domains rechecked: confirmed 1, restored 0, suspended 0, still_failing 0, lapsed 0, lookup_failed 0, resolver_threw 0, skipped 0'], $output);
         self::assertNull(Domain::query()->findOrFail($claim->id)->recheck_leased_until);
     }
 
@@ -225,6 +305,17 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
             'state'                    => DomainState::VERIFIED,
             'last_successful_check_at' => CarbonImmutable::parse($checkedAt),
         ] + $attributes);
+    }
+
+    /**
+     * The claim's row as the database holds it, every column as stored.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
+     * @return array<string, mixed>
+     */
+    private static function storedRow(Domain $claim): array
+    {
+        return (array) DB::connection(StorageConnection::name())->table('sso_domains')->where('id', $claim->id)->first();
     }
 
     /**

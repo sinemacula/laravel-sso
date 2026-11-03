@@ -38,6 +38,7 @@ use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Contracts\TenantMembership;
+use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
 use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
@@ -262,6 +263,7 @@ final class SsoServiceProviderTest extends TestCase
                 ClaimsAssembler::class,
                 Pruner::class,
                 ExpiryNotifier::class,
+                DomainRechecker::class,
             ],
             SsoServiceProvider::LOGGING_CLASSES,
         );

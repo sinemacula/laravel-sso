@@ -692,7 +692,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         self::assertEqualsCanonicalizing([
             "[suspended] absent.example.com (connection {$connection->id})",
             "[lookup_failed] failing.example.com (connection {$connection->id})",
-            'Domains rechecked: confirmed 1, restored 0, suspended 1, still_failing 0, lapsed 0, lookup_failed 1, skipped 0',
+            'Domains rechecked: confirmed 1, restored 0, suspended 1, still_failing 0, lapsed 0, lookup_failed 1, resolver_threw 0, skipped 0',
         ], $output);
 
         $dns->assertLookedUp('_sso-verification.confirmed.example.com', 1);
