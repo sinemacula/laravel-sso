@@ -8,12 +8,16 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
  * What a handoff code was bound to at completion, as its redeemer read it from
- * its own store (SSO-8.5, SSO-8.8, SSO-9.9): the identity and the link the
- * result resolved to, the identity and the session the flow was started for,
- * and the reservation it holds with the handoff's opaque reference. The
- * package's redemption builds one from its code's row; an adapter that redeems
- * its own codes builds one from what its issuer stored, and passes it to
- * `Handoffs\HandoffRecheck`.
+ * its own store (SSO-8.5, SSO-8.8, SSO-9.9, SSO-2.13): the identity and the
+ * link the result resolved to, the identity and the session the flow was
+ * started for, the reservation it holds with the handoff's opaque reference,
+ * and the connection's trust version the code was issued under, exactly as its
+ * `HandoffGrant` carried it. `Handoffs\HandoffRecheck` refuses a binding whose
+ * trust version is not the connection's under the lock, and one that names
+ * none, as `connection_unavailable`, so a store that does not keep it fails
+ * closed. The package's redemption builds one from its code's row; an adapter
+ * that redeems its own codes builds one from what its issuer stored, and passes
+ * it to `Handoffs\HandoffRecheck`.
  *
  * It holds opaque references, never a code, a digest, a subject or a secret.
  *
@@ -33,6 +37,7 @@ final readonly class HandoffBinding
      * @param  ?string  $sessionId
      * @param  ?string  $reservationId
      * @param  ?string  $handoffReference
+     * @param  ?int  $trustVersion
      */
     public function __construct(
 
@@ -53,5 +58,8 @@ final readonly class HandoffBinding
 
         /** The code's opaque reference, which its reservation holds. */
         public ?string $handoffReference = null,
+
+        /** The connection's trust version the code was issued under; `null` refuses it. */
+        public ?int $trustVersion = null,
     ) {}
 }

@@ -11,6 +11,8 @@ every setting and [OIDC sign-in](oidc-sign-in.md) for the flow itself.
 `DiscoveryImporter` fetches the document and the keys and answers what they propose. Nothing is written or trusted: you
 show the proposal to the administrator, and save what they accept.
 
+<!-- snippet: tests/Integration/Examples/OidcConnections/admin/import.php#oidc-connections-import -->
+
 ```php
 use SineMacula\Laravel\Sso\Metadata\DiscoveryImporter;
 
@@ -24,18 +26,23 @@ if ($result->isRateLimited()) {
     return back()->withErrors(['issuer' => "Try again in {$result->retryAfter} seconds."]);
 }
 
-if ($result->isRefused()) {
-    return back()->withErrors(['issuer' => $result->reason->value]);
+if (!$result->isProposed()) {
+    return back()->withErrors(['issuer' => $result->reason?->value]);
 }
 
 $proposed = $result->proposed;
 
-$proposed->settings();    // ['issuer' => ..., 'authorization_endpoint' => ..., 'token_endpoint' => ...,
-                          //  'jwks_uri' => ..., 'userinfo_endpoint' => ..., 'returns_iss' => true,
-                          //  'id_token_algorithms' => ['RS256', 'ES256']]
-$proposed->authMethods(); // ['client_secret_basic', 'private_key_jwt']
-$proposed->keys();        // [['kid' => 'abc', 'kty' => 'RSA', 'alg' => 'RS256'], ...]
+$settings    = $proposed->settings();
+$authMethods = $proposed->authMethods();
+$keys        = $proposed->keys();
 ```
+
+For a provider whose document lists `RS256` and `ES256`, and `client_secret_basic` and `private_key_jwt`, and whose
+JWKS holds an RSA key and a P-256 key, `$settings` holds `issuer`, `authorization_endpoint`, `token_endpoint`,
+`jwks_uri`, `userinfo_endpoint`, `returns_iss` (`true`) and `id_token_algorithms` (`['RS256', 'ES256']`), as the
+connection's settings name them; `$authMethods` is `['client_secret_basic', 'private_key_jwt']`; and `$keys` holds each
+key's `kid`, `kty` and `alg`, such as `['kid' => 'abc', 'kty' => 'RSA', 'alg' => 'RS256']`, and nothing else. A refused
+import goes back with its reason, from the table below.
 
 The document is fetched from the issuer with `/.well-known/openid-configuration` appended, path included, so
 `https://login.example.com/tenant-a` is read from `https://login.example.com/tenant-a/.well-known/openid-configuration`.
@@ -77,13 +84,18 @@ Saving is an update, and every setting in the proposal is a trust change, so it 
 `sso.connection.trust`. `ImportSaver::save()` makes the update `ConnectionService::update()` would and stamps the fetch
 the proposal carries, so the [stale limit](#the-30-day-stale-limit) counts from it even with the schedule off:
 
+<!-- snippet: tests/Integration/Examples/OidcConnections/admin/save.php#oidc-connections-save -->
+
 ```php
 use SineMacula\Laravel\Sso\Connections\ImportSaver;
 
-app(ImportSaver::class)->save($tenant->id, $connection->id, [
+$result = app(ImportSaver::class)->save($tenant->id, $connection->id, [
     'settings' => [...$proposed->settings(), 'client_id' => $clientId, 'client_secret' => $secret],
 ], $proposed->fetch(), $actor);
 ```
+
+`$result` is the `ConnectionResult` an update answers. A caller whose authentication is not fresh enough is refused with
+`freshness_required`, and nothing is written or stamped.
 
 Saving a new import of the same settings renews the connection, on the record, as `ConnectionUpdated` naming
 `metadata_fetched_at`, and voids nothing. The keys are not saved with it. The first ID token's unknown `kid` fetches

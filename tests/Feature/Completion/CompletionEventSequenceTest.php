@@ -365,7 +365,7 @@ final class CompletionEventSequenceTest extends TestCase
         $this->assertEventSequence([FlowFailed::class]);
         $this->assertExactlyOneFailure(Flow::ASSERTION, FailureReason::CONNECTION_UNAVAILABLE);
 
-        self::assertSame([$this->context(['connection_id' => $oidc->id, 'tenant_id' => 'tenant-1', 'protocol' => 'oidc'])], $this->contexts());
+        self::assertSame([$this->context(['connection_id' => $oidc->id, 'connection_tenant_id' => 'tenant-1', 'protocol' => 'oidc'])], $this->contexts());
     }
 
     /**
@@ -506,7 +506,7 @@ final class CompletionEventSequenceTest extends TestCase
      */
     private function connectionFields(): array
     {
-        return ['connection_id' => $this->connection->id, 'tenant_id' => 'tenant-7', 'protocol' => VerifyingDriver::NAME];
+        return ['connection_id' => $this->connection->id, 'connection_tenant_id' => 'tenant-7', 'protocol' => VerifyingDriver::NAME];
     }
 
     /**
@@ -533,7 +533,7 @@ final class CompletionEventSequenceTest extends TestCase
             'ip'                          => self::IP,
             'user_agent'                  => self::USER_AGENT,
             'connection_id'               => null,
-            'tenant_id'                   => null,
+            'connection_tenant_id'        => null,
             'protocol'                    => null,
             'application'                 => null,
             'purpose'                     => null,
@@ -544,7 +544,7 @@ final class CompletionEventSequenceTest extends TestCase
             'acting_identity_id'          => null,
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ], $fields);

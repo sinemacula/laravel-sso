@@ -108,7 +108,7 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
             self::assertSame('web', $context->application);
             self::assertSame('sign_in', $context->purpose);
             self::assertSame($this->connection->id, $context->connectionId);
-            self::assertSame('tenant-1', $context->tenantId);
+            self::assertSame('tenant-1', $context->connectionTenantId);
             self::assertSame(VerifyingDriver::NAME, $context->protocol);
             self::assertSame(AuthorizationRequest::query()->sole()->reference, $context->requestReference);
             self::assertStringNotContainsString(self::EMAIL, print_r($event, true));

@@ -22,8 +22,9 @@ namespace SineMacula\Laravel\Sso\Localization\Enums;
  */
 enum Message: string
 {
-    // The title of the page that posts an AuthnRequest to the identity provider
-    // by HTTP-POST (SSO-5.1, SSO-5.3)
+    // The title of the page the application's client builds to post an
+    // AuthnRequest by HTTP-POST; the package renders no page of its own, and
+    // offers the line for that one (SSO-5.1, SSO-5.3)
     case POST_NAVIGATION_TITLE = 'post_navigation.title';
 
     // The label of the button on that page which posts the AuthnRequest when

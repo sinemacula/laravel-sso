@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens;
 
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Base64Url;
+use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
  * An ID token's `at_hash` (OpenID Connect Core §3.1.3.8, SSO-7.4): when present
@@ -50,7 +51,7 @@ final class AccessTokenHash
         $given    = $claims['at_hash'];
         $expected = self::of($accessToken, $algorithm);
 
-        return is_string($given) && $expected !== null && hash_equals($expected, $given) ? null : FailureReason::AT_HASH_MISMATCH;
+        return is_string($given) && $expected !== null && ConstantTime::equals($expected, $given) ? null : FailureReason::AT_HASH_MISMATCH;
     }
 
     /**

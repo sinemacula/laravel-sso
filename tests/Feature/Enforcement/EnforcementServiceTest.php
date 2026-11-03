@@ -184,7 +184,7 @@ final class EnforcementServiceTest extends TestCase
         self::assertSame($ids, $event->connectionIds);
         self::assertSame($summary->version, $event->version);
         self::assertNull($event->previousVersion);
-        self::assertSame(self::TENANT, $event->context->tenantId);
+        self::assertSame(self::TENANT, $event->context->connectionTenantId);
         self::assertNull($event->context->connectionId);
         self::assertSame('App\Models\User', $event->context->actingIdentityMorphClass);
         self::assertSame('42', $event->context->actingIdentityId);

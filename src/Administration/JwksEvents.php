@@ -93,6 +93,6 @@ final readonly class JwksEvents
      */
     private function context(Connection $connection): EventContext
     {
-        return $this->contexts->make(connectionId: $connection->id, tenantId: $connection->tenant_id, protocol: $connection->protocol);
+        return $this->contexts->make(connectionId: $connection->id, connectionTenantId: $connection->tenant_id, protocol: $connection->protocol);
     }
 }

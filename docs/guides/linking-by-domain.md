@@ -35,19 +35,17 @@ but stops allowing linking at once.
 
 ## Turning it on
 
-Bind the package's link store and your three contracts, each of which refuses by default:
+In a service provider's `register()`, bind the package's link store, `Links\LinkStore`, as `Contracts\Linker`, and your
+own `Contracts\LinkEmailMatcher`, `Contracts\PrincipalScope` and `Contracts\TenantMembership`, each of which refuses by
+default. Here they are the application's classes reading its users and principals, under the guards
+[each contract must provide](#the-concurrency-each-contract-must-provide):
 
+<!-- snippet: tests/Integration/Examples/LinkingByDomain/AppServiceProvider.php#linking-by-domain-bindings -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\LinkEmailMatcher;
-use SineMacula\Laravel\Sso\Contracts\Linker;
-use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
-use SineMacula\Laravel\Sso\Contracts\TenantMembership;
-use SineMacula\Laravel\Sso\Links\LinkStore;
-
 $this->app->scoped(Linker::class, LinkStore::class);
-$this->app->scoped(LinkEmailMatcher::class, YourEmailMatcher::class);
-$this->app->scoped(PrincipalScope::class, YourPrincipalScope::class);
-$this->app->scoped(TenantMembership::class, YourTenantMembership::class);
+$this->app->scoped(LinkEmailMatcher::class, UserEmailMatcher::class);
+$this->app->scoped(PrincipalScope::class, UserPrincipalScope::class);
+$this->app->scoped(TenantMembership::class, UserTenantMembership::class);
 ```
 
 Your `Linker` must implement `Contracts\LinkStorage`, so that what linking writes is what it resolves: `LinkStore` does,
@@ -56,26 +54,34 @@ and a wrapper of yours may delegate every method to it. Any other is refused bef
 store the reservation's binding with its code and answer the stored expiry and an opaque reference; one that answers no
 reference or a later expiry rolls the completion back.
 
-Then turn the feature on and each connection's linking, with `sso.connection.trust` freshness:
+Then turn the feature on and each connection's linking through `Connections\LinkingPolicyService`, with
+`sso.connection.trust` freshness. Here an administrator classifies a shared issuer and gives the value their
+organisation holds under its `hd` claim, and an invalid change becomes the application's validation errors:
 
+<!-- snippet: tests/Integration/Examples/LinkingByDomain/LinkingSettings.php#linking-policy-change -->
 ```php
-use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
-use SineMacula\Laravel\Sso\Linking\DomainLinkEligibility;
-
 $result = app(LinkingPolicyService::class)->change($tenantId, $connectionId, [
     'enabled'            => true,
-    'issuer_class'       => DomainLinkEligibility::SHARED,
+    'issuer_class'       => 'shared', // or single_organization, acknowledged
     'organization_claim' => 'hd',
-    'organization_value' => 'example.com',
+    'organization_value' => $organization,
 ], $actor);
 
 if ($result->isInvalid()) {
-    // $result->violations names each setting and a code, never a value
+    // Each violation names a setting and a code, never the value given
+    $messages = [];
+
+    foreach ($result->violations as $violation) {
+        $messages[$violation->setting][] = $violation->code->value;
+    }
+
+    throw ValidationException::withMessages($messages);
 }
 ```
 
 The result is a `ConnectionResult`: `updated`, naming each `linking.*` that changed; `unchanged`; `refused` with
-`connection_not_found`, `freshness_required` or `protocol_unavailable`; or `invalid` with every violation.
+`connection_not_found`, `freshness_required` or `protocol_unavailable`; or `invalid` with every violation. With no
+`organization_value`, a shared issuer is `invalid`, with `required` at `organization_value`.
 
 ### Classifying the issuer
 
@@ -126,10 +132,10 @@ reported. A response validated under the old settings reserves nothing, and a co
 ## Matching the email
 
 Your matcher receives a `LinkEmailQuery`: the tenant, the email exactly as the protocol asserted it, and its domain
-canonicalised. The package does not touch the local part. Pass the email through your application's normaliser, under
-`laravel-iam` authentication's bindable one. Add no subaddress or dot removal, Unicode folding or confusable matching:
-`a+b@example.com` and `a.b@example.com` are other addresses. Only an email verified in your application counts; one
-merely present on an account does not.
+canonicalised. The package does not touch the local part. Pass the email through your application's normaliser: under
+`laravel-iam`, the adapter passes it through `laravel-authentication`'s bindable identifier normaliser (AUTH-3.1). Add
+no subaddress or dot removal, Unicode folding or confusable matching: `a+b@example.com` and `a.b@example.com` are other
+addresses. Only an email verified in your application counts; one merely present on an account does not.
 
 ## The flow
 
@@ -161,19 +167,19 @@ the sessions established through the link. Answering `unknown` refuses that atte
 store you cannot reach for the moment should throw instead, which refuses nothing and suspends nothing.
 
 Checks at completion and redemption cannot see a principal added and removed between them, so your principal mutation
-has to report it, in its own transaction, on the package's storage connection. Call `widened()` first, then take your
-own guard and write the principal:
+has to report it, in its own transaction, on the package's storage connection. Call `Linking\ScopeWidening::widened()`
+first, then take your own guard and write the principal:
 
+<!-- snippet: tests/Integration/Examples/LinkingByDomain/GrantPrincipal.php#scope-widening -->
 ```php
-use SineMacula\Laravel\Sso\Linking\ScopeWidening;
-
-DB::connection(config('sso.storage.connection'))->transaction(function () use ($identity, $tenantId): void {
+DB::connection(StorageConnection::name())->transaction(function () use ($identity, $tenantId): void {
     $widening = app(ScopeWidening::class);
 
-    // First: the identity's guard, held until this commits. `null` for a platform principal.
+    // First the identity's guard, held until this commits; the tenant
+    // is `null` for a platform principal
     $widening->widened($identity, $tenantId);
 
-    // Then your principal guard, then the write.
+    // Then your principal guard, then the write
     $this->lockPrincipals($identity);
     $this->addPrincipal($identity, $tenantId);
 });

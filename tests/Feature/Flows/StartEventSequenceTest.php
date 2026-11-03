@@ -159,12 +159,12 @@ final class StartEventSequenceTest extends TestCase
         $this->assertNoFailure();
 
         self::assertSame($this->context([
-            'connection_id'     => $this->connection->id,
-            'tenant_id'         => 'tenant-7',
-            'protocol'          => StartingDriver::NAME,
-            'application'       => 'web',
-            'purpose'           => 'sign_in',
-            'request_reference' => $result->reference?->value,
+            'connection_id'        => $this->connection->id,
+            'connection_tenant_id' => 'tenant-7',
+            'protocol'             => StartingDriver::NAME,
+            'application'          => 'web',
+            'purpose'              => 'sign_in',
+            'request_reference'    => $result->reference?->value,
         ]), $this->recordedEvents()[0]->context()->toArray());
 
         $this->assertNoSecretIn($result);
@@ -185,7 +185,7 @@ final class StartEventSequenceTest extends TestCase
 
         self::assertSame($this->context([
             'connection_id'        => $this->connection->id,
-            'tenant_id'            => 'tenant-7',
+            'connection_tenant_id' => 'tenant-7',
             'protocol'             => StartingDriver::NAME,
             'application'          => 'web',
             'purpose'              => 'reauthenticate',
@@ -283,11 +283,11 @@ final class StartEventSequenceTest extends TestCase
         $failure = $this->assertExactlyOneFailure(Flow::AUTHORIZATION_REQUEST, FailureReason::CONNECTION_UNAVAILABLE);
 
         self::assertSame($this->context([
-            'connection_id' => $disabled->id,
-            'tenant_id'     => 'tenant-9',
-            'protocol'      => StartingDriver::NAME,
-            'application'   => 'web',
-            'purpose'       => 'sign_in',
+            'connection_id'        => $disabled->id,
+            'connection_tenant_id' => 'tenant-9',
+            'protocol'             => StartingDriver::NAME,
+            'application'          => 'web',
+            'purpose'              => 'sign_in',
         ]), $failure->context()->toArray());
     }
 
@@ -330,7 +330,7 @@ final class StartEventSequenceTest extends TestCase
 
         self::assertSame($this->context([
             'connection_id'        => $this->connection->id,
-            'tenant_id'            => 'tenant-7',
+            'connection_tenant_id' => 'tenant-7',
             'protocol'             => StartingDriver::NAME,
             'application'          => 'web',
             'purpose'              => 'link',
@@ -376,12 +376,12 @@ final class StartEventSequenceTest extends TestCase
         $failure = $this->assertExactlyOneFailure(Flow::AUTHORIZATION_REQUEST, FailureReason::METADATA_EXPIRED);
 
         self::assertSame($this->context([
-            'connection_id'     => $this->connection->id,
-            'tenant_id'         => 'tenant-7',
-            'protocol'          => StartingDriver::NAME,
-            'application'       => 'web',
-            'purpose'           => 'sign_in',
-            'request_reference' => $this->driver->lastStart()->reference->value,
+            'connection_id'        => $this->connection->id,
+            'connection_tenant_id' => 'tenant-7',
+            'protocol'             => StartingDriver::NAME,
+            'application'          => 'web',
+            'purpose'              => 'sign_in',
+            'request_reference'    => $this->driver->lastStart()->reference->value,
         ]), $failure->context()->toArray());
     }
 
@@ -407,12 +407,12 @@ final class StartEventSequenceTest extends TestCase
         $failure = $this->assertExactlyOneFailure(Flow::AUTHORIZATION_REQUEST, FailureReason::CONNECTION_UNAVAILABLE);
 
         self::assertSame($this->context([
-            'connection_id'     => $this->connection->id,
-            'tenant_id'         => 'tenant-7',
-            'protocol'          => StartingDriver::NAME,
-            'application'       => 'web',
-            'purpose'           => 'sign_in',
-            'request_reference' => $this->driver->lastStart()->reference->value,
+            'connection_id'        => $this->connection->id,
+            'connection_tenant_id' => 'tenant-7',
+            'protocol'             => StartingDriver::NAME,
+            'application'          => 'web',
+            'purpose'              => 'sign_in',
+            'request_reference'    => $this->driver->lastStart()->reference->value,
         ]), $failure->context()->toArray());
     }
 
@@ -475,7 +475,7 @@ final class StartEventSequenceTest extends TestCase
             'ip'                          => self::IP,
             'user_agent'                  => self::USER_AGENT,
             'connection_id'               => null,
-            'tenant_id'                   => null,
+            'connection_tenant_id'        => null,
             'protocol'                    => null,
             'application'                 => null,
             'purpose'                     => null,
@@ -486,7 +486,7 @@ final class StartEventSequenceTest extends TestCase
             'acting_identity_id'          => null,
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ], $fields);

@@ -49,11 +49,14 @@ their own.
   every helper treats a secret alike.
 - `Connections\AttributeMapping` maps each target of the result from a SAML attribute or OIDC claim. The defaults are
   the OIDC standard claims and the SAML attributes by their OIDs. A target is standard (`email`, `given_name`,
-  `family_name`, `display_name`, `groups`) or a custom lower-case name, at most `max_custom_attributes` of them; the
-  result's own fields are `reserved` targets, and over OIDC a protocol value or a token is a `reserved` source
-  (SSO-2.10). `map()` builds profile data: single values for the standard targets, `groups` always a list, every
-  string cut to `max_value_length` characters and a list to `max_values` strings. Nothing mapped selects an identity
-  (SSO-8.2).
+  `family_name`, `display_name`, `groups`) or a custom lower-case name the application declares in
+  `sso.mapping.custom_attributes` (`MappingLimits::customAttributes()`: a list of at most 100 distinct well-formed keys,
+  none standard or reserved, empty by default, checked at boot under `[mapping]`); any other custom target is
+  `not_allowed`, and a stored one no longer declared maps nothing. The owner decided the allow-list (2026-11-03) so a
+  tenant administrator never invents a key the application does not read. The result's own fields are `reserved`
+  targets, and over OIDC a protocol value or a token is a `reserved` source (SSO-2.10). `map()` builds profile data:
+  single values for the standard targets, `groups` always a list, every string cut to `max_value_length` characters and
+  a list to `max_values` strings. Nothing mapped selects an identity (SSO-8.2).
 - Every helper is scoped to a tenant (an opaque id of 1 to 255 bytes; anything else is an `InvalidArgumentException`)
   and finds a connection only through `Connections\ConnectionFinder`, on the write connection: another tenant's
   connection is `connection_not_found` to a change and `null` to `get()`.
@@ -137,7 +140,8 @@ A connection's linking settings and evidence policy are columns of their own, ou
   `testReportsEachViolationAtItsSetting`, `testNeverSetsAParameterTheFlowControls`,
   `testIsCompleteWithTheIssuerEndpointsAndClientId`, `testTakesItsClassificationFromTheSettingEnum`.
 - `tests/Unit/Connections/AttributeMappingTest.php`: `testHasDefaultsForEachPackageProtocol`,
-  `testRefusesAReservedTarget`, `testRefusesAnOidcProtocolValueOrTokenAsASource`, `testCapsTheCustomTargets`,
+  `testRefusesAReservedTarget`, `testRefusesAnOidcProtocolValueOrTokenAsASource`,
+  `testRefusesACustomTargetTheApplicationDoesNotDeclare`, `testNeverMapsACustomTargetNoLongerDeclared`,
   `testMapsGroupsToAList`, `testCutsEveryValueToTheCap`.
 - `tests/Feature/Connections/MappingLimitsTest.php`, `tests/Feature/Connections/MappingCheckTest.php`.
 - `tests/Feature/Connections/PresetSettingsTest.php`: `testEveryPresetIsValid`.

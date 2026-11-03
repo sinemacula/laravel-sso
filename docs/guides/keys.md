@@ -4,11 +4,11 @@ A connection holds two kinds of keys. The service provider's own key pairs are g
 connection's signing key and, when assertions are encrypted, its encryption key; an OIDC connection's
 `private_key_jwt` key. And a SAML connection trusts the identity provider's signing certificates, a set you add to and
 remove from as the provider rotates. Every change goes through `SineMacula\Laravel\Sso\Keys\KeyService`, scoped to a
-tenant, and asks for fresh authentication first (see [Fresh authentication](freshness.md)).
+tenant, and asks for fresh authentication first (see [Fresh authentication](freshness.md)). Resolve it from the
+container for each request:
 
+<!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-service -->
 ```php
-use SineMacula\Laravel\Sso\Keys\KeyService;
-
 $keys = app(KeyService::class);
 ```
 
@@ -46,48 +46,57 @@ Each key moves through three states: `next` (published, not yet used), `current`
 published and decrypting) and `retiring` (replaced, still decrypting until the overlap ends). A rotation without
 downtime takes four steps.
 
-1. **Add the first key.** It is generated, with a self-signed certificate for the connection, and made current at
-   once, since the connection has none:
+### 1. Add the first key
 
-   ```php
-   use SineMacula\Laravel\Sso\Administration\ActingIdentity;
-   use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
-   use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+It is generated, with a self-signed certificate for the connection, and made current at once, since the connection has
+none. Name who is acting with a `SineMacula\Laravel\Sso\Administration\ActingIdentity`, for an Eloquent user its morph
+class and key, which the key events carry; the use and the type are the enums
+`SineMacula\Laravel\Sso\Keys\Enums\KeyUse` and `SineMacula\Laravel\Sso\Keys\Enums\KeyType`:
 
-   $actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
-   $result = $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, KeyType::RSA, $actor);
+<!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-add-first -->
+```php
+$actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
+$result = $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, KeyType::RSA, $actor);
 
-   $result->key->state; // KeyState::CURRENT
-   ```
+$state = $result->key?->state; // KeyState::CURRENT
+```
 
-   The type defaults to RSA; pass `KeyType::EC` for a P-256 key where the use allows it.
+The type defaults to RSA; pass `KeyType::EC` for a P-256 key where the use allows it.
 
-2. **Add the next key, and publish it alongside the current one.** While a key is current, `addNext()` adds the new
-   one as `next`. Both are now published, the current key first (`KeyRing::published()`, which the connection's
-   metadata and JWKS are built from), so the identity provider can take up the new key before it is used. A connection
-   has at most one `next` key of a use: adding a second is refused with `key_state_conflict`.
+### 2. Add the next key, and publish it alongside the current one
 
-3. **Make it current.** Once the identity provider has the new key:
+While a key is current, `addNext()` adds the new one as `next`. Both are now published, the current key first
+(`KeyRing::published()`, which the connection's metadata and JWKS are built from), so the identity provider can take up
+the new key before it is used. A connection has at most one `next` key of a use: adding a second is refused with
+`key_state_conflict`.
 
-   ```php
-   $result = $keys->makeCurrent($tenantId, $connectionId, $nextKeyId, $actor);
+### 3. Make it current
 
-   $result->key;      // the new current key
-   $result->previous; // the old one, now retiring, with retiringUntil set
-   ```
+Once the identity provider has the new key:
 
-   The old key is `retiring` until `keys.overlap_seconds` from now. For encryption, assertions encrypted for either key
-   decrypt throughout the overlap, so a response in flight when you switched still completes. An overlap of `0` stops
-   accepting the old key at once.
+<!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-make-current -->
+```php
+$result = $keys->makeCurrent($tenantId, $connectionId, $nextKeyId, $actor);
 
-4. **Retire the old key** once the overlap has ended:
+$current  = $result->key;      // the new current key
+$previous = $result->previous; // the old one, now retiring, with retiringUntil set
+```
 
-   ```php
-   $keys->retire($tenantId, $connectionId, $oldKeyId, $actor);
-   ```
+The old key is `retiring` until `keys.overlap_seconds` from now. For encryption, assertions encrypted for either key
+decrypt throughout the overlap, so a response in flight when you switched still completes. An overlap of `0` stops
+accepting the old key at once.
 
-   A `next` key you no longer want can be retired the same way. The current key is never retired: make another key
-   current first.
+### 4. Retire the old key
+
+Once the overlap has ended:
+
+<!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-retire -->
+```php
+$result = $keys->retire($tenantId, $connectionId, $oldKeyId, $actor);
+```
+
+A `next` key you no longer want can be retired the same way. The current key is never retired (`key_state_conflict`):
+make another key current first.
 
 A private key is encrypted at rest through the package's encrypter (see [Secrets](secrets.md)) and is never returned:
 every result carries the key's summary, with its certificate, public key and fingerprint only.
@@ -98,11 +107,12 @@ A SAML connection trusts a set of the identity provider's signing certificates, 
 them verifies it. When the provider announces a new certificate, trust it alongside the old one; once it has switched,
 remove the old one:
 
+<!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-trust-certificate -->
 ```php
 $result = $keys->trustCertificate($tenantId, $connectionId, $certificatePem, $actor);
 
 // Later, once the identity provider signs with the new certificate
-$keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, $actor);
+$removed = $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, $actor);
 ```
 
 A certificate is refused with `settings_invalid` and one violation at `certificate`:
@@ -135,6 +145,7 @@ interrupting anyone. Changing a metadata signing anchor voids, as distrusting do
 
 ## Listing a connection's keys
 
+<!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-list -->
 ```php
 $summaries = $keys->keys($tenantId, $connectionId); // null when the tenant has no such connection
 ```

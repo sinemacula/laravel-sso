@@ -338,7 +338,7 @@ final class RedemptionEventSequenceTest extends TestCase
 
         $this->assertExactlyOneFailure(Flow::REDEMPTION, FailureReason::CONNECTION_UNAVAILABLE);
 
-        self::assertSame([$this->context(['tenant_id' => null, 'protocol' => null] + $this->codeFields())], $this->contexts());
+        self::assertSame([$this->context(['connection_tenant_id' => null, 'protocol' => null] + $this->codeFields())], $this->contexts());
     }
 
     /**
@@ -534,6 +534,7 @@ final class RedemptionEventSequenceTest extends TestCase
             result: $result,
             challenge: S256Challenge::fromString(self::CHALLENGE),
             expiresAt: $expiresAt ?? $this->clock->now()->addMinute(),
+            trustVersion: $this->connection->trust_version,
             linkedIdentity: $this->linked,
             identity: $purpose    === Purpose::SIGN_IN ? null : new IdentityReference('App\Models\User', '7'),
             sessionId: $purpose   === Purpose::REAUTHENTICATE ? 'session-1' : null,
@@ -586,7 +587,7 @@ final class RedemptionEventSequenceTest extends TestCase
     {
         return [
             'connection_id'        => $this->connection->id,
-            'tenant_id'            => 'tenant-1',
+            'connection_tenant_id' => 'tenant-1',
             'protocol'             => VerifyingDriver::NAME,
             'application'          => 'web',
             'purpose'              => 'sign_in',
@@ -620,7 +621,7 @@ final class RedemptionEventSequenceTest extends TestCase
             'ip'                          => self::IP,
             'user_agent'                  => self::USER_AGENT,
             'connection_id'               => null,
-            'tenant_id'                   => null,
+            'connection_tenant_id'        => null,
             'protocol'                    => null,
             'application'                 => null,
             'purpose'                     => null,
@@ -631,7 +632,7 @@ final class RedemptionEventSequenceTest extends TestCase
             'acting_identity_id'          => null,
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ], $fields);

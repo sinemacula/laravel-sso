@@ -274,7 +274,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     {
         self::assertSame(
             [$this->connection->id, 'tenant-reinitiated', 'saml2', '203.0.113.7', '2026-11-01T09:30:00+00:00'],
-            [$context->connectionId, $context->tenantId, $context->protocol, $context->ip, $context->occurredAt->toIso8601String()],
+            [$context->connectionId, $context->connectionTenantId, $context->protocol, $context->ip, $context->occurredAt->toIso8601String()],
         );
         self::assertSame(
             [null, null, null, null, null, null],

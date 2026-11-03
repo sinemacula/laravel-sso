@@ -68,9 +68,12 @@ return new class extends Migration {
             // The verified result, serialised and encrypted.
             $blueprint->longText('result');
 
-            // The enforcement version checked at completion, and the latest end
-            // of the application's session the provider's deadline sets.
-            $blueprint->string('enforcement_version', 255)->nullable();
+            // The connection's trust version when the code was issued, which a
+            // redemption compares with the connection's under its lock.
+            $blueprint->unsignedBigInteger('trust_version');
+
+            // The latest end of the application's session the provider's
+            // deadline sets.
             $blueprint->dateTime('session_not_after', 0)->nullable();
 
             // Whole seconds in UTC, from the package's clock: when it expires,

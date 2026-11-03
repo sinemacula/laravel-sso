@@ -518,13 +518,13 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A required enforcement the connection satisfies completes, and the grant
-     * carries its version; the enforcement is asked for the connection's tenant
-     * and the request's application.
+     * A required enforcement the connection satisfies completes; the
+     * enforcement is asked for the connection's tenant and the request's
+     * application.
      *
      * @return void
      */
-    public function testARequiredEnforcementTheConnectionSatisfiesCompletesWithItsVersion(): void
+    public function testARequiredEnforcementTheConnectionSatisfiesCompletes(): void
     {
         $this->request();
         $this->bindEnforcement(EnforcementPolicy::required('tenant-1', 'tenant-1', [$this->connection->id, 'another'], 'version-3'));
@@ -532,7 +532,7 @@ final class CompletionServiceTest extends TestCase
         $result = $this->completeAtCallback();
 
         self::assertResult($this->completedResult(), $result);
-        self::assertSame('version-3', $this->issuer->soleGrant()->enforcementVersion);
+        self::assertSame(self::CHALLENGE, $this->issuer->soleGrant()->challenge->value);
         self::assertSame([['tenant-1', 'web']], $this->enforcementAsked);
     }
 
@@ -552,12 +552,12 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * An enforcement that requires nothing completes, with its version when it
-     * has one and none when it has none.
+     * An enforcement that requires nothing completes, whether it has a version
+     * or none.
      *
      * @return void
      */
-    public function testAnEnforcementNotRequiredKeepsItsVersion(): void
+    public function testAnEnforcementNotRequiredCompletes(): void
     {
         $this->request();
         $this->bindEnforcement(EnforcementPolicy::notRequired('tenant-1', 'tenant-1', 'version-9'));
@@ -570,7 +570,7 @@ final class CompletionServiceTest extends TestCase
         $this->bindEnforcement(EnforcementPolicy::notRequired('tenant-1', 'tenant-1'));
 
         self::assertTrue($this->completeAtCallback($second)->isCompleted());
-        self::assertSame(['version-9', null], array_map(static fn ($grant): ?string => $grant->enforcementVersion, $this->issuer->grants()));
+        self::assertCount(2, $this->issuer->grants());
     }
 
     /**
@@ -678,7 +678,6 @@ final class CompletionServiceTest extends TestCase
         self::assertSame(['type' => 'App\Models\User', 'id' => '42'], $grant->linkedIdentity?->jsonSerialize());
         self::assertNull($grant->identity);
         self::assertNull($grant->sessionId);
-        self::assertNull($grant->enforcementVersion);
         self::assertSame('2026-11-01T18:00:00+00:00', $grant->sessionNotAfter?->toIso8601String());
     }
 

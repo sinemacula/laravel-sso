@@ -10,6 +10,7 @@ use Composer\Autoload\ClassLoader;
 use Illuminate\Foundation\Application;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -197,7 +198,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
             self::assertFalse(config()->has($key), "The application holds configuration under [{$key}].");
         }
 
-        self::assertSame([], array_values(array_filter(self::SIBLING_CLASSES, class_exists(...))), 'A sibling\'s class autoloads.');
+        self::assertSame([], array_values(array_filter(self::SIBLING_CLASSES, self::isRealSibling(...))), 'A sibling\'s class autoloads.');
 
         foreach (ClassLoader::getRegisteredLoaders() as $loader) {
             self::assertSame([], array_values(array_intersect(self::SIBLING_NAMESPACES, array_keys($loader->getPrefixesPsr4()))));
@@ -207,7 +208,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
 
             foreach (self::SIBLING_NAMESPACES as $namespace) {
                 if (str_starts_with($class, $namespace)) {
-                    return true;
+                    return self::isRealSibling($class);
                 }
             }
 
@@ -388,7 +389,9 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     /**
      * With unlinked handoffs on, the default store issues a code, holding only
      * its digest, and the default redemption redeems it, with no identity; the
-     * code is then spent, and the connection has completed no sign-in.
+     * code is then spent, and the connection has completed no sign-in. The
+     * redemption signs nobody in, sets no cookie and issues no token: what the
+     * application makes of the result is its own (FEATURES "Useful alone").
      *
      * @param  string  $protocol
      * @return void
@@ -421,6 +424,8 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
         self::assertNull($answer->json('link_id'));
         self::assertNotNull(HandoffCode::query()->sole()->redeemed_at);
         self::assertFalse(Connection::query()->whereKey($connection->id)->sole()->has_completed_sign_in);
+        self::assertSame([], $answer->headers->getCookies());
+        self::assertNull(Auth::guard()->user());
 
         $this->assertEventSequence([AuthorizationRequestStarted::class, ResultVerified::class, ResultUnlinked::class, HandoffIssued::class, HandoffRedeemed::class]);
 
@@ -741,6 +746,26 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
         self::assertSame($key->id, $warning->keyId);
         self::assertSame(1, $warning->thresholdDays);
         $this->assertDefaultBindings();
+    }
+
+    /**
+     * Whether the class exists and is not one of the example harness's
+     * stand-ins, which mirror a sibling's API under its namespace and are
+     * declared in tests/Integration/Examples.
+     *
+     * @param  string  $class
+     * @return bool
+     */
+    private static function isRealSibling(string $class): bool
+    {
+        if (!class_exists($class) && !interface_exists($class)) {
+            return false;
+        }
+
+        /** @var class-string $class */
+        $file = (string) (new \ReflectionClass($class))->getFileName();
+
+        return !str_starts_with($file, dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Examples' . DIRECTORY_SEPARATOR);
     }
 
     /**

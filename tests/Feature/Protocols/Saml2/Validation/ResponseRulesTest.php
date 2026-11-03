@@ -20,13 +20,13 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the rules of a SAML response's envelope and its
- * assertion's provenance (SSO-6.2, SSO-6.4, SSO-6.8): each issuer equal to the
- * identity provider's entity id exactly, the response's when present; the
- * `Destination` equal to the assertion consumer service and required of a
- * signed response; encryption required refusing a plain assertion; a wanted
- * assertion signature refusing one covered only by the response's; the
- * envelope's rules for an unsuccessful response; and the order they answer in.
+ * Feature tests for the rules of a SAML response's envelope and its assertion's
+ * provenance (SSO-6.2, SSO-6.4, SSO-6.8): each issuer present and equal to the
+ * identity provider's entity id exactly; the `Destination` equal to the
+ * assertion consumer service and required of a signed response; encryption
+ * required refusing a plain assertion; a wanted assertion signature refusing
+ * one covered only by the response's; the envelope's rules for an unsuccessful
+ * response; and the order they answer in.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,7 +68,7 @@ final class ResponseRulesTest extends TestCase
     {
         yield from [
             'both the identity provider'          => [self::IDP, self::IDP, null],
-            'no response issuer'                  => [null, self::IDP, null],
+            'no response issuer'                  => [null, self::IDP, FailureReason::ISSUER_MISMATCH],
             'another response issuer'             => ['https://attacker.example.test', self::IDP, FailureReason::ISSUER_MISMATCH],
             'another assertion issuer'            => [self::IDP, 'https://attacker.example.test', FailureReason::ISSUER_MISMATCH],
             'an assertion issuer in another case' => [self::IDP, strtoupper(self::IDP), FailureReason::ISSUER_MISMATCH],
@@ -78,7 +78,7 @@ final class ResponseRulesTest extends TestCase
     }
 
     /**
-     * The response's issuer, when present, and the assertion's must each be the
+     * The response's issuer and the assertion's must each be present and be the
      * identity provider's entity id exactly.
      *
      * @param  ?string  $responseIssuer
@@ -106,7 +106,23 @@ final class ResponseRulesTest extends TestCase
 
         self::assertSame(FailureReason::ISSUER_MISMATCH, ResponseRules::refusal(self::response(['issuer' => null]), self::assertion(''), $context));
         self::assertSame(FailureReason::ISSUER_MISMATCH, ResponseRules::envelopeRefusal(self::response(['issuer' => new NameId('')]), $context));
-        self::assertNull(ResponseRules::envelopeRefusal(self::response(['issuer' => null]), $context));
+        self::assertSame(FailureReason::ISSUER_MISMATCH, ResponseRules::envelopeRefusal(self::response(['issuer' => null]), $context));
+    }
+
+    /**
+     * An unsuccessful response is held to its own issuer, its only one: one
+     * that names none is refused as one that names another is, and one that
+     * names the identity provider is not.
+     *
+     * @return void
+     */
+    public function testAnEnvelopeMustNameTheIdentityProvider(): void
+    {
+        self::assertSame(FailureReason::ISSUER_MISMATCH, ResponseRules::envelopeRefusal(self::response(['issuer' => null]), self::context()));
+        $attacker = self::response(['issuer' => new NameId('https://attacker.example.test')]);
+
+        self::assertSame(FailureReason::ISSUER_MISMATCH, ResponseRules::envelopeRefusal($attacker, self::context()));
+        self::assertNull(ResponseRules::envelopeRefusal(self::response(['issuer' => new NameId(self::IDP)]), self::context()));
     }
 
     /**

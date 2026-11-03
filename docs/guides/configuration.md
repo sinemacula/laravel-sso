@@ -1,9 +1,11 @@
 # Configuration
 
 The package's settings live in the published `config/sso.php`, under `sso.`. Every feature is off until the application
-turns it on, and every security check of a feature that is on is always on. A value that is malformed or out of range
-fails closed, naming the key, when it is used, and the configuration of what is enabled is checked when the application
-boots (see [Checking the configuration](#checking-the-configuration)). Settings are read each time they are used.
+turns it on, but for the scheduled metadata refresh, which is on and has nothing to do until a protocol is on (see
+[Features](#features)); and every security check of a feature that is on is always on. A value that is malformed or
+out of range fails closed, naming the key, when it is used, and the configuration of what is enabled is checked when
+the application boots (see [Checking the configuration](#checking-the-configuration)). Settings are read each time they
+are used.
 
 | Key                                                  | Default                                         | Env                                           | See                                             |
 |------------------------------------------------------|-------------------------------------------------|-----------------------------------------------|-------------------------------------------------|
@@ -75,7 +77,7 @@ boots (see [Checking the configuration](#checking-the-configuration)). Settings 
 | `discovery.minimum_duration_milliseconds`            | `250`                                           | `SSO_DISCOVERY_MINIMUM_DURATION_MILLISECONDS` | [Flows](#flows)                                 |
 | `mapping.max_value_length`                           | `1024`                                          | `SSO_MAPPING_MAX_VALUE_LENGTH`                | [Managing connections](managing-connections.md) |
 | `mapping.max_values`                                 | `100`                                           | `SSO_MAPPING_MAX_VALUES`                      | [Managing connections](managing-connections.md) |
-| `mapping.max_custom_attributes`                      | `20`                                            | `SSO_MAPPING_MAX_CUSTOM_ATTRIBUTES`           | [Managing connections](managing-connections.md) |
+| `mapping.custom_attributes`                          | `[]`                                            |                                               | [Managing connections](managing-connections.md) |
 | `freshness.max_age_seconds.<operation>`              | `300` each                                      |                                               | [Fresh authentication](freshness.md)            |
 | `single_use.table`                                   | `sso_single_use_keys`                           | `SSO_SINGLE_USE_TABLE`                        | [Single-use keys](single-use-store.md)          |
 | `fetcher.timeout_seconds`                            | `10`                                            | `SSO_FETCHER_TIMEOUT_SECONDS`                 | [Outbound requests](outbound-requests.md)       |
@@ -176,15 +178,22 @@ With the defaults and `SSO_BASE_URL=https://api.example.com`, connection `01k…
 `https://api.example.com/auth/sso/connections/01k…/assertions`, its callback at `…/callback`, its metadata, which is
 also its service provider entity id, at `…/metadata`, and its public JWKS, for an OIDC connection using
 `private_key_jwt`, at `…/jwks`. To lay the URLs out another way, bind your own
-`Contracts\EndpointResolver`; it is given the connection and answers an `Endpoints\ConnectionEndpoints`, which refuses
-anything but an absolute `https` URL (or `http` on a loopback address) with no user information, fragment or wildcard:
+`Contracts\EndpointResolver` in a service provider's `register()`; it is given the connection and answers an
+`Endpoints\ConnectionEndpoints`, which refuses anything but an absolute `https` URL (or `http` on a loopback address)
+with no user information, fragment or wildcard. This one puts each connection under its own path on the single sign-on
+host, and a response addressed to any other URL, the default layout's included, is refused with `recipient_mismatch`:
+
+<!-- snippet: tests/Integration/Examples/Configuration/AppServiceProvider.php#configuration-endpoint-resolver -->
 
 ```php
-use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
-use SineMacula\Laravel\Sso\Contracts\SsoConnection;
-use SineMacula\Laravel\Sso\Endpoints\ConnectionEndpoints;
-
-$this->app->scoped(EndpointResolver::class, fn () => new class implements EndpointResolver {
+$this->app->scoped(EndpointResolver::class, static fn (): EndpointResolver => new class implements EndpointResolver {
+    /**
+     * The connection's endpoints, under its own path.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @return \SineMacula\Laravel\Sso\Endpoints\ConnectionEndpoints
+     */
+    #[\Override]
     public function endpoints(SsoConnection $connection): ConnectionEndpoints
     {
         $base = 'https://sso.example.com/' . rawurlencode($connection->getConnectionId());
@@ -199,6 +208,8 @@ $this->app->scoped(EndpointResolver::class, fn () => new class implements Endpoi
 `applications` registers the applications people sign into through a connection, by a lower-case name: your own front
 ends, a fixed set deployed with the code. Each client's connections are rows in the database, not entries here, and
 nothing in a request chooses among these values.
+
+<!-- snippet: tests/Integration/Examples/Configuration/config/sso.php#configuration-applications -->
 
 ```php
 'applications' => [
@@ -243,14 +254,22 @@ the registered `Applications\Application` and answers `ExternalSignIn::ALLOWED` 
 The redirect URI a completion goes to is the `Contracts\RedirectUriResolver`'s answer, given the registered application
 and the connection the flow went through, never anything from the request. Bind your own to give each client its own
 address; an answer that is not an exact redirect URI stops the completion with a `LogicException` rather than
-redirecting anywhere:
+redirecting anywhere. This one sends the `web` application to the host of the client whose connection the flow went
+through, read from the application's own record (`ClientHosts`), and every other application to its `redirect_uri`:
+
+<!-- snippet: tests/Integration/Examples/Configuration/AppServiceProvider.php#configuration-redirect-uri-resolver -->
 
 ```php
-use SineMacula\Laravel\Sso\Applications\Application;
-use SineMacula\Laravel\Sso\Contracts\RedirectUriResolver;
-use SineMacula\Laravel\Sso\Contracts\SsoConnection;
-
-$this->app->singleton(RedirectUriResolver::class, fn () => new class implements RedirectUriResolver {
+$this->app->singleton(RedirectUriResolver::class, static fn (): RedirectUriResolver => new class implements RedirectUriResolver {
+    /**
+     * The web application on the host of the connection's client, and
+     * every other application on its registered redirect URI.
+     *
+     * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+     * @return string
+     */
+    #[\Override]
     public function redirectUri(Application $application, SsoConnection $connection): string
     {
         return $application->name === 'web'

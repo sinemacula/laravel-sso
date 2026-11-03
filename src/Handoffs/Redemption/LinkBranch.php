@@ -104,28 +104,29 @@ final readonly class LinkBranch implements PurposeBranch
 
     /**
      * Judge the caller; then, once the package's link locks are taken,
-     * freshness, eligibility, the confirmation and the link as it is now.
+     * freshness, eligibility, the confirmation and the link as it is now. A
+     * `link` captures no session provenance, so it names no link provenance.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
-     * @return \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
+     * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement
      *
      * @throws \LogicException
      * @throws \SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged
      */
     #[\Override]
-    public function judge(RedemptionContext $context): RecheckOutcome
+    public function judge(RedemptionContext $context): Judgement
     {
         $storage  = $this->storage->require('A [link] redemption');
         $identity = $context->binding->identity;
 
         if (!self::isCallerBound($context->caller, $identity)) {
-            return RecheckOutcome::IDENTITY_MISMATCH;
+            return Judgement::of(RecheckOutcome::IDENTITY_MISMATCH);
         }
 
         $held = $this->confirmation->lockedDomainLinks($identity, $context->lock);
         $now  = $storage->resolve($context->result);
 
-        return $this->applicationRefusal($context, $identity, $held) ?? self::continuity($now, $identity, $context->binding);
+        return Judgement::of($this->applicationRefusal($context, $identity, $held) ?? self::continuity($now, $identity, $context->binding));
     }
 
     /**

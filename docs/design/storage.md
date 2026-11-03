@@ -94,6 +94,9 @@ commit with the package follows (SSO-11.7, SSO-11.10).
 - `tests/Feature/Models/SsoModelTest.php`
 - `tests/Integration/Database/StorageConnectionModelTest.php`
 - `tests/Unit/Database/MigrationCollisionGuardTest.php`
+- `tests/Unit/Architecture/DatabaseStatementsTest.php` and
+  `tests/Integration/Standalone/ApplicationIntegrationTest.php` `testEveryStatementOfEachPurposeReadsOrWritesRows`: at
+  run time the package only reads and writes rows
 - `tests/Feature/Config/Checks/StorageCheckTest.php`
 - `tests/Feature/SsoServiceProviderTest.php` `testMigrationsArePublishedAndNeverLoaded`
 

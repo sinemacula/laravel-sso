@@ -309,6 +309,36 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
+     * A trusted certificate past its expiry still verifies what its key signs,
+     * so a tenant whose identity provider let its certificate lapse still signs
+     * in (SSO-2.6): the expiry is only reported.
+     *
+     * @return void
+     */
+    public function testATrustedCertificatePastItsExpiryStillSignsIn(): void
+    {
+        [$privateKey, $certificate] = self::expiredKeyPair();
+
+        $notAfter = openssl_x509_parse($certificate)['validTo_time_t'] ?? null;
+
+        self::assertIsInt($notAfter);
+
+        $this->clock->advance($notAfter - $this->clock->now()->getTimestamp() + 86400);
+        $this->key(KeyUse::IDP_SIGNING, null, $certificate, null);
+
+        $this->request = $this->otherRequestRow();
+        $endpoints     = app(EndpointResolver::class)->endpoints($this->connection);
+        $lapsed        = new FakeSamlIdentityProvider(FakeSamlIdentityProvider::ENTITY_ID, $privateKey, $certificate);
+        $response      = $lapsed->response($endpoints->entityId, $endpoints->assertionConsumerService, $this->now(0))
+            ->with(['authn_statements' => [$this->statement()]])
+            ->inResponseTo(self::OTHER_REQUEST_ID);
+
+        self::assertLessThan($this->clock->now()->getTimestamp(), $notAfter);
+        self::assertTrue($this->complete($this->posted($response, self::OTHER_RELAY_STATE))->isCompleted());
+        self::assertCount(1, $this->issuer->grants());
+    }
+
+    /**
      * RSA 1.5 key transport, AES-CBC without a response signature, AES-256-GCM
      * and a tampered ciphertext are each `decryption_failed`, with the same
      * result, event and log but for the request each answers.
@@ -1015,6 +1045,26 @@ final class SamlAdversarialCompletionTest extends TestCase
         [$key] = FakeSamlIdentityProvider::keyPair('impostor');
 
         return new FakeSamlIdentityProvider(FakeSamlIdentityProvider::ENTITY_ID, $key, self::idp()->certificate());
+    }
+
+    /**
+     * A fresh RSA key pair of 2048 bits and a self-signed certificate whose
+     * validity ends the moment it is made: the private key, then the
+     * certificate, both PEM.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function expiredKeyPair(): array
+    {
+        $key  = openssl_pkey_new(['private_key_bits' => 2048]);
+        $csr  = $key === false ? false : openssl_csr_new(['commonName' => 'lapsed.example.test'], $key);
+        $cert = $key === false || !$csr instanceof \OpenSSLCertificateSigningRequest ? false : openssl_csr_sign($csr, null, $key, 0, ['digest_alg' => 'sha256']);
+
+        if ($key === false || $cert === false || !openssl_pkey_export($key, $private) || !openssl_x509_export($cert, $certificate)) {
+            self::fail('An expired key pair could not be made.');
+        }
+
+        return [$private, $certificate];
     }
 
     /**

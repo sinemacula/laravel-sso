@@ -25,6 +25,14 @@ of independence.
   tests serve its helpers from routes of their own, in no middleware group.
 - What a sibling would consume is an event with enough context to act on: the integration test asserts it from the
   events alone, querying nothing back, and that no event carries a code, a verifier, a subject or an email.
+- Nothing is shaped to one consumer's applications, tenant tree, identity providers or attribute names: presets hold
+  only public providers' documented endpoints, shared issuers are listed by requirement, the tenant tree is the
+  application's (`Contracts\EnforcementInheritance`) and custom mapping keys are the application's own
+  (`sso.mapping.custom_attributes`). No test can show a negative like this one, so the recommended default (2026-11-03,
+  [RD-35](requirements.md#recorded-decisions)) is that it is proven by review: before each release, `src/`, `config/`,
+  `lang/` and the presets are read for a name, a default or a branch that only one consumer needs, and any change to the
+  presets, the linking settings or the inheritance seam triggers the same review (the requirement closure matrix's CTX/e
+  and its change triggers).
 
 What each default does, and what an application supplies to go further:
 
@@ -110,6 +118,10 @@ What each default does, and what an application supplies to go further:
 - `tests/Integration/Standalone/ApplicationBindingsTest.php`
 - `tests/Integration/Standalone/ApplicationIntegrationTest.php`
 - `tests/Integration/Support/StandaloneTestCaseTest.php`
+- `tests/Unit/Architecture/ApplicationBoundaryTest.php`: nothing checks a permission, signs a person in, keeps a session
+  or issues a token.
+- `tests/Unit/SsoServiceProviderTest.php` `testEverySeamBoundBeforeIsKept`: a binding made before the provider
+  registers is kept, for every seam.
 
 ## Change Triggers
 

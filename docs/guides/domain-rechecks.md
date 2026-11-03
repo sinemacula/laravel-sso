@@ -8,12 +8,12 @@ verifying a domain.
 ## Scheduling it
 
 Run it from the scheduler, hourly, which [the operations schedule](operations.md) does for you along with the other
-commands, or on its own:
+commands, or on its own, on the application builder in `bootstrap/app.php`, importing
+`Illuminate\Console\Scheduling\Schedule`:
 
+<!-- snippet: tests/Integration/Examples/DomainRechecks/bootstrap/app.php#recheck-schedule -->
 ```php
 // bootstrap/app.php
-use Illuminate\Console\Scheduling\Schedule;
-
 ->withSchedule(function (Schedule $schedule): void {
     $schedule->command('sso:domains:recheck')->hourly();
 })
@@ -85,28 +85,39 @@ deadline (see [Domains](domains.md#the-dns-resolver)).
 
 ## Running it from code
 
-```php
-use SineMacula\Laravel\Sso\Domains\DomainRechecker;
-use SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome;
+`SineMacula\Laravel\Sso\Domains\DomainRechecker` answers a report of the run, which counts each
+`SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome`. An hour after three domains were verified, one whose record is
+still published, one whose record has gone and one whose lookup fails:
 
+<!-- snippet: tests/Integration/Examples/DomainRechecks/DomainRechecksExampleTest.php#recheck-from-code -->
+```php
 $report = app(DomainRechecker::class)->recheckAll();
 
-$report->hasLookupFailures();       // bool
-$report->hasResolverThrows();       // bool
-$report->count(RecheckOutcome::SUSPENDED);
-json_encode($report);               // entries and counts, snake_case, times in UTC
+self::assertTrue($report->hasLookupFailures());
+self::assertFalse($report->hasResolverThrows());
+self::assertSame(1, $report->count(RecheckOutcome::SUSPENDED));
+
+// Entries and counts, snake_case, times in UTC
+$json = json_decode((string) json_encode($report), true);
+
+self::assertSame(1, $json['counts']['lookup_failed']);
+self::assertContains('2026-11-04T10:30:00Z', array_column($json['entries'], 'lapses_at'));
 ```
+
+The suspended domain lapses three days after the run, at the end of the default grace period.
 
 Resolve it per run. It asks no freshness and takes no rate-limit attempt: it is a system job, acting for no tenant.
 
 ## Testing
 
-Bind `SineMacula\Laravel\Sso\Testing\FakeDnsResolver` and answer each verified domain's record name:
+Bind `SineMacula\Laravel\Sso\Testing\FakeDnsResolver` and answer each verified domain's record name. A record gone
+suspends the domain, and the command exits `0`; a lookup that fails would exit `1`:
 
+<!-- snippet: tests/Integration/Examples/DomainRechecks/DomainRechecksExampleTest.php#recheck-testing -->
 ```php
-$this->app->instance(DnsResolver::class, $dns = new FakeDnsResolver);
+app()->instance(DnsResolver::class, $dns = new FakeDnsResolver);
 
 $dns->absent('_sso-verification.example.com');
 
-$this->artisan('sso:domains:recheck')->assertExitCode(0);
+self::assertSame(0, Artisan::call('sso:domains:recheck'));
 ```

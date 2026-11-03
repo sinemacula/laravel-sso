@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Links;
 
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkResolutionStatus;
 
 /**
@@ -15,7 +16,10 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkResolutionStatus;
  * - `linked`: `$identity` is the identity it resolves to and `$linkId` the link
  *   that resolved it, whatever identifies a link in the linker's store. A link
  *   removed and made again has another id, so continuity is compared by it and
- *   never by the identity alone.
+ *   never by the identity alone. `$origin` is the link's provenance
+ *   (`Links\Enums\LinkOrigin`) as the store holds it at this resolution, which
+ *   the package's store always states; a linker that cannot state it leaves it
+ *   `null`, and a sign-in's captured provenance then names none (SSO-9.10).
  * - `absent`: no link holds the subject. Only this lets a result be offered for
  *   provisioning, reserve a link or take an unlinked handoff.
  * - `reserved`: a live reservation holds the subject. It names nothing: a
@@ -46,6 +50,7 @@ final readonly class LinkResolution
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $holder
      * @param  ?string  $linkId
+     * @param  ?\SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      */
     private function __construct(
 
@@ -60,20 +65,25 @@ final readonly class LinkResolution
 
         /** The link that holds the subject, active or suspended. */
         public ?string $linkId = null,
+
+        /** The active link's provenance at this resolution, when the linker states it. */
+        public ?LinkOrigin $origin = null,
     ) {}
 
     /**
-     * An active link resolves the subject to the identity.
+     * An active link resolves the subject to the identity, with the link's
+     * provenance when the linker states it.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $linkId
+     * @param  ?\SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      * @return self
      *
      * @throws \InvalidArgumentException
      */
-    public static function linked(IdentityReference $identity, string $linkId): self
+    public static function linked(IdentityReference $identity, string $linkId, ?LinkOrigin $origin = null): self
     {
-        return new self(LinkResolutionStatus::LINKED, $identity, $identity, self::linkId($linkId));
+        return new self(LinkResolutionStatus::LINKED, $identity, $identity, self::linkId($linkId), $origin);
     }
 
     /**

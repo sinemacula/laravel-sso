@@ -7,9 +7,8 @@ the sessions that no longer comply, inside the same transaction. Your administra
 `SineMacula\Laravel\Sso\Enforcement\EnforcementService`; who may do so is your application's authorisation, so check it
 before you call the service.
 
+<!-- snippet: tests/Integration/Examples/Enforcement/EnforcementExampleTest.php#enforcement-service -->
 ```php
-use SineMacula\Laravel\Sso\Enforcement\EnforcementService;
-
 $enforcement = app(EnforcementService::class);
 ```
 
@@ -30,9 +29,12 @@ Before you turn a tenant's rule on, decide what should happen to the sessions it
 
 ## Turning it on
 
-```php
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
+Give the tenant, the switch, the connections that satisfy the rule and, as an `Administration\ActingIdentity`, the
+administrator making the change. Here `$tenant` and `$user` are your own models; the example asserts that the change
+was made, where your screen would answer each result in the table below:
 
+<!-- snippet: tests/Integration/Examples/Enforcement/EnforcementExampleTest.php#enforcement-update -->
+```php
 $result = $enforcement->update(
     $tenant->id,
     true,
@@ -40,9 +42,9 @@ $result = $enforcement->update(
     new ActingIdentity($user->getMorphClass(), (string) $user->getKey()),
 );
 
-if ($result->isSucceeded()) {
-    $version = $result->enforcement->version; // a new lower-case ULID on every change
-}
+self::assertSame(EnforcementStatus::UPDATED, $result->status);
+
+$version = $result->enforcement?->version; // a new lower-case ULID on every change
 ```
 
 The ids you give are the tenant's connections that satisfy the rule: a session established through any of them that
@@ -69,32 +71,44 @@ either. Duplicate ids are dropped silently. Each change is reported once it comm
 
 ## Reading the rule
 
+Read back after the change above, made at the example's frozen instant:
+
+<!-- snippet: tests/Integration/Examples/Enforcement/EnforcementExampleTest.php#enforcement-get -->
 ```php
 $summary = $enforcement->get($tenant->id);
 
-$summary->enabled;        // bool
-$summary->connectionIds;  // the ids stored, in id order
-$summary->version;        // null while the tenant never had a rule
-$summary->changedAt;      // CarbonImmutable in UTC, or null
+self::assertTrue($summary->enabled);
+self::assertSame([$connectionId], $summary->connectionIds); // the ids stored, in id order
+self::assertSame($version, $summary->version); // null while the tenant never had a rule
+self::assertSame('2026-11-01T09:30:00Z', $summary->changedAt?->toIso8601ZuluString()); // CarbonImmutable in UTC, or null
 ```
+
+A tenant that never had a rule reads as off, with no connection, no version and no `changedAt`.
 
 The ids are those stored: one whose connection was since disabled or deleted is still listed here, but no longer
 satisfies the rule.
 
 ## Asking whether a session complies
 
-Your sign-in code asks `Contracts\Enforcement` for the tenant a session is active in and the application:
+Your sign-in code asks `Contracts\Enforcement` for the tenant a session is active in and the application. Here the
+example application's tenant authentication policy judges a row of its own `sessions` table, an Eloquent `UserSession`
+whose `tenant_id` is the tenant the session is active in and whose `sso_connection_id` is the connection it was
+established through (`null` for a session established without SSO); it answers whether the session may stay:
 
+<!-- snippet: tests/Integration/Examples/Enforcement/TenantAuthenticationPolicy.php#enforcement-policy -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\Enforcement;
+$policy = app(Enforcement::class)->policy($session->tenant_id, 'web');
 
-$policy = app(Enforcement::class)->policy($activeTenantId, 'web');
+// Recheck the session once the version moves on
+$session->update(['enforcement_version' => $policy->version]);
 
-if ($policy->isRequired() && !$policy->isSatisfiedBy($session->ssoConnectionId)) {
-    // refuse the session, unless the identity is exempt (below)
+// A session established without SSO records no connection, which
+// satisfies no rule
+if ($policy->isRequired() && !$policy->isSatisfiedBy($session->sso_connection_id ?? '')) {
+    return $this->isExempt($policy, $session); // refused, unless the identity is exempt (below)
 }
 
-$session->enforcementVersion = $policy->version; // recheck the session once the version moves on
+return true;
 ```
 
 It reads the stored rule on the write connection on every call and caches nothing, so a change applies from the next
@@ -104,7 +118,9 @@ been disabled, the rule is still required and nobody complies until an administr
 turns it off.
 
 Under `laravel-iam` you do not call it yourself: it is folded into `laravel-authentication`'s tenant authentication
-policy (AUTH-2.12), asked at sign-in, at the choice of principal, on every switch and on refresh.
+policy (AUTH-2.12), asked at sign-in, at the choice of principal, on every switch and on refresh. Bearer requests do not
+recheck that policy's version, so a change reaches existing sessions only through the synchronous revocation below. See
+[Integrating with `laravel-iam`](integrating-with-laravel-iam.md#enforcement-in-the-tenant-authentication-policy).
 
 ### Admitting a session while the rule changes
 
@@ -136,99 +152,158 @@ than lock another tenant's rule out of order. Answer it in a way that is safe in
 state that does not change under it (a tenant's place in the tree rarely does), or read it with a current read rather
 than from the transaction's snapshot.
 
-```php
-use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
+Here your `Tenant` model names, in `enforcement_root_id`, the root whose rule a tenant follows (none for a root, whose
+own rule applies). `TenantTreeInheritance`, a `final readonly` class that implements `Contracts\EnforcementInheritance`,
+answers from it:
 
-$this->app->singleton(EnforcementInheritance::class, fn () => new class implements EnforcementInheritance {
-    public function enforcingTenant(string $tenantId, string $application): string
-    {
-        return Tenant::query()->findOrFail($tenantId)->enforcementRoot()->id;
-    }
-});
+<!-- snippet: tests/Integration/Examples/Enforcement/TenantTreeInheritance.php#enforcement-inheritance-tenant -->
+```php
+/**
+ * The tenant whose rule applies to sessions active in the tenant: the root
+ * of its branch, on every application.
+ *
+ * @param  string  $tenantId
+ * @param  string  $application
+ * @return string
+ */
+#[\Override]
+public function enforcingTenant(string $tenantId, string $application): string
+{
+    unset($application);
+
+    // A tenant's place in the tree rarely changes, so a plain read is safe
+    // inside the caller's transaction
+    $tenant = Tenant::query()->findOrFail($tenantId);
+
+    return $tenant->enforcement_root_id ?? $tenant->id;
+}
+```
+
+Bind it in a service provider's `register()`:
+
+<!-- snippet: tests/Integration/Examples/Enforcement/AppServiceProvider.php#enforcement-inheritance-binding -->
+```php
+$this->app->singleton(EnforcementInheritance::class, TenantTreeInheritance::class);
 ```
 
 ## Exemptions
 
 A break-glass administrator may need to sign in while the identity provider is down. Bind
 `Contracts\EnforcementExemption` to say who is exempt (the default exempts nobody), and when a session would be refused,
-ask through the gate, which reports each exemption it grants as `ExemptionUsed`:
+ask through the gate, which reports each exemption it grants as `ExemptionUsed`. The tenant authentication policy above
+asks `Enforcement\ExemptionGate` for the session's user, named as an `Identities\IdentityReference`, and refuses the
+session unless the answer is `exempt`:
 
+<!-- snippet: tests/Integration/Examples/Enforcement/TenantAuthenticationPolicy.php#enforcement-exemption -->
 ```php
-use SineMacula\Laravel\Sso\Enforcement\ExemptionGate;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
+$identity = new IdentityReference($session->user_type, $session->user_id);
 
-$outcome = app(ExemptionGate::class)->admit($policy, 'web', new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $sessionId);
+$outcome = app(ExemptionGate::class)->admit($policy, 'web', $identity, $session->id);
 
-if (!$outcome->isExempt()) {
-    // refuse the session
-}
+return $outcome->isExempt();
 ```
 
 A policy that requires nothing needs no exemption: the gate answers `not_exempt` without asking. An exception from
 your contract is thrown, never read as exempt.
 
+Only your gate asks the exemption contract. The package's own admission, at completion and again at redemption, never
+does: a sign-in through a connection the rule does not list is refused there as `enforcement_unsatisfied`, exempt
+identity or not. An exemption admits a session your application establishes some other way (a password or a passkey
+your sign-in accepts while the rule is on), asked from your tenant authentication policy or wherever you refuse a
+non-compliant session; it never turns a sign-in through an unlisted connection into an accepted one. Keeping the
+exemption at one gate keeps one place that grants it and reports it, so every exemption used is in your
+`ExemptionUsed` trail. This is a recommended default (2026-11-03), recorded as RD-31 in the [requirement closure
+matrix](../design/requirements.md#recorded-decisions).
+
 ## Revoking sessions
 
-When a rule is turned on, or its connections change while it is on, the package calls `Contracts\SessionRevocation`
-with `RevocationScope::tenant($policy)`, synchronously, inside the transaction that writes the change. Revoke the
-sessions active in the tenant (or in a tenant that inherits its rule) that were not established through one of
-`$scope->policy->connectionIds`, unless your exemption contract exempts their identity. Turning a rule off calls
-nothing. The same contract is later called with `RevocationScope::connection()` when a connection is disabled or
-deleted, and with `RevocationScope::identityInConnection()` when a link is removed.
+When a rule is turned on, or its connections change while it is on, the package calls `Contracts\SessionRevocation` with
+`RevocationScope::tenant($policy)`, synchronously, inside the transaction that writes the change. Revoke the sessions
+active in the tenant (or in a tenant that inherits its rule) that were not established through one of
+`$scope->policy->connectionIds`, unless your exemption contract exempts their identity. The same contract is later
+called with `RevocationScope::connection()` when a connection is disabled or deleted, and with
+`RevocationScope::identityInConnection()` when a link is removed. Turning a rule off calls nothing (see
+[below](#turning-a-rule-off-revokes-nothing)).
 
+Here `RevokeSessions`, a `final readonly` class that implements `Contracts\SessionRevocation`, marks revoked the rows
+of the application's own `sessions` table, the one `UserSession` above reads, with the reason the scope gives.
+`Database\StorageConnection::name()` names the Laravel connection the package writes through (`sso.storage.connection`).
+The class imports `Illuminate\Database\Query\Builder`, `Illuminate\Support\Facades\DB` and, from
+`SineMacula\Laravel\Sso`, `Database\StorageConnection`, `Revocation\Enums\RevocationScopeKind` and
+`Revocation\RevocationScope`, and your service provider binds it as `Contracts\SessionRevocation`. Its body:
+
+<!-- snippet: tests/Integration/Examples/Enforcement/RevokeSessions.php#revoke-sessions -->
 ```php
-use Illuminate\Database\Query\Builder;
-use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
-use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
-use SineMacula\Laravel\Sso\Revocation\RevocationScope;
-
-final class RevokeSessions implements SessionRevocation
+/**
+ * Revoke the sessions of the scope, inside the package's transaction.
+ *
+ * @param  \SineMacula\Laravel\Sso\Revocation\RevocationScope  $scope
+ * @return void
+ */
+#[\Override]
+public function revoke(RevocationScope $scope): void
 {
-    public function revoke(RevocationScope $scope): void
-    {
-        // The same Laravel connection as `sso.storage.connection`, so the revocation commits with the change
-        $sessions = DB::connection(config('sso.storage.connection'))->table('sessions');
+    // On the package's storage connection, to commit with the change
+    $sessions = DB::connection(StorageConnection::name())->table('sessions')->whereNull('revoked_at');
 
-        match ($scope->kind) {
-            RevocationScopeKind::TENANT => $sessions
-                // The scope names only the enforcing tenant: include every tenant that inherits its rule
-                ->whereIn('tenant_id', $this->tenantsUnderRule($scope->tenantId))
-                // A session with no SSO connection (a password session) holds NULL, and `NULL NOT IN (...)` is never
-                // true, so it must be named: it is exactly what the rule exists to remove
-                ->where(fn (Builder $query) => $query->whereNull('sso_connection_id')
-                    ->orWhereNotIn('sso_connection_id', $scope->policy->connectionIds)),
-            RevocationScopeKind::CONNECTION => $sessions->where('tenant_id', $scope->tenantId)
-                ->where('sso_connection_id', $scope->connectionId),
-            default => $sessions->where('tenant_id', $scope->tenantId)
-                ->where('sso_connection_id', $scope->connectionId)
-                ->where('user_id', $scope->identity?->id),
-        };
+    $revoked = match ($scope->kind) {
+        RevocationScopeKind::TENANT => $sessions
+            // The scope names only the enforcing tenant: include every
+            // tenant that inherits its rule
+            ->whereIn('tenant_id', $this->tenantsUnderRule($scope->tenantId))
+            // A session with no SSO connection (a password session) holds
+            // NULL, and `NULL NOT IN (...)` is never true, so it must be
+            // named: it is exactly what the rule exists to remove
+            ->where(static fn (Builder $query): Builder => $query->whereNull('sso_connection_id')
+                ->orWhereNotIn('sso_connection_id', $scope->policy->connectionIds ?? [])),
+        // Here `$scope->tenantId` is the connection's tenant, not the
+        // tenant a session is active in now, which a switch changes:
+        // connection ids are unique, so never narrow by `tenant_id`
+        RevocationScopeKind::CONNECTION => $sessions->where('sso_connection_id', $scope->connectionId),
+        // A removed link and a widened scope name the link
+        // (`$scope->linkId`); with no link column, revoke the identity's
+        // sessions through the connection (`sso_connection_id` and
+        // `user_id`), which is broader and never narrower
+        default => $sessions->where('sso_link_id', $scope->linkId),
+    };
 
-        // You may leave out the sessions of identities your exemption contract exempts
+    // The sessions of identities your exemption contract exempts may stay
+    $revoked->update(['revoked_at' => now(), 'revoked_reason' => $scope->reason->value]);
+}
 
-        $sessions->update(['revoked_at' => now(), 'revoked_reason' => $scope->reason->value]);
-    }
-
-    /**
-     * The enforcing tenant and every tenant that inherits its rule: the
-     * reverse of your `EnforcementInheritance`, answered by your tenant model.
-     *
-     * @return list<string>
-     */
-    private function tenantsUnderRule(string $enforcingTenantId): array
-    {
-        return Tenant::query()->whereKey($enforcingTenantId)
-            ->orWhere('enforcement_root_id', $enforcingTenantId)
-            ->pluck('id')
-            ->all();
-    }
+/**
+ * The enforcing tenant and every tenant that inherits its rule: the reverse
+ * of your `EnforcementInheritance`, answered by your tenant model.
+ *
+ * @param  string  $enforcingTenantId
+ * @return array<array-key, mixed>
+ */
+private function tenantsUnderRule(string $enforcingTenantId): array
+{
+    return Tenant::query()->whereKey($enforcingTenantId)
+        ->orWhere('enforcement_root_id', $enforcingTenantId)
+        ->pluck('id')
+        ->all();
 }
 ```
 
 The tenant scope carries only `$scope->tenantId`, the enforcing tenant: resolving the tenants that inherit its rule is
-yours, and leaving them out leaves their sessions in place. A session established without SSO usually records no
+yours, and leaving them out leaves their sessions in place. A connection's or a link's scope carries the connection's
+tenant, which need not be the tenant a session established through it is active in now: a session that switched its
+active tenant still began through the connection, so match it by the connection or the link alone, never by the tenant
+it is active in. A session established without SSO usually records no
 connection; match it with `whereNull()` alongside `whereNotIn()`, since SQL never counts `NULL` as outside a list.
+
+### Turning a rule off revokes nothing
+
+Turning a rule off calls nothing, and that is deliberate (the owner's decision of 2026-11-03, recorded in the
+[requirement closure matrix](../design/requirements.md#recorded-decisions)). A rule turned off requires nothing, so no
+session falls out of compliance: every session that met the rule meets no rule just as well, and a session the rule
+would have refused was revoked when the rule went on or its connections changed. Calling the contract anyway would
+hand it a policy whose `connectionIds` is empty, and a revocation written as above, revoking every session not
+established through one of them, would then end every session of the tenant, the very ones the rule had just admitted.
+The rule's new version is still written and `EnforcementChanged` still reports the change, so a session that recorded
+the old version can be told apart; nothing needs ending.
 
 Write through the same Laravel connection the package uses, so your writes commit or roll back with the change; a
 write through another connection, even to the same database, is not atomic with it. Find the sessions with an update
@@ -238,4 +313,6 @@ change is rolled back (no new version, no event) and the exception reaches your 
 as if you revoked what you did not.
 
 Under `laravel-iam` the contract is bound to `laravel-authentication`'s session revocation (AUTH-2.12, AUTH-6.4,
-AUTH-6.5), which runs inside the package's transaction, so you bind nothing.
+AUTH-6.5), which runs inside the package's transaction, so you bind nothing. An enforcement change and a widened scope
+always revoke; a disabled or deleted connection and a removed link revoke unless `laravel-authentication`'s own switch
+for them is off. See [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#revocation).

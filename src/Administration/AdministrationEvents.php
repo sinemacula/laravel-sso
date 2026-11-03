@@ -218,7 +218,7 @@ final readonly class AdministrationEvents
     {
         return $this->contexts->make(
             connectionId: $connection->id,
-            tenantId: $connection->tenant_id,
+            connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,
             actingIdentityMorphClass: $actor?->type,
             actingIdentityId: $actor?->id,

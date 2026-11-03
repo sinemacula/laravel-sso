@@ -321,6 +321,7 @@ final class LinkServiceTest extends TestCase
         self::assertSame('tenant-1', $scope->tenantId);
         self::assertSame($this->connection->id, $scope->connectionId);
         self::assertSame(['type' => 'user', 'id' => '1'], $scope->identity?->jsonSerialize());
+        self::assertSame($link->id, $scope->linkId);
         self::assertNull($scope->policy);
 
         $this->assertEventSequence([LinkRemoved::class]);
@@ -328,7 +329,7 @@ final class LinkServiceTest extends TestCase
         $context = $this->recordedEvents()[0]->context();
 
         self::assertSame($this->connection->id, $context->connectionId);
-        self::assertSame('tenant-1', $context->tenantId);
+        self::assertSame('tenant-1', $context->connectionTenantId);
         self::assertSame('oidc', $context->protocol);
         self::assertSame('user', $context->identityMorphClass);
         self::assertSame('1', $context->identityId);

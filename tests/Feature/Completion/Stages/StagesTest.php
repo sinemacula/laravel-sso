@@ -531,12 +531,12 @@ final class StagesTest extends TestCase
 
     /**
      * Enforcement refuses a required policy the connection does not satisfy,
-     * and goes on with the version of one it satisfies, or of one that requires
-     * nothing; asked for the connection's tenant and the application.
+     * and goes on with the state unchanged under one it satisfies, or one that
+     * requires nothing; asked for the connection's tenant and the application.
      *
      * @return void
      */
-    public function testEnforcementRefusesAnUnsatisfiedPolicyAndKeepsTheVersion(): void
+    public function testEnforcementRefusesAnUnsatisfiedPolicyAndKeepsTheState(): void
     {
         $state = $this->verified();
 
@@ -556,9 +556,7 @@ final class StagesTest extends TestCase
         }
 
         self::assertSame([null, 'enforcement_unsatisfied', null, null], array_map(static fn (StageOutcome $outcome): ?string => $outcome->reason?->value, $outcomes));
-        self::assertSame(['version-1', null, 'version-3', null], array_map(static fn (StageOutcome $outcome): ?string => $outcome->state->enforcementVersion, $outcomes));
-        self::assertSame($state, $outcomes[1]->state);
-        self::assertSame($state, $outcomes[3]->state);
+        self::assertSame(array_fill(0, 4, $state), array_map(static fn (StageOutcome $outcome): CompletionState => $outcome->state, $outcomes));
         self::assertSame(array_fill(0, 4, ['tenant-1', 'web']), $this->enforcementAsked);
     }
 
@@ -609,7 +607,7 @@ final class StagesTest extends TestCase
     public function testIssuanceIssuesTheHandoffForTheGrant(): void
     {
         $linked = new IdentityReference('App\Models\User', '42');
-        $state  = $this->verified(Purpose::REAUTHENTICATE, 'native')->withResolution(ExampleLinks::resolution($linked))->withEnforcementVersion('version-4');
+        $state  = $this->verified(Purpose::REAUTHENTICATE, 'native')->withResolution(ExampleLinks::resolution($linked));
 
         $outcome = $this->stage(IssueHandoff::class)->run($state);
 
@@ -624,7 +622,6 @@ final class StagesTest extends TestCase
         self::assertSame($linked, $grant->linkedIdentity);
         self::assertSame(['type' => 'App\Models\User', 'id' => '7'], $grant->identity?->jsonSerialize());
         self::assertSame('session-7', $grant->sessionId);
-        self::assertSame('version-4', $grant->enforcementVersion);
         self::assertSame('2026-11-01T18:00:00+00:00', $grant->sessionNotAfter?->toIso8601String());
         self::assertSame('2026-11-01T18:00:00+00:00', $outcome->state->sessionNotAfter?->toIso8601String());
     }

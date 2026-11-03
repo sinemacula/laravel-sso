@@ -24,11 +24,21 @@ Your own code can read the same value with `SineMacula\Laravel\Sso\Clock\ClockSk
 ## The default clock
 
 The package binds `Clock\SystemClock`, which reads Laravel's `Date` facade on every call. It follows Laravel's test
-clock, so anything that freezes or moves Laravel's time moves the package's too:
+clock, so anything that freezes or moves Laravel's time (`freezeTime()`, `freezeSecond()`, `travelTo()`,
+`Carbon::setTestNow()`) moves the package's too. In a test frozen to the second, ten minutes of time travel takes an
+authorisation request to the end of its lifetime (`authorization_requests.ttl_seconds`, `600` by default), and the
+provider's response is refused; `startFlow()` and `respondAtProvider()` are the steps of the examples' test case in
+[Testing Your SSO Flows](testing.md):
 
+<!-- snippet: tests/Integration/Examples/Clock/ClockExampleTest.php#default-clock -->
 ```php
+$start = $this->startFlow(Purpose::LINK, $connectionId, $this->person);
+
 $this->travelTo(now()->addMinutes(10));
-// or: $this->freezeTime(); Carbon::setTestNow('2026-10-31 12:00:00');
+
+$redirect = $this->respondAtProvider($provider, $connectionId, $start);
+
+self::assertSame(FailureReason::REQUEST_EXPIRED->value, $redirect->error);
 ```
 
 It holds nothing between calls, so it is shared by every request and job a long-lived worker (Octane, `queue:work`)
@@ -36,35 +46,40 @@ serves.
 
 ## Binding your own clock
 
-Bind your own implementation of `Contracts\Clock` in a service provider. One bound in a provider that registers before
-the package's is kept; one bound later replaces the default as any later binding does. Either way, it must answer a
-`CarbonImmutable` and must not hold an instant from one request or job to the next:
+Bind your own implementation of `Contracts\Clock` in a service provider's `register()`. One bound in a provider that
+registers before the package's is kept; one bound later, as your application's providers are, replaces the default as
+any later binding does. Either way, it must answer a `CarbonImmutable` and must not hold an instant from one request or
+job to the next. Here `UtcClock` answers Laravel's current instant in UTC, read afresh on every call:
 
+<!-- snippet: tests/Integration/Examples/Clock/AppServiceProvider.php#own-clock -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\Clock;
-
-public function register(): void
-{
-    $this->app->singleton(Clock::class, MyClock::class);
-}
+// One clock for every request and job: it holds no instant between them
+$this->app->singleton(Clock::class, UtcClock::class);
 ```
 
 ## A frozen clock in tests
 
 `SineMacula\Laravel\Sso\Testing\FrozenClock` holds one instant until your test moves it, so a test of an expiry or the
-skew neither waits nor depends on when it runs. Bind it in place of the package's clock:
+skew neither waits nor depends on when it runs. Bind it in place of the package's clock, and move it forwards, backwards
+or to a given instant:
 
+<!-- snippet: tests/Integration/Examples/Clock/ClockExampleTest.php#frozen-clock-bound -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\Clock;
-use SineMacula\Laravel\Sso\Testing\FrozenClock;
-
 $clock = new FrozenClock('2026-10-31T12:00:00Z');
 
-$this->app->instance(Clock::class, $clock);
+$this->instance(Clock::class, $clock);
 
-$clock->advance(61);                    // 61 seconds later
-$clock->advance(-120);                  // 2 minutes earlier
-$clock->setTo('2026-11-01T00:00:00Z');  // a given instant
+$clock->advance(61);
+
+self::assertSame('2026-10-31T12:01:01Z', app(Clock::class)->now()->toIso8601ZuluString());
+
+$clock->advance(-120);
+
+self::assertSame('2026-10-31T11:59:01Z', app(Clock::class)->now()->toIso8601ZuluString());
+
+$clock->setTo('2026-11-01T00:00:00Z');
+
+self::assertSame('2026-11-01T00:00:00Z', app(Clock::class)->now()->toIso8601ZuluString());
 ```
 
 | Method                                                         | What it does                                                         |

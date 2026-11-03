@@ -38,8 +38,8 @@ reasons by flow and the events each operation reports. Each part's own behaviour
   code is bound to: `purpose`, `application`, `connection_id`, `request_reference`, `handoff_challenge`, `identity_type`
   and `identity_id` (the flow's identity), `session_id`, `linked_identity_type`, `linked_identity_id` and `link_id`
   (what the result's link resolved to at completion, and through which link), `reservation_id` (the reservation it
-  holds); `result`, the serialised verified result, encrypted; `enforcement_version` and `session_not_after` (SSO-9.10);
-  `expires_at`, `redeemed_at`, `voided_at`.
+  holds); `result`, the serialised verified result, encrypted; `session_not_after` (SSO-9.10); `expires_at`,
+  `redeemed_at`, `voided_at`.
 - Every model is keyed by a lower-case ULID and stamped from the package's clock (`SsoModel::identifiedAndStamped()`),
   hidden columns (digests, ciphertexts) never serialise, and no model carries behaviour: a reader builds an identity
   from two columns with `Identities\IdentityReference::fromColumns()`. There is no foreign key: a connection's deletion
@@ -148,8 +148,8 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
   it shows none in a dump and refuses serialisation.
 - `Handoffs\HandoffGrant` is what a code is issued for: the result (which names purpose, application, connection and
   reference), the challenge, the expiry, the linked identity, the flow's identity (`link`, `reauthenticate`) and session
-  (`reauthenticate`), the enforcement version and the session's latest end; a grant whose identity or session does not
-  fit its purpose is refused. `Handoffs\IssuedHandoff` is the code and its expiry.
+  (`reauthenticate`) and the session's latest end; a grant whose identity or session does not fit its purpose is
+  refused. `Handoffs\IssuedHandoff` is the code and its expiry.
 
 ### Lock order
 

@@ -1057,10 +1057,10 @@ final class ReauthenticationBranchTest extends LinkingTestCase
             result: $this->resultWithNoTime(),
             challenge: S256Challenge::of($verifier),
             expiresAt: $this->clock->now()->addMinute(),
+            trustVersion: $this->connection->trust_version,
             linkedIdentity: $this->person,
             identity: $this->person,
             sessionId: self::SESSION,
-            enforcementVersion: 'version-1',
             linkId: $link->id,
         );
 
@@ -1094,11 +1094,18 @@ final class ReauthenticationBranchTest extends LinkingTestCase
 
         $this->tableSession(self::SESSION, $link->id);
 
-        $good     = new HandoffBinding($this->person, $link->id, $this->person, self::SESSION);
+        $good     = new HandoffBinding($this->person, $link->id, $this->person, self::SESSION, trustVersion: 0);
         $noTime   = $this->resultWithNoTime();
         $withTime = $this->resultWith(new AuthenticationContext($this->clock->now()));
+        $bind     = static fn (?IdentityReference $linked, ?string $linkId, ?IdentityReference $identity, ?string $session): HandoffBinding => new HandoffBinding(
+            $linked,
+            $linkId,
+            $identity,
+            $session,
+            trustVersion: 0,
+        );
 
-        DB::connection(StorageConnection::name())->transaction(function () use ($good, $noTime, $withTime, $link): void {
+        DB::connection(StorageConnection::name())->transaction(function () use ($good, $noTime, $withTime, $link, $bind): void {
 
             $recheck = app(HandoffRecheck::class);
             $lock    = $recheck->lock('tenant-1', $this->connection->id, 'web');
@@ -1108,14 +1115,14 @@ final class ReauthenticationBranchTest extends LinkingTestCase
             self::assertSame([], $this->table->calls);
 
             self::assertSame(RecheckOutcome::PASSED, $recheck->recheck($withTime, $good, $lock));
-            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, new HandoffBinding($this->person, $link->id, null, self::SESSION), $lock));
+            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, $bind($this->person, $link->id, null, self::SESSION), $lock));
             $another = new IdentityReference('App\Models\User', '8');
 
-            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, new HandoffBinding($this->person, $link->id, $another, self::SESSION), $lock));
-            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, new HandoffBinding($this->person, null, $this->person, self::SESSION), $lock));
+            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, $bind($this->person, $link->id, $another, self::SESSION), $lock));
+            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, $bind($this->person, null, $this->person, self::SESSION), $lock));
 
             try {
-                $recheck->recheck($withTime, new HandoffBinding($this->person, $link->id, $this->person), $lock);
+                $recheck->recheck($withTime, new HandoffBinding($this->person, $link->id, $this->person, trustVersion: 0), $lock);
                 self::fail('A binding naming no session was accepted.');
             } catch (\LogicException $exception) {
                 self::assertSame('A reauthenticate flow names the session it was started on.', $exception->getMessage());
@@ -1154,7 +1161,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         $link     = $this->hold($this->person);
         $sessions = $this->recording($link);
         $result   = $time ? $this->resultWith(new AuthenticationContext($this->clock->now())) : $this->resultWithNoTime();
-        $binding  = new HandoffBinding($this->person, $link->id, $identity ? $this->person : null, $session ? self::SESSION : null);
+        $binding  = new HandoffBinding($this->person, $link->id, $identity ? $this->person : null, $session ? self::SESSION : null, trustVersion: 0);
 
         DB::connection(StorageConnection::name())->transaction(function () use ($result, $binding, $message): void {
 

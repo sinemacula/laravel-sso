@@ -573,7 +573,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
             'ip'                          => '203.0.113.7',
             'user_agent'                  => 'a-browser',
             'connection_id'               => $this->connection->id,
-            'tenant_id'                   => self::TENANT,
+            'connection_tenant_id'        => self::TENANT,
             'protocol'                    => 'oidc',
             'application'                 => null,
             'purpose'                     => null,
@@ -584,7 +584,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
             'acting_identity_id'          => $actingIdentityId,
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ];

@@ -50,7 +50,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 final class ProtocolManager extends Manager
 {
     /** @var string Pattern a registered driver's name must match; it fits the connections table's `protocol` column. */
-    private const string NAME_PATTERN = '/^[a-z][a-z0-9_]{0,63}$/D';
+    public const string NAME_PATTERN = '/^[a-z][a-z0-9_]{0,63}$/D';
 
     /** @var array<string, \SineMacula\Laravel\Sso\Config\Enums\Feature> The drivers the package registers itself, by name, with the feature that switches each on; `extend()` refuses them. */
     private const array PACKAGE_DRIVERS = [

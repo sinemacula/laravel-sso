@@ -46,13 +46,13 @@ providers, the package's own handoff store and link store, a tenant's rule on an
 Each is measured once its counters exist. Reads and writes are the storage connection's, with the counters' writes in
 brackets; none of them reads a counter.
 
-| Flow                                 | Start        | Completion    | First redemption |
-|--------------------------------------|--------------|---------------|------------------|
-| OIDC, client secret                  | 2, 2 (1)     | 8, 7 (2)      | 6, 5 (1)         |
-| OIDC, `private_key_jwt`              | 3, 2 (1)     | 12, 7 (2)     | 7, 5 (1)         |
-| SAML, signed, email mapped           | 3, 2 (1)     | 11, 8 (2)     | 7, 5 (1)         |
-| SAML, encrypted required             | 4, 2 (1)     | 15, 8 (2)     | 8, 5 (1)         |
-| Discovery, then OIDC, email mapped   | 3, 2 (2)     | 9, 7 (2)      | not measured     |
+| Flow                               | Start    | Completion | First redemption |
+|------------------------------------|----------|------------|------------------|
+| OIDC, client secret                | 2, 2 (1) | 8, 7 (2)   | 6, 5 (1)         |
+| OIDC, `private_key_jwt`            | 3, 2 (1) | 12, 7 (2)  | 7, 5 (1)         |
+| SAML, signed, email mapped         | 3, 2 (1) | 11, 8 (2)  | 7, 5 (1)         |
+| SAML, encrypted required           | 4, 2 (1) | 15, 8 (2)  | 8, 5 (1)         |
+| Discovery, then OIDC, email mapped | 3, 2 (2) | 9, 7 (2)   | not measured     |
 
 A later redemption of a connection writes one less, since the first sign-in's mark is already on it.
 

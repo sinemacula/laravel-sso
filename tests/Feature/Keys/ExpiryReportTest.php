@@ -364,7 +364,7 @@ final class ExpiryReportTest extends TestCase
             $context = $event->context();
 
             self::assertSame($connection->id, $context->connectionId);
-            self::assertSame($tenant, $context->tenantId);
+            self::assertSame($tenant, $context->connectionTenantId);
             self::assertSame($protocol, $context->protocol);
             self::assertNull($context->actingIdentityMorphClass);
             self::assertNull($context->actingIdentityId);

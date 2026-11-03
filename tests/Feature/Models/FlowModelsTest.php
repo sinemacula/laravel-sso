@@ -142,6 +142,7 @@ final class FlowModelsTest extends TestCase
             'linked_identity_type' => 'user',
             'linked_identity_id'   => '8',
             'session_not_after'    => CarbonImmutable::parse('2026-11-01T18:00:00Z'),
+            'trust_version'        => '4',
         ]);
 
         $read = HandoffCode::query()->findOrFail($code->id);
@@ -150,6 +151,7 @@ final class FlowModelsTest extends TestCase
         self::assertSame('7', $read->identity_id);
         self::assertSame('8', $read->linked_identity_id);
         self::assertSame('session-1', $read->session_id);
+        self::assertSame(4, $read->trust_version);
         self::assertSame('2026-11-01T18:00:00+00:00', $read->session_not_after?->toIso8601String());
         self::assertSame('2026-11-01T09:31:00+00:00', $read->expires_at->toIso8601String());
         self::assertNull($read->redeemed_at);

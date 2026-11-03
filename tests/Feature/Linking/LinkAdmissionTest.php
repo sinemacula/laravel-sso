@@ -300,11 +300,18 @@ final class LinkAdmissionTest extends LinkingTestCase
     {
         $result = $this->linkResult();
 
-        $binding   = new HandoffBinding(identity: $this->person);
+        $binding   = new HandoffBinding(identity: $this->person, trustVersion: 0);
         $admission = $this->underLock($result, fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, $this->person));
         $link      = Link::query()->sole();
 
-        self::assertSame(['outcome' => RecheckOutcome::PASSED, 'identity' => $admission->identity, 'linkId' => $link->id, 'evidence' => null], get_object_vars($admission));
+        self::assertSame([
+            'outcome'            => RecheckOutcome::PASSED,
+            'identity'           => $admission->identity,
+            'linkId'             => $link->id,
+            'evidence'           => null,
+            'linkProvenance'     => null,
+            'enforcementVersion' => null,
+        ], get_object_vars($admission));
         self::assertSame($this->person->jsonSerialize(), $admission->identity?->jsonSerialize());
         self::assertSame(LinkOrigin::LINK_PURPOSE, $link->provenance);
         self::assertSame($result->subject, $link->subject);
@@ -328,7 +335,7 @@ final class LinkAdmissionTest extends LinkingTestCase
     {
         $result = $this->linkResult();
 
-        $binding = new HandoffBinding(identity: $this->person);
+        $binding = new HandoffBinding(identity: $this->person, trustVersion: 0);
         $outcome = $this->underLock($result, fn (HandoffRecheck $recheck, RecheckLock $lock): RecheckOutcome => $recheck->recheck($result, $binding, $lock, $this->person));
 
         self::assertSame(RecheckOutcome::PASSED, $outcome);
@@ -345,9 +352,17 @@ final class LinkAdmissionTest extends LinkingTestCase
     {
         $result = $this->linkResult();
 
-        $admission = $this->underLock($result, fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, new HandoffBinding, $lock, $this->person));
+        $binding   = new HandoffBinding(trustVersion: 0);
+        $admission = $this->underLock($result, fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, $this->person));
 
-        self::assertSame(['outcome' => RecheckOutcome::IDENTITY_MISMATCH, 'identity' => null, 'linkId' => null, 'evidence' => null], get_object_vars($admission));
+        self::assertSame([
+            'outcome'            => RecheckOutcome::IDENTITY_MISMATCH,
+            'identity'           => null,
+            'linkId'             => null,
+            'evidence'           => null,
+            'linkProvenance'     => null,
+            'enforcementVersion' => null,
+        ], get_object_vars($admission));
         self::assertSame(0, Link::query()->count());
     }
 
@@ -363,7 +378,7 @@ final class LinkAdmissionTest extends LinkingTestCase
 
         $this->bindLinker(LinkResolution::reserved());
 
-        $binding = new HandoffBinding(identity: $this->person);
+        $binding = new HandoffBinding(identity: $this->person, trustVersion: 0);
         $outcome = fn (?IdentityReference $caller): RecheckOutcome => $this->underLock(
             $result,
             static fn (HandoffRecheck $recheck, RecheckLock $lock): RecheckOutcome => $recheck->recheck($result, $binding, $lock, $caller),
@@ -438,7 +453,7 @@ final class LinkAdmissionTest extends LinkingTestCase
     public function testEachLinkStateComesToItsOutcome(LinkResolution $now, ?string $observed, bool $linkedAtCompletion, RecheckOutcome $expected): void
     {
         $result  = $this->linkResult();
-        $binding = new HandoffBinding($linkedAtCompletion ? $this->person : null, $observed, $this->person);
+        $binding = new HandoffBinding($linkedAtCompletion ? $this->person : null, $observed, $this->person, trustVersion: 0);
 
         $this->bindLinker($now);
 
@@ -488,10 +503,12 @@ final class LinkAdmissionTest extends LinkingTestCase
 
         $this->bindLinker($judged, $admitted);
 
-        $binding   = new HandoffBinding(linkId: $observed, identity: $this->person);
+        $binding   = new HandoffBinding(linkId: $observed, identity: $this->person, trustVersion: 0);
         $admission = $this->underLock($result, fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, $this->person));
 
-        self::assertSame(['outcome' => $expected, 'identity' => null, 'linkId' => null, 'evidence' => null], get_object_vars($admission));
+        $refused = ['outcome' => $expected, 'identity' => null, 'linkId' => null, 'evidence' => null, 'linkProvenance' => null, 'enforcementVersion' => null];
+
+        self::assertSame($refused, get_object_vars($admission));
         self::assertSame(0, Link::query()->count());
     }
 
@@ -507,10 +524,17 @@ final class LinkAdmissionTest extends LinkingTestCase
 
         self::assertNotNull($link);
 
-        $binding   = new HandoffBinding($this->person, $link->id, $this->person);
+        $binding   = new HandoffBinding($this->person, $link->id, $this->person, trustVersion: 0);
         $admission = $this->underLock($result, fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, $this->person));
 
-        self::assertSame(['outcome' => RecheckOutcome::PASSED, 'identity' => $admission->identity, 'linkId' => $link->id, 'evidence' => null], get_object_vars($admission));
+        self::assertSame([
+            'outcome'            => RecheckOutcome::PASSED,
+            'identity'           => $admission->identity,
+            'linkId'             => $link->id,
+            'evidence'           => null,
+            'linkProvenance'     => null,
+            'enforcementVersion' => null,
+        ], get_object_vars($admission));
         self::assertSame(LinkOrigin::LINK_PURPOSE, Link::query()->sole()->provenance);
     }
 
@@ -561,7 +585,7 @@ final class LinkAdmissionTest extends LinkingTestCase
 
             $recheck = app(HandoffRecheck::class);
 
-            $recheck->recheck($result, new HandoffBinding(identity: $this->person), $recheck->lock('tenant-1', $this->connection->id, 'web'), $this->person);
+            $recheck->recheck($result, new HandoffBinding(identity: $this->person, trustVersion: 0), $recheck->lock('tenant-1', $this->connection->id, 'web'), $this->person);
         });
     }
 
@@ -581,7 +605,7 @@ final class LinkAdmissionTest extends LinkingTestCase
 
             $recheck = app(HandoffRecheck::class);
 
-            $recheck->recheck($result, new HandoffBinding(identity: $this->person), $recheck->lock('tenant-1', $this->connection->id, 'mobile'), $this->person);
+            $recheck->recheck($result, new HandoffBinding(identity: $this->person, trustVersion: 0), $recheck->lock('tenant-1', $this->connection->id, 'mobile'), $this->person);
         });
     }
 
@@ -595,7 +619,7 @@ final class LinkAdmissionTest extends LinkingTestCase
     {
         $result  = $this->linkResult();
         $lock    = RecheckLock::held('tenant-1', $this->connection->id, 'web', $this->connection, null);
-        $context = new RedemptionContext($result, new HandoffBinding, $lock, $this->connection, $this->person);
+        $context = new RedemptionContext($result, new HandoffBinding(trustVersion: 0), $lock, $this->connection, $this->person);
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A link flow names the identity it was started for.');

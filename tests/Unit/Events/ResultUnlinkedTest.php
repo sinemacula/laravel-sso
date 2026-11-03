@@ -177,7 +177,7 @@ final class ResultUnlinkedTest extends TestCase
     private static function event(): array
     {
         $now     = CarbonImmutable::parse('2026-11-01T09:30:00Z');
-        $context = new EventContext($now, connectionId: 'connection-1', tenantId: 'tenant-1', protocol: 'oidc', application: 'web', purpose: 'sign_in');
+        $context = new EventContext($now, connectionId: 'connection-1', connectionTenantId: 'tenant-1', protocol: 'oidc', application: 'web', purpose: 'sign_in');
         $result  = new VerifiedResult(
             self::ISSUER,
             self::SUBJECT,

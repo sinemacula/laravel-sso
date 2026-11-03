@@ -128,7 +128,6 @@ final class FlowTablesMigrationTest extends TestCase
             'code_digest'          => false,
             'connection_id'        => false,
             'created_at'           => false,
-            'enforcement_version'  => true,
             'expires_at'           => false,
             'handoff_challenge'    => false,
             'id'                   => false,
@@ -144,6 +143,7 @@ final class FlowTablesMigrationTest extends TestCase
             'result'               => false,
             'session_id'           => true,
             'session_not_after'    => true,
+            'trust_version'        => false,
             'updated_at'           => false,
             'voided_at'            => true,
         ], [

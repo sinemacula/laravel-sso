@@ -13,9 +13,9 @@ use SineMacula\Laravel\Sso\Testing\Saml\XmlSigner;
  * Unit tests for the enveloped signature the fake SAML identity provider
  * writes: the exact `SignedInfo` (canonicalisation, signature method,
  * reference, transforms, digest method and the digest of the exclusive
- * canonical bytes, comments left out), a signature value that verifies with the
- * provider's certificate, the `KeyInfo` carrying it, where the signature goes,
- * and each option changing just its part.
+ * canonical bytes, comments left out), the transforms a test names, a signature
+ * value that verifies with the provider's certificate, the `KeyInfo` carrying
+ * it, where the signature goes, and each option changing just its part.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -139,6 +139,26 @@ final class XmlSignerTest extends TestCase
     }
 
     /**
+     * The transforms option lists those transforms, in order and repeated as
+     * given, and leaves the digest of the exclusive canonical bytes without
+     * comments as it was.
+     *
+     * @return void
+     */
+    public function testListsTheTransformsGiven(): void
+    {
+        $comments  = 'http://www.w3.org/2001/10/xml-exc-c14n#WithComments';
+        $signature = self::signer()->sign(self::root(self::document()), ['transforms' => ['exc-c14n-comments', 'exc-c14n', 'exc-c14n']]);
+
+        self::assertSame(
+            self::signedInfo(self::EXC_C14N, self::RSA_SHA256, '#_root', self::SHA256, self::digest('sha256', self::CANONICAL_ROOT), [$comments, self::EXC_C14N, self::EXC_C14N]),
+            self::canonicalSignedInfo($signature),
+        );
+        self::assertSame(1, self::verify($signature, OPENSSL_ALGO_SHA256));
+        self::assertSame(['enveloped', 'exc-c14n', 'exc-c14n-comments'], array_keys(XmlSigner::TRANSFORMS));
+    }
+
+    /**
      * An element with no children takes the signature as its only child.
      *
      * @return void
@@ -178,16 +198,18 @@ final class XmlSignerTest extends TestCase
      * @param  string  $uri
      * @param  string  $digestMethod
      * @param  string  $digest
+     * @param  ?list<string>  $transforms
      * @return string
      */
-    private static function signedInfo(string $canonicalisation, string $method, string $uri, string $digestMethod, string $digest): string
+    private static function signedInfo(string $canonicalisation, string $method, string $uri, string $digestMethod, string $digest, ?array $transforms = null): string
     {
+        $transforms ??= ['http://www.w3.org/2000/09/xmldsig#enveloped-signature', self::EXC_C14N];
+
         return '<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">'
             . '<ds:CanonicalizationMethod Algorithm="' . $canonicalisation . '"></ds:CanonicalizationMethod>'
             . '<ds:SignatureMethod Algorithm="' . $method . '"></ds:SignatureMethod>'
             . '<ds:Reference URI="' . $uri . '"><ds:Transforms>'
-            . '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></ds:Transform>'
-            . '<ds:Transform Algorithm="' . self::EXC_C14N . '"></ds:Transform>'
+            . implode('', array_map(static fn (string $transform): string => '<ds:Transform Algorithm="' . $transform . '"></ds:Transform>', $transforms))
             . '</ds:Transforms>'
             . '<ds:DigestMethod Algorithm="' . $digestMethod . '"></ds:DigestMethod>'
             . '<ds:DigestValue>' . $digest . '</ds:DigestValue>'

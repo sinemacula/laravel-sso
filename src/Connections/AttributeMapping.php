@@ -13,13 +13,17 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
  * its target, by the SAML attribute or OIDC claim it is read from, its source.
  *
  * The standard targets are `email`, `given_name`, `family_name`, `display_name`
- * and `groups`; an application adds custom targets, each a lower-case name (a
- * letter, then up to 63 letters, digits or underscores), up to
- * `MappingLimits::maxCustomAttributes()` of them. A target never names one of
- * the result's own fields (its issuer, subject, connection, tenant,
- * authentication context, session or identity), and, over OIDC, a source never
- * names a protocol value or a token, so a mapping can neither forge what the
- * package verified nor carry a credential.
+ * and `groups`. A custom target is a lower-case name (a letter, then up to 63
+ * letters, digits or underscores), and a mapping names one only when the
+ * application declared it in `sso.mapping.custom_attributes`
+ * (`MappingLimits::customAttributes()`): any other is `not_allowed`, so a
+ * tenant administrator never invents a key the application does not read. A
+ * target never names one of the result's own fields (its issuer, subject,
+ * connection, tenant, authentication context, session or identity), and, over
+ * OIDC, a source never names a protocol value or a token, so a mapping can
+ * neither forge what the package verified nor carry a credential. A stored
+ * mapping naming a custom target the application has since stopped declaring
+ * maps nothing to it.
  *
  * Mapped values are profile data: each is cut to
  * `MappingLimits::maxValueLength()` characters, a list keeps at most
@@ -180,9 +184,22 @@ final readonly class AttributeMapping
     }
 
     /**
-     * Every problem with the mapping, target by target in the order given, then
-     * `too_many` at `attribute_mapping` when it declares more custom targets
-     * than allowed.
+     * Whether the name is of a custom target's form and names neither a
+     * standard target nor one of the result's own fields.
+     *
+     * @param  string  $target
+     * @return bool
+     */
+    public static function isCustomTarget(string $target): bool
+    {
+        return self::target($target) === null && !in_array($target, self::STANDARD_TARGETS, true);
+    }
+
+    /**
+     * Every problem with the mapping, target by target in the order given: a
+     * target that is reserved or malformed, then a custom target the
+     * application did not declare (`not_allowed`), then a source that cannot be
+     * read from.
      *
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
      *
@@ -190,23 +207,15 @@ final readonly class AttributeMapping
      */
     public function violations(): array
     {
+        $declared   = $this->limits->customAttributes();
         $violations = [];
-        $custom     = 0;
 
         foreach ($this->mapping as $target => $source) {
 
             $target = (string) $target;
-            $code   = self::target($target) ?? $this->source($source);
-
-            if ($code === null && !in_array($target, self::STANDARD_TARGETS, true)) {
-                $custom++;
-            }
+            $code   = self::target($target) ?? self::undeclared($target, $declared) ?? $this->source($source);
 
             array_push($violations, ...SettingRules::at(SettingRules::path(self::PATH, $target), $code));
-        }
-
-        if ($custom > $this->limits->maxCustomAttributes()) {
-            array_push($violations, ...SettingRules::at(self::PATH, ViolationCode::TOO_MANY));
         }
 
         return $violations;
@@ -216,12 +225,13 @@ final readonly class AttributeMapping
      * The profile data the mapping reads from validated claims or attributes,
      * for each target whose source is present and holds a string.
      *
-     * A standard target other than `groups` takes the string, or the first
-     * string of a list. `groups` and custom targets keep a string as it is
-     * (`groups` as a list of one), or a list of at most
-     * `MappingLimits::maxValues()` strings in order, anything not a string
-     * dropped. Every string is cut to `MappingLimits::maxValueLength()`
-     * characters. A target with nothing to keep is left out.
+     * A custom target the application does not declare now keeps nothing. A
+     * standard target other than `groups` takes the string, or the first string
+     * of a list. `groups` and custom targets keep a string as it is (`groups`
+     * as a list of one), or a list of at most `MappingLimits::maxValues()`
+     * strings in order, anything not a string dropped. Every string is cut to
+     * `MappingLimits::maxValueLength()` characters. A target with nothing to
+     * keep is left out.
      *
      * @param  array<string, mixed>  $values
      * @return array<string, list<string>|string>
@@ -230,15 +240,16 @@ final readonly class AttributeMapping
      */
     public function map(array $values): array
     {
-        $length = $this->limits->maxValueLength();
-        $most   = $this->limits->maxValues();
-        $mapped = [];
+        $length   = $this->limits->maxValueLength();
+        $most     = $this->limits->maxValues();
+        $declared = $this->limits->customAttributes();
+        $mapped   = [];
 
         foreach ($this->mapping as $target => $source) {
 
             $target = (string) $target;
 
-            if (self::target($target) !== null || !is_string($source) || !array_key_exists($source, $values)) {
+            if (self::undeclared($target, $declared) !== null || !is_string($source) || !array_key_exists($source, $values)) {
                 continue;
             }
 
@@ -268,6 +279,22 @@ final readonly class AttributeMapping
             in_array($target, self::RESERVED_TARGETS, true) => ViolationCode::RESERVED,
             default                                         => preg_match(self::CUSTOM_TARGET, $target) === 1 ? null : ViolationCode::INVALID_FORMAT,
         };
+    }
+
+    /**
+     * `null` for a standard target or one the application declares, and
+     * `not_allowed` for any other: an undeclared custom target, and a reserved
+     * or malformed name too, which `target()` reports first when a mapping is
+     * judged. The declared keys are all of a custom target's form, so nothing
+     * this admits is reserved or malformed.
+     *
+     * @param  string  $target
+     * @param  list<string>  $declared
+     * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
+     */
+    private static function undeclared(string $target, array $declared): ?ViolationCode
+    {
+        return in_array($target, self::STANDARD_TARGETS, true) || in_array($target, $declared, true) ? null : ViolationCode::NOT_ALLOWED;
     }
 
     /**

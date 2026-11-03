@@ -101,7 +101,7 @@ final class AdministrationEventsTest extends TestCase
             $context = $event->context();
 
             self::assertSame($connection->id, $context->connectionId);
-            self::assertSame('tenant-7', $context->tenantId);
+            self::assertSame('tenant-7', $context->connectionTenantId);
             self::assertSame('saml2', $context->protocol);
             self::assertSame($index === 3 ? null : 'App\Models\User', $context->actingIdentityMorphClass);
             self::assertSame($index === 3 ? null : '42', $context->actingIdentityId);

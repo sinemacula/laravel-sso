@@ -8,9 +8,10 @@ link may be [reserved by a verified domain](linking-by-domain.md) or offered for
 [`reauthenticate`](reauthenticating.md) has rules of its own. It answers a `CompletionResult` value; your application
 owns the routes and turns the result into a response.
 
-```php
-use SineMacula\Laravel\Sso\Completion\CompletionService;
+The helper is `Completion\CompletionService`:
 
+<!-- snippet: tests/Integration/Examples/CompletingAFlow/CompletingAFlowExampleTest.php#completion-service -->
+```php
 $completions = app(CompletionService::class);
 ```
 
@@ -32,49 +33,39 @@ for the connection the route names, and a response that names a request of anoth
 `connection_mismatch`.
 
 The routes take no session, no CSRF token and no authentication: the response is checked by the completion itself. Put
-them outside the `web` middleware group, or exclude them from CSRF verification, since a SAML response is a cross-site
-POST.
+them outside the `web` middleware group. If your API verifies CSRF tokens anyway, exclude the assertion consumer
+service alone, since a SAML response is a cross-site `POST`; the OIDC callback is a `GET` and needs no exemption
+([Cross-site request forgery](example-application.md#cross-site-request-forgery)). Served from `routes/api.php`, they
+sit under Laravel's `/api` prefix, so `sso.endpoints.base_url` carries it
+([The base URL and the API prefix](example-application.md#the-base-url-and-the-api-prefix)).
 
+In `routes/api.php`, with your controller imported:
+
+<!-- snippet: tests/Integration/Examples/CompletingAFlow/routes.php#completion-routes -->
 ```php
-// routes/api.php
-use App\Http\Controllers\SsoCompletionController;
-
 Route::post('/auth/sso/connections/{connection}/assertions', [SsoCompletionController::class, 'assertion']);
 Route::get('/auth/sso/connections/{connection}/callback', [SsoCompletionController::class, 'callback']);
 ```
 
+The controller, say `App\Http\Controllers\SsoCompletionController`, takes the `CompletionService` and the
+`Responses\CompletionResponses` through its constructor, as `$this->completions` and `$this->responses`. Each action
+takes the `Illuminate\Http\Request` and the route's `$connection`, and answers a `Responses\CompletionResponse`. Its
+`assertion()` action receives the SAML response the browser posts:
+
+<!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoCompletionController.php#route-assertion -->
 ```php
-namespace App\Http\Controllers;
+$result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
 
-use Illuminate\Http\Request;
-use SineMacula\Laravel\Sso\Completion\CompletionService;
-use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
-use SineMacula\Laravel\Sso\Responses\CompletionResponse;
-use SineMacula\Laravel\Sso\Responses\CompletionResponses;
+return $this->responses->from($result, $request->getMethod());
+```
 
-final class SsoCompletionController
-{
-    public function __construct(
-        private readonly CompletionService $completions,
-        private readonly CompletionResponses $responses,
-    ) {}
+Its `callback()` action receives the OIDC authorisation response:
 
-    // POST: the SAML response, posted by the browser
-    public function assertion(Request $request, string $connection): CompletionResponse
-    {
-        $result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
+<!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoCompletionController.php#route-callback -->
+```php
+$result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
 
-        return $this->responses->from($result, $request->getMethod());
-    }
-
-    // GET: the OIDC authorisation response
-    public function callback(Request $request, string $connection): CompletionResponse
-    {
-        $result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
-
-        return $this->responses->from($result, $request->getMethod());
-    }
-}
+return $this->responses->from($result, $request->getMethod());
 ```
 
 `CompletionRequest::fromRequest()` keeps the method, the raw query string and the posted fields, and nothing else: it
@@ -160,8 +151,9 @@ listener can create a new identity, its membership and the link just in time: [P
   locks.
 
 The link is then resolved again. A result still unlinked ends with `unlinked` by default. An application that resolves
-identities itself when it redeems the code can allow unlinked handoffs:
+identities itself when it redeems the code can allow unlinked handoffs, in `config/sso.php`:
 
+<!-- snippet: tests/Integration/Examples/CompletingAFlow/CompletingAFlowExampleTest.php#unlinked-handoffs -->
 ```php
 'applications' => [
     'web' => [
@@ -200,7 +192,9 @@ Bind your own in a service provider's `register()`; each default fails closed.
   own to answer `ignored` when your sessions are independent of the provider's.
 - `Contracts\HandoffIssuer`: issues the code, inside the completion's transaction on the package's storage connection.
   An issuer that writes through another connection is not atomic with the completion. An issuer that cannot issue
-  throws, and the completion is rolled back as a server error.
+  throws, and the completion is rolled back as a server error. An issuer of your own keeps the grant's `trustVersion`
+  and `sessionNotAfter` with the code and hands them back at redemption, or its codes are refused there (see
+  [Redeeming codes of your own](redeeming-a-handoff.md#redeeming-codes-of-your-own)).
 
 ## Events
 

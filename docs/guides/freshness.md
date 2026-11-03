@@ -20,7 +20,9 @@ Reading connections, listing them and every sign-in flow are unaffected: only th
 > [!NOTE]
 > Under `laravel-iam` there is nothing to bind: it binds the contract to `laravel-authentication`'s freshness check
 > (AUTH-3.11), passing each operation's maximum age on as the caller's requirement, so an administrator is asked to
-> authenticate again exactly as for the application's own sensitive changes.
+> authenticate again exactly as for the application's own sensitive changes. The stricter of that requirement and any
+> freshness the application configures for the operation's name applies, so the package's maximum age holds where the
+> application configures none. See [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#freshness).
 
 ## Operations and their maximum ages
 
@@ -42,12 +44,16 @@ Each operation has its own maximum age, configured under `freshness.max_age_seco
 | `sso.link.create`              | Starting a `link` flow for an authenticated identity                                                                                                                                                | `link_create`              | `300`   |
 | `sso.link.remove`              | Removing a link                                                                                                                                                                                     | `link_remove`              | `300`   |
 
+This published file keeps a trust change at five minutes, holds a key rotation to two, and leaves every other operation
+at the default:
+
+<!-- snippet: tests/Integration/Examples/Freshness/config/sso.php#freshness-max-ages -->
 ```php
+// config/sso.php
 'freshness' => [
     'max_age_seconds' => [
         'connection_trust' => 300,
         'keys_rotate'      => 120,
-        // ...
     ],
 ],
 ```
@@ -69,56 +75,69 @@ age; answer `fresh` only when the caller of the request or job being served auth
 seconds ago, and `stale` otherwise, including when there is no caller you can judge (a queued job, a console command).
 Never answer `fresh` when you cannot tell; let an error you cannot answer through propagate.
 
-This one reads the time the caller last authenticated (a Unix timestamp your sign-in stores in the session, or the
-`auth_time` of a verified token that your middleware puts on the request) and compares its age with the maximum age,
-reading the time from the package's clock so tests can move it:
+This one, `RecentSignInFreshness`, a `final readonly` class implementing `Contracts\Freshness`, reads the time the
+caller last authenticated (a Unix timestamp your sign-in stores in the session, or the `auth_time` of a verified token
+that your middleware puts on the request) and compares its age with the maximum age. It takes Laravel's
+`Illuminate\Contracts\Container\Container`, to resolve the `Illuminate\Http\Request` being served, and the package's
+`Contracts\Clock`, so tests can move the time it reads, and answers a `Freshness\Enums\FreshnessOutcome`:
 
+<!-- snippet: tests/Integration/Examples/Freshness/RecentSignInFreshness.php#recent-sign-in-freshness -->
 ```php
-use Illuminate\Contracts\Container\Container;
-use Illuminate\Http\Request;
-use SineMacula\Laravel\Sso\Contracts\Clock;
-use SineMacula\Laravel\Sso\Contracts\Freshness;
-use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
-use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+/**
+ * Take the container and the package's clock.
+ *
+ * @param  \Illuminate\Contracts\Container\Container  $container
+ * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
+ */
+public function __construct(
 
-final readonly class RecentSignInFreshness implements Freshness
+    /** The container the request being served is resolved from. */
+    private Container $container,
+
+    /** The package's clock, which a test can move. */
+    private Clock $clock,
+) {}
+
+/**
+ * Whether the caller authenticated within the maximum age.
+ *
+ * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
+ * @param  int  $maxAgeSeconds
+ * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
+ */
+#[\Override]
+public function check(FreshnessOperation $operation, int $maxAgeSeconds): FreshnessOutcome
 {
-    public function __construct(
-        private Container $container,
-        private Clock $clock,
-    ) {}
+    // Every operation is judged alike: a stricter policy would match on
+    // the operation's stable name, $operation->value
+    unset($operation);
 
-    public function check(FreshnessOperation $operation, int $maxAgeSeconds): FreshnessOutcome
-    {
-        // The request being served, resolved on each call and never held
-        $request = $this->container->make(Request::class);
+    // The request being served, resolved on each call and never held
+    $request = $this->container->make(Request::class);
 
-        if ($request->user() === null) {
-            return FreshnessOutcome::STALE;
-        }
-
-        $authenticatedAt = $request->hasSession()
-            ? $request->session()->get('auth.authenticated_at')
-            : $request->attributes->get('auth_time');
-
-        if (!is_int($authenticatedAt)) {
-            return FreshnessOutcome::STALE;
-        }
-
-        $age = $this->clock->now()->getTimestamp() - $authenticatedAt;
-
-        return $age >= 0 && $age <= $maxAgeSeconds ? FreshnessOutcome::FRESH : FreshnessOutcome::STALE;
+    if ($request->user() === null) {
+        return FreshnessOutcome::STALE;
     }
+
+    $authenticatedAt = $request->hasSession()
+        ? $request->session()->get('auth.authenticated_at')
+        : $request->attributes->get('auth_time');
+
+    if (!is_int($authenticatedAt)) {
+        return FreshnessOutcome::STALE;
+    }
+
+    $age = $this->clock->now()->getTimestamp() - $authenticatedAt;
+
+    return $age >= 0 && $age <= $maxAgeSeconds ? FreshnessOutcome::FRESH : FreshnessOutcome::STALE;
 }
 ```
 
-```php
-use SineMacula\Laravel\Sso\Contracts\Freshness;
+Bind it in a service provider's `register()`:
 
-public function register(): void
-{
-    $this->app->singleton(Freshness::class, RecentSignInFreshness::class);
-}
+<!-- snippet: tests/Integration/Examples/Freshness/AppServiceProvider.php#freshness-binding -->
+```php
+$this->app->singleton(Freshness::class, RecentSignInFreshness::class);
 ```
 
 One bound in a provider that registers before the package's is kept; one bound later replaces the default as any later
@@ -137,18 +156,17 @@ for fresh authentication inside a transaction your application opened is safe: n
 ## Testing with `FakeFreshness`
 
 `SineMacula\Laravel\Sso\Testing\FakeFreshness` answers what your test tells it and records every question with its
-maximum age. Bind it in place of the contract, run the change, then assert what was asked:
+maximum age. Bind it in place of the contract, run the change, then assert what was asked. Here it answers `stale` for
+deleting alone, so a connection is enabled and its deletion is refused:
 
+<!-- snippet: tests/Integration/Examples/Freshness/FreshnessExampleTest.php#fake-freshness -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\Freshness;
-use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
-use SineMacula\Laravel\Sso\Testing\FakeFreshness;
-
 $freshness = FakeFreshness::fresh()->staleFor(FreshnessOperation::CONNECTION_DELETE);
 
-$this->app->instance(Freshness::class, $freshness);
+$this->instance(Freshness::class, $freshness);
 
-// ... enable a connection, then try to delete it
+self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId)->isSucceeded());
+self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId)->reason);
 
 $freshness->assertAsked(FreshnessOperation::CONNECTION_ENABLE, 300);
 $freshness->assertAskedExactly([FreshnessOperation::CONNECTION_ENABLE, FreshnessOperation::CONNECTION_DELETE]);

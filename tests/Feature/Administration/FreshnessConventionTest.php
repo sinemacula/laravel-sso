@@ -133,6 +133,7 @@ final class FreshnessConventionTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.oidc', true);
         config()->set('sso.features.idp_initiated', true);
+        config()->set('sso.mapping.custom_attributes', ['department']);
 
         foreach (self::MAX_AGES as $key => $seconds) {
             config()->set('sso.freshness.max_age_seconds.' . $key, $seconds);

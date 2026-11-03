@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
@@ -48,6 +49,7 @@ use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Enforcement\ListedExemption;
 use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
@@ -178,10 +180,11 @@ final class HandoffRedemptionTest extends TestCase
 
     /**
      * A `sign_in` code redeemed with its purpose, application, connection and
-     * verifier answers the result and everything it was bound to; it is
-     * consumed now, recorded in the single-use store by its digest until its
-     * expiry, its connection's completed sign-in is acknowledged, and the
-     * linker was asked once, with the result restored.
+     * verifier answers the result and everything it was bound to, with the
+     * enforcement version read under the redemption's locks (none, with no rule
+     * stored); it is consumed now, recorded in the single-use store by its
+     * digest until its expiry, its connection's completed sign-in is
+     * acknowledged, and the linker was asked once, with the result restored.
      *
      * @return void
      *
@@ -200,7 +203,7 @@ final class HandoffRedemptionTest extends TestCase
         self::assertSame(['type' => 'App\Models\User', 'id' => '42'], $answer->linkedIdentity?->jsonSerialize());
         self::assertNull($answer->identity);
         self::assertNull($answer->sessionId);
-        self::assertSame('version-1', $answer->enforcementVersion);
+        self::assertNull($answer->enforcementVersion);
         self::assertSame('2026-11-01T18:00:00+00:00', $answer->sessionNotAfter?->toIso8601String());
         self::assertSame('2026-11-01T09:30:05+00:00', $this->stored($code)->redeemed_at?->toIso8601String());
         self::assertSame([[HandoffRedemption::NAMESPACE, hash('sha256', hash('sha256', $code)), '2026-11-01T09:31:00+00:00']], $this->singleUseKeys());
@@ -507,7 +510,8 @@ final class HandoffRedemptionTest extends TestCase
     /**
      * Enforcement turned on since completion, by connections this one is not
      * among, is `enforcement_unsatisfied`; turned on including it, the code is
-     * redeemed.
+     * redeemed, answering the version of the rule read under the redemption's
+     * locks.
      *
      * @return void
      *
@@ -527,7 +531,38 @@ final class HandoffRedemptionTest extends TestCase
 
         $enforcement->forceFill(['connection_ids' => [$this->other->id, $this->connection->id]])->save();
 
-        self::assertTrue($this->redeem($this->issue())->isRedeemed());
+        $kept   = $this->issue();
+        $answer = $this->redeem($kept);
+
+        self::assertTrue($answer->isRedeemed());
+        self::assertNotNull($answer->enforcementVersion);
+        self::assertSame(TenantEnforcement::query()->sole()->version, $answer->enforcementVersion);
+    }
+
+    /**
+     * The redemption never asks the exemption contract: an identity it would
+     * exempt is still refused `enforcement_unsatisfied` through a connection
+     * the rule does not list, and the contract is never asked. Only the
+     * adapter's gate asks it.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testTheRedemptionNeverAsksTheExemptionContract(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $exemption = new ListedExemption([new IdentityReference('App\Models\User', '42')]);
+
+        $this->app?->instance(EnforcementExemption::class, $exemption);
+
+        $code = $this->issue();
+
+        $this->makeEnforcement(['enabled' => true, 'connection_ids' => [$this->other->id]]);
+
+        self::assertSame(FailureReason::ENFORCEMENT_UNSATISFIED, $this->redeem($code)->reason);
+        self::assertSame([], $exemption->asked());
     }
 
     /**
@@ -1169,6 +1204,54 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
+     * Rows of `[the code's purpose, whether it resolved to an identity]`: each
+     * code a standalone `link` endpoint may be handed that is not a link.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: bool}>
+     */
+    public static function provideCodesOfAnotherPurpose(): iterable
+    {
+        yield 'a linked sign_in' => [Purpose::SIGN_IN, true];
+        yield 'an unlinked sign_in' => [Purpose::SIGN_IN, false];
+        yield 'a reauthenticate' => [Purpose::REAUTHENTICATE, true];
+    }
+
+    /**
+     * A `sign_in` or `reauthenticate` code presented to the standalone path
+     * asked for a `link` is the client's error, never a `LogicException`: it is
+     * consumed and refused as `purpose_mismatch`, committed, and redeeming it
+     * afterwards for its own purpose is a replay.
+     *
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @param  bool  $linked
+     * @return void
+     *
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    #[DataProvider('provideCodesOfAnotherPurpose')]
+    public function testACodeOfAnotherPurposeAskedForAsALinkIsAPurposeMismatch(Purpose $purpose, bool $linked): void
+    {
+        if (!$linked) {
+            $this->linked = null;
+        }
+
+        $code    = $this->issue($purpose);
+        $refused = app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, self::VERIFIER, new IdentityReference('App\Models\User', '7'));
+
+        self::assertTrue($refused->isRefused());
+        self::assertSame(FailureReason::PURPOSE_MISMATCH, $refused->reason);
+        self::assertNull($refused->result);
+        self::assertFalse($refused->isAdmitted());
+        self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
+        self::assertSame('2026-11-01T09:30:00+00:00', $this->stored($code)->redeemed_at?->toIso8601String());
+        self::assertCount(1, $this->singleUseKeys());
+        self::assertSame(FailureReason::REPLAYED, $this->redeem($code, self::VERIFIER, $purpose)->reason);
+        self::assertFalse($this->reloaded($this->connection)->has_completed_sign_in);
+        self::assertSame([], $this->linkerAsked);
+    }
+
+    /**
      * Issue a code through the package's store for the purpose, linked to the
      * identity the test holds, with the challenge of the verifier, expiring a
      * minute from now unless given.
@@ -1186,10 +1269,10 @@ final class HandoffRedemptionTest extends TestCase
             result: $this->verifiedResult($purpose),
             challenge: S256Challenge::of(Verifier::fromString($verifier)),
             expiresAt: $expiresAt ?? $this->clock->now()->addMinute(),
+            trustVersion: $this->connection->trust_version,
             linkedIdentity: $this->linked,
             identity: $purpose  === Purpose::SIGN_IN ? null : new IdentityReference('App\Models\User', '7'),
             sessionId: $purpose === Purpose::REAUTHENTICATE ? 'session-1' : null,
-            enforcementVersion: 'version-1',
             sessionNotAfter: CarbonImmutable::parse('2026-11-01T18:00:00Z'),
             linkId: $this->linked === null ? null : ExampleLinks::linkId($this->linked),
         );

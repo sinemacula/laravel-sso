@@ -7,14 +7,17 @@ namespace SineMacula\Laravel\Sso\Handoffs\Redemption;
 use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
  * What a purpose's branch of a redemption judges (SSO-9.9): the verified
  * result, what the code was bound to, the locks held, the connection as locked,
- * and the caller the application has authenticated, which a `link` needs. It
- * lives only for the transaction its locks were taken in.
+ * and the caller the application has authenticated, which a `link` needs; and,
+ * for an admission, the provenance of the link its judgement found
+ * (`Judgement::$linkProvenance`). It lives only for the transaction its locks
+ * were taken in.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,6 +34,7 @@ final readonly class RedemptionContext
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $linkProvenance
      */
     public function __construct(
 
@@ -48,5 +52,8 @@ final readonly class RedemptionContext
 
         /** The caller the application has authenticated, for a `link`. */
         public ?IdentityReference $caller = null,
+
+        /** The provenance of the link the judgement found, for an admission. */
+        public ?LinkOrigin $linkProvenance = null,
     ) {}
 }

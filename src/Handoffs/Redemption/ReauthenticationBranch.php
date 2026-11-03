@@ -72,23 +72,24 @@ final readonly class ReauthenticationBranch implements PurposeBranch
 
     /**
      * Judge the exact link, that the result states when the provider
-     * authenticated, and the session bound to that link.
+     * authenticated, and the session bound to that link. A re-authentication
+     * never captures provenance, so it names no link provenance (SSO-9.10).
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
-     * @return \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
+     * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement
      */
     #[\Override]
-    public function judge(RedemptionContext $context): RecheckOutcome
+    public function judge(RedemptionContext $context): Judgement
     {
         $now = $this->linker->resolve($context->result);
 
-        return match (true) {
+        return Judgement::of(match (true) {
             $now->isSuspended()                                               => RecheckOutcome::LINK_SUSPENDED,
             $now->isScopeUnknown()                                            => RecheckOutcome::PRINCIPAL_SCOPE_UNKNOWN,
             !self::isExactLink($now, $context)                                => RecheckOutcome::IDENTITY_MISMATCH,
             $context->result->authenticationContext->authenticatedAt === null => RecheckOutcome::AUTHENTICATION_EXPIRED,
             default                                                           => $this->standing($context, (string) $now->linkId),
-        };
+        });
     }
 
     /**

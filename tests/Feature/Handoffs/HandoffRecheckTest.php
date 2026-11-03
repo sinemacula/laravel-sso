@@ -182,6 +182,48 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
+     * Rows of `[the version the binding names, the raise since issuance]`: a
+     * binding that names no trust version, and one issued under a version the
+     * connection has since left.
+     *
+     * @return iterable<string, array{0: ?int, 1: int}>
+     */
+    public static function provideOtherTrustVersions(): iterable
+    {
+        yield 'named none' => [null, 0];
+        yield 'raised once since' => [0, 1];
+        yield 'raised twice since' => [0, 2];
+        yield 'ahead of the connection' => [1, 0];
+    }
+
+    /**
+     * A binding whose trust version is not the connection's under the lock, or
+     * that names none, is `connection_unavailable` before the link is asked
+     * about; the same binding naming the version the connection now holds
+     * passes.
+     *
+     * @param  ?int  $named
+     * @param  int  $raised
+     * @return void
+     */
+    #[DataProvider('provideOtherTrustVersions')]
+    public function testABindingOfAnotherTrustVersionIsConnectionUnavailable(?int $named, int $raised): void
+    {
+        $this->connection->forceFill(['trust_version' => $raised])->save();
+
+        $identity = new IdentityReference('App\Models\User', '42');
+        $result   = $this->verifiedResult();
+        $recheck  = fn (?int $version): RecheckOutcome => $this->withinTransaction(
+            fn (): RecheckOutcome => $this->rechecker()->recheck($result, $this->boundUnder($identity, $version), $this->lockFor($result)),
+        );
+
+        self::assertSame(RecheckOutcome::CONNECTION_UNAVAILABLE, $recheck($named));
+        self::assertSame(0, $this->linkerAsked);
+        self::assertSame(RecheckOutcome::PASSED, $recheck($raised));
+        self::assertSame(1, $this->linkerAsked);
+    }
+
+    /**
      * How a connection may no longer be usable.
      *
      * @return iterable<string, array{0: string}>
@@ -296,7 +338,7 @@ final class HandoffRecheckTest extends TestCase
             fn (): RecheckLock => $recheck->lock('tenant-1', $this->connection->id, 'web'),
             fn (): RecheckOutcome => $recheck->recheck(
                 $this->verifiedResult(),
-                self::bound(null),
+                $this->bound(null),
                 $this->withinTransaction(fn (): RecheckLock => $this->lockFor($this->verifiedResult())),
             ),
         ];
@@ -351,7 +393,7 @@ final class HandoffRecheckTest extends TestCase
                     $lock = $recheck->lock($tenantId, $connectionId ?? $this->connection->id, $application);
 
                     $call === 'recheck'
-                        ? $recheck->recheck($this->verifiedResult(), self::bound(null), $lock)
+                        ? $recheck->recheck($this->verifiedResult(), $this->bound(null), $lock)
                         : $recheck->acknowledgeSignIn($this->verifiedResult(), $lock);
                 });
 
@@ -671,7 +713,7 @@ final class HandoffRecheckTest extends TestCase
      */
     private function recheck(VerifiedResult $result, ?IdentityReference $linkedIdentity): RecheckOutcome
     {
-        return $this->withinTransaction(fn (): RecheckOutcome => $this->rechecker()->recheck($result, self::bound($linkedIdentity), $this->lockFor($result)));
+        return $this->withinTransaction(fn (): RecheckOutcome => $this->rechecker()->recheck($result, $this->bound($linkedIdentity), $this->lockFor($result)));
     }
 
     /**
@@ -816,13 +858,26 @@ final class HandoffRecheckTest extends TestCase
 
     /**
      * What a code that resolved to the identity, through its link, was bound
-     * to.
+     * to, issued under the connection's trust version as this test holds it.
      *
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return \SineMacula\Laravel\Sso\Handoffs\HandoffBinding
      */
-    private static function bound(?IdentityReference $identity): HandoffBinding
+    private function bound(?IdentityReference $identity): HandoffBinding
     {
-        return new HandoffBinding($identity, $identity === null ? null : ExampleLinks::linkId($identity));
+        return $this->boundUnder($identity, $this->connection->trust_version);
+    }
+
+    /**
+     * What a code that resolved to the identity, through its link, was bound
+     * to, issued under the trust version given, or naming none.
+     *
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  ?int  $trustVersion
+     * @return \SineMacula\Laravel\Sso\Handoffs\HandoffBinding
+     */
+    private function boundUnder(?IdentityReference $identity, ?int $trustVersion): HandoffBinding
+    {
+        return new HandoffBinding($identity, $identity === null ? null : ExampleLinks::linkId($identity), trustVersion: $trustVersion);
     }
 }

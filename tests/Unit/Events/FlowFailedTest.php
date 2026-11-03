@@ -89,7 +89,7 @@ final class FlowFailedTest extends TestCase
             ip: '203.0.113.7',
             userAgent: 'Example/1.0',
             connectionId: 'conn_1',
-            tenantId: 'tenant_1',
+            connectionTenantId: 'tenant_1',
             protocol: 'oidc',
             application: 'web',
             purpose: 'sign_in',

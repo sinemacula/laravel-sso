@@ -11,6 +11,8 @@ tenants.
 
 Resolve the services from the container for each request:
 
+<!-- snippet: tests/Integration/Examples/ManagingConnections/admin/services.php#connections-services -->
+
 ```php
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
@@ -35,8 +37,11 @@ limit counts from that fetch (see [SAML metadata](saml-metadata.md#importing-met
 A connection is created disabled, with its display name, its settings, its attribute mapping and, optionally, a preset
 that fills in what is the same for every organisation using the provider:
 
+<!-- snippet: tests/Integration/Examples/ManagingConnections/admin/create.php#connections-create -->
+
 ```php
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
+use SineMacula\Laravel\Sso\Connections\SettingViolation;
 
 $result = $connections->create(
     tenantId: $tenant->id,
@@ -51,7 +56,9 @@ $result = $connections->create(
 );
 
 if ($result->isInvalid()) {
-    return back()->withErrors(collect($result->violations)->mapWithKeys(fn ($violation) => [$violation->setting => $violation->code->value]));
+    $errors = collect($result->violations)->mapWithKeys(fn (SettingViolation $violation): array => [$violation->setting => $violation->code->value]);
+
+    return back()->withErrors($errors->all());
 }
 ```
 
@@ -65,6 +72,8 @@ The acting identity is optional; when given, it is carried on the event the chan
 
 `update()` takes the connection's id and the changes, under three keys:
 
+<!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-update -->
+
 ```php
 $result = $connections->update($tenant->id, $connectionId, [
     'display_name'      => 'Acme SSO',
@@ -77,7 +86,8 @@ $result = $connections->update($tenant->id, $connectionId, [
   default).
 - A secret among the settings (an OIDC `client_secret`) given as a string sets it, and as `null` clears it. A secret
   you leave out is kept as it is stored, so an edit form never needs to send the secret back.
-- `attribute_mapping`: a target given replaces the stored one, and `null` removes it.
+- `attribute_mapping`: a target given replaces the stored one, and `null` removes it. A custom target, such as
+  `department` here, is one your application declares (see [Attribute mapping](#attribute-mapping)).
 - `display_name`: the new name.
 
 The whole connection, as it would be stored, is validated again. A change to `tenant_id` or `protocol` is refused as
@@ -121,6 +131,8 @@ in `changedSettings`.
 
 ## Reading and listing connections
 
+<!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-read -->
+
 ```php
 $summary = $connections->get($tenant->id, $connectionId); // null when the tenant has no such connection
 $all     = $connections->list($tenant->id);               // oldest first
@@ -149,6 +161,8 @@ and `createdAt` and `updatedAt` in UTC. A secret is never returned: `secrets` sa
 
 ## Enabling a connection
 
+<!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-enable -->
+
 ```php
 $result = $connections->enable($tenant->id, $connectionId, $actor);
 ```
@@ -158,6 +172,8 @@ it. Enabling an enabled connection succeeds as `unchanged`. A connection may be 
 complete; it is used only once they are.
 
 ## Disabling a connection
+
+<!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-disable -->
 
 ```php
 $result = $lifecycle->disable($tenant->id, $connectionId, $actor);
@@ -170,6 +186,8 @@ domains, links and keys are kept, so enabling it again restores it. Disabling a 
 `unchanged`, and writes, revokes and reports nothing.
 
 ## Deleting a connection
+
+<!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-delete -->
 
 ```php
 $result = $lifecycle->delete($tenant->id, $connectionId, $actor);
@@ -189,13 +207,15 @@ When an organisation moves to another identity provider, or the provider changes
 settings and say what happens to every link of the connection: for each link you keep, what its subject is under the
 new meaning, and which links to remove:
 
+<!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-migrate -->
+
 ```php
-$result = $migration->migrate($tenant->id, $connectionId, ['settings' => [
-    'issuer' => 'https://login.acme.example',
-]], [
-    $linkId      => ['00u1a2b3c4'],                                 // the new subject
-    $otherLinkId => ['E-1042', null, 'https://login.acme.example'], // the subject, no NameID format, the new issuer
-], [$leaverLinkId, $formerContractorLinkId], $actor);               // the links to remove
+$issuer = 'https://login.acme.example';
+
+$result = $migration->migrate($tenant->id, $connectionId, ['settings' => ['issuer' => $issuer]], [
+    $linkId      => ['00u1a2b3c4', null, $issuer], // the new subject, no NameID format, the new issuer
+    $otherLinkId => ['E-1042', null, $issuer],
+], [$leaverLinkId, $formerContractorLinkId], $actor); // the links to remove
 ```
 
 Each relink is a list: the subject, then optionally the SAML NameID format and the issuer. A format left out or `null`
@@ -355,8 +375,14 @@ The mapping says which SAML attribute or OIDC claim each attribute of a sign-in'
 | `groups`       | `groups`      | `urn:oid:1.3.6.1.4.1.5923.1.5.1.1`  |
 
 A preset's mapping replaces the defaults it names, and what you give replaces both. Besides the five standard targets,
-you may add custom targets: lower-case names of a letter, then up to 63 letters, digits or underscores, at most
-`sso.mapping.max_custom_attributes` of them (20 by default). A source is at most 1024 bytes.
+a mapping may name the custom targets your application declares in `sso.mapping.custom_attributes`, and no others. The
+list is empty by default, so a connection maps the standard targets alone until you declare the keys your code reads,
+in `config/sso.php`: for example `'custom_attributes' => ['department', 'employee_number']`. Each key is a lower-case
+letter, then up to 63 lower-case letters, digits or underscores, never a standard target or one of the reserved names
+below, declared once, and at most 100 of them. Your application declares them, not a tenant administrator, because only
+your code knows which keys it reads: a mapping naming any other custom target is refused as `not_allowed` at
+`attribute_mapping.<target>`, and a stored mapping naming a key you have since stopped declaring maps nothing to it. A
+source is at most 1024 bytes.
 
 A mapping can never target one of the result's own fields: `issuer`, `subject`, `name_id`, `name_id_format`,
 `connection`, `connection_id`, `tenant`, `tenant_id`, `protocol`, `application`, `purpose`, `authentication_context`,
@@ -374,10 +400,11 @@ Mapped values are profile data, never what selects the identity a sign-in belong
 - `groups` is always a list, passed on as the provider sent it, for your application or `laravel-authorization` to
   interpret.
 
-| Key                             | Default | Range       | Env                                 |
-|---------------------------------|---------|-------------|-------------------------------------|
-| `mapping.max_value_length`      | `1024`  | 64 to 65535 | `SSO_MAPPING_MAX_VALUE_LENGTH`      |
-| `mapping.max_values`            | `100`   | 1 to 10000  | `SSO_MAPPING_MAX_VALUES`            |
-| `mapping.max_custom_attributes` | `20`    | 0 to 100    | `SSO_MAPPING_MAX_CUSTOM_ATTRIBUTES` |
+| Key                         | Default | Range                                  | Env                            |
+|-----------------------------|---------|----------------------------------------|--------------------------------|
+| `mapping.max_value_length`  | `1024`  | 64 to 65535                            | `SSO_MAPPING_MAX_VALUE_LENGTH` |
+| `mapping.max_values`        | `100`   | 1 to 10000                             | `SSO_MAPPING_MAX_VALUES`       |
+| `mapping.custom_attributes` | `[]`    | at most 100 distinct, well-formed keys |                                |
 
-A malformed cap fails closed, and the boot check and `php artisan sso:check` report it under `[mapping]`.
+A malformed cap or declaration fails closed, and the boot check and `php artisan sso:check` report it under
+`[mapping]`.

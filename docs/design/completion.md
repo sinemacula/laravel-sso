@@ -43,7 +43,7 @@ consuming a request is in `authorization-requests.md`; the response values are i
 | `validation`         | `ValidateResponse`  | the claims and the result; `connection_unavailable`; the driver's reason |
 | `replay_recording`   | `RecordReplay`      | the state unchanged; `replayed`, `assertion_expired`                     |
 | `link_resolution`    | `ResolveLink`       | the identity the linker resolves, if any                                 |
-| `enforcement`        | `CheckEnforcement`  | the policy's version, if any; `enforcement_unsatisfied`                  |
+| `enforcement`        | `CheckEnforcement`  | the state unchanged; `enforcement_unsatisfied`                           |
 | `purpose_rules`      | `CheckPurpose`      | the state unchanged; the purpose's refusal (`Completion\Rules`)          |
 | `domain_reservation` | `DomainReservation` | the reservation's candidate, if eligible (`linking.md`)                  |
 | `provisioning`       | `Provisioning`      | the provisioning boundary for a genuinely unlinked `sign_in`; else on    |
@@ -83,9 +83,10 @@ Each stage is in `Completion\Stages`.
   of the locked transaction, carried on the state (`CompletionState::$enforcementPolicy`), so nothing is read again;
   with another contract bound, that contract is asked now, and must itself serialise against its rule's changes.
   `EnforcementPolicy::isSatisfiedBy()` is the whole rule: a policy that requires nothing is satisfied by every
-  connection, one that requires sign-in only by its connections. A satisfied policy's version, when it has one, goes on
-  for the handoff (SSO-4.6, SSO-9.10). No exemption is consulted at completion: an exemption admits a session, and the
-  redemption rechecks enforcement against the state then.
+  connection, one that requires sign-in only by its connections. A satisfied policy leaves the state unchanged: the
+  session keeps the version its redemption judges under its own locks (SSO-4.6, SSO-9.10), so the completion's is kept
+  nowhere. No exemption is consulted at completion: an exemption admits a session, and the redemption rechecks
+  enforcement against the state then.
 - `CheckPurpose` runs the rules of the flow's purpose (`Completion\Rules`): a suspended link ends a `sign_in` with
   `link_suspended`, a subject another flow's reservation holds with `link_reserved`; a `link` needs an eligible identity
   and a subject no other identity holds; a `reauthenticate` needs a result resolving to the identity it was started for.
@@ -98,9 +99,10 @@ Each stage is in `Completion\Stages`.
   `application_not_allowed`. A result carrying the provider's session deadline asks `Contracts\ProviderSessionDeadline`;
   `limits_session` makes the deadline the session's latest end (SSO-6.10); a result with no deadline never asks. It then
   issues through `Contracts\HandoffIssuer` a `Handoffs\HandoffGrant` of the result, the request's S256 challenge, an
-  expiry of the application's `handoff_ttl_seconds` from now, the linked identity, the request's identity and session,
-  the enforcement version, the session's latest end, the link and the reservation. A code bound to a reservation expires
-  exactly when it does, and its reference and stored expiry are written to the reservation in the same transaction.
+  expiry of the application's `handoff_ttl_seconds` from now, the connection's `trust_version` as its locked row holds
+  it (SSO-2.13), the linked identity, the request's identity and session, the session's latest end, the link and the
+  reservation. A code bound to a reservation expires exactly when it does,
+  and its reference and stored expiry are written to the reservation in the same transaction.
 - A stage run before the steps it needs throws a `LogicException` naming what it needs: the pipeline's mistake.
 
 ### The verified result
@@ -249,7 +251,7 @@ no target is dispatched at once.
 
 - `tests/Feature/Completion/CompletionServiceTest.php`: every outcome and its exact result, the method and protocol of
   each endpoint, an unknown connection, a disabled connection, another connection's request, the expiry boundaries, a
-  replay, unlinked handoffs off and on, enforcement satisfied, unsatisfied and its version, the policy turned off, the
+  replay, unlinked handoffs off and on, enforcement satisfied, unsatisfied and with no version, the policy turned off, the
   deadline limiting, ignored and absent, the grant field by field, the limits, a database error.
 - `tests/Feature/Completion/CompletionEventSequenceTest.php`: each sequence and its whole context, and no secret.
 - `tests/Feature/Completion/ResultBuilderTest.php`: the result, the mapping and its caps, every `emailDomainVerified`

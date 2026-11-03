@@ -110,6 +110,7 @@ final class AdministrationEventSequenceTest extends TestCase
 
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.oidc', true);
+        config()->set('sso.mapping.custom_attributes', ['department']);
 
         $this->createConnectionTables();
         $this->createFlowTables();
@@ -565,7 +566,7 @@ final class AdministrationEventSequenceTest extends TestCase
         $context = $event->context();
 
         self::assertSame($connectionId, $context->connectionId);
-        self::assertSame(self::TENANT, $context->tenantId);
+        self::assertSame(self::TENANT, $context->connectionTenantId);
         self::assertSame($protocol, $context->protocol);
         self::assertSame('App\Models\User', $context->actingIdentityMorphClass);
         self::assertSame('42', $context->actingIdentityId);

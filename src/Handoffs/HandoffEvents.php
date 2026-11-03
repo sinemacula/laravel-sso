@@ -137,7 +137,7 @@ final readonly class HandoffEvents
 
         return $this->contexts->make(
             connectionId: $code?->connection_id,
-            tenantId: $connection?->tenant_id,
+            connectionTenantId: $connection?->tenant_id,
             protocol: $connection?->protocol,
             application: $code?->application,
             purpose: $purpose->value,

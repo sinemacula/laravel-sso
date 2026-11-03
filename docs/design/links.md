@@ -113,7 +113,8 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
     4. one transaction on the storage connection: the link's connection row is locked, then the link is read again
        locked (gone, reassigned to another identity or orphaned is `link_not_found`), deleted through the model,
        `Contracts\SessionRevocation::revoke(RevocationScope::identityInConnection($tenantId, $connectionId,
-       $identity))` is called inside the transaction (SSO-4.5), and `LinkRemoved` is reported after commit.
+       $identity, $linkId))` is called inside the transaction with the removed link's id (SSO-4.5), and `LinkRemoved`
+       is reported after commit.
 
     Removing the identity's last link is allowed. A revocation that throws rolls the delete back, reports nothing and
     propagates; an adapter that writes through the same Laravel connection commits or rolls back with the removal

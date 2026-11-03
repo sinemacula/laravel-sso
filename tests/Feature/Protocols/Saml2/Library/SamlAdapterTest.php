@@ -202,6 +202,29 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
+     * A response signature must verify even when the assertion's own trusted
+     * signature is the one relied on (SAML 2.0 Profiles §4.1.4.3): an envelope
+     * signed by a key the policy does not trust, or changed after a trusted key
+     * signed it, is refused, though the assertion inside verifies.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    public function testAnEnvelopeSignatureBesideATrustedAssertionSignatureMustVerify(): void
+    {
+        $assertionSigned = self::document(self::response()->signed(false, true)->toXml());
+        $bothSigned      = self::document(self::response()->signed(true, true)->toXml());
+
+        self::attacker()->signer()->sign(self::rootOf($assertionSigned));
+        self::rootOf($bothSigned)->setAttribute('Destination', 'https://elsewhere.example.test/acs');
+
+        self::assertTrue($this->read(self::response()->signed(false, true)->encoded())->isRead());
+        self::assertSame(['signature_invalid', 'signature'], $this->refusal(base64_encode((string) $assertionSigned->saveXML())));
+        self::assertSame(['signature_invalid', 'signature'], $this->refusal(base64_encode((string) $bothSigned->saveXML())));
+    }
+
+    /**
      * A response with no signature covering its assertion is refused, and one
      * signed by a key the policy does not trust, its certificate in the
      * message, is refused too.
@@ -553,6 +576,33 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
+     * A decrypted assertion's signature is verified exactly as a plain one's:
+     * inside an unsigned response, an encrypted assertion signed by a key the
+     * policy does not trust (its certificate carried in the assertion), one
+     * changed after the trusted key signed it, and an unsigned one are each
+     * refused.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    public function testADecryptedAssertionsSignatureIsHeldAsAPlainOnes(): void
+    {
+        $certificate = self::spKeys()[1];
+        $options     = self::responseOptions();
+        $assertion   = self::document((new ResponseWriter)->assertion($options));
+
+        self::idp()->signer()->sign(self::rootOf($assertion));
+
+        $tampered = str_replace('>alice<', '>mallory<', (string) $assertion->saveXML(self::rootOf($assertion)));
+
+        self::assertSame(['signature_invalid', 'signature'], $this->refusal(self::response()->signedBy(self::attacker()->signer())->encryptedFor($certificate)->encoded()));
+        self::assertSame(['signature_invalid', 'signature'], $this->refusal(self::unsignedAround($tampered, $options)));
+        self::assertSame(['signature_invalid', 'unsigned'], $this->refusal(self::response()->signed(false, false)->encryptedFor($certificate)->encoded()));
+        self::assertTrue($this->read(self::unsignedAround((string) $assertion->saveXML(self::rootOf($assertion)), $options))->isRead());
+    }
+
+    /**
      * Rows of `[response, policy]`: an encrypted response and the policy it is
      * read under, each failing to decrypt.
      *
@@ -841,6 +891,47 @@ final class SamlAdapterTest extends TestCase
         self::idp()->signer()->sign($root);
 
         return base64_encode((string) $document->saveXML($root));
+    }
+
+    /**
+     * A response holding the plaintext encrypted for the service provider,
+     * itself unsigned, encoded.
+     *
+     * @param  string  $plaintext
+     * @param  ResponseOptions  $options
+     * @return string
+     */
+    private static function unsignedAround(string $plaintext, array $options): string
+    {
+        $encrypted = (new AssertionEncryptor)->encrypt($plaintext, self::spKeys()[1]);
+
+        return base64_encode((new ResponseWriter)->response($options, $encrypted));
+    }
+
+    /**
+     * The XML parsed into a document.
+     *
+     * @param  string  $xml
+     * @return \DOMDocument
+     */
+    private static function document(string $xml): \DOMDocument
+    {
+        $document = new \DOMDocument;
+
+        self::assertTrue($document->loadXML($xml));
+
+        return $document;
+    }
+
+    /**
+     * The document's root.
+     *
+     * @param  \DOMDocument  $document
+     * @return \DOMElement
+     */
+    private static function rootOf(\DOMDocument $document): \DOMElement
+    {
+        return $document->documentElement ?? self::fail('The document has no root.');
     }
 
     /**

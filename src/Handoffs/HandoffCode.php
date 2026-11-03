@@ -20,7 +20,7 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
  * `__toString()`, and it refuses to be serialised or unserialised, so it never
  * reaches a log, an exception, a queue or an event (SSO-9.8). It is a type of
  * its own, never accepted as a verifier or a request reference, nor as a token
- * (SSO-9.2, AUTH-5.7).
+ * (SSO-9.2).
  *
  * @api
  *

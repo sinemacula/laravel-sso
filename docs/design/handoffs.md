@@ -25,8 +25,15 @@ completion is in `completion.md`.
   `connection_id` and `request_reference`, from the result; `handoff_challenge`, the client's S256 challenge;
   `identity_type` and `identity_id` (`link`, `reauthenticate`) and `session_id` (`reauthenticate`), from the grant;
   `linked_identity_type` and `linked_identity_id`, what the result's link resolved to at completion; `result`, the
-  JSON of `VerifiedResult::toArray()` encrypted through `Contracts\SecretEncrypter`; `enforcement_version` and
-  `session_not_after` (SSO-9.10); `expires_at`.
+  JSON of `VerifiedResult::toArray()` encrypted through `Contracts\SecretEncrypter`; `trust_version`, the grant's
+  `trustVersion`; `session_not_after` (SSO-9.10); `expires_at`. No enforcement version is kept: the redemption answers
+  the version it judges under its own locks.
+- The grant's `trustVersion` is the connection's `trust_version` as the completion's lock holds its row, read by
+  `IssueHandoff` in T2 (or in T3, after the provisioning boundary, from the row T3 locked again). Every store keeps it
+  with the code and answers it back in the `HandoffBinding` it hands the recheck, which refuses a code whose version is
+  not the connection's under the redemption's lock, or a binding naming none (SSO-2.13). `Contracts\HandoffIssuer`
+  requires it of an application's store, with the grant's `sessionNotAfter`, which the store's redeemer caps the
+  session at and passes to `Sessions\Provenance::capture()`.
 - Times are kept to the whole second, so a code expires at most a second before its grant says; the returned
   `IssuedHandoff` carries the expiry as stored. The code is revealed once, on the completion's redirect, and is never
   logged or put in an event.
@@ -54,8 +61,9 @@ order, and the first that refuses ends the redemption:
    rule names; otherwise the connection alone (gone meanwhile: `connection_unavailable`). Only then is the code row read
    again, locked: gone, or no longer naming the connection and the application its plain read did, it is
    `handoff_unknown`, and no other lock is taken out of order.
-5. On the standalone path, any code but a `link` is a `LogicException`, before the single-use store records it or it is
-   consumed. A code whose `voided_at` is set is `handoff_unknown`.
+5. On the standalone path, asking for any purpose but a `link` is a `LogicException`, before the single-use store
+   records the code or it is consumed; a code of another purpose asked for as a `link` goes on, and step 9 refuses it.
+   A code whose `voided_at` is set is `handoff_unknown`.
 6. A code whose `redeemed_at` is set, or whose digest the single-use store has seen, is `replayed`.
 7. The code is consumed: its digest is recorded in the single-use store until `max(expires_at, now + 1s)` and its
    `redeemed_at` set, in the transaction.
@@ -85,15 +93,19 @@ order, and the first that refuses ends the redemption:
 - A `link` redemption reads, by a locking read under the identity's guard, whether the identity has ever held an active
   link by a verified domain (`domain_linked_at`, stamped at activation and never cleared), and asks
   `Contracts\LinkConfirmation` whenever it has, even when none remains.
-- The standalone path refuses any code but a `link` with a `LogicException` as soon as the code is locked, before the
-  single-use store records it and before it is consumed, so a store that is not transactional keeps nothing either.
+- The standalone path refuses any purpose asked for but a `link` with a `LogicException` as soon as the code is locked,
+  before the single-use store records it and before it is consumed, so a store that is not transactional keeps nothing
+  either. The purpose asked for decides, not the code's: a `sign_in` or `reauthenticate` code posted to a `link`
+  endpoint is the client's error, consumed and refused as `purpose_mismatch`, never a server error.
 - The lock order is `flows.md`'s: for a code bound to a reservation and a `link` code, the identity's guard, then the
   tenant's enforcement row, then connection rows in id order, then the code's. A change that voids a connection's codes
-  (BL-37) locks the connection first, so it waits for a redemption that holds it, or the redemption finds the code
-  voided. A change to enforcement locks the rule's row first, so it waits for a redemption that holds it, and its
-  revocation, inside its own transaction, then sees the session the redeemer wrote in its transaction; or the redemption
-  waits for the change and refuses under the new rule. No session written in the redeemer's transaction survives a rule
-  that does not allow it.
+  (BL-37) locks the connection first and raises its trust version under that lock, so it waits for a redemption that
+  holds it, or the redemption finds the code voided and the version raised. Voiding the package's own codes is defence
+  in depth: the raised version alone refuses a code of any store, an application's included, which the package never
+  voids. A change that only adds a key or a certificate raises no version and refuses nothing. A change to enforcement
+  locks the rule's row first, so it waits for a redemption that holds it, and its revocation, inside its own
+  transaction, then sees the session the redeemer wrote in its transaction; or the redemption waits for the change and
+  refuses under the new rule. No session written in the redeemer's transaction survives a rule that does not allow it.
 - On PostgreSQL under `REPEATABLE READ`, a redemption that waited on a change of the rule may get a serialisation
   failure (SQLSTATE `40001`) instead of the new rule. It propagates, as a server error; the package never retries a
   part of a caller's transaction, and a caller that redeems inside its own transaction retries the whole of it.
@@ -121,8 +133,9 @@ order, and the first that refuses ends the redemption:
 ### The recheck
 
 `Handoffs\HandoffRecheck` (`@api`, resolved per request) is what every redemption checks again, for the package's own
-redemption and for an adapter that redeems codes of its own (under `laravel-iam`, `laravel-authentication`'s handoff
-codes, AUTH-3.10):
+redemption and for an application that issues and redeems codes of its own. Under `laravel-iam` there are none: the
+package issues, stores and redeems every handoff code (the reconciliation of AUTH-3.10 recorded as SSO-9.2/f), and the
+adapter redeems through `HandoffRedemption` (`docs/guides/integrating-with-laravel-iam.md`):
 
 - `lock(string $tenantId, string $connectionId, string $application): Handoffs\RecheckLock` comes first, before the
   redeemer locks its own code. Under `DatabaseEnforcement` with the `enforcement` feature on it calls
@@ -133,13 +146,14 @@ codes, AUTH-3.10):
   (`@api`, made only by `lock()`) holds the tenant, connection and application it was taken for, the connection's
   locked row (`null` when gone or of another tenant) and the locked enforcement; it is good only for the transaction it
   was taken in.
-- `recheck(VerifiedResult $result, ?IdentityReference $linkedIdentity, RecheckLock $lock):
+- `recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ?IdentityReference $caller = null):
   Handoffs\Enums\RecheckOutcome` takes the lock (one taken for another tenant, connection or application than the
   result's is a `LogicException`), so the check is never reached without the locks, and answers, in order, the first
   that refuses:
   1. `connection_unavailable`: the connection's locked row is gone, of another tenant, or not usable
-     (`ProtocolManager::isUsable()`), or the inheritance contract, asked again, no longer names the enforcing tenant
-     whose rule is locked (another tenant's rule is never locked out of order);
+     (`ProtocolManager::isUsable()`); its `trust_version` is not the binding's `trustVersion`, or the binding names
+     none; or the inheritance contract, asked again, no longer names the enforcing tenant whose rule is locked
+     (another tenant's rule is never locked out of order);
   2. `enforcement_unsatisfied`: the enforcement of the connection's tenant on the result's application is not satisfied
      by the connection: judged from the locked rows under `DatabaseEnforcement`, asked of the bound contract now
      otherwise;
@@ -188,14 +202,19 @@ nothing (SSO-10.5).
 
 ## Failure / Edge Cases
 
-- `redeem()` with no transaction open on the storage connection takes only a `link` code, which creates no session.
-  Every `sign_in` code, linked, reserved or unlinked, and every `reauthenticate` code is a `LogicException` there,
-  leaving it unconsumed, since each must commit with the session the caller writes. Unlinked handoffs remain available
-  through `admit()`.
+- `redeem()` with no transaction open on the storage connection redeems only a `link`, which creates no session.
+  Asking it for a `sign_in`, linked, reserved or unlinked, or a `reauthenticate` is a `LogicException` there, leaving
+  the code unconsumed, since each must commit with the session the caller writes. Unlinked handoffs remain available
+  through `admit()`. A `sign_in` or `reauthenticate` code presented to it as a `link` is `purpose_mismatch`, and spent.
 - A replay, or a code the single-use store has seen, is `replayed`, and is written nothing more.
 - A code at its expiry, or after, is `handoff_expired` and consumed; one a second before it is redeemed.
 - A connection disabled or left incomplete since completion is `connection_unavailable` and consumes the code; one
   deleted is `connection_unavailable` at step 4 and consumes nothing.
+- A trust change since completion (the certificates replaced, one distrusted, an anchor changed, a trust setting
+  changed, or a disable and a later enable, each raising the trust version once) voids the package's codes, which are
+  `handoff_unknown`; a code of an application's store is `connection_unavailable` at the recheck, by its version. A
+  version raised with a package code left unvoided is `connection_unavailable` all the same. A certificate or key
+  added alone changes nothing.
 - Enforcement turned on since completion by other connections is `enforcement_unsatisfied`. Turned on while the
   redemption runs, it either waits for the redemption's transaction, whose session its revocation then removes, or
   is seen by it, and the redemption is `enforcement_unsatisfied`; a serialisation failure on PostgreSQL propagates.
@@ -218,10 +237,19 @@ nothing (SSO-10.5).
 ## Authoritative Tests
 
 - `tests/Unit/Handoffs/RedemptionResultTest.php`, `tests/Unit/Handoffs/RecheckOutcomeTest.php`.
-- `tests/Feature/Handoffs/DatabaseHandoffStoreTest.php`: the stored row, digest only, the result encrypted.
+- `tests/Feature/Handoffs/DatabaseHandoffStoreTest.php`: the stored row, digest only, the result encrypted, the trust
+  version kept.
+- `tests/Feature/Handoffs/HandoffRecheckTest.php::testABindingOfAnotherTrustVersionIsConnectionUnavailable`;
+  `tests/Integration/Handoffs/HandoffTrustVersionTest.php` (each trust change voids and refuses the package's code, a
+  raised version alone refuses it, an added certificate refuses nothing);
+  `tests/Integration/Examples/RedeemingAHandoff/OwnHandoffCodesExampleTest.php` (the same for an application's store,
+  a binding naming no version, a deadline limiting and ignored);
+  `tests/Integration/Handoffs/TrustChangeRedemptionRaceTest.php` (the race, ordered by signals, on PostgreSQL and
+  MySQL).
 - `tests/Feature/Handoffs/HandoffRedemptionTest.php`: each step's reason in order, consumption on a mismatch, the
   expiry boundaries, voided and seen codes, link, enforcement and connection changes, the completed-sign-in flag,
-  verifier lengths, distinct kinds, the limit, corrupt results and database errors.
+  verifier lengths, distinct kinds, the limit, corrupt results and database errors, the standalone path's refusal of a
+  `sign_in` or `reauthenticate` asked for, and its `purpose_mismatch` for such a code asked for as a `link`.
 - `tests/Feature/Handoffs/HandoffRecheckTest.php`: each outcome and its order, no transaction, another result's lock,
   the lock order (enforcement, then connections in id order) with the feature on and nothing of enforcement with it
   off or another contract bound, an enforcing tenant that moved, the acknowledgement.

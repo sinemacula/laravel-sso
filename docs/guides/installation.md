@@ -52,14 +52,14 @@ php artisan sso:check
 ```
 
 The package has work to run on a schedule: pruning what it no longer needs, checking verified domains again, reporting
-keys nearing expiry, and keeping what connections fetch from their identity providers fresh. Register it in one call,
-and run a queue worker for the refreshes (see [Operations](operations.md)):
+keys nearing expiry, and keeping what connections fetch from their identity providers fresh. Register it in one call
+on the application builder in `bootstrap/app.php`, importing `Illuminate\Console\Scheduling\Schedule` and
+`SineMacula\Laravel\Sso\Operations\OperationsSchedule`, and run a queue worker for the refreshes (see
+[Operations](operations.md)):
 
+<!-- snippet: tests/Integration/Examples/Installation/bootstrap/app.php#installation-schedule -->
 ```php
 // bootstrap/app.php
-use Illuminate\Console\Scheduling\Schedule;
-use SineMacula\Laravel\Sso\Operations\OperationsSchedule;
-
 ->withSchedule(function (Schedule $schedule): void {
     app(OperationsSchedule::class)->register($schedule);
 })

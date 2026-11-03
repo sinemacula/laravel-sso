@@ -14,9 +14,9 @@ use SineMacula\Laravel\Sso\Applications\Enums\ExternalSignIn;
  * it; anything but `allowed` refuses with `application_not_allowed`.
  *
  * The default, `Applications\ConfiguredApplicationPolicy`, answers the
- * application's `external_sign_in` setting, off unless set. Under `laravel-iam`
- * it is bound to `laravel-authentication`'s per-application method list
- * (AUTH-3.7). An implementation answers from current state on each call and
+ * application's `external_sign_in` setting, off unless set. An adapter may bind
+ * it to the per-application sign-in methods of the application's
+ * authentication. An implementation answers from current state on each call and
  * keeps nothing of one call for the next (SSO-11.2); an error it cannot answer
  * through propagates, and it never answers `allowed` when it cannot tell.
  *

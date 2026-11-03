@@ -21,8 +21,11 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
  *   identity.
  * - `connection()`: every session established through a connection that was
  *   disabled or deleted.
- * - `identityInConnection()`: the identity's sessions established through a
- *   connection whose link to it was removed.
+ * - `identityInConnection()`: the identity's sessions established through the
+ *   link that was removed, by itself or by a subject migration of its
+ *   connection; it names the connection and the link. An adapter whose sessions
+ *   do not record their link revokes the identity's sessions through the
+ *   connection instead, which is broader and never narrower.
  * - `identityLink()`: the identity's sessions established through one link by a
  *   verified domain, suspended because the identity came to hold a principal
  *   outside the connection's tenant (`Linking\ScopeWidening`). An adapter whose
@@ -70,7 +73,7 @@ final readonly class RevocationScope
         /** The enforcement now in force, for the tenant scope only. */
         public ?EnforcementPolicy $policy = null,
 
-        /** The link the sessions were established through, for the link scope only. */
+        /** The link the sessions were established through, for the identity scopes only. */
         public ?string $linkId = null,
     ) {}
 
@@ -107,21 +110,22 @@ final readonly class RevocationScope
     }
 
     /**
-     * The identity's sessions established through the connection, whose link to
-     * it was removed.
+     * The identity's sessions established through the connection's link, which
+     * was removed.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  string  $linkId
      * @return self
      *
      * @throws \InvalidArgumentException
      */
-    public static function identityInConnection(string $tenantId, string $connectionId, IdentityReference $identity): self
+    public static function identityInConnection(string $tenantId, string $connectionId, IdentityReference $identity, string $linkId): self
     {
-        self::assertIds($tenantId, $connectionId);
+        self::assertIds($tenantId, $connectionId, $linkId);
 
-        return new self(RevocationScopeKind::IDENTITY_CONNECTION, RevocationReason::LINK_REMOVED, $tenantId, $connectionId, $identity);
+        return new self(RevocationScopeKind::IDENTITY_CONNECTION, RevocationReason::LINK_REMOVED, $tenantId, $connectionId, $identity, linkId: $linkId);
     }
 
     /**
@@ -138,28 +142,29 @@ final readonly class RevocationScope
      */
     public static function identityLink(string $tenantId, string $connectionId, IdentityReference $identity, string $linkId): self
     {
-        self::assertIds($tenantId, $connectionId);
-
-        if ($linkId === '') {
-            throw new \InvalidArgumentException('A revocation scope of a link names the link.');
-        }
+        self::assertIds($tenantId, $connectionId, $linkId);
 
         return new self(RevocationScopeKind::IDENTITY_LINK, RevocationReason::SCOPE_WIDENED, $tenantId, $connectionId, $identity, linkId: $linkId);
     }
 
     /**
-     * Refuse an empty tenant or connection id.
+     * Refuse an empty tenant, connection or, for an identity scope, link id.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
+     * @param  ?string  $linkId
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    private static function assertIds(string $tenantId, string $connectionId): void
+    private static function assertIds(string $tenantId, string $connectionId, ?string $linkId = null): void
     {
         if ($tenantId === '' || $connectionId === '') {
             throw new \InvalidArgumentException('A revocation scope names its tenant and connection.');
+        }
+
+        if ($linkId === '') {
+            throw new \InvalidArgumentException('A revocation scope of a link names the link.');
         }
     }
 }

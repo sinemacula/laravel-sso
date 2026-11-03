@@ -12,18 +12,19 @@ use Illuminate\Contracts\Support\Arrayable;
  * its tenant and protocol, the application and the purpose, the authorisation
  * request's public reference, the identity and the acting identity, the client
  * the request came from, and, where they apply, the principal, the active
- * tenant, the session and the sign-in method, under the names
- * `laravel-authentication`'s events give them (AUTH-9.4). Every package event
- * carries one, so a single listener on `Contracts\SsoEvent` can attribute them
- * all the same way.
+ * tenant, the session and the sign-in method, under the names the suite's
+ * shared vocabulary gives them (SSO-9.6). Every package event carries one, so a
+ * single listener on `Contracts\SsoEvent` can attribute them all the same way.
  *
  * It holds strings only, fixed when it is built, so it survives a queue
  * unchanged and `toArray()` is the record an audit sink keeps. A part the
  * event's flow did not establish, or that does not apply to it, is `null`.
- * `tenantId` is the tenant of the connection the event concerns;
- * `activeTenantId` is the tenant a session is active in, where an event
- * concerns a session. The public reference is the only flow identifier it ever
- * holds (SSO-9.8).
+ * `tenantId` is the active tenant, the tenant the person is acting in, under
+ * the suite's meaning of `tenant_id`; `connectionTenantId` is the tenant that
+ * owns the connection (or the enforcement rule) the event concerns. The two
+ * differ when a session acts in a child tenant under a parent's rule, and most
+ * events carry only the second. The public reference is the only flow
+ * identifier it ever holds (SSO-9.8).
  *
  * It is built only by the package's event projection, which admits these fields
  * and nothing else: never a secret, assertion, provider token, verifier,
@@ -46,7 +47,7 @@ final readonly class EventContext implements Arrayable
      * @param  ?string  $ip
      * @param  ?string  $userAgent
      * @param  ?string  $connectionId
-     * @param  ?string  $tenantId
+     * @param  ?string  $connectionTenantId
      * @param  ?string  $protocol
      * @param  ?string  $application
      * @param  ?string  $purpose
@@ -57,7 +58,7 @@ final readonly class EventContext implements Arrayable
      * @param  ?string  $actingIdentityId
      * @param  ?string  $principalMorphClass
      * @param  ?string  $principalId
-     * @param  ?string  $activeTenantId
+     * @param  ?string  $tenantId
      * @param  ?string  $sessionId
      * @param  ?string  $method
      */
@@ -75,8 +76,8 @@ final readonly class EventContext implements Arrayable
         /** Id of the connection the event concerns. */
         public ?string $connectionId = null,
 
-        /** Opaque id of the tenant the connection belongs to. */
-        public ?string $tenantId = null,
+        /** Opaque id of the tenant that owns the connection, or the enforcement rule, the event concerns. */
+        public ?string $connectionTenantId = null,
 
         /** Protocol of the connection (`saml2`, `oidc` or a registered driver's). */
         public ?string $protocol = null,
@@ -90,7 +91,7 @@ final readonly class EventContext implements Arrayable
         /** Public reference of the authorisation request, the only flow identifier an event carries. */
         public ?string $requestReference = null,
 
-        /** Type of the identity reference (under `laravel-iam`, the identity's morph class). */
+        /** Type of the identity reference (for an Eloquent identity, its morph class). */
         public ?string $identityMorphClass = null,
 
         /** Id of the identity reference. */
@@ -108,8 +109,8 @@ final readonly class EventContext implements Arrayable
         /** Id of the principal, where a session's principal applies. */
         public ?string $principalId = null,
 
-        /** Opaque id of the tenant a session is active in, where one applies. */
-        public ?string $activeTenantId = null,
+        /** Opaque id of the active tenant, the tenant the person is acting in, where one applies. */
+        public ?string $tenantId = null,
 
         /** Id of the session, where one applies. */
         public ?string $sessionId = null,
@@ -132,7 +133,7 @@ final readonly class EventContext implements Arrayable
             'ip'                          => $this->ip,
             'user_agent'                  => $this->userAgent,
             'connection_id'               => $this->connectionId,
-            'tenant_id'                   => $this->tenantId,
+            'connection_tenant_id'        => $this->connectionTenantId,
             'protocol'                    => $this->protocol,
             'application'                 => $this->application,
             'purpose'                     => $this->purpose,
@@ -143,7 +144,7 @@ final readonly class EventContext implements Arrayable
             'acting_identity_id'          => $this->actingIdentityId,
             'principal_morph_class'       => $this->principalMorphClass,
             'principal_id'                => $this->principalId,
-            'active_tenant_id'            => $this->activeTenantId,
+            'tenant_id'                   => $this->tenantId,
             'session_id'                  => $this->sessionId,
             'method'                      => $this->method,
         ];

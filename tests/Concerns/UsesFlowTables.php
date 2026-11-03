@@ -97,8 +97,9 @@ trait UsesFlowTables
     /**
      * Make and save a handoff code for the connection: a `sign_in` code for
      * `web`, with a random digest, a fixed reference and challenge, an empty
-     * stored result, expiring a minute after the clock's now, unless the
-     * attributes given say otherwise.
+     * stored result, issued under the connection's trust version as the model
+     * holds it, expiring a minute after the clock's now, unless the attributes
+     * given say otherwise.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array<string, mixed>  $attributes
@@ -116,6 +117,7 @@ trait UsesFlowTables
             'request_reference' => str_repeat('r', 32),
             'handoff_challenge' => str_repeat('c', 43),
             'result'            => '',
+            'trust_version'     => $connection->trust_version,
             'expires_at'        => self::flowNow()->addMinute(),
         ])->save();
 

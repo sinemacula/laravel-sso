@@ -11,9 +11,9 @@ use SineMacula\Laravel\Sso\Linking\LinkEmailQuery;
  * Link email contract (SSO-8.8): finds the identities whose email is verified
  * in the application and equal to the linking email, for linking by a verified
  * domain. It answers none, exactly one or ambiguous, and an email merely
- * present and unverified never counts. The application binds it; under
- * `laravel-iam` it passes the email through authentication's bindable
- * normaliser (AUTH-3.1).
+ * present and unverified never counts. The application binds it; an adapter to
+ * the application's authentication passes the email through that
+ * authentication's own email normaliser.
  *
  * The query holds the email exactly as the protocol asserted it, and its domain
  * canonicalised as SSO-3.1 compares one (`Domains\DomainName::normalize()`).

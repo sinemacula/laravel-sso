@@ -5,12 +5,14 @@ declare(strict_types = 1);
 namespace Tests\Feature\Connections;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\TestWith;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Domains\DomainWithdrawal;
@@ -28,6 +30,7 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
+use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
@@ -208,7 +211,7 @@ final class ConnectionLifecycleTest extends TestCase
 
         self::assertInstanceOf(ConnectionDisabled::class, $event);
         self::assertSame($this->connection->id, $event->context->connectionId);
-        self::assertSame(self::TENANT, $event->context->tenantId);
+        self::assertSame(self::TENANT, $event->context->connectionTenantId);
         self::assertSame('oidc', $event->context->protocol);
         self::assertSame('App\Models\User', $event->context->actingIdentityMorphClass);
         self::assertSame('42', $event->context->actingIdentityId);
@@ -286,6 +289,41 @@ final class ConnectionLifecycleTest extends TestCase
         self::assertSame([], $this->revocation->calls());
         self::assertSame([], $this->withdrawal->calls->getArrayCopy());
         $this->assertNoEvents();
+    }
+
+    /**
+     * Disabling or deleting the last connection that satisfies the tenant's
+     * enforcement is allowed (the P3 design decision): the rule is kept, still
+     * on and still naming the connection, so it is now satisfied by none and
+     * fails closed; and the sessions established through the connection are
+     * revoked in the same transaction.
+     *
+     * @param  string  $change
+     * @param  \SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus  $status
+     * @param  \SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason  $reason
+     * @return void
+     */
+    #[TestWith(['disable', ConnectionStatus::DISABLED, RevocationReason::CONNECTION_DISABLED])]
+    #[TestWith(['delete', ConnectionStatus::DELETED, RevocationReason::CONNECTION_DELETED])]
+    public function testTheLastSatisfyingConnectionGoesAndTheRuleStays(string $change, ConnectionStatus $status, RevocationReason $reason): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $rule = $this->makeEnforcement(['enabled' => true, 'connection_ids' => [$this->connection->id]]);
+
+        self::assertTrue(app(Enforcement::class)->policy(self::TENANT, 'web')->isSatisfiedBy($this->connection->id));
+
+        $result = $this->changes()[$change](self::TENANT, $this->connection->id);
+        $policy = app(Enforcement::class)->policy(self::TENANT, 'web');
+        $stored = TenantEnforcement::query()->where('tenant_id', self::TENANT)->sole();
+
+        self::assertSame($status, $result->status);
+        self::assertSame([true, [$this->connection->id], $rule->version], [$stored->enabled, $stored->connection_ids, $stored->version]);
+        self::assertSame([true, [], $rule->version], [$policy->isRequired(), $policy->connectionIds, $policy->version]);
+        self::assertFalse($policy->isSatisfiedBy($this->connection->id));
+        self::assertFalse($policy->isSatisfiedBy($this->other->id));
+
+        $this->assertRevoked($reason);
     }
 
     /**
@@ -412,7 +450,7 @@ final class ConnectionLifecycleTest extends TestCase
 
         self::assertInstanceOf(ConnectionDeleted::class, $event);
         self::assertSame($this->connection->id, $event->context->connectionId);
-        self::assertSame(self::TENANT, $event->context->tenantId);
+        self::assertSame(self::TENANT, $event->context->connectionTenantId);
         self::assertSame('oidc', $event->context->protocol);
         self::assertSame('42', $event->context->actingIdentityId);
     }

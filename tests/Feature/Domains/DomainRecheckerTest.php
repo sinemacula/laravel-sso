@@ -174,7 +174,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
         self::assertSame($claim->id, $event->domainId);
         self::assertSame('2026-11-04T10:30:00+00:00', $event->lapsesAt?->toAtomString());
         self::assertSame($this->connection->id, $event->context->connectionId);
-        self::assertSame(self::TENANT, $event->context->tenantId);
+        self::assertSame(self::TENANT, $event->context->connectionTenantId);
         self::assertNull($event->context->actingIdentityId);
         self::assertStringNotContainsString(self::TOKEN, serialize($event));
     }

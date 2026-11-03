@@ -7,9 +7,8 @@ namespace SineMacula\Laravel\Sso\Freshness\Enums;
 /**
  * An operation that could widen or redirect access, or destroy it, and so asks
  * the freshness contract before it writes (SSO-2.12). The value is the
- * operation's stable name, the one the contract is asked with; under
- * `laravel-iam` it is passed on to `laravel-authentication`'s freshness check
- * (AUTH-3.11).
+ * operation's stable name, the one the contract is asked with and the one an
+ * adapter passes on to the freshness check of the application's authentication.
  *
  * The names are stable once released: a value is never renamed or reused. Each
  * operation has its own maximum age of the caller's authentication, configured

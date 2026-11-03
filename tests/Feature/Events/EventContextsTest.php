@@ -170,7 +170,7 @@ final class EventContextsTest extends TestCase
 
         $context = $this->contexts()->make(
             connectionId: 'conn_1',
-            tenantId: 'tenant_1',
+            connectionTenantId: 'tenant_1',
             protocol: 'saml2',
             application: 'web',
             purpose: 'sign_in',
@@ -181,7 +181,7 @@ final class EventContextsTest extends TestCase
             actingIdentityId: '7',
             principalMorphClass: 'membership',
             principalId: '9',
-            activeTenantId: 'tenant_2',
+            tenantId: 'tenant_2',
             sessionId: 'session_1',
             method: 'sso',
         );
@@ -191,7 +191,7 @@ final class EventContextsTest extends TestCase
             'ip'                          => '203.0.113.7',
             'user_agent'                  => 'Example/1.0',
             'connection_id'               => 'conn_1',
-            'tenant_id'                   => 'tenant_1',
+            'connection_tenant_id'        => 'tenant_1',
             'protocol'                    => 'saml2',
             'application'                 => 'web',
             'purpose'                     => 'sign_in',
@@ -202,7 +202,7 @@ final class EventContextsTest extends TestCase
             'acting_identity_id'          => '7',
             'principal_morph_class'       => 'membership',
             'principal_id'                => '9',
-            'active_tenant_id'            => 'tenant_2',
+            'tenant_id'                   => 'tenant_2',
             'session_id'                  => 'session_1',
             'method'                      => 'sso',
         ], $context->toArray());
@@ -235,14 +235,14 @@ final class EventContextsTest extends TestCase
     {
         $context = $this->contexts()->make(
             connectionId: "conn\x00\x1f\u{0085}" . str_repeat('x', 300),
-            tenantId: "tenant\r\n_1\u{202E}",
+            connectionTenantId: "tenant\r\n_1\u{202E}",
             requestReference: "ref\xC3",
             method: "\x00\x7F",
         );
 
         self::assertSame('conn' . str_repeat('x', 251), $context->connectionId);
         self::assertSame(EventContexts::FIELD_MAX_LENGTH, mb_strlen($context->connectionId));
-        self::assertSame('tenant_1', $context->tenantId);
+        self::assertSame('tenant_1', $context->connectionTenantId);
         self::assertSame('ref?', $context->requestReference);
         self::assertNull($context->method);
     }

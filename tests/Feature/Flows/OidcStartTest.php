@@ -619,7 +619,7 @@ final class OidcStartTest extends TestCase
             'ip'                          => self::IP,
             'user_agent'                  => self::USER_AGENT,
             'connection_id'               => $connection->id,
-            'tenant_id'                   => self::TENANT,
+            'connection_tenant_id'        => self::TENANT,
             'protocol'                    => 'oidc',
             'application'                 => 'web',
             'purpose'                     => 'sign_in',
@@ -630,7 +630,7 @@ final class OidcStartTest extends TestCase
             'acting_identity_id'          => null,
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ], $this->recordedEvents()[0]->context()->toArray());

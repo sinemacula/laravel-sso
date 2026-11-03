@@ -22,17 +22,19 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * The `handoff_issuance` step (SSO-9.2, SSO-6.10, SSO-9.10), the last of a
  * completion, inside its locked transaction:
  *
- * 1. the application policy is asked again (AUTH-3.7): an application that no
- *    longer allows sign-in through an external provider refuses with
+ * 1. the application policy is asked again: an application that no longer
+ *    allows sign-in through an external provider refuses with
  *    `application_not_allowed`;
  * 2. a result carrying the provider's session deadline asks the bound
  *    `Contracts\ProviderSessionDeadline` whether it limits the application's
  *    session; when it does, the deadline is the session's latest end;
  * 3. the bound `Contracts\HandoffIssuer` issues a code for a
  *    `Handoffs\HandoffGrant` of the result, the request's S256 challenge, an
- *    expiry of the application's handoff lifetime from now, the identity the
- *    link resolved to, the identity and the session the request was started
- *    for, the enforcement version checked and the session's latest end;
+ *    expiry of the application's handoff lifetime from now, the connection's
+ *    trust version as its row is locked in this transaction (T2, or T3 after
+ *    the provisioning boundary), the identity the link resolved to, the
+ *    identity and the session the request was started for, and the session's
+ *    latest end;
  * 4. the issued handoff goes on with the state. A result holding a reservation
  *    is issued a code bound to it and expiring exactly when it does, whose
  *    reference and stored expiry are written to the reservation in this same
@@ -93,6 +95,7 @@ final readonly class IssueHandoff implements CompletionStage
         $application = $state->application          ?? throw new \LogicException('A handoff is issued once the request is consumed.');
         $request     = $state->authorizationRequest ?? throw new \LogicException('A handoff is issued once the request is consumed.');
         $result      = $state->result               ?? throw new \LogicException('A handoff is issued once the result is verified.');
+        $connection  = $state->connection           ?? throw new \LogicException('A handoff is issued under the connection\'s lock.');
 
         if (!$this->policy->externalSignIn($application)->isAllowed()) {
             return StageOutcome::refuse($state, FailureReason::APPLICATION_NOT_ALLOWED);
@@ -104,10 +107,10 @@ final readonly class IssueHandoff implements CompletionStage
             result: $result,
             challenge: S256Challenge::fromString($request->handoff_challenge),
             expiresAt: $candidate->expiresAt ?? $this->clock->now()->addSeconds($application->handoffTtlSeconds),
+            trustVersion: $connection->trust_version,
             linkedIdentity: $state->linkedIdentity,
             identity: IdentityReference::fromColumns($request->identity_type, $request->identity_id),
             sessionId: $request->session_id,
-            enforcementVersion: $state->enforcementVersion,
             sessionNotAfter: $state->sessionNotAfter,
             linkId: $state->resolution?->linkId,
             reservationId: $candidate?->reservationId,

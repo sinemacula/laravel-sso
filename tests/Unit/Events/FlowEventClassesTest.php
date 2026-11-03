@@ -119,7 +119,7 @@ final class FlowEventClassesTest extends TestCase
         return new EventContext(
             occurredAt: CarbonImmutable::parse('2026-11-01T10:00:00Z'),
             connectionId: '01jbexampleconnection00000',
-            tenantId: 'tenant-1',
+            connectionTenantId: 'tenant-1',
             protocol: 'oidc',
             application: 'web',
             purpose: 'sign_in',

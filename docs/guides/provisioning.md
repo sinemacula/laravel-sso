@@ -20,41 +20,64 @@ Only a genuinely unlinked `sign_in` is offered. These are never offered:
 
 ## Writing the listener
 
+The listener is a class of your application, here `ProvisionNewPerson`, which takes `Provisioning\ProvisioningHelper`
+by injection. It creates a new `User`, named from the mapped `display_name`, and their membership of the result's
+tenant, each a model of yours stored on the package's storage connection, and links the result to the user, all in one
+transaction on that connection, which it commits only when the helper answers `created`:
+
+<!-- snippet: tests/Integration/Examples/Provisioning/ProvisionNewPerson.php#provisioning-listener -->
+
 ```php
-use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Database\StorageConnection;
-use SineMacula\Laravel\Sso\Events\ResultUnlinked;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
-use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
+/**
+ * Take the helper that links the result to the new person.
+ *
+ * @param  \SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper  $provisioning
+ */
+public function __construct(
 
-final class ProvisionNewPerson
+    /** Links the result to a new identity, once, with the event's grant. */
+    private ProvisioningHelper $provisioning,
+) {}
+
+/**
+ * Create a new user and their membership, and link the result to them, in
+ * one transaction on the package's storage connection.
+ *
+ * @param  \SineMacula\Laravel\Sso\Events\ResultUnlinked  $event
+ * @return void
+ *
+ * @throws \Throwable
+ */
+public function handle(ResultUnlinked $event): void
 {
-    public function __construct(private readonly ProvisioningHelper $provisioning) {}
+    $storage = DB::connection(StorageConnection::name());
 
-    public function handle(ResultUnlinked $event): void
-    {
-        DB::connection(StorageConnection::name())->beginTransaction();
+    $storage->beginTransaction();
 
-        try {
-            $user = User::create(['name' => $event->result->attributes['name'] ?? 'New person']);
+    try {
+        // Always a new user: never one found by an attribute
+        $user = User::create(['name' => $event->result->attributes['display_name'] ?? 'New person']);
 
-            $user->memberships()->create(['tenant_id' => $event->result->tenantId]);
+        $user->memberships()->create(['tenant_id' => $event->result->tenantId]);
 
-            $answer = $this->provisioning->link(
-                $event->grant,
-                $event->result,
-                new IdentityReference(User::class, (string) $user->getKey()),
-            );
-        } catch (\Throwable $exception) {
-            DB::connection(StorageConnection::name())->rollBack();
+        $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-            throw $exception;
-        }
+        $answer = $this->provisioning->link($event->grant, $event->result, $identity);
+    } catch (\Throwable $exception) {
+        $storage->rollBack();
 
-        $answer->isCreated()
-            ? DB::connection(StorageConnection::name())->commit()
-            : DB::connection(StorageConnection::name())->rollBack();
+        throw $exception;
     }
+
+    if (!$answer->isCreated()) {
+
+        // A refusal wrote nothing, so neither does the listener
+        $storage->rollBack();
+
+        return;
+    }
+
+    $storage->commit();
 }
 ```
 
@@ -63,7 +86,9 @@ Bind the package's `Links\LinkStore` as your `Contracts\Linker` ([Links](links.m
 finds the link through the linker. The default linker links nothing, so the helper refuses over it with a
 `LogicException` before it spends the grant or writes anything, since the link would never resolve.
 
-Register the listener synchronously, on the event's class:
+Register the listener synchronously, on the event's class, in a service provider's `boot()`:
+
+<!-- snippet: tests/Integration/Examples/Provisioning/AppServiceProvider.php#provisioning-registration -->
 
 ```php
 Event::listen(ResultUnlinked::class, ProvisionNewPerson::class);
@@ -86,7 +111,7 @@ To attach a subject to an existing identity, use one of the two paths made for i
 
 - the [`link` purpose](starting-a-flow.md), started for an identity your application has authenticated with fresh
   authentication (SSO-8.5);
-- [linking by a verified domain](domains.md), which requires the conditions of SSO-8.8.
+- [linking by a verified domain](linking-by-domain.md), which requires the conditions of SSO-8.8.
 
 The package holds only an opaque identity reference, so it cannot tell when an identity was created: the grant proves
 the authority to provision for this result, not that the identity is new. That the identity is new is your listener's
@@ -157,7 +182,9 @@ link anew. It does not record the response against replay again, select a domain
 
 Allowing unlinked handoffs is for an application that resolves identities itself when it redeems the code; see
 [Completing a Flow](completing-a-flow.md). It applies only to a link that is genuinely absent. Under `laravel-iam` the
-sign-in adapter always requires a linked identity.
+sign-in adapter always requires a linked identity: it keeps `unlinked_handoffs` off and rolls back a redemption that
+admitted none. It provisions on `ResultUnlinked` alone, never on `laravel-authentication`'s own unlinked-result event,
+which is informational (see [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#provisioning)).
 
 ### A provisioned identity can survive a failed sign-in
 

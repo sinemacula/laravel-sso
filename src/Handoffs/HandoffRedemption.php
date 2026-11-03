@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use SineMacula\Laravel\Sso\Sessions\Provenance;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 
 /**
@@ -57,8 +58,9 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  *    locks were taken), is `handoff_unknown`. Each read under a lock is a
  *    locking read on the write connection, so a caller's older
  *    `REPEATABLE READ` snapshot never answers;
- * 5. a code the standalone path cannot redeem (any but a `link`) is a
- *    `LogicException`, before anything is recorded or consumed;
+ * 5. the standalone path asked for any purpose but a `link` is a
+ *    `LogicException`, before anything is recorded or consumed; asked for a
+ *    `link` with a code of another purpose, it goes on, and step 9 refuses it;
  * 6. a code a change to its connection voided is `handoff_unknown`; a code
  *    redeemed before, or one the single-use store has seen (keyed by its digest
  *    until its expiry, and at least a second), is `replayed`;
@@ -92,8 +94,14 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  *     `ReauthenticationCompleted` for a `reauthenticate`, and `LinkCreated` and
  *     `LinkActivated` before them for an activated reservation;
  * 16. it answers `redeemed`, with the result, the identity it established, the
- *     flow's identity and session, the enforcement version, the session's
- *     latest end, the link, the evidence accepted and whether it was admitted.
+ *     flow's identity and session, the version of the enforcement step 13
+ *     judged under the locks (never the one the completion checked, which a
+ *     rule change may since have replaced), the session's latest end, the
+ *     link, the evidence accepted, whether it was admitted and,
+ *     for a `sign_in` (which is only ever redeemed admitted, step 5), the
+ *     session provenance captured here, inside the transaction, from what the
+ *     admission established under the locks (`Sessions\Provenance::capture()`,
+ *     SSO-9.10); a `link` and a `reauthenticate` capture none.
  *
  * Any refusal after the code was consumed deletes that code's reservation, by
  * its identity and reference, in the same transaction, and queues one failure
@@ -108,16 +116,19 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * `redeem()` called with none is the standalone path: it commits before it
  * answers, so nothing written afterwards is protected, and its result answers
  * `isAdmitted()` false. It exists for a `link` alone, which writes no session.
- * A `sign_in` code, linked or unlinked, and a `reauthenticate` code reached
- * through it are a `LogicException` that leaves the code unconsumed and
- * unrecorded in the single-use store, since each must commit with the session
- * the caller writes: an unlinked handoff is redeemed through `admit()` like any
- * other. A standalone `link` that comes to a verified domain link in a
- * connection it did not lock (`Exceptions\LinkCandidatesChanged`), which taking
- * the guard before any read leaves to an isolation stricter than the default,
- * is rolled back and restarted once, from its transaction; a second time it
- * propagates. Inside a caller's transaction it always propagates, and the
- * caller retries its whole transaction.
+ * Asking it for a `sign_in`, linked or unlinked, or a `reauthenticate` is a
+ * `LogicException` that leaves the code unconsumed and unrecorded in the
+ * single-use store, since each must commit with the session the caller writes:
+ * an unlinked handoff is redeemed through `admit()` like any other. A `sign_in`
+ * or `reauthenticate` code presented where a `link` is asked for is a client's
+ * error, not the caller's: it is consumed and refused as `purpose_mismatch`,
+ * like any code of another purpose. A standalone `link` that comes to a
+ * verified domain link in a connection it did not lock
+ * (`Exceptions\LinkCandidatesChanged`), which taking the guard before any read
+ * leaves to an isolation stricter than the default, is rolled back and
+ * restarted once, from its transaction; a second time it propagates. Inside a
+ * caller's transaction it always propagates, and the caller retries its whole
+ * transaction.
  *
  * On PostgreSQL under `REPEATABLE READ`, a redemption that waited on a rule
  * change may fail to serialise instead: the error propagates, never retried in
@@ -270,7 +281,7 @@ final readonly class HandoffRedemption
         $admitted = $database->transactionLevel() > 0;
         $tenantId = Connection::query()->useWritePdo()->whereKey($found->connection_id)->value('tenant_id');
         $tenantId = is_string($tenantId) ? $tenantId : null;
-        $attempt  = fn (): RedemptionResult => $database->transaction(fn (): RedemptionResult => $this->locked($found, $tenantId, $mismatch, $caller, $admitted));
+        $attempt  = fn (): RedemptionResult => $database->transaction(fn (): RedemptionResult => $this->locked($found, $tenantId, $mismatch, $caller, $admitted, $purpose));
 
         return $admitted ? $attempt() : self::restartedOnce($attempt);
     }
@@ -317,20 +328,21 @@ final readonly class HandoffRedemption
      * and application, for the tenant a plain read gave before it (a
      * connection's tenant never changes), a `link` naming the identity it
      * confirms for, and none when the connection was gone; then lock the code,
-     * refuse one the standalone path cannot redeem, and consume it unless it is
-     * gone or no longer the code those locks were taken for, judged against the
-     * clock once all are locked.
+     * refuse a purpose the standalone path cannot redeem, and consume the code
+     * unless it is gone or no longer the code those locks were taken for,
+     * judged against the clock once all are locked.
      *
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $found
      * @param  ?string  $tenantId
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\HandoffCode, \Carbon\CarbonImmutable): ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $mismatch
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @param  bool  $admitted
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *
      * @throws \Throwable
      */
-    private function locked(StoredCode $found, ?string $tenantId, \Closure $mismatch, ?IdentityReference $caller, bool $admitted): RedemptionResult
+    private function locked(StoredCode $found, ?string $tenantId, \Closure $mismatch, ?IdentityReference $caller, bool $admitted, Purpose $purpose): RedemptionResult
     {
         $confirming = $found->purpose === Purpose::LINK ? IdentityReference::fromColumns($found->identity_type, $found->identity_id) : null;
         $lock       = $tenantId       === null ? null : $this->recheck->lock($tenantId, $found->connection_id, $found->application, $found->reservation_id, $confirming);
@@ -346,7 +358,7 @@ final readonly class HandoffRedemption
             return $this->refuse(FailureReason::HANDOFF_UNKNOWN, $found, $connection);
         }
 
-        self::assertAdmissible($code, $admitted);
+        self::assertAdmissible($purpose, $admitted);
 
         $refusal = match (true) {
             $code->voided_at !== null                   => FailureReason::HANDOFF_UNKNOWN,
@@ -401,19 +413,22 @@ final readonly class HandoffRedemption
     }
 
     /**
-     * Refuse a code the standalone path cannot redeem: any but a `link`, whose
-     * session must commit with its consumption. Thrown before the single-use
-     * store records it, or it is consumed.
+     * Refuse a purpose the standalone path cannot redeem: any but a `link`,
+     * whose session must commit with its consumption. Thrown before the
+     * single-use store records the code, or it is consumed. The purpose asked
+     * for decides, not the code's: a code of another purpose presented for a
+     * `link` is the client's error, refused as `purpose_mismatch` once
+     * consumed.
      *
-     * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  bool  $admitted
      * @return void
      *
      * @throws \LogicException
      */
-    private static function assertAdmissible(StoredCode $code, bool $admitted): void
+    private static function assertAdmissible(Purpose $purpose, bool $admitted): void
     {
-        if ($admitted || $code->purpose === Purpose::LINK) {
+        if ($admitted || $purpose === Purpose::LINK) {
             return;
         }
 
@@ -528,11 +543,12 @@ final readonly class HandoffRedemption
             linkedIdentity: $admission->identity,
             identity: IdentityReference::fromColumns($code->identity_type, $code->identity_id),
             sessionId: $code->session_id,
-            enforcementVersion: $code->enforcement_version,
+            enforcementVersion: $admission->enforcementVersion,
             sessionNotAfter: $code->session_not_after,
             linkId: $admission->linkId,
             evidence: $admission->evidence,
             admitted: $admitted,
+            provenance: Provenance::capture($result, $admission, $code->session_not_after),
         );
     }
 
@@ -553,6 +569,7 @@ final readonly class HandoffRedemption
             $code->session_id,
             $code->reservation_id,
             $code->id,
+            $code->trust_version,
         );
     }
 

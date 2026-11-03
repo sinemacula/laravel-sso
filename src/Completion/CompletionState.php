@@ -31,14 +31,14 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * what the driver is given of it and the registered application; the
  * enforcement policy as the locks the completion holds show it; the claims the
  * driver verified, what records them against replay, and the result built from
- * them; the identity the result's link resolved to; the enforcement version
- * checked; the latest end of the application's session the provider's deadline
- * sets; the handoff issued; the receipt of a key rotation the response's own
- * validation made; how the result's link resolved; the candidate a reservation
- * holds, which is never the resolved identity; the domain claim locked for
- * linking; the linking policy version the response was validated under; when
- * the verified response stops being valid, which no continuation extends; and
- * what plain reads found to lock before its locked transaction.
+ * them; the identity the result's link resolved to; the latest end of the
+ * application's session the provider's deadline sets; the handoff issued; the
+ * receipt of a key rotation the response's own validation made; how the
+ * result's link resolved; the candidate a reservation holds, which is never the
+ * resolved identity; the domain claim locked for linking; the linking policy
+ * version the response was validated under; when the verified response stops
+ * being valid, which no continuation extends; and what plain reads found to
+ * lock before its locked transaction.
  *
  * An unsolicited SAML response handed to re-initiation (SSO-5.8) only ever
  * holds the connection, its correlation and, under the connection's lock, its
@@ -71,7 +71,6 @@ final readonly class CompletionState
      * @param  ?\SineMacula\Laravel\Sso\Results\VerifiedClaims  $claims
      * @param  ?\SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $linkedIdentity
-     * @param  ?string  $enforcementVersion
      * @param  ?\Carbon\CarbonImmutable  $sessionNotAfter
      * @param  ?\SineMacula\Laravel\Sso\Handoffs\IssuedHandoff  $handoff
      * @param  ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay
@@ -120,9 +119,6 @@ final readonly class CompletionState
         /** The identity the result's link resolved to, if any. */
         public ?IdentityReference $linkedIdentity = null,
 
-        /** The enforcement version the completion checked. */
-        public ?string $enforcementVersion = null,
-
         /** The latest end of the application's session the provider's deadline sets. */
         public ?CarbonImmutable $sessionNotAfter = null,
 
@@ -163,15 +159,14 @@ final readonly class CompletionState
     public function __debugInfo(): array
     {
         return [
-            'connection_id'       => $this->connectionId,
-            'request_reference'   => $this->consumed?->reference->value,
-            'application'         => $this->application?->name,
-            'verified'            => $this->result         !== null,
-            'linked'              => $this->linkedIdentity !== null,
-            'enforcement_version' => $this->enforcementVersion,
-            'handed_off'          => $this->handoff !== null,
-            'resolution'          => $this->resolution?->status->value,
-            'reserved'            => $this->reservedCandidate !== null,
+            'connection_id'     => $this->connectionId,
+            'request_reference' => $this->consumed?->reference->value,
+            'application'       => $this->application?->name,
+            'verified'          => $this->result         !== null,
+            'linked'            => $this->linkedIdentity !== null,
+            'handed_off'        => $this->handoff        !== null,
+            'resolution'        => $this->resolution?->status->value,
+            'reserved'          => $this->reservedCandidate !== null,
         ];
     }
 
@@ -340,17 +335,6 @@ final readonly class CompletionState
     public function withValidation(int $linkingVersion, CarbonImmutable $verifiedUntil): self
     {
         return $this->with(['linkingVersion' => $linkingVersion, 'verifiedUntil' => $verifiedUntil]);
-    }
-
-    /**
-     * With the enforcement version the completion checked.
-     *
-     * @param  string  $version
-     * @return self
-     */
-    public function withEnforcementVersion(string $version): self
-    {
-        return $this->with(['enforcementVersion' => $version]);
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Feature\Protocols\Saml2\Library;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use SimpleSAML\SAML2\XML\saml\Assertion;
 use SimpleSAML\SAML2\XML\samlp\Response;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -18,7 +19,10 @@ use Tests\TestCase;
  * element (SSO-6.3, `saml-library.md` condition 3): parsed from exactly the
  * bytes the library digested, the signature removed, in a document of its own,
  * so a change to the document it was read from after verification never reaches
- * it; and nothing answered for an element no trusted certificate verifies.
+ * it; nothing answered for an element no trusted certificate verifies; and a
+ * reference listing any transform but the enveloped-signature and exclusive
+ * canonicalisation ones, or one of them twice, refused before verifying
+ * (SSO-6.2), though the trusted key signed it.
  *
  * The library is named here only to build the signed elements the verifier
  * takes, as the adapter builds them.
@@ -114,6 +118,65 @@ final class PinnedVerifierTest extends TestCase
         } catch (ReadFailure $failure) {
             self::assertSame([FailureReason::METADATA_SIGNATURE_INVALID, 'signature'], [$failure->reason, $failure->detail]);
         }
+    }
+
+    /**
+     * Rows of `[transforms]`: the transforms of a reference the trusted key
+     * signs over the same digested bytes, which the library would verify.
+     *
+     * @return iterable<string, array{0: list<string>}>
+     */
+    public static function provideDisallowedTransforms(): iterable
+    {
+        yield 'another transform' => [['enveloped', 'exc-c14n-comments']];
+        yield 'a transform listed twice' => [['exc-c14n', 'exc-c14n']];
+    }
+
+    /**
+     * A reference listing a transform the policy does not allow, or an allowed
+     * one twice, is refused by policy before its signature is verified, while
+     * the same signature with the allowed transforms verifies.
+     *
+     * @param  list<string>  $transforms
+     * @return void
+     *
+     * @throws \Exception
+     */
+    #[DataProvider('provideDisallowedTransforms')]
+    public function testAReferenceListsOnlyTheAllowedTransformsOnce(array $transforms): void
+    {
+        $verifier = app(PinnedVerifier::class);
+
+        $allowed = $verifier->verified(self::signedWith(['enveloped', 'exc-c14n']), [self::idp()->certificate()], PinnedVerifier::SIGNATURE_ALGORITHMS);
+
+        self::assertSame('_signed', $allowed->getId()->getRawValue());
+
+        try {
+            $verifier->verified(self::signedWith($transforms), [self::idp()->certificate()], PinnedVerifier::SIGNATURE_ALGORITHMS);
+            self::fail('A reference with a transform the policy does not allow was verified.');
+        } catch (ReadFailure $failure) {
+            self::assertSame([FailureReason::SIGNATURE_INVALID, 'signature_policy'], [$failure->reason, $failure->detail]);
+        }
+    }
+
+    /**
+     * An assertion the trusted identity provider signs, its reference listing
+     * the transforms given, alone in a document of its own.
+     *
+     * @param  list<string>  $transforms
+     * @return \SimpleSAML\SAML2\XML\saml\Assertion
+     *
+     * @throws \Exception
+     */
+    private static function signedWith(array $transforms): Assertion
+    {
+        $response  = self::idp()->response('https://sp.example.test/saml', 'https://sp.example.test/acs')->signed(false, false);
+        $document  = self::document($response->with(['assertion_id' => '_signed'])->toXml());
+        $assertion = self::reRooted(self::child($document->documentElement, self::NS_SAML, 'Assertion'));
+
+        self::idp()->signer()->sign($assertion, ['transforms' => $transforms]);
+
+        return Assertion::fromXML($assertion);
     }
 
     /**

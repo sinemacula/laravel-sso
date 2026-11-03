@@ -7,13 +7,13 @@ what to do when one stops partway.
 
 ## Registering the schedule
 
-Register all four in one call, on every server that runs the scheduler:
+Register all four in one call on the application builder in `bootstrap/app.php`, importing
+`Illuminate\Console\Scheduling\Schedule` and `SineMacula\Laravel\Sso\Operations\OperationsSchedule`, on every server
+that runs the scheduler:
 
+<!-- snippet: tests/Integration/Examples/Operations/bootstrap/app.php#operations-schedule -->
 ```php
 // bootstrap/app.php
-use Illuminate\Console\Scheduling\Schedule;
-use SineMacula\Laravel\Sso\Operations\OperationsSchedule;
-
 ->withSchedule(function (Schedule $schedule): void {
     app(OperationsSchedule::class)->register($schedule);
 })
@@ -184,8 +184,10 @@ you configured, not its dates.
 
 ### What a warning promises
 
-Listen for `KeyNearingExpiry`, which carries `thresholdDays`, and tell an administrator to rotate:
+Listen for `KeyNearingExpiry`, which carries `thresholdDays`, and tell an administrator to rotate, here through the
+application's own `SecurityTeam` and `CertificateExpiring` notification:
 
+<!-- snippet: tests/Integration/Examples/Operations/listeners/key-nearing-expiry.php#key-nearing-expiry-listener -->
 ```php
 use Illuminate\Support\Facades\Event;
 use SineMacula\Laravel\Sso\Events\KeyNearingExpiry;

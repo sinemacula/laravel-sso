@@ -11,65 +11,81 @@ completion answers with the right status, the right redirect and the right heade
 `SineMacula\Laravel\Sso\Responses\CompletionResponse`, which Laravel sends as it is when a controller returns it. Pass
 the method the completion arrived by: it decides the redirect's status.
 
-With the example route layout (SSO-12.5):
+With the example route layout (SSO-12.5), and the controller imported:
 
+<!-- snippet: tests/Integration/Examples/CompletionResponses/routes.php#response-routes -->
 ```php
 // routes/api.php
-use App\Http\Controllers\SsoCompletionController;
-
 Route::post('/auth/sso/connections/{connection}/assertions', [SsoCompletionController::class, 'assertion']);
 Route::get('/auth/sso/connections/{connection}/callback', [SsoCompletionController::class, 'callback']);
 ```
 
+The controller, say `App\Http\Controllers\SsoCompletionController`, is a `final readonly` class that imports
+`Illuminate\Http\Request` and, from `SineMacula\Laravel\Sso`, `Completion\CompletionService`,
+`Protocols\CompletionRequest`, `Responses\CompletionResponse` and `Responses\CompletionResponses`. Its body:
+
+<!-- snippet: tests/Integration/Examples/CompletionResponses/SsoCompletionController.php#response-controller -->
 ```php
-namespace App\Http\Controllers;
+/**
+ * Take the completion helper and the response builder.
+ *
+ * @param  \SineMacula\Laravel\Sso\Completion\CompletionService  $completions
+ * @param  \SineMacula\Laravel\Sso\Responses\CompletionResponses  $responses
+ */
+public function __construct(
 
-use Illuminate\Http\Request;
-use SineMacula\Laravel\Sso\Completion\CompletionService;
-use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
-use SineMacula\Laravel\Sso\Responses\CompletionResponse;
-use SineMacula\Laravel\Sso\Responses\CompletionResponses;
+    /** Checks the identity provider's response and issues the handoff. */
+    private CompletionService $completions,
 
-final class SsoCompletionController
+    /** Turns how a completion ended into its redirect or refusal. */
+    private CompletionResponses $responses,
+) {}
+
+/**
+ * POST: the SAML response, posted by the browser.
+ *
+ * @param  \Illuminate\Http\Request  $request
+ * @param  string  $connection
+ * @return \SineMacula\Laravel\Sso\Responses\CompletionResponse
+ */
+public function assertion(Request $request, string $connection): CompletionResponse
 {
-    public function __construct(
-        private readonly CompletionService $completions,
-        private readonly CompletionResponses $responses,
-    ) {}
+    $result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
 
-    // POST: the SAML response, posted by the browser
-    public function assertion(Request $request, string $connection): CompletionResponse
-    {
-        $result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
+    return $this->responses->from($result, $request->getMethod());
+}
 
-        return $this->responses->from($result, $request->getMethod());
-    }
+/**
+ * GET: the OIDC authorisation response.
+ *
+ * @param  \Illuminate\Http\Request  $request
+ * @param  string  $connection
+ * @return \SineMacula\Laravel\Sso\Responses\CompletionResponse
+ */
+public function callback(Request $request, string $connection): CompletionResponse
+{
+    $result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
 
-    // GET: the OIDC authorisation response
-    public function callback(Request $request, string $connection): CompletionResponse
-    {
-        $result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
-
-        return $this->responses->from($result, $request->getMethod());
-    }
+    return $this->responses->from($result, $request->getMethod());
 }
 ```
 
 [Completing a flow](completing-a-flow.md) explains what the completion helper checks and when each result is answered.
 
 These routes take no session, no CSRF token and no authentication: the identity provider's response is checked by the
-completion itself. Put them outside the `web` middleware group, or exclude them from CSRF verification, since a SAML
-response is a cross-site POST.
+completion itself. Put them outside the `web` middleware group. If your API verifies CSRF tokens anyway, exclude the
+assertion consumer service alone, since a SAML response is a cross-site `POST`; the OIDC callback is a `GET` and needs
+no exemption ([Cross-site request forgery](example-application.md#cross-site-request-forgery)).
 
 ## What each outcome answers
 
-| Outcome        | Status                                         | `Location`                                      | Body                                          |
-|----------------|------------------------------------------------|-------------------------------------------------|-----------------------------------------------|
-| `completed`    | `303` after a POST, `302` after a GET          | your redirect URI with `code` and `reference`   | `completion.redirecting`                      |
-| `failed`       | `303` after a POST, `302` after a GET          | your redirect URI with `error` and `reference`  | `completion.redirecting`                      |
-| `reinitiated`  | `303` after a POST, `302` after a GET          | the connection's start URL, exactly as set      | `completion.redirecting`                      |
-| `rejected`     | `400`                                          | none                                            | `completion.invalid`                          |
-| `rate_limited` | `429`, with `Retry-After` in seconds           | none                                            | `completion.invalid`                          |
+| Outcome        | Status                                | `Location`                                     | Body                     |
+|----------------|---------------------------------------|------------------------------------------------|--------------------------|
+| `completed`    | `303` after a POST, `302` after a GET | your redirect URI with `code` and `reference`  | `completion.redirecting` |
+| `failed`       | `303` after a POST, `302` after a GET | your redirect URI with `error` and `reference` | `completion.redirecting` |
+| `reinitiated`  | `303` after a POST, `302` after a GET | the connection's start URL, exactly as set     | `completion.redirecting` |
+| `rejected`     | `400`                                 | none                                           | `completion.invalid`     |
+| `rate_limited` | `429`, with `Retry-After` in seconds  | none                                           | `completion.invalid`     |
 
 Any other method (`HEAD`, say) is answered with a `303`. A completion never answers with a `307` or a `308`, which
 would make the browser post the SAML response again, to your redirect URI.
@@ -136,7 +152,7 @@ sessionStorage.removeItem(`sso:${reference}`);
 if (pending === null) {
     // No sign-in was started here with this reference: ignore the response.
 } else if (parameters.has('code')) {
-    await fetch('/auth/sessions', {
+    await fetch('/api/auth/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

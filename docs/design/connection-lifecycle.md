@@ -59,7 +59,11 @@ so a provider's next certificate can be trusted ahead of its switch without void
 any change to the metadata signing anchors, voids. Each voiding change raises the connection's trust version, which
 every authorisation request stores when it starts: a start whose connection's trust version moved between its read and
 its insert stores nothing, and a completion whose request's trust version is not the connection's is refused at
-consumption and again under its lock, as a voided one is. A refused or unchanged change voids nothing.
+consumption and again under its lock, as a voided one is. Every handoff code keeps the trust version it was issued
+under, and `HandoffRecheck` refuses one whose version is not the connection's under the redemption's lock as
+`connection_unavailable`: the package's codes are voided as well, and an application's own, which the package never
+voids, are refused by the version alone (`handoffs.md`). Enabling a disabled connection raises the version too, so a
+code issued before a disable is never redeemed after the enable. A refused or unchanged change voids nothing.
 
 ### Disabling and deleting
 
@@ -79,7 +83,8 @@ consumption and again under its lock, as a voided one is. A refused or unchanged
   `connection_id`, in id order) and calls `DomainWithdrawal::linkingWithdrawn($locked, $claim)` for each verified one,
   before anything is deleted; voids what is in flight; deletes the connection's domains, authorisation requests,
   handoff codes, links and keys, in the lock order, then the connection; revokes; and reports one `ConnectionDeleted`,
-  with the connection as it was read, and no event per link removed (a decision for Ben).
+  with the connection as it was read, and no event per link removed: the removals are reported by the connection's own
+  event.
 - A connection whose protocol is no longer registered can be disabled and deleted: either leaves less access.
 - The result is a `ConnectionResult`: `disabled` (with the summary), `deleted` (with none, since the connection is
   gone), `unchanged`, or `refused` (`connection_not_found`, `freshness_required`).
@@ -89,10 +94,10 @@ consumption and again under its lock, as a voided one is. A refused or unchanged
 - `disable()` and `delete()` call `Contracts\SessionRevocation`, resolved from the container at that moment, with
   `RevocationScope::connection($tenantId, $connectionId, $reason)` (kind `connection`, reason `connection_disabled` or
   `connection_deleted`), inside their transaction, after the write and before the report (SSO-4.5).
-- A subject migration revokes `RevocationScope::identityInConnection()` (reason `link_removed`) for the identity of each
-  link it removes and each relinked link of verified domain provenance, whose new row a later revocation by link could
-  not reach the old sessions through, and none for any other link it relinks, whose identity keeps signing in through
-  the connection.
+- A subject migration revokes `RevocationScope::identityInConnection()` (reason `link_removed`, naming the old link's
+  id) for the identity of each link it removes and each relinked link of verified domain provenance, whose new row a
+  later revocation by link could not reach the old sessions through, and none for any other link it relinks, whose
+  identity keeps signing in through the connection.
 - An exception the revocation throws rolls the whole change back, reports nothing and propagates (decision D5).
 
 ### Changes to what subjects mean

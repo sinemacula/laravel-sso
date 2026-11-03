@@ -1504,7 +1504,7 @@ final class LinkBranchTest extends LinkingTestCase
             'ip'                          => '203.0.113.7',
             'user_agent'                  => 'Symfony',
             'connection_id'               => $this->connection->id,
-            'tenant_id'                   => 'tenant-1',
+            'connection_tenant_id'        => 'tenant-1',
             'protocol'                    => VerifyingDriver::NAME,
             'application'                 => 'web',
             'purpose'                     => 'link',
@@ -1515,7 +1515,7 @@ final class LinkBranchTest extends LinkingTestCase
             'acting_identity_id'          => null,
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ];

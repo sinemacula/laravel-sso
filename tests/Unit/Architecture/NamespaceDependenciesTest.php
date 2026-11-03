@@ -33,9 +33,12 @@ use PHPUnit\Framework\TestCase;
  * alone, so nothing it ships (its classes, configuration, migrations and
  * translations) names a sibling package's namespace (`SineMacula\Laravel\*`
  * other than `Sso`) or reads a sibling's configuration (`authentication.`,
- * `authorization.`, `mfa.`, `iam.`, `audit-log.`), and `composer.json` requires
- * no sibling. That rule reads the raw text, strings and comments included, so a
- * name a class builds at run time is caught too.
+ * `authorization.`, `mfa.`, `iam.`, `audit-log.`), names a sibling by its
+ * package name (`laravel-authentication`, ...) or cites a sibling's requirement
+ * (`AUTH-3.10`, ...), and `composer.json` requires no sibling. That rule reads
+ * the raw text, strings and comments included, so a name a class builds at run
+ * time, and a docblock that describes a sibling's wiring, are caught too: only
+ * the documentation names a sibling.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,6 +59,9 @@ final class NamespaceDependenciesTest extends TestCase
 
     /** @var string A string that reads a sibling package's configuration. */
     private const string SIBLING_CONFIG = '/[\'"](?:authentication|authorization|mfa|iam|audit[_-]log)\.[A-Za-z_]/i';
+
+    /** @var string A sibling package named in prose, or one of its requirements cited by id. */
+    private const string SIBLING_NAME = '/laravel-(?:authentication|authorization|mfa|iam|audit-log)(?![A-Za-z0-9_-])|\b(?:AUTH|AUTHZ|MFA|IAM|AUDIT)-[0-9]/';
 
     /** @var string A sibling package's Composer name. */
     private const string SIBLING_PACKAGE = '#^sinemacula/laravel-(?!sso$)[a-z0-9-]+$#i';
@@ -291,8 +297,10 @@ final class NamespaceDependenciesTest extends TestCase
      * The sibling scan finds a sibling's namespace however it is written (in an
      * import, fully qualified, in a docblock, in a string with doubled
      * backslashes, in any case) and a read of a sibling's configuration through
-     * any helper, and nothing for the package's own namespace, a name that only
-     * starts like a sibling's, or a sibling mentioned by its Composer name.
+     * any helper, a sibling named in prose by its package name, and a sibling's
+     * requirement cited by id; and nothing for the package's own namespace or
+     * requirements, a name that only starts like a sibling's, or a word that
+     * only ends like a requirement's id.
      *
      * @return void
      */
@@ -308,7 +316,8 @@ final class NamespaceDependenciesTest extends TestCase
             use SineMacula\Laravel\SsoExtras\Thing;
 
             /**
-             * Bridges laravel-authentication and laravel-mfa.
+             * Bridges laravel-authentication and laravel-mfa (AUTH-3.10), not
+             * laravel-sso (SSO-9.2), laravel-iamish or OAUTH-2.
              *
              * @see \SineMacula\Laravel\Mfa\Factors\Factor
              */
@@ -336,6 +345,9 @@ final class NamespaceDependenciesTest extends TestCase
             '\'authentication.j',
             '"mfa.f',
             '\'iam.a',
+            'laravel-authentication',
+            'laravel-mfa',
+            'AUTH-3',
         ], self::siblingReferencesIn($source));
 
         self::assertSame(1, preg_match(self::SIBLING_PACKAGE, 'sinemacula/laravel-authentication'));
@@ -562,7 +574,8 @@ final class NamespaceDependenciesTest extends TestCase
 
     /**
      * The references to a sibling package the text holds, in order: each
-     * sibling namespace, then each read of a sibling's configuration.
+     * sibling namespace, then each read of a sibling's configuration, then each
+     * sibling named in prose or requirement of one cited.
      *
      * @param  string  $text
      * @return list<string>
@@ -571,8 +584,9 @@ final class NamespaceDependenciesTest extends TestCase
     {
         preg_match_all(self::SIBLING_NAMESPACE, $text, $namespaces);
         preg_match_all(self::SIBLING_CONFIG, $text, $config);
+        preg_match_all(self::SIBLING_NAME, $text, $names);
 
-        return [...$namespaces[0], ...$config[0]];
+        return [...$namespaces[0], ...$config[0], ...$names[0]];
     }
 
     /**

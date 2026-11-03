@@ -290,7 +290,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
             'ip'                          => '203.0.113.7',
             'user_agent'                  => 'Example/1.0',
             'connection_id'               => $this->connection,
-            'tenant_id'                   => self::TENANT,
+            'connection_tenant_id'        => self::TENANT,
             'protocol'                    => 'oidc',
             'application'                 => null,
             'purpose'                     => null,
@@ -301,7 +301,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
             'acting_identity_id'          => '42',
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ], $received->context()->toArray());

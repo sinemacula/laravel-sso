@@ -72,7 +72,7 @@ final class EnforcementDefaultsTest extends TestCase
         $revocation = new NoSessionRevocation;
 
         $revocation->revoke(RevocationScope::tenant(EnforcementPolicy::required('tenant-1', 'tenant-1', ['c-1'], 'v1')));
-        $revocation->revoke(RevocationScope::identityInConnection('tenant-1', 'c-1', new IdentityReference('App\Models\User', '1')));
+        $revocation->revoke(RevocationScope::identityInConnection('tenant-1', 'c-1', new IdentityReference('App\Models\User', '1'), 'link-1'));
 
         $this->addToAssertionCount(1);
     }

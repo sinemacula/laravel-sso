@@ -327,7 +327,7 @@ final class ProvisioningEventSequenceTest extends LinkingTestCase
             'ip'                          => self::IP,
             'user_agent'                  => self::USER_AGENT,
             'connection_id'               => $this->connection->id,
-            'tenant_id'                   => 'tenant-1',
+            'connection_tenant_id'        => 'tenant-1',
             'protocol'                    => VerifyingDriver::NAME,
             'application'                 => 'web',
             'purpose'                     => 'sign_in',
@@ -338,7 +338,7 @@ final class ProvisioningEventSequenceTest extends LinkingTestCase
             'acting_identity_id'          => null,
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ];

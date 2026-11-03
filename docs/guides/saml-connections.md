@@ -28,6 +28,8 @@ Create it with the identity provider's entity id and single sign-on URL, from th
 its metadata (see [SAML metadata](saml-metadata.md#importing-metadata), which proposes these settings and the
 certificates without trusting anything):
 
+<!-- snippet: tests/Integration/Examples/SamlConnections/admin/create.php#saml-connections-create -->
+
 ```php
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 
@@ -60,6 +62,8 @@ metadata (see [Keys](keys.md#generating-and-rotating-service-provider-keys)):
 - an encryption key (`KeyUse::SP_ENCRYPTION`), needed when the connection requires encrypted assertions
   (`require_encrypted_assertions`), and used whenever the identity provider encrypts one.
 
+<!-- snippet: tests/Integration/Examples/SamlConnections/admin/keys.php#saml-connections-keys -->
+
 ```php
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
@@ -91,6 +95,8 @@ for an RSA signing certificate.
 
 Trust each signing certificate the identity provider publishes, after comparing its fingerprint with the one its
 administrator gave you (see [Keys](keys.md#trusting-identity-provider-certificates)):
+
+<!-- snippet: tests/Integration/Examples/SamlConnections/admin/trust.php#saml-connections-trust -->
 
 ```php
 $keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $actor);
@@ -161,6 +167,8 @@ Register the assertion consumer service and the start route your application alr
 HTTP-POST only.
 
 ## 6. Enable it
+
+<!-- snippet: tests/Integration/Examples/SamlConnections/admin/enable.php#saml-connections-enable -->
 
 ```php
 $result = app(ConnectionService::class)->enable($tenant->id, $connectionId, $actor);

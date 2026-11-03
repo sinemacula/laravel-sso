@@ -114,8 +114,8 @@ return [
     |   setting; bind your own to answer a per-client address without a schema
     |   change.
     | - `external_sign_in`: whether the application allows sign-in through an
-    |   external provider (default false). Under `laravel-iam` the answer comes
-    |   from `laravel-authentication`'s per-application methods instead.
+    |   external provider (default false). An adapter may answer it from the
+    |   per-application sign-in methods of your authentication instead.
     | - `delivery`: where the handoff code goes on the redirect URI, the
     |   `fragment` (default) or the `query`.
     | - `discovery`: whether the application offers discovery by email domain
@@ -254,7 +254,8 @@ return [
     | `refresh_interval_seconds` later (an hour to a week, default a day);
     | after a failure it waits `backoff_initial_seconds` (a minute to an hour,
     | default 5 minutes), doubling with each failure in a row up to
-    | `backoff_max_seconds` (5 minutes to a day, default 6 hours).
+    | `backoff_max_seconds` (from `backoff_initial_seconds` to a day, default
+    | 6 hours).
     |
     | Whatever was fetched and validated stops being used `stale_limit_seconds`
     | after its own last validated fetch (a day to a year, default 30 days, or
@@ -350,19 +351,21 @@ return [
     | Attribute mapping
     |---------------------------------------------------------------------------
     |
-    | The caps on what a connection's attribute mapping carries. Mapped values
-    | are profile data, never used to select an identity: the longest value
-    | kept (`max_value_length`, 64 to 65535 characters), the most values one
+    | What a connection's attribute mapping may carry. Mapped values are
+    | profile data, never used to select an identity: the longest value kept
+    | (`max_value_length`, 64 to 65535 characters), the most values one
     | attribute keeps (`max_values`, 1 to 10000, a list of groups say), and the
-    | most custom keys a mapping may declare (`max_custom_attributes`, 0 to
-    | 100).
+    | custom keys your application declares and reads (`custom_attributes`, at
+    | most 100, each a lower-case letter then up to 63 lower-case letters,
+    | digits or underscores, none a standard or reserved key). A connection's
+    | mapping names the standard keys and these alone; none by default.
     |
     */
 
     'mapping' => [
-        'max_value_length'      => env('SSO_MAPPING_MAX_VALUE_LENGTH', 1024),
-        'max_values'            => env('SSO_MAPPING_MAX_VALUES', 100),
-        'max_custom_attributes' => env('SSO_MAPPING_MAX_CUSTOM_ATTRIBUTES', 20),
+        'max_value_length'  => env('SSO_MAPPING_MAX_VALUE_LENGTH', 1024),
+        'max_values'        => env('SSO_MAPPING_MAX_VALUES', 100),
+        'custom_attributes' => [],
     ],
 
     /*
@@ -549,9 +552,9 @@ return [
     | it, the package asks the bound freshness contract whether the caller
     | authenticated within the operation's maximum age, in seconds (1 to
     | 3600). The default contract refuses every operation: bind your own, or
-    | let `laravel-iam` bind `laravel-authentication`'s, before using the
-    | management helpers. Each key is the operation's stable name after `sso.`,
-    | with the dots as underscores (`sso.connection.trust` is
+    | let an adapter bind your authentication's freshness check, before using
+    | the management helpers. Each key is the operation's stable name after
+    | `sso.`, with the dots as underscores (`sso.connection.trust` is
     | `connection_trust`).
     |
     */

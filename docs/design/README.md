@@ -43,6 +43,8 @@ The current note set is:
   and their transactions, the lock order, and the failure reasons and events by flow.
 - `linking.md`: the frozen completion and redemption state machine: its stages and transactions, the lock order, the
   link and reservation states, what the application's contracts guarantee through admission, and its events.
+- `session-provenance.md`: how a session's provenance is captured from the admitted `sign_in` redemption, its
+  versioned stored form, and the pure projection into the `sso.*` authentication context keys.
 - `evidence.md`: what the identity provider's authentication context counts for: each connection's evidence policy, how
   a result is judged at redemption and from its own assertion alone, and what a redeemer offers its further factor.
 - `links.md`, `authorization-requests.md`, `discovery.md`, `completion.md`, `handoffs.md`, `completion-responses.md` and
@@ -100,6 +102,10 @@ The current note set is:
   writes, which events belong to it, and what stands when it rolls back.
 - `standalone-acceptance.md`: how the package is shown to stand alone: what each seam's default does with no sibling
   installed, what an application must supply to go further, and how default and adapter acceptance are kept apart.
+- `requirements.md`: the requirement closure matrix: every clause of the requirements, split into obligations that can
+  each be proven on their own, with the code, the test and assertion, and the documentation behind each, its status,
+  and the recorded decision behind each reconciled row. It follows its own structure (`Purpose`, `Summary`, `Reading
+  the Matrix`, the twelve sections and the context, `Change Triggers`) rather than the one above.
 
 These documents are secondary to the code and tests, not a replacement for them. If a note and a cited test disagree,
 the test should be treated as authoritative until the mismatch is resolved.

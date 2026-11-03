@@ -41,34 +41,48 @@ stored secrets:
 ## Binding a key management service
 
 To keep the secrets under a key management service rather than `APP_KEY`, bind your own implementation of
-`SecretEncrypter` in a service provider. One bound in a provider that registers before the package's is kept; one bound
-later replaces the default as any later binding does:
+`SecretEncrypter` in your service provider's `register()`. One bound in a provider that registers before the
+package's is kept; one bound later, as your application's providers are, replaces the default as any later binding
+does:
 
+<!-- snippet: tests/Integration/Examples/Secrets/AppServiceProvider.php#kms-encrypter-binding -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
-
-public function register(): void
-{
-    $this->app->scoped(SecretEncrypter::class, KmsSecretEncrypter::class);
-}
+// One encrypter per request or job: nothing of one is kept for the next
+$this->app->scoped(SecretEncrypter::class, KmsSecretEncrypter::class);
 ```
 
+Here `KmsSecretEncrypter`, a `final readonly` class implementing `SecretEncrypter`, takes your key management
+service's client (`KmsClient $kms`) in its constructor, and keeps every secret under the service's `sso-secrets` key:
+
+<!-- snippet: tests/Integration/Examples/Secrets/KmsSecretEncrypter.php#kms-secret-encrypter -->
 ```php
-use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
-
-final readonly class KmsSecretEncrypter implements SecretEncrypter
+/**
+ * The secret, encrypted under the service's key.
+ *
+ * @param  string  $secret
+ * @return string
+ *
+ * @throws \RuntimeException
+ */
+#[\Override]
+public function encrypt(#[\SensitiveParameter] string $secret): string
 {
-    public function __construct(private KmsClient $kms) {}
+    return $this->kms->encrypt('sso-secrets', $secret);
+}
 
-    public function encrypt(#[\SensitiveParameter] string $secret): string
-    {
-        return $this->kms->encrypt('sso-secrets', $secret);
-    }
-
-    public function decrypt(string $ciphertext): string
-    {
-        return $this->kms->decrypt($ciphertext);
-    }
+/**
+ * The secret the ciphertext holds, decrypted by the service under the
+ * version of its key that encrypted it.
+ *
+ * @param  string  $ciphertext
+ * @return string
+ *
+ * @throws \RuntimeException
+ */
+#[\Override]
+public function decrypt(string $ciphertext): string
+{
+    return $this->kms->decrypt($ciphertext);
 }
 ```
 
@@ -109,14 +123,16 @@ must be sent or used. A dump of it, or `json_encode()`, shows `[redacted]`; it c
 on a queue or in a cache) and cannot be cast to a string. Compare it with `$secret->equals($given)`, which runs in
 constant time.
 
-For your own comparisons of secrets, codes, verifiers and digests, use `Secrets\ConstantTime`:
+For your own comparisons of secrets, codes, verifiers and digests, use `Secrets\ConstantTime`. A stored digest is
+lower-case hex, as `hash()` writes it, and SHA-256 unless you name another algorithm:
 
+<!-- snippet: tests/Integration/Examples/Secrets/compare.php#constant-time -->
 ```php
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
-ConstantTime::equals($known, $given);
-ConstantTime::matchesDigest($storedSha256Hex, $presented);
-ConstantTime::matchesDigest($storedSha512Hex, $presented, 'sha512');
+$secretMatches = ConstantTime::equals($known, $given);
+$sha256Matches = ConstantTime::matchesDigest($storedSha256Hex, $presented);
+$sha512Matches = ConstantTime::matchesDigest($storedSha512Hex, $presented, 'sha512');
 ```
 
 `matchesDigest()` refuses, with an `InvalidArgumentException`, an algorithm that is not a cryptographic hash PHP

@@ -22,10 +22,12 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  * with `enforcement_unsatisfied`; a policy that requires nothing is satisfied
  * by every connection.
  *
- * Otherwise the policy's version, when it has one, goes on with the state, so
- * the handoff carries the version the completion checked. No exemption is
- * consulted here: an exemption admits a session, and redeeming the handoff
- * rechecks enforcement against the state at redemption.
+ * The state goes on unchanged otherwise: the session keeps the version its
+ * redemption judges under its own locks, not the one checked here. No exemption
+ * is consulted here, nor at redemption: only an adapter's
+ * `Enforcement\ExemptionGate` asks the exemption contract, for a session it
+ * establishes, and redeeming the handoff rechecks enforcement against the state
+ * at redemption.
  *
  * It holds the enforcement contract, which keeps nothing of one completion for
  * the next (SSO-11.2). A database error propagates (SSO-11.4).
@@ -49,8 +51,7 @@ final readonly class CheckEnforcement implements CompletionStage
     ) {}
 
     /**
-     * Refuse a connection that does not satisfy its tenant's enforcement, and
-     * keep the enforcement's version otherwise.
+     * Refuse a connection that does not satisfy its tenant's enforcement.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return \SineMacula\Laravel\Sso\Completion\StageOutcome
@@ -68,6 +69,6 @@ final readonly class CheckEnforcement implements CompletionStage
             return StageOutcome::refuse($state, FailureReason::ENFORCEMENT_UNSATISFIED);
         }
 
-        return StageOutcome::proceed($policy->version === null ? $state : $state->withEnforcementVersion($policy->version));
+        return StageOutcome::proceed($state);
     }
 }

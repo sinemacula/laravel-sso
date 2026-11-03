@@ -25,8 +25,8 @@ use SineMacula\Laravel\Sso\Config\IntegerSetting;
  *   due, an hour to a week (default a day).
  * - `backoff_initial_seconds` and `backoff_max_seconds`: after a failed refresh
  *   the next is due after the initial wait, doubling with each failure in a row
- *   up to the maximum, a minute to an hour (default 5 minutes) and 5 minutes to
- *   a day (default 6 hours); a success resets it.
+ *   up to the maximum, a minute to an hour (default 5 minutes) and from the
+ *   initial wait to a day (default 6 hours); a success resets it.
  * - `stale_limit_seconds`: how long after its own last validated fetch each
  *   fetched resource is still used, whether its refresh is scheduled or not, a
  *   day to a year (default 30 days), or `0` for no limit, which an application

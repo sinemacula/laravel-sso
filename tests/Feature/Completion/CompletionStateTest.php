@@ -56,7 +56,7 @@ final class CompletionStateTest extends TestCase
 
         $parts = [
             'connection', 'correlation', 'authorizationRequest', 'consumed', 'application', 'enforcementPolicy', 'claims', 'result', 'linkedIdentity',
-            'enforcementVersion', 'sessionNotAfter', 'handoff',
+            'sessionNotAfter', 'handoff',
         ];
 
         foreach ($parts as $part) {
@@ -95,7 +95,6 @@ final class CompletionStateTest extends TestCase
             ->withClaims($claims)
             ->withResult($result)
             ->withResolution(ExampleLinks::resolution($identity))
-            ->withEnforcementVersion('version-1')
             ->withSessionNotAfter($notAfter)
             ->withHandoff($handoff);
 
@@ -111,7 +110,6 @@ final class CompletionStateTest extends TestCase
         self::assertSame($claims, $state->claims);
         self::assertSame($result, $state->result);
         self::assertSame($identity, $state->linkedIdentity);
-        self::assertSame('version-1', $state->enforcementVersion);
         self::assertSame($notAfter, $state->sessionNotAfter);
         self::assertSame($handoff, $state->handoff);
         self::assertTrue($state->hasRedirectTarget());
@@ -148,15 +146,14 @@ final class CompletionStateTest extends TestCase
         $arrived = CompletionState::arrived('c', new CompletionRequest('POST', '', ['SAMLResponse' => 'secret-response']));
 
         self::assertSame([
-            'connection_id'       => 'c',
-            'request_reference'   => null,
-            'application'         => null,
-            'verified'            => false,
-            'linked'              => false,
-            'enforcement_version' => null,
-            'handed_off'          => false,
-            'resolution'          => null,
-            'reserved'            => false,
+            'connection_id'     => 'c',
+            'request_reference' => null,
+            'application'       => null,
+            'verified'          => false,
+            'linked'            => false,
+            'handed_off'        => false,
+            'resolution'        => null,
+            'reserved'          => false,
         ], $arrived->__debugInfo());
 
         $code  = HandoffCode::generate();
@@ -168,19 +165,17 @@ final class CompletionStateTest extends TestCase
             )
             ->withResult(ExampleResults::full())
             ->withResolution(ExampleLinks::resolution(new IdentityReference('user', '1')))
-            ->withEnforcementVersion('v1')
             ->withHandoff(new IssuedHandoff($code, CarbonImmutable::now()));
 
         self::assertSame([
-            'connection_id'       => 'c',
-            'request_reference'   => str_repeat('r', 32),
-            'application'         => 'web',
-            'verified'            => true,
-            'linked'              => true,
-            'enforcement_version' => 'v1',
-            'handed_off'          => true,
-            'resolution'          => 'linked',
-            'reserved'            => false,
+            'connection_id'     => 'c',
+            'request_reference' => str_repeat('r', 32),
+            'application'       => 'web',
+            'verified'          => true,
+            'linked'            => true,
+            'handed_off'        => true,
+            'resolution'        => 'linked',
+            'reserved'          => false,
         ], $state->__debugInfo());
         self::assertStringNotContainsString('secret-response', print_r($state, true));
         self::assertStringNotContainsString($code->reveal(), print_r($state, true));

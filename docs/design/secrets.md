@@ -98,6 +98,8 @@ SSO-11.9).
 - `tests/Unit/Secrets/MaskedSecretTest.php`
 - `tests/Unit/Secrets/MaskedKeyTest.php`
 - `tests/Unit/Secrets/ConstantTimeTest.php`
+- `tests/Unit/Architecture/ConstantTimeComparisonTest.php` (no other `hash_equals()`, and no secret compared with an
+  operator)
 - `tests/Feature/Secrets/LaravelSecretEncrypterTest.php`
 - `tests/Feature/Secrets/SecretEncrypterBindingTest.php`
 - `tests/Feature/Secrets/SecretsCheckTest.php`

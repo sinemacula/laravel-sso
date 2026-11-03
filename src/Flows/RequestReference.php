@@ -14,7 +14,7 @@ namespace SineMacula\Laravel\Sso\Flows;
  * secret and grants nothing: it is never the OIDC `state` or the SAML
  * `RelayState` (random references of their own), never a verifier and never a
  * handoff code, each a distinct type the package never accepts as another
- * (SSO-5.2, SSO-9.2, AUTH-5.7).
+ * (SSO-5.2, SSO-9.2).
  *
  * @api
  *

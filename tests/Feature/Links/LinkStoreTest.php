@@ -579,7 +579,7 @@ final class LinkStoreTest extends TestCase
         self::assertSame([
             'occurred_at'                 => '2026-11-01T09:30:00.000000Z',
             'connection_id'               => $this->connection->id,
-            'tenant_id'                   => 'tenant-1',
+            'connection_tenant_id'        => 'tenant-1',
             'protocol'                    => 'saml2',
             'application'                 => 'web',
             'purpose'                     => 'link',
@@ -590,7 +590,7 @@ final class LinkStoreTest extends TestCase
             'acting_identity_id'          => '42',
             'principal_morph_class'       => null,
             'principal_id'                => null,
-            'active_tenant_id'            => null,
+            'tenant_id'                   => null,
             'session_id'                  => null,
             'method'                      => null,
         ], array_diff_key($event->context->toArray(), ['ip' => true, 'user_agent' => true]));

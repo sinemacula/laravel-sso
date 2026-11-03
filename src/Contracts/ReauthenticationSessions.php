@@ -32,6 +32,14 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
  * holds as it is. Link suspension blocks reauthentication before either is
  * asked.
  *
+ * An adapter whose authentication renews a session only through an entry point
+ * that needs the whole result may record the renewal in `renewAuthentication()`
+ * and write nothing there, then make the one write once
+ * `Handoffs\HandoffRedemption::admit()` answers, in the same transaction and
+ * under the same lock, before it commits; it never renews twice, and a renewal
+ * it cannot make rolls the transaction back
+ * (`docs/guides/reauthenticating.md`).
+ *
  * The session's bound link is recorded when the session is written, from
  * `Handoffs\RedemptionResult::$linkId`, inside the transaction of the sign-in's
  * `Handoffs\HandoffRedemption::admit()`, and only a change that replaces the
@@ -47,7 +55,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
  * The package keeps no sessions, so the default,
  * `Flows\NoReauthenticationSessions`, answers `not_signed_in` for every
  * question, and no `reauthenticate` flow starts until the application binds its
- * own. Under `laravel-iam` it is bound to `laravel-authentication`'s sessions,
+ * own. An adapter binds it to the sessions of the application's authentication,
  * read from their external-provider provenance (SSO-9.10). An implementation
  * reads from the write connection where it reads the package's database, keeps
  * nothing of one call for the next (SSO-11.2), and never answers `signed_in`
@@ -92,7 +100,9 @@ interface ReauthenticationSessions
      * session holds already is kept: a renewal never moves it backwards. The
      * adapter writes `max(current, provider_time)` under the session's lock, in
      * the redemption's transaction, since the package does not hold the
-     * session.
+     * session. An adapter may instead record the renewal here and make this one
+     * write after `Handoffs\HandoffRedemption::admit()` answers, in the same
+     * transaction; it never writes twice.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $sessionId

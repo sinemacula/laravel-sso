@@ -298,8 +298,8 @@ final class ApplicationBindingsTest extends StandaloneTestCase
 
     /**
      * An issuer wrapping the store is asked inside the completion's
-     * transaction, and the code it writes redeems through the package's
-     * redemption.
+     * transaction, with the connection's trust version as its locked row holds
+     * it, and the code it writes redeems through the package's redemption.
      *
      * @return void
      */
@@ -314,6 +314,13 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         self::assertSame($start['reference'], $issuer->grants[0]->result->requestReference->value);
         self::assertGreaterThan(0, $issuer->levels[0]);
         self::assertSame(hash('sha256', $code), HandoffCode::query()->sole()->code_digest);
+
+        // The grant carries the connection's trust version as its row was
+        // locked, and the store keeps it
+        $trustVersion = Connection::query()->whereKey($connection->id)->sole()->trust_version;
+
+        self::assertSame($trustVersion, $issuer->grants[0]->trustVersion);
+        self::assertSame($trustVersion, HandoffCode::query()->sole()->trust_version);
         self::assertSame('redeemed', $this->flowRedeem($connection, 'sign_in', $code, $start['verifier'])->assertOk()->json('status'));
         $this->assertOnlyRebound(HandoffIssuer::class);
     }

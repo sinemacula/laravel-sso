@@ -519,6 +519,8 @@ final class SubjectMigrationTest extends TestCase
             'reservation_reference'  => str_repeat('r', 32),
         ]);
 
+        $this->links['reserved'] = $reserved;
+
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => 'http://login.example.com']], [
             $reserved->id             => ['subject'],
             $this->links['first']->id => ['first-new'],
@@ -627,6 +629,8 @@ final class SubjectMigrationTest extends TestCase
     {
         $prepared = $this->ids('second', 'third');
         $late     = $this->makeLink($this->connection, 'late-subject', ['identity_id' => '5']);
+
+        $this->links['late'] = $late;
 
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['first']->id => ['first-new'],
@@ -779,7 +783,8 @@ final class SubjectMigrationTest extends TestCase
 
     /**
      * Assert the sessions of exactly these identities, in order, were revoked
-     * through the connection, each inside the transaction.
+     * through the connection and the identity's own removed link, each inside
+     * the transaction.
      *
      * @param  list<string>  $identities
      * @return void
@@ -800,8 +805,26 @@ final class SubjectMigrationTest extends TestCase
             self::assertSame(self::TENANT, $scope->tenantId);
             self::assertSame($this->connection->id, $scope->connectionId);
             self::assertTrue((new IdentityReference('user', $identities[$index]))->is($scope->identity ?? new IdentityReference('none', '0')));
+            self::assertSame($this->linkIdOf($identities[$index]), $scope->linkId);
             self::assertGreaterThan(0, $call['level']);
         }
+    }
+
+    /**
+     * The id of the identity's link the test made, which a removal names.
+     *
+     * @param  string  $identityId
+     * @return string
+     */
+    private function linkIdOf(string $identityId): string
+    {
+        foreach ($this->links as $link) {
+            if ($link->identity_id === $identityId) {
+                return $link->id;
+            }
+        }
+
+        return self::fail("The test made no link for the identity [{$identityId}].");
     }
 
     /**
