@@ -192,6 +192,25 @@ final class StorageConnection
     }
 
     /**
+     * Refuse, with the message, an operation called while a transaction is open
+     * on the storage connection or the counters' connection: one that uses both
+     * and promises its statements commit by themselves.
+     *
+     * @param  string  $message
+     * @return void
+     *
+     * @throws \LogicException
+     */
+    public static function assertNoTransactionOnAny(string $message): void
+    {
+        self::assertNoTransaction($message);
+
+        if (DB::connection(self::forRateLimits())->transactionLevel() > 0) {
+            throw new \LogicException($message);
+        }
+    }
+
+    /**
      * The table name configured under the key, once it is a plain table name,
      * optionally schema-qualified.
      *

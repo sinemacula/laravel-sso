@@ -42,8 +42,8 @@ final readonly class KeysCheck implements ConfigurationCheck
     }
 
     /**
-     * The RSA modulus, the certificate validity, the overlap and the expiry
-     * warning.
+     * The RSA modulus, the certificate validity, the overlap, the expiry
+     * thresholds and how long a reporter holds a key.
      *
      * @return list<\Closure(): mixed>
      */
@@ -56,7 +56,8 @@ final readonly class KeysCheck implements ConfigurationCheck
             static fn (): int => $settings->rsaBits(),
             static fn (): int => $settings->certificateDays(),
             static fn (): int => $settings->overlapSeconds(),
-            static fn (): int => $settings->expiryWarningDays(),
+            static fn (): ExpiryThresholds => $settings->expiryThresholds(),
+            static fn (): int => $settings->expiryClaimSeconds(),
         ];
     }
 }

@@ -38,21 +38,26 @@ use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Contracts\TenantMembership;
+use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
 use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
+use SineMacula\Laravel\Sso\Events\TransactionGenerations;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
+use SineMacula\Laravel\Sso\Keys\ExpiryNotifier;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Metadata\OidcMetadataSource;
 use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
 use SineMacula\Laravel\Sso\Metadata\SamlMetadataSource;
+use SineMacula\Laravel\Sso\Protocols\DriverScope;
 use SineMacula\Laravel\Sso\Protocols\Oidc\CallbackCompletion;
 use SineMacula\Laravel\Sso\Protocols\Oidc\ClaimsAssembler;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Protocols\Saml2\UnsolicitedResponses;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
+use SineMacula\Laravel\Sso\Pruning\Pruner;
 use SineMacula\Laravel\Sso\Revocation\NoSessionRevocation;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\Fixtures\Fetching\StubHostResolver;
@@ -99,6 +104,8 @@ final class SsoServiceProviderTest extends TestCase
         ProviderSessionDeadline::class,
         HandoffIssuer::class,
         ProtocolManager::class,
+        DriverScope::class,
+        TransactionGenerations::class,
         ConfigurationChecker::class,
     ];
 
@@ -256,6 +263,9 @@ final class SsoServiceProviderTest extends TestCase
                 ProviderKeys::class,
                 CallbackCompletion::class,
                 ClaimsAssembler::class,
+                Pruner::class,
+                ExpiryNotifier::class,
+                DomainRechecker::class,
             ],
             SsoServiceProvider::LOGGING_CLASSES,
         );
@@ -279,7 +289,7 @@ final class SsoServiceProviderTest extends TestCase
         self::assertSame(
             [
                 'features', 'extensions', 'storage', 'endpoints', 'applications', 'clock', 'secrets', 'fetcher', 'logging', 'rate_limits', 'freshness', 'keys',
-                'mapping', 'domains', 'flows', 'linking', 'saml2', 'oidc', 'metadata',
+                'mapping', 'domains', 'flows', 'linking', 'saml2', 'oidc', 'metadata', 'pruning', 'operations',
             ],
             array_keys(SsoServiceProvider::CONFIGURATION_CHECKS),
         );

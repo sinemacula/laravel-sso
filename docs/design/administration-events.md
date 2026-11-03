@@ -54,7 +54,7 @@ enforcement events" below; the metadata and link events arrive with their parts 
   | `KeyAdded`           | `KeyService::addNext()`, `KeyService::trustCertificate()`    | Once the key or certificate is inserted                                 |
   | `KeyMadeCurrent`     | `KeyService::addNext()`, `KeyService::makeCurrent()`         | After `KeyAdded` for a use's first key; once a `next` key is promoted   |
   | `KeyRetired`         | `KeyService::retire()`, `KeyService::distrustCertificate()`  | Once the row is deleted, reported as it was read before                 |
-  | `KeyNearingExpiry`   | `Keys\ExpiryReport::report()`                                | For each row reported, with no acting identity                          |
+  | `KeyNearingExpiry`   | `Keys\ExpiryNotifier::notify()`                              | For each warning sent, with no acting identity                          |
 
 - `ConnectionUpdated` names what changed in one order: the settings as the protocol's setting enum lists them
   (`Saml2Setting`, `OidcSetting`; a registered driver's in the order its settings hold them), then the secrets, then
@@ -93,16 +93,16 @@ enforcement events" below; the metadata and link events arrive with their parts 
   | `trustCertificate()`, `distrustCertificate()`           | `sso.connection.trust`                                                 |
 
   Each is asked with the maximum age configured for it under `sso.freshness.max_age_seconds`.
-- Nearing expiry is reported, never enforced. `Keys\ExpiryReport::report(?int $withinDays = null)` reads every key and
-  certificate of any connection whose `not_after` is set and at or before the clock's now plus the window, on the write
-  connection, ordered by `not_after` and then by id. The window is `sso.keys.expiry_warning_days` (30 by default) unless
-  a number of days from 1 to 365 is given, each day 86400 seconds. A row already expired is included; a row with no
-  `not_after` never is; a `retiring` key whose `retiring_until` is at or before now is left out, since decryption no
-  longer accepts it. The rows' connections are loaded on the write connection in one query, and a row whose connection
-  is gone is skipped. Each row is reported with one `KeyNearingExpiry` through `keyNearingExpiry()` with no acting
-  identity, at once outside a transaction, and returned as a `Keys\KeySummary`. The report writes nothing and changes
-  nothing: an expired certificate is still trusted, and no key is withdrawn. The scheduled command `sso:keys:expiring`,
-  and the de-duplication that keeps it from reporting a key on every run, arrive with BL-70.
+- Nearing expiry is reported, never enforced. `Keys\ExpiryReport::report(?int $withinDays = null, ?Closure $each = null)`
+  lists every key and certificate of any connection whose `not_after` is set and at or before the clock's now plus the
+  window, on the write connection, in pages by keyset on `not_after` and then id. The window is the largest of
+  `sso.keys.expiry_thresholds` (30 by default) unless a number of days from 1 to 365 is given, each day 86400 seconds. A
+  row already expired is included; a row with no `not_after` never is; a `retiring` key whose `retiring_until` is at or
+  before now is left out, since decryption no longer accepts it. Each page's connections are loaded on the write
+  connection in one query, and a row whose connection is gone is skipped. Each key that has reached a threshold, and was
+  not warned of it or a more urgent one, is reported with one `KeyNearingExpiry` through `keyNearingExpiry()` with no
+  acting identity, outside any transaction and at least once: see `operations.md`, with the command `sso:keys:expiring`
+  and what the claim and the marker do. An expired certificate is still trusted, and no key is withdrawn.
 
 ### Domain and enforcement events
 
@@ -157,8 +157,9 @@ enforcement events" below; the metadata and link events arrive with their parts 
 - An `ActingIdentity` with an empty type or id is the application's mistake: an `InvalidArgumentException` before any
   helper runs.
 - `ExpiryReport::report()` given 0, a negative number or more than 365 days throws an `InvalidArgumentException`,
-  `An expiry report looks 1 to 365 days ahead.`, before anything is read; a malformed `sso.keys.expiry_warning_days`
-  fails closed with `KeySettings`' exception naming the key. Called twice, it reports the same rows twice.
+  `An expiry report looks 1 to 365 days ahead.`, before anything is read; a malformed `sso.keys.expiry_thresholds`
+  fails closed with `KeySettings`' exception naming the key. Called twice, it lists the same rows twice and warns only
+  of what has newly become due.
 - A listener's exception propagates as Laravel's dispatcher propagates it, after the change has committed.
 
 ## Implementation Anchors
@@ -172,7 +173,8 @@ enforcement events" below; the metadata and link events arrive with their parts 
 - `src/Connections/ConnectionLifecycle.php`: `disable()`, `delete()`; `src/Connections/SubjectMigration.php`:
   `migrate()`.
 - `src/Keys/KeyService.php`: `insertOwnKey()`, `insertTrusted()`, `promote()`, `remove()`.
-- `src/Keys/ExpiryReport.php`: `report()`; `src/Keys/KeySettings.php`: `expiryWarningDays()`.
+- `src/Keys/ExpiryReport.php`: `report()`; `src/Keys/ExpiryNotifier.php`: `notify()`; `src/Keys/KeySettings.php`:
+  `expiryThresholds()`, `expiryClaimSeconds()`.
 - `src/Freshness/FreshnessGate.php`, `src/Testing/FakeFreshness.php`.
 
 ## Authoritative Tests
@@ -194,10 +196,11 @@ enforcement events" below; the metadata and link events arrive with their parts 
   `testTheDefaultContractRefusesWithNothingWritten`, `testAFreshCallerIsAskedExactlyItsOperations`,
   `testAChangeThatWidensNothingAsksNothing`, `testEnablingAsksEvenWhenAlreadyEnabled`.
 - `tests/Feature/Keys/ExpiryReportTest.php`
-  `testTheDefaultWindowIsThirtyDays`, `testTheConfiguredWarningSetsTheWindow`,
-  `testAGivenWindowReplacesTheConfiguredOne`, `testExpiredRowsAreIncluded`, `testARetiringKeyPastItsOverlapIsExcluded`,
+  `testTheDefaultWindowIsTheLargestThreshold`, `testTheConfiguredThresholdsSetTheWindow`,
+  `testAGivenWindowReplacesTheDefault`, `testExpiredRowsAreIncluded`, `testARetiringKeyPastItsOverlapIsExcluded`,
   `testAKeyWithNoEndOfValidityIsNeverReported`, `testOrdersByEndOfValidityThenId`,
-  `testReportsEachRowOnceWithNoActingIdentity`, `testSkipsARowWhoseConnectionIsGone`, `testChangesNothing`,
+  `testReportsEachRowOnceWithNoActingIdentity`, `testAWarningIsSentOnceAndRecorded`,
+  `testAKeyAlreadyNotifiedIsStillListed`, `testSkipsARowWhoseConnectionIsGone`, `testChangesNothingButTheMarker`,
   `testReadsTheWriteConnection`, `testRefusesADayCountOutOfRange`, `testAcceptsTheEdgesOfTheRange`.
 - `tests/Integration/Administration/AdministrationEventsAfterCommitTest.php`
   `testAnOperationRolledBackWritesAndReportsNothing`, `testAnOperationCommittedReportsOnlyAfterTheCommit`,

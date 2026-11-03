@@ -130,6 +130,8 @@ final class CheckConfigurationCommandTest extends TestCase
         config()->set('sso.saml2.max_response_bytes', 16383);
         config()->set('sso.oidc.max_id_token_bytes', 16385);
         config()->set('sso.metadata.claim_seconds', 3601);
+        config()->set('sso.pruning.batch_size', 0);
+        config()->set('sso.operations.mutex_minutes', 0);
 
         $this->app?->forgetInstance('encrypter');
         $this->app?->forgetScopedInstances();
@@ -157,6 +159,8 @@ final class CheckConfigurationCommandTest extends TestCase
             '[saml2] sso.saml2.max_response_bytes must be an integer from 16384 to 1048576.',
             '[oidc] sso.oidc.max_id_token_bytes must be an integer from 2048 to 16384.',
             '[metadata] sso.metadata.claim_seconds must be an integer from 30 to 3600.',
+            '[pruning] sso.pruning.batch_size must be an integer from 1 to 10000.',
+            '[operations] sso.operations.mutex_minutes must be an integer from 1 to 1440.',
         ], $output);
     }
 

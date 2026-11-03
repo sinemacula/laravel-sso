@@ -23,11 +23,13 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Links\ReservationWithdrawal;
+use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Concerns\RecordsLockOrder;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -50,6 +52,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 #[CoversClass(DomainRechecker::class)]
 final class ReservationWithdrawalTest extends LinkingTestCase
 {
+    use RecordsLockOrder;
+
     /** @var string What the recheck looks the claim's record up at. */
     private const string RECORD = '_sso-verification.example.com';
 
@@ -314,6 +318,59 @@ final class ReservationWithdrawalTest extends LinkingTestCase
         self::assertSame(2, ReservationWithdrawal::ofRows($this->connection, $rows));
         self::assertSame(['active', 'suspended'], $this->statesIn($this->connection));
         self::assertSame(1, $this->linksVersion());
+    }
+
+    /**
+     * Of the rows named, only those still reserved and expired by the cutoff
+     * go, and they are counted; a row of another connection, past the cutoff,
+     * of another state or not named stays; the links version rises once.
+     *
+     * @return void
+     */
+    public function testExpiredDeletesOnlyTheExpiredReservationsNamed(): void
+    {
+        $other = $this->makeConnection(['protocol' => VerifyingDriver::NAME]);
+        $now   = $this->clock->now();
+        $at    = UtcDateTime::format(new Link, $now);
+
+        $gone    = $this->row($this->connection, 'a', LinkState::RESERVED, -60);
+        $edge    = $this->row($this->connection, 'b', LinkState::RESERVED, 0);
+        $live    = $this->row($this->connection, 'c', LinkState::RESERVED, 1);
+        $active  = $this->row($this->connection, 'd', LinkState::ACTIVE);
+        $foreign = $this->row($other, 'e', LinkState::RESERVED, -60);
+        $unnamed = $this->row($this->connection, 'f', LinkState::RESERVED, -60);
+
+        $named = [$gone->id, $edge->id, $live->id, $active->id, $foreign->id];
+
+        self::assertSame(2, ReservationWithdrawal::expired($this->connection->id, $named, $at));
+
+        self::assertEqualsCanonicalizing([$live->id, $active->id, $foreign->id, $unnamed->id], Link::query()->pluck('id')->all());
+        self::assertSame(1, $this->linksVersion());
+        self::assertSame(0, Connection::query()->whereKey($other->id)->sole()->links_version);
+    }
+
+    /**
+     * Nothing left to delete raises nothing, and it locks the connection first,
+     * in a transaction of its own.
+     *
+     * @return void
+     */
+    public function testExpiredWithNothingToDeleteLocksTheConnectionAndRaisesNothing(): void
+    {
+        $statements = [];
+
+        $this->recordLockOrder();
+
+        DB::connection()->listen(static function ($query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        self::assertSame(0, ReservationWithdrawal::expired($this->connection->id, ['0000000000000000000000000a'], '2026-11-01 12:00:00'));
+        self::assertCount(2, $statements);
+        self::assertStringContainsString('for update', $statements[0]);
+        self::assertStringContainsString('connections', $statements[0]);
+        self::assertStringStartsWith('delete', $statements[1]);
+        self::assertSame(0, $this->linksVersion());
     }
 
     /**

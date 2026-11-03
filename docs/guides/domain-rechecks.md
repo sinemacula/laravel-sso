@@ -7,7 +7,8 @@ verifying a domain.
 
 ## Scheduling it
 
-Run it from the scheduler, hourly:
+Run it from the scheduler, hourly, which [the operations schedule](operations.md) does for you along with the other
+commands, or on its own:
 
 ```php
 // bootstrap/app.php
@@ -29,15 +30,16 @@ run.
 
 ## What a check does
 
-| Outcome         | When                                                                    | What changes                                                     | Event                 |
-|-----------------|-------------------------------------------------------------------------|------------------------------------------------------------------|-----------------------|
-| `confirmed`     | A record at the name is exactly the token                               | The last successful check is now; the verification time is kept  | None                  |
-| `restored`      | The same, for a domain whose record had gone, within the grace period   | Linking resumes, and the domain no longer lapses                 | `DomainRestored`      |
-| `suspended`     | No record, or none that is exactly the token                            | Linking stops at once; the domain lapses at the end of the grace | `DomainRecheckFailed` |
-| `still_failing` | The record is still gone, within the grace period                       | Nothing: the suspension and the lapse time are kept              | `DomainRecheckFailed` |
-| `lapsed`        | The grace period has run out, or is 0                                   | The domain is no longer verified, and is free for another tenant | `DomainLapsed`        |
-| `lookup_failed` | The resolver could not answer                                           | Nothing                                                          | `DomainRecheckFailed` |
-| `skipped`       | Another server is checking it, or it changed while it was being checked | Nothing                                                          | None                  |
+| Outcome          | When                                                                    | What changes                                                     | Event                 |
+|------------------|-------------------------------------------------------------------------|------------------------------------------------------------------|-----------------------|
+| `confirmed`      | A record at the name is exactly the token                               | The last successful check is now; the verification time is kept  | None                  |
+| `restored`       | The same, for a domain whose record had gone, within the grace period   | Linking resumes, and the domain no longer lapses                 | `DomainRestored`      |
+| `suspended`      | No record, or none that is exactly the token                            | Linking stops at once; the domain lapses at the end of the grace | `DomainRecheckFailed` |
+| `still_failing`  | The record is still gone, within the grace period                       | Nothing: the suspension and the lapse time are kept              | `DomainRecheckFailed` |
+| `lapsed`         | The grace period has run out, or is 0                                   | The domain is no longer verified, and is free for another tenant | `DomainLapsed`        |
+| `lookup_failed`  | The resolver could not answer                                           | Nothing                                                          | `DomainRecheckFailed` |
+| `resolver_threw` | The resolver threw instead of answering                                 | Nothing; the domain is checked again at the next run             | None                  |
+| `skipped`        | Another server is checking it, or it changed while it was being checked | Nothing                                                          | None                  |
 
 While the grace period runs (`sso.domains.recheck_grace_seconds`, three days by default), discovery still routes the
 domain to its connection, so a record removed by mistake does not lock people out; only linking by email stops, at
@@ -48,6 +50,12 @@ does not move it. A domain past its grace lapses at the next run even if its rec
 
 A failed lookup proves nothing either way, so it changes nothing: the domain is not suspended, and its last successful
 check does not move, so linking by it stops on its own once that check is older than the linking maximum age.
+
+A resolver should answer `lookup_failed` when it cannot tell, never throw. If yours throws anyway, the recheck contains
+it for that domain and goes on to the others: the domain is left exactly as it was, released for the next run, which
+checks it again in its usual place, and it is never counted as a failed lookup, so however often the resolver throws
+the domain never lapses for it. Only a warning is logged, `sso.domains.recheck_resolver_threw`, naming the exception's
+class and nothing else; no event is dispatched.
 
 `DomainRecheckFailed` carries `failure` (`record_absent`, `record_changed` or `lookup_failed`) and `lapsesAt`. No event
 carries the token or a record's value. Each is dispatched after the check's transaction commits; see
@@ -60,13 +68,14 @@ The command prints a line for each domain that did more than confirm, then the c
 ```text
 [suspended] example.com (connection 01jbx3k5d2r9w8v7t6s5q4p3n2)
 [lookup_failed] example.org (connection 01jbx3k5d2r9w8v7t6s5q4p3n2)
-Domains rechecked: confirmed 41, restored 0, suspended 1, still_failing 0, lapsed 0, lookup_failed 1, skipped 0
+[resolver_threw] example.net (connection 01jbx3k5d2r9w8v7t6s5q4p3n2)
+Domains rechecked: confirmed 41, restored 0, suspended 1, still_failing 0, lapsed 0, lookup_failed 1, resolver_threw 1, skipped 0
 ```
 
-It exits `1` when any lookup failed, so a resolver that cannot answer is noticed, and when the run stopped on an
-exception (a database error, or a resolver that threw), which it names by its class alone; otherwise `0`. A run stopped
-part way keeps what it had already written; the domain it was checking is picked up again once its lease expires,
-after five minutes.
+It exits `1` when any lookup failed or the resolver threw, so a resolver that cannot answer is noticed, and when the run
+stopped on an exception (a database error), which it names by its class alone; otherwise `0`. A run stopped part way
+keeps what it had already written; the domain it was checking is picked up again once its lease expires, after five
+minutes.
 
 ## The DNS resolver
 
@@ -83,6 +92,7 @@ use SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome;
 $report = app(DomainRechecker::class)->recheckAll();
 
 $report->hasLookupFailures();       // bool
+$report->hasResolverThrows();       // bool
 $report->count(RecheckOutcome::SUSPENDED);
 json_encode($report);               // entries and counts, snake_case, times in UTC
 ```

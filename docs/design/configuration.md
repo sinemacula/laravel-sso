@@ -90,7 +90,8 @@ package registers its settings and its check without editing another's (SSO-12.2
 - `src/Config/Checks/FeaturesCheck.php`, `ExtensionsCheck.php`, `StorageCheck.php`, `EndpointsCheck.php`,
   `ApplicationsCheck.php`.
 - The checks of later parts, each beside the settings it reads: `src/Freshness/FreshnessCheck.php` (`[freshness]`),
-  `src/Keys/KeysCheck.php` (`[keys]`), `src/Connections/MappingCheck.php` (`[mapping]`),
+  `src/Keys/KeysCheck.php` (`[keys]`), `src/Pruning/PruningCheck.php` (`[pruning]`),
+  `src/Operations/OperationsCheck.php` (`[operations]`), `src/Connections/MappingCheck.php` (`[mapping]`),
   `src/Domains/DomainsCheck.php` (`[domains]`), `src/Flows/FlowsCheck.php` (`[flows]`),
   `src/Linking/LinkingCheck.php` (`[linking]`).
 - `src/Console/CheckConfigurationCommand.php`; `src/SsoServiceProvider.php`: `CONFIGURATION_CHECKS`,

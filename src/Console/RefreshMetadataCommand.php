@@ -14,8 +14,9 @@ use SineMacula\Laravel\Sso\Metadata\RefreshResult;
 use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
- * `sso:metadata:refresh`: sends the refresh of every SAML connection whose
- * scheduled metadata refresh is due to the queue (SSO-2.8, SSO-11.12), one
+ * `sso:metadata:refresh`: sends the refresh of every connection whose scheduled
+ * refresh is due to the queue, a SAML connection's metadata and an OIDC
+ * connection's discovery document and keys (SSO-2.8, SSO-11.12), one
  * `Metadata\RefreshConnectionMetadata` job per connection on the queue
  * connection and queue `sso.metadata.queue` names, so a deployment sends large
  * federation metadata to workers sized for it. With `--sync` it refreshes them

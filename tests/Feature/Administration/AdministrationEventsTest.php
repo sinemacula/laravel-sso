@@ -141,7 +141,7 @@ final class AdministrationEventsTest extends TestCase
         $this->events()->keyMadeCurrent($connection, $key, $previous, null);
         $this->events()->keyMadeCurrent($connection, $key, null, null);
         $this->events()->keyRetired($connection, $previous, null);
-        $this->events()->keyNearingExpiry($connection, $key);
+        $this->events()->keyNearingExpiry($connection, $key, 14);
 
         $this->assertEventSequence([KeyAdded::class, KeyMadeCurrent::class, KeyMadeCurrent::class, KeyRetired::class, KeyNearingExpiry::class]);
 
@@ -158,6 +158,7 @@ final class AdministrationEventsTest extends TestCase
         self::assertSame($previous->id, $retired->keyId);
         self::assertInstanceOf(KeyNearingExpiry::class, $nearing);
         self::assertSame('2027-01-01T00:00:00Z', $nearing->notAfter->format('Y-m-d\TH:i:s\Z'));
+        self::assertSame(14, $nearing->thresholdDays);
 
         foreach ($this->recordedEvents() as $event) {
             self::assertStringNotContainsString('encrypted-private-key', serialize($event));
@@ -174,7 +175,7 @@ final class AdministrationEventsTest extends TestCase
         $connection = $this->makeConnection();
         $key        = $this->makeKey($connection, KeyState::CURRENT, str_repeat('c', 64), false);
 
-        $this->events()->keyNearingExpiry($connection, $key);
+        $this->events()->keyNearingExpiry($connection, $key, 30);
 
         $this->assertNoEvents();
     }

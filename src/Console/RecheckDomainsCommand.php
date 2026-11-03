@@ -18,10 +18,12 @@ use Symfony\Component\Console\Attribute\AsCommand;
  *
  * It prints one line per domain whose check did more than confirm it,
  * `[<outcome>] <domain> (connection <id>)`, then the count of each outcome. It
- * exits non-zero when a lookup failed, so a resolver that cannot answer is
- * noticed, and when the run stopped on an exception, which it names by class
- * alone: an exception's message could carry a value read from the database or
- * the DNS, and the command prints neither a token nor a record.
+ * exits non-zero when a lookup failed or the resolver threw, so a resolver that
+ * cannot answer is noticed, and when the run stopped on an exception, which it
+ * names by class alone: an exception's message could carry a value read from
+ * the database or the DNS, and the command prints neither a token nor a record.
+ * A resolver that threw is printed as `resolver_threw`, and its exception is
+ * logged by class by `Domains\DomainRechecker`, not printed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,7 +59,9 @@ final class RecheckDomainsCommand extends Command
 
         $this->line(self::summary($report));
 
-        return $report->hasLookupFailures() ? self::FAILURE : self::SUCCESS;
+        $failed = $report->hasLookupFailures() || $report->hasResolverThrows();
+
+        return $failed ? self::FAILURE : self::SUCCESS;
     }
 
     /**

@@ -20,8 +20,13 @@ use SineMacula\Laravel\Sso\Config\IntegerSetting;
  * - `overlap_seconds`: how long a key replaced as current is kept `retiring`,
  *   accepted for decryption, 0 to 7776000 seconds (90 days; default 604800, a
  *   week).
- * - `expiry_warning_days`: how far ahead a certificate's expiry is reported as
- *   near, 1 to 365 days (default 30).
+ * - `expiry_thresholds`: how many days before its end of validity a key or
+ *   certificate is warned of: distinct integers from 0 to 365, in any order,
+ *   always including 0, for one that has ended (default 30, 14, 7, 1 and 0).
+ *   The largest is also how far ahead the report looks by default.
+ * - `expiry_claim_seconds`: how long one reporter holds a key while it sends a
+ *   warning, 1 to 3600 seconds (default 300). A reporter that dies holding one
+ *   delays that warning by this long, and loses it never.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,8 +51,17 @@ final readonly class KeySettings
     /** @var int The greatest overlap that may be configured, in seconds (90 days). */
     public const int MAX_OVERLAP_SECONDS = 7776000;
 
-    /** @var int How far ahead an expiry is reported when none is configured, in days. */
-    public const int DEFAULT_EXPIRY_WARNING_DAYS = 30;
+    /** @var list<int> The days before an end of validity a key is warned of when none are configured. */
+    public const array DEFAULT_EXPIRY_THRESHOLDS = [30, 14, 7, 1, 0];
+
+    /** @var int The most days before an end of validity a key may be warned of. */
+    public const int MAX_EXPIRY_THRESHOLD = 365;
+
+    /** @var int How long a reporter holds a key when none is configured, in seconds. */
+    public const int DEFAULT_EXPIRY_CLAIM_SECONDS = 300;
+
+    /** @var int The longest a reporter may hold a key, in seconds. */
+    public const int MAX_EXPIRY_CLAIM_SECONDS = 3600;
 
     /**
      * Constructor.
@@ -103,14 +117,26 @@ final readonly class KeySettings
     }
 
     /**
-     * How far ahead a certificate's expiry is reported as near, in days.
+     * The days before an end of validity a key or certificate is warned of.
+     *
+     * @return \SineMacula\Laravel\Sso\Keys\ExpiryThresholds
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function expiryThresholds(): ExpiryThresholds
+    {
+        return ExpiryThresholds::parse($this->config->get('sso.keys.expiry_thresholds', self::DEFAULT_EXPIRY_THRESHOLDS));
+    }
+
+    /**
+     * How long one reporter holds a key while it sends a warning, in seconds.
      *
      * @return int
      *
      * @throws \InvalidArgumentException
      */
-    public function expiryWarningDays(): int
+    public function expiryClaimSeconds(): int
     {
-        return IntegerSetting::read($this->config, 'sso.keys.expiry_warning_days', self::DEFAULT_EXPIRY_WARNING_DAYS, 1, 365);
+        return IntegerSetting::read($this->config, 'sso.keys.expiry_claim_seconds', self::DEFAULT_EXPIRY_CLAIM_SECONDS, 1, self::MAX_EXPIRY_CLAIM_SECONDS);
     }
 }

@@ -13,8 +13,8 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 - `sso:domains:recheck` (`Console\RecheckDomainsCommand`) runs `Domains\DomainRechecker::recheckAll()`, which answers a
   `Domains\RecheckReport`: a `Domains\RecheckEntry` per claim it selected, in the order it checked them (the claim's
   id, its connection's id, the domain, a `Domains\Enums\RecheckOutcome` and, while a record failure is pending, when the
-  domain lapses), with `count()` per outcome and `hasLookupFailures()`. Neither holds a token or a record's value; both
-  encode with snake_case keys and times in UTC.
+  domain lapses), with `count()` per outcome, `hasLookupFailures()` and `hasResolverThrows()`. Neither holds a token or
+  a record's value; both encode with snake_case keys and times in UTC.
 - Only verified claims are rechecked: a pending or lapsed claim is never selected and never leased. The claims are read
   on the write connection in chunks of `CHUNK_SIZE` (100), ordered by `last_successful_check_at` then `id` and paged by
   keyset on that pair (the `recheck_index`), never by offset and never all at once. A run selects only claims whose
@@ -30,6 +30,27 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 - A claim whose `lapses_at` is set and not after now has run out of grace: it is lapsed without a lookup, even if its
   record has come back. Any other claim's record is looked up at `DomainStanding::lookupName()` through
   `Contracts\DnsResolver`, outside any transaction of the rechecker's own.
+- A resolver that throws, which the contract forbids (it promises `lookup_failed` instead, and the package's own
+  `SystemDnsResolver` never throws), is contained, and only the resolver's own call is: whatever it throws, `Error`s
+  included, never reaches the run. The exception is logged once, as a warning, through `Logging\SanitizingLogger`
+  (`sso.domains.recheck_resolver_threw`, with its class alone as `exception`: never its message, the domain or anything
+  a provider said). Then the claim's lease is released, in a short transaction that locks the claim's connection first,
+  by one statement through the query builder that sets `recheck_leased_until` to null only while it is still the exact
+  lease this check took, so a server that took the claim over keeps its own. Nothing else is written: no lapse, no
+  suspension, no failure count, no check time and no `updated_at`, so the row is as it was before the run. Nothing is
+  reported, since `DomainRecheckFailed` would read as a failed lookup, which it is not. The entry is `resolver_threw`,
+  with `lapsesAt` as the claim stood, and the run goes on to the next claim.
+- The lease is released rather than left to expire, and no further: a throw must not move the check time, so the claim
+  keeps its place in the order, and the next run (or an overlapping one, which selects it again since nothing about it
+  was stamped) checks it there, the least recently confirmed first, with every other claim after it, none skipped. It
+  comes first because it is the least recently confirmed, the claim nearest the linking maximum age, as the order means;
+  contained, its throw costs the others one call and blocks none. A lease held past the next run would have that run
+  skip it, reported as `skipped` rather than `resolver_threw`, hiding the fault from the exit code and delaying the
+  confirmation once the resolver answers again.
+- Repeated throws never lapse or suspend a domain. Like a failed lookup, they leave its last successful check where it
+  was, so linking by the domain stops on its own once that check is older than the linking maximum age, while discovery
+  still routes it. A claim already suspended keeps its lapse time, and lapses without a lookup once it has passed, as
+  any claim past its grace does.
 - The result is written in one transaction on the storage connection (retried up to three times on a deadlock when it
   is the outermost), which locks in the shared order: the connection's row by its id (a system job, scoped to no
   tenant), then the claim by (`connection_id`, `domain`) through `DomainFinder::find(..., true)`. Every read that
@@ -62,15 +83,17 @@ domain is claimed and first verified, and the predicates it is judged by, are in
   never leave one to be redeemed, and a code bound to one is `reservation_invalid`. A lapse without a lookup runs in its
   own such transaction, with the same locks.
 - Every write goes through the model (`forceFill()->save()`), so `updated_at` is stamped from the clock, and releases
-  the lease in the same save. A skip or an exception leaves the lease to expire, at most `LEASE_SECONDS` later.
+  the lease in the same save. A skip or an exception that stops the run leaves the lease to expire, at most
+  `LEASE_SECONDS` later; a resolver that threw releases it, as above.
 - Events are dispatched through `Administration\DomainEvents`, inside the transaction and after the write, so they reach
   listeners once it commits and never when it rolls back; a recheck's context names the connection, its tenant and
   protocol, and no acting identity.
 - The recheck asks no freshness (no caller acts, and SSO-2.12 lists no recheck operation) and takes no rate-limit
   attempt. It holds nothing between runs (SSO-11.2); resolve it per run.
 - The command prints `[<outcome>] <domain> (connection <id>)` for each entry other than `confirmed` and `skipped`, then
-  `Domains rechecked:` and the count of each outcome. It exits 1 when a lookup failed, and when the run stopped on an
-  exception, which it names by class alone; otherwise 0.
+  `Domains rechecked:` and the count of each outcome, `resolver_threw` apart from `lookup_failed`. It exits 1 when a
+  lookup failed, when the resolver threw, and when the run stopped on an exception, which it names by class alone;
+  otherwise 0.
 
 ## Success Path
 
@@ -98,9 +121,13 @@ domain is claimed and first verified, and the predicates it is judged by, are in
   meanwhile; the next run checks it again.
 - If the grace period ran out during a lookup that finished within its lease, the claim is lapsed whatever the lookup
   answered.
-- A database error or a resolver that throws propagates (SSO-11.4) and stops the run; the claims already written stay
-  written and reported. The command exits 1 naming the exception's class, never its message, which could carry a value
-  read from the database or the DNS.
+- A resolver that throws on one claim is contained, and the run checks the rest; the command exits 1 so monitoring
+  notices, and the warning logged names the exception's class. Before, the throw stopped the run, and since the claim
+  came first again once its lease ran out, it blocked every later claim on every run until the resolver was fixed.
+- A database error, or anything else thrown but by the resolver (the package's own storage, the withdrawal, the
+  settings), propagates (SSO-11.4) and stops the run, even when it is raised releasing the lease of a claim the resolver
+  threw on; the claims already written stay written and reported. The command exits 1 naming the exception's class,
+  never its message, which could carry a value read from the database or the DNS.
 - A malformed `recheck_grace_seconds` fails closed with an `InvalidArgumentException` naming its key, before a
   suspension is written.
 
@@ -128,5 +155,6 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 - A change to which claims are selected, their order, the chunk size, or the lease and its conditions.
 - A change to the lock order, to what is read again under the locks, or to what skips a claim.
 - A change to what a confirmation, a suspension, a restoration, a failed lookup or a lapse writes or reports.
+- A change to what is contained when the resolver throws, to how its lease is released, or to what is logged.
 - A change to where `DomainWithdrawal` is called, or to what the lapse transaction does.
 - A change to the command's output or exit codes.

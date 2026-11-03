@@ -74,22 +74,25 @@ final class KeysMigrationTest extends TestCase
         ksort($columns);
 
         self::assertSame([
-            'certificate'     => true,
-            'connection_id'   => false,
-            'created_at'      => false,
-            'fingerprint'     => false,
-            'id'              => false,
-            'key_bits'        => false,
-            'key_type'        => false,
-            'made_current_at' => true,
-            'not_after'       => true,
-            'not_before'      => true,
-            'private_key'     => true,
-            'public_key'      => false,
-            'retiring_until'  => true,
-            'state'           => true,
-            'updated_at'      => false,
-            'use'             => false,
+            'certificate'               => true,
+            'connection_id'             => false,
+            'created_at'                => false,
+            'expiry_claimed_until'      => true,
+            'expiry_notified_at'        => true,
+            'expiry_notified_threshold' => true,
+            'fingerprint'               => false,
+            'id'                        => false,
+            'key_bits'                  => false,
+            'key_type'                  => false,
+            'made_current_at'           => true,
+            'not_after'                 => true,
+            'not_before'                => true,
+            'private_key'               => true,
+            'public_key'                => false,
+            'retiring_until'            => true,
+            'state'                     => true,
+            'updated_at'                => false,
+            'use'                       => false,
         ], $columns);
 
         $primary = array_values(array_filter(Schema::getIndexes(self::TABLE), static fn (array $index): bool => $index['primary']));
@@ -120,7 +123,7 @@ final class KeysMigrationTest extends TestCase
         ksort($indexes);
 
         self::assertSame([
-            'sso_keys_expiry_index'       => ['columns' => ['not_after'], 'unique' => false],
+            'sso_keys_expiry_index'       => ['columns' => ['not_after', 'id'], 'unique' => false],
             'sso_keys_fingerprint_unique' => ['columns' => ['connection_id', 'use', 'fingerprint'], 'unique' => true],
             'sso_keys_rotation_index'     => ['columns' => ['connection_id', 'use', 'state'], 'unique' => false],
         ], $indexes);

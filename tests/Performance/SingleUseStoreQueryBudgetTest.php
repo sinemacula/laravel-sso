@@ -42,16 +42,17 @@ final class SingleUseStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A key still held is the insert its index refuses, then a delete of an
-     * expired row that removes nothing.
+     * A key still held is the insert its index refuses, a delete of an expired
+     * row that removes nothing, and the insert its index refuses again, which
+     * is what tells a live key from one a prune has just deleted.
      *
      * @return void
      */
-    public function testAHeldKeyIsAnInsertAndADelete(): void
+    public function testAHeldKeyIsAnInsertADeleteAndAnInsert(): void
     {
         $this->record();
 
-        $outcome = $this->assertQueryBudget(0, 2, fn (): SingleUseOutcome => $this->record());
+        $outcome = $this->assertQueryBudget(0, 3, fn (): SingleUseOutcome => $this->record());
 
         self::assertSame(SingleUseOutcome::SEEN, $outcome);
     }

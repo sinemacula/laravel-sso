@@ -14,7 +14,8 @@ use SineMacula\Laravel\Sso\Domains\RecheckReport;
 /**
  * Unit tests for the report of a recheck run and its entries: the entries in
  * the order they were checked, the count of each outcome, whether a lookup
- * failed, and the encoding, with snake_case keys and times in UTC.
+ * failed and whether the resolver threw, each apart from the other, and the
+ * encoding, with snake_case keys and times in UTC.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,6 +49,7 @@ final class RecheckReportTest extends TestCase
         self::assertSame(1, $report->count(RecheckOutcome::SKIPPED));
         self::assertSame(0, $report->count(RecheckOutcome::LAPSED));
         self::assertFalse($report->hasLookupFailures());
+        self::assertFalse($report->hasResolverThrows());
     }
 
     /**
@@ -64,9 +66,30 @@ final class RecheckReportTest extends TestCase
         ]);
 
         self::assertTrue($report->hasLookupFailures());
+        self::assertFalse($report->hasResolverThrows());
         self::assertSame(1, $report->count(RecheckOutcome::LOOKUP_FAILED));
         self::assertFalse((new RecheckReport)->hasLookupFailures());
         self::assertSame([], (new RecheckReport)->entries);
+    }
+
+    /**
+     * One resolver that threw is enough for the report to have resolver throws,
+     * and it is not a failed lookup; an empty report has none.
+     *
+     * @return void
+     */
+    public function testHasResolverThrowsWhenTheResolverThrew(): void
+    {
+        $report = new RecheckReport([
+            self::entry('a.example.com', RecheckOutcome::CONFIRMED),
+            self::entry('b.example.com', RecheckOutcome::RESOLVER_THREW),
+        ]);
+
+        self::assertTrue($report->hasResolverThrows());
+        self::assertFalse($report->hasLookupFailures());
+        self::assertSame(1, $report->count(RecheckOutcome::RESOLVER_THREW));
+        self::assertSame(0, $report->count(RecheckOutcome::LOOKUP_FAILED));
+        self::assertFalse((new RecheckReport)->hasResolverThrows());
     }
 
     /**
@@ -104,6 +127,7 @@ final class RecheckReportTest extends TestCase
         $report = new RecheckReport([
             self::entry('a.example.com', RecheckOutcome::LAPSED),
             self::entry('b.example.com', RecheckOutcome::RESTORED),
+            self::entry('c.example.com', RecheckOutcome::RESOLVER_THREW),
         ]);
 
         $encoded = json_decode((string) json_encode($report), true);
@@ -112,13 +136,13 @@ final class RecheckReportTest extends TestCase
         self::assertIsArray($encoded['counts']);
 
         $counts   = $encoded['counts'];
-        $expected = ['confirmed' => 0, 'restored' => 1, 'suspended' => 0, 'still_failing' => 0, 'lapsed' => 1, 'lookup_failed' => 0, 'skipped' => 0];
+        $expected = ['confirmed' => 0, 'restored' => 1, 'suspended' => 0, 'still_failing' => 0, 'lapsed' => 1, 'lookup_failed' => 0, 'resolver_threw' => 1, 'skipped' => 0];
 
         ksort($counts);
         ksort($expected);
 
-        self::assertSame(['a.example.com', 'b.example.com'], array_column($encoded['entries'], 'domain'));
-        self::assertSame(['lapsed', 'restored'], array_column($encoded['entries'], 'outcome'));
+        self::assertSame(['a.example.com', 'b.example.com', 'c.example.com'], array_column($encoded['entries'], 'domain'));
+        self::assertSame(['lapsed', 'restored', 'resolver_threw'], array_column($encoded['entries'], 'outcome'));
         self::assertSame($expected, $counts);
         self::assertEqualsCanonicalizing(
             ['domain_id', 'connection_id', 'domain', 'outcome', 'lapses_at'],

@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
+use SineMacula\Laravel\Sso\Events\TransactionGenerations;
 use Tests\TestCase;
 
 /**
@@ -22,8 +23,9 @@ use Tests\TestCase;
  * them commit, against real transactions on whichever engine the suite runs on,
  * and a second connection: at once outside a transaction, on the commit of the
  * storage connection's transaction, never on its rollback or a savepoint's,
- * whatever another connection's transaction does; and at once, always, for the
- * synchronous dispatch.
+ * whatever another connection's transaction does, nor on a later transaction's
+ * commit when its own commit failed; and at once, always, for the synchronous
+ * dispatch.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,6 +33,7 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(AfterCommitDispatcher::class)]
+#[CoversClass(TransactionGenerations::class)]
 final class AfterCommitDispatcherTest extends TestCase
 {
     /** @var string The second connection, kept apart from the default. */
@@ -59,17 +62,21 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * Outside any transaction, the event is dispatched at once.
+     * Outside any transaction, the event is dispatched at once, and a
+     * connection named that has not been used is not made to find that out.
      *
      * @return void
      */
     public function testDispatchesAtOnceOutsideATransaction(): void
     {
         $event = self::event();
+        $named = self::event(FailureReason::SIGNATURE_INVALID);
 
         $this->dispatcher()->dispatch($event);
+        $this->dispatcher()->dispatch($named, self::SEPARATE);
 
-        self::assertSame([$event], $this->delivered->getArrayCopy());
+        self::assertSame([$event, $named], $this->delivered->getArrayCopy());
+        self::assertArrayNotHasKey(self::SEPARATE, DB::getConnections());
     }
 
     /**
@@ -144,6 +151,114 @@ final class AfterCommitDispatcherTest extends TestCase
         DB::commit();
 
         self::assertSame([$kept], $this->delivered->getArrayCopy());
+    }
+
+    /**
+     * A savepoint nested in others that rolls back drops the events dispatched
+     * inside it, those of a savepoint it holds that committed included, and
+     * nothing else: the events of the savepoints around it that commit, and of
+     * the outer transaction, follow its commit.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testNestedSavepointRollbacksDropOnlyTheirEvents(): void
+    {
+        $outer  = self::event(FailureReason::REPLAYED);
+        $middle = self::event(FailureReason::SIGNATURE_INVALID);
+        $after  = self::event(FailureReason::REPLAYED);
+
+        DB::beginTransaction();
+
+        $this->dispatcher()->dispatch($outer);
+
+        DB::beginTransaction();
+
+        $this->dispatcher()->dispatch($middle);
+
+        DB::beginTransaction();
+
+        $this->dispatcher()->dispatch(self::event());
+
+        DB::rollBack();
+        DB::commit();
+
+        DB::beginTransaction();
+
+        $this->dispatcher()->dispatch(self::event());
+
+        DB::beginTransaction();
+
+        $this->dispatcher()->dispatch(self::event());
+
+        DB::commit();
+        DB::rollBack();
+
+        $this->dispatcher()->dispatch($after);
+
+        self::assertSame(1, DB::transactionLevel());
+        self::assertCount(0, $this->delivered);
+
+        DB::commit();
+
+        self::assertCount(3, $this->delivered);
+
+        foreach ([$outer, $middle, $after] as $event) {
+            self::assertContains($event, $this->delivered->getArrayCopy());
+        }
+    }
+
+    /**
+     * A callback left pending by an outermost transaction whose commit failed,
+     * as Laravel 12 leaves it by not telling its transactions manager, is
+     * dropped when the next outermost transaction commits, and only that
+     * transaction's own event is dispatched.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testACallbackLeftByAFailedCommitIsDropped(): void
+    {
+        $kept = self::event(FailureReason::SIGNATURE_INVALID);
+
+        $this->leaveATransactionBehind(self::event());
+
+        DB::transaction(function () use ($kept): void {
+            $this->dispatcher()->dispatch($kept);
+        });
+
+        self::assertSame([$kept], $this->delivered->getArrayCopy());
+
+        DB::transaction(static function (): void {});
+
+        self::assertSame([$kept], $this->delivered->getArrayCopy());
+    }
+
+    /**
+     * Outside any transaction, an event is dispatched at once even while the
+     * transactions manager still holds a record that a failed commit left on
+     * the connection, and is not dispatched again when the next transaction
+     * commits.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testDispatchesAtOnceBesideARecordAFailedCommitLeft(): void
+    {
+        $event = self::event(FailureReason::SIGNATURE_INVALID);
+
+        $this->leaveATransactionBehind(self::event());
+
+        $this->dispatcher()->dispatch($event);
+
+        self::assertSame([$event], $this->delivered->getArrayCopy());
+
+        DB::transaction(static function (): void {});
+
+        self::assertSame([$event], $this->delivered->getArrayCopy());
     }
 
     /**
@@ -417,6 +532,40 @@ final class AfterCommitDispatcherTest extends TestCase
         parent::defineEnvironment($app);
 
         config()->set('database.connections.' . self::SEPARATE, ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
+    }
+
+    /**
+     * Dispatch the event inside an outermost transaction on the default
+     * connection, then end it as Laravel 12 ends one whose commit failed: the
+     * database rolls it back, but the transactions manager is never told, so
+     * its record, and the event's callback, stay pending.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    private function leaveATransactionBehind(SsoEvent $event): void
+    {
+        /** @var \Illuminate\Database\DatabaseTransactionsManager $manager */
+        $manager    = app('db.transactions');
+        $connection = DB::connection();
+
+        $connection->beginTransaction();
+
+        $this->dispatcher()->dispatch($event);
+
+        $connection->unsetTransactionManager();
+
+        try {
+            $connection->rollBack();
+        } finally {
+            $connection->setTransactionManager($manager);
+        }
+
+        self::assertSame(0, $connection->transactionLevel());
+        self::assertCount(1, $manager->getPendingTransactions());
+        self::assertCount(0, $this->delivered);
     }
 
     /**

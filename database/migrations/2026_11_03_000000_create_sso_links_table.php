@@ -94,11 +94,13 @@ return new class extends Migration {
             $blueprint->dateTime('updated_at', 0);
 
             // One link per subject in a connection; an identity's links, by
-            // connection, for listing and for the link limit.
+            // connection, for listing and for the link limit; pruning pages
+            // reservations by expiry, by keyset.
             $blueprint->unique(['connection_id', 'subject_key'], self::indexName($table, 'subject_unique'));
             $blueprint->unique(['reservation_id'], self::indexName($table, 'reservation_unique'));
             $blueprint->index(['connection_id', 'reservation_domain_id'], self::indexName($table, 'reservation_domain_index'));
             $blueprint->index(['identity_type', 'identity_id', 'connection_id'], self::indexName($table, 'identity_index'));
+            $blueprint->index(['state', 'reservation_expires_at', 'id'], self::indexName($table, 'reservation_expiry_index'));
         });
     }
 

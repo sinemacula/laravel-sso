@@ -41,9 +41,9 @@ use Tests\Fixtures\Protocols\StartingDriver;
  *   driver cannot start, after the connection's read;
  * - a consumption is one locking read of the request, the single-use record and
  *   the update that marks it; a replay of a marked request is the read alone; a
- *   request the store has seen the read, the refused insert and the store's
- *   delete of an expired row; an unknown state the read alone; a correlation
- *   that names nothing no statement at all.
+ *   request the store has seen the read, the refused insert, the store's delete
+ *   of an expired row and the insert it refuses again; an unknown state the
+ *   read alone; a correlation that names nothing no statement at all.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -164,9 +164,9 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
     }
 
     /**
-     * A request the store has seen is the read, the refused insert and the
-     * store's delete of an expired row; an unknown state is the read alone; a
-     * correlation that names nothing sends nothing.
+     * A request the store has seen is the read, the refused insert, the store's
+     * delete of an expired row and the insert it refuses again; an unknown
+     * state is the read alone; a correlation that names nothing sends nothing.
      *
      * @return void
      */
@@ -176,7 +176,7 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
 
         app(SingleUseStore::class)->record(RequestConsumption::NAMESPACE, $request->id, $this->clock->now()->addMinute());
 
-        $seen         = $this->assertQueryBudget(1, 2, fn (): ConsumptionResult => $this->consume(Correlation::solicited(self::STATE)));
+        $seen         = $this->assertQueryBudget(1, 3, fn (): ConsumptionResult => $this->consume(Correlation::solicited(self::STATE)));
         $unknown      = $this->assertQueryBudget(1, 0, fn (): ConsumptionResult => $this->consume(Correlation::solicited('another-state')));
         $uncorrelated = $this->assertQueryBudget(0, 0, fn (): ConsumptionResult => $this->consume(Correlation::uncorrelated()));
 

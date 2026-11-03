@@ -40,9 +40,11 @@ return new class extends Migration {
 
             // Whole seconds in UTC, whatever the application timezone, so a
             // daylight-saving change never repeats a value; compared with the
-            // window boundaries the limiter computes, and indexed for pruning
-            // ended windows.
-            $blueprint->dateTime('window_ends_at', 0)->index();
+            // window boundaries the limiter computes.
+            $blueprint->dateTime('window_ends_at', 0);
+
+            // Pruning reads ended windows in this order, by keyset.
+            $blueprint->index(['window_ends_at', 'key']);
         });
     }
 

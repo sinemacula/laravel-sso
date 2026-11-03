@@ -289,6 +289,47 @@ final class ProtocolManagerTest extends TestCase
     }
 
     /**
+     * Forgetting the scoped instances, as a queue worker does before each job,
+     * forgets the drivers built in that scope with them: each is built again,
+     * and once, by its creator if it is a registered one. A forgotten scope is
+     * no reason to forget what a manager holds of a container of its own.
+     *
+     * @return void
+     */
+    public function testBuildsTheDriversAgainOnceTheScopeIsForgotten(): void
+    {
+        $app      = $this->booted();
+        $manager  = $this->manager();
+        $own      = new ProtocolManager($this->copyOf($app));
+        $received = 0;
+
+        $manager->extend('example', function () use (&$received): ProtocolDriver {
+            $received++;
+
+            return new ExampleDriver;
+        });
+
+        $saml    = $manager->protocol('saml2');
+        $example = $manager->protocol('example');
+        $kept    = $own->protocol('saml2');
+
+        self::assertSame($saml, $manager->protocol('saml2'));
+        self::assertSame($example, $manager->protocol('example'));
+
+        $app->forgetScopedInstances();
+
+        $again = $manager->protocol('saml2');
+
+        self::assertNotSame($saml, $again);
+        self::assertSame($again, $manager->protocol('saml2'));
+        self::assertNotSame($example, $manager->protocol('example'));
+        self::assertSame($app, $manager->getContainer());
+        self::assertTrue($manager->isRegistered('example'));
+        self::assertSame(2, $received);
+        self::assertSame($kept, $own->protocol('saml2'));
+    }
+
+    /**
      * A manager given a container of its own, at construction or through
      * `setContainer()`, keeps building its drivers with it.
      *

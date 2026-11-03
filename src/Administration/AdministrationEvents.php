@@ -187,23 +187,24 @@ final readonly class AdministrationEvents
     }
 
     /**
-     * Report a key or certificate whose validity ends within the warning, or
-     * has ended. A key with no end of validity is never reported.
+     * Report a key or certificate whose validity has come within the threshold,
+     * or has ended. A key with no end of validity is never reported.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
+     * @param  int  $thresholdDays
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function keyNearingExpiry(Connection $connection, ConnectionKey $key, ?ActingIdentity $actor = null): void
+    public function keyNearingExpiry(Connection $connection, ConnectionKey $key, int $thresholdDays, ?ActingIdentity $actor = null): void
     {
         if ($key->not_after === null) {
             return;
         }
 
-        $this->dispatcher->dispatch(new KeyNearingExpiry($this->context($connection, $actor), $key->id, $key->use, $key->fingerprint, $key->not_after));
+        $this->dispatcher->dispatch(new KeyNearingExpiry($this->context($connection, $actor), $key->id, $key->use, $key->fingerprint, $key->not_after, $thresholdDays));
     }
 
     /**

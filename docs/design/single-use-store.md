@@ -24,12 +24,13 @@ connection and issuer, SSO-6.6), authorisation requests (SSO-5.1) and handoff co
   (`key_digest`), never the key, since a key may be a secret (a handoff code). The row is `(namespace, key_digest,
   expires_at)` in `sso.single_use.table` (default `sso_single_use_keys`) on the storage connection, under a unique index
   on `(namespace, key_digest)`.
-- The unique index answers, never a read: the store inserts the row, and an insert that goes in is `recorded`. An
-  insert the index refuses (`UniqueConstraintViolationException`) is `seen`, unless the row it collides with has
-  expired: then that row alone is deleted (`namespace`, `key_digest` and `expires_at <= now`, in one statement) and the
-  insert tried once more, `recorded` if it goes in and `seen` if the index refuses it again. When no row was deleted,
-  the answer is `seen`. Two concurrent records of one key therefore give exactly one `recorded`, on any number of
-  servers.
+- The unique index answers, never a read: the store inserts the row, and an insert that goes in is `recorded`. After
+  an insert the index refuses (`UniqueConstraintViolationException`), the row it collided with is deleted if it has
+  expired (`namespace`, `key_digest` and `expires_at <= now`, in one statement) and the insert is tried once more,
+  `recorded` if it goes in and `seen` if the index refuses it again. The insert is tried whatever the delete removed: a
+  prune or another record may have deleted the expired row just before it, and `seen` must name a holder that exists.
+  Two concurrent records of one key therefore give exactly one `recorded`, on any number of servers, and a key still
+  held costs three statements.
 - Every statement is a write, on the write connection (SSO-11.3), so a lagging replica can neither fail a valid record
   nor pass a replay.
 - Each statement runs in a transaction of its own, which Laravel turns into a savepoint when the caller already has a
@@ -55,8 +56,8 @@ connection and issuer, SSO-6.6), authorisation requests (SSO-5.1) and handoff co
 - A first record of a key in a namespace inserts its row and answers `recorded`.
 - A record of the same key in another namespace is a separate key, and is `recorded` too.
 - Once the expiry has passed, the next record deletes the expired row, inserts the new one and answers `recorded`.
-- `model:prune` on `Models\SingleUseKey` deletes the rows whose expiry has passed, by the package's clock; the store
-  would release them anyway, so pruning only keeps the table small.
+- `sso:prune` (`operations.md`), and `model:prune` on `Models\SingleUseKey`, delete the rows whose expiry has passed,
+  by the package's clock; the store would release them anyway, so pruning only keeps the table small.
 
 ## Failure / Edge Cases
 

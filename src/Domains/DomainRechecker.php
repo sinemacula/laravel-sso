@@ -7,6 +7,7 @@ namespace SineMacula\Laravel\Sso\Domains;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Administration\DomainEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
@@ -35,6 +36,10 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
  * - A lookup that failed changes nothing and is reported; it is never read as a
  *   record gone or as a success, so linking by the domain still stops once its
  *   last successful check is older than the linking maximum age.
+ * - A resolver that throws, which the contract forbids, is contained: the
+ *   claim's lease is released and nothing else about it is written or reported,
+ *   the exception is logged by its class alone, the claim is `resolver_threw`,
+ *   never a failed lookup, and the run goes on.
  *
  * Several servers may run it at once. The verified claims not changed since the
  * run began are read on the write connection in chunks of `CHUNK_SIZE`, by
@@ -50,7 +55,10 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
  * lease, or whose claim another server has leased since, writes nothing and is
  * `skipped`. Each write goes through the model, releases the lease, and reports
  * through `Administration\DomainEvents` after the write; a skip or an exception
- * leaves the lease to expire.
+ * leaves the lease to expire. A resolver that threw releases it, under the
+ * connection's lock, only while it is still this check's, and without stamping
+ * the claim: its last successful check does not move, so the next run reaches
+ * it in its place, the least recently confirmed first, and checks it again.
  *
  * Whatever stops linking by a domain (a suspension or a lapse) calls
  * `DomainWithdrawal::linkingWithdrawn()` under both locks, before the write. A
@@ -58,10 +66,11 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
  * extends to void the domain's open link reservations.
  *
  * It asks no freshness and takes no rate-limit attempt: it is a system job,
- * with no caller and no tenant. A database error or a resolver that throws
- * propagates (SSO-11.4) and stops the run. It holds the finder, the resolver,
- * the settings, the clock, the reporter and the withdrawal, none of which keeps
- * anything of one run for the next (SSO-11.2); resolve it per run.
+ * with no caller and no tenant. A database error, or anything else thrown but
+ * by the resolver, propagates (SSO-11.4) and stops the run. It holds the
+ * finder, the resolver, the settings, the clock, the reporter, the withdrawal
+ * and the logger, none of which keeps anything of one run for the next
+ * (SSO-11.2); resolve it per run.
  *
  * @api
  *
@@ -88,6 +97,7 @@ final readonly class DomainRechecker
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      * @param  \SineMacula\Laravel\Sso\Administration\DomainEvents  $events
      * @param  \SineMacula\Laravel\Sso\Domains\DomainWithdrawal  $withdrawal
+     * @param  \Psr\Log\LoggerInterface  $logger
      */
     public function __construct(
 
@@ -108,6 +118,9 @@ final readonly class DomainRechecker
 
         /** Withdraws what depends on linking by a domain that is suspended or lapses. */
         private DomainWithdrawal $withdrawal,
+
+        /** The sanitising logger a resolver that threw is logged to. */
+        private LoggerInterface $logger,
     ) {}
 
     /**
@@ -142,7 +155,8 @@ final readonly class DomainRechecker
 
     /**
      * Check the verified claim, as it was read: lease it, look its record up
-     * unless its grace has run out, and write what the check found.
+     * unless its grace has run out, and write what the check found. A resolver
+     * that throws is contained: the lease is released and nothing else written.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @return \SineMacula\Laravel\Sso\Domains\RecheckEntry
@@ -159,7 +173,11 @@ final readonly class DomainRechecker
             return RecheckEntry::of($claim, RecheckOutcome::SKIPPED);
         }
 
-        $lookup = self::isPastGrace($claim, $this->clock->now()) ? null : $this->resolver->txt(DomainStanding::lookupName($claim));
+        $lookup = $this->lookUp($claim);
+
+        if ($lookup instanceof \Throwable) {
+            return $this->resolverThrew($claim, $lease, $lookup);
+        }
 
         return $this->transaction(fn (): RecheckEntry => $this->settle($claim, $lease, $lookup));
     }
@@ -231,6 +249,64 @@ final readonly class DomainRechecker
 
             return $leased === 1 ? $until : null;
         });
+    }
+
+    /**
+     * The claim's record as the resolver answered it, `null` without a lookup
+     * when its grace has run out, or what the resolver threw: only the
+     * resolver's own call is contained.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
+     * @return \SineMacula\Laravel\Sso\Domains\DnsLookup|\Throwable|null
+     */
+    private function lookUp(Domain $claim): DnsLookup|\Throwable|null
+    {
+        if (self::isPastGrace($claim, $this->clock->now())) {
+            return null;
+        }
+
+        $name = DomainStanding::lookupName($claim);
+
+        try {
+            return $this->resolver->txt($name);
+            // The contract declares no @throws, and promises `lookup_failed`
+            // instead, though an application's resolver may still throw.
+            // @phpstan-ignore catch.neverThrown
+        } catch (\Throwable $thrown) {
+            return $thrown;
+        }
+    }
+
+    /**
+     * The resolver threw: the exception is logged by its class alone, and the
+     * claim's lease released, under its connection's lock and only while it is
+     * still this check's, by a statement that stamps nothing else. Nothing
+     * about the claim is written or reported, and it is never a failed lookup.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
+     * @param  \Carbon\CarbonImmutable  $lease
+     * @param  \Throwable  $thrown
+     * @return \SineMacula\Laravel\Sso\Domains\RecheckEntry
+     *
+     * @throws \Throwable
+     */
+    private function resolverThrew(Domain $claim, CarbonImmutable $lease, \Throwable $thrown): RecheckEntry
+    {
+        $this->logger->warning('sso.domains.recheck_resolver_threw', ['exception' => $thrown::class]);
+
+        $this->transaction(static function () use ($claim, $lease): void {
+
+            if (self::lockConnection($claim) === null) {
+                return;
+            }
+
+            Domain::query()->useWritePdo()
+                ->whereKey($claim->id)
+                ->where('recheck_leased_until', self::stored($lease))
+                ->update(['recheck_leased_until' => null]);
+        });
+
+        return RecheckEntry::of($claim, RecheckOutcome::RESOLVER_THREW);
     }
 
     /**

@@ -22,10 +22,11 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
  * Drivers are registered on the `Protocols\ProtocolManager` under the name a
  * connection's protocol holds. The package ships `saml2` and `oidc`; an
  * application registers its own with `extend()`. The manager keeps one instance
- * per name for the life of the process, so a driver must hold no connection,
- * tenant, flow or result state between calls (SSO-11.2), and it never writes a
- * session, issues a token or consumes an authorisation request itself: the
- * package's completion pipeline does that, around the driver.
+ * per name for one request or job, building it again by its creator for the
+ * next, so a driver must hold no connection, tenant, flow or result state
+ * between calls (SSO-11.2), and it never writes a session, issues a token or
+ * consumes an authorisation request itself: the package's completion pipeline
+ * does that, around the driver.
  *
  * A completion runs in a fixed order (SSO-5.6): `correlate()` reads the
  * request's state from the response without validating anything; the pipeline

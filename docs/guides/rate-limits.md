@@ -95,8 +95,10 @@ limiter that cannot count never lets an attempt through.
 
 ## Pruning
 
-A counter whose window has ended is restarted by its next attempt, but its row stays until it is pruned. Prune with
-Laravel's `model:prune`, naming the package's model, since it lives outside your `app/Models`:
+A counter whose window has ended is restarted by its next attempt, but its row stays until it is pruned, which
+`sso:prune` does along with everything else the package no longer needs: see [Operations](operations.md#pruning).
+Laravel's `model:prune` works too, and takes the same rows, naming the package's model, since it lives outside your
+`app/Models`:
 
 ```php
 use Illuminate\Support\Facades\Schedule;

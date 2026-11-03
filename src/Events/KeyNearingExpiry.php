@@ -9,16 +9,19 @@ use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 
 /**
- * A key's or certificate's validity ends within the configured warning, or has
- * ended (SSO-2.6, SSO-11.12, SSO-10.3). The expiry is reported, never enforced:
- * trust comes from the configured certificate, not its dates.
+ * A key's or certificate's validity has come within a configured threshold, or
+ * has ended (SSO-2.6, SSO-11.12, SSO-10.3). The expiry is reported, never
+ * enforced: trust comes from the configured certificate, not its dates.
  *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol, and the acting identity as the application passed it (SSO-10.4),
- * and the key's public identifiers; the acting identity is `null` when the
- * report runs on a schedule. It reports only, and holds no secret, private key
- * or setting value; it crosses a queue as it is.
+ * The report sends it at least once for the most urgent threshold it finds
+ * reached, skipping any it has passed, so a listener may see one twice, and a
+ * listener that must act once keeps its own record of (`keyId`,
+ * `thresholdDays`). It is dispatched outside any transaction. Its context names
+ * the connection, its tenant and protocol, and the acting identity as the
+ * application passed it (SSO-10.4), and the key's public identifiers; the
+ * acting identity is `null` when the report runs on a schedule. It reports
+ * only, and holds no secret, private key or setting value; it crosses a queue
+ * as it is.
  *
  * @api
  *
@@ -35,6 +38,7 @@ final readonly class KeyNearingExpiry implements SsoEvent
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
      * @param  string  $fingerprint
      * @param  \Carbon\CarbonImmutable  $notAfter
+     * @param  int  $thresholdDays
      */
     public function __construct(
 
@@ -52,6 +56,9 @@ final readonly class KeyNearingExpiry implements SsoEvent
 
         /** When its certificate's validity ends. */
         public CarbonImmutable $notAfter,
+
+        /** The most urgent threshold reached, in days before the end of validity: 0 once it has ended. */
+        public int $thresholdDays,
     ) {}
 
     /**

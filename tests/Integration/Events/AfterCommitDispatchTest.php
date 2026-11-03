@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Integration\Events;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
+use SineMacula\Laravel\Sso\Events\TransactionGenerations;
+use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -25,8 +28,8 @@ use Tests\TestCase;
  * Integration tests of the after-commit dispatch with the storage connection
  * moved to a second connection, beside the suite's own database: an event
  * reporting a write made there is delivered when that write commits and dropped
- * when it rolls back, whatever the suite's database does, and a queued listener
- * receives the failure event with its context intact.
+ * when it rolls back or its commit fails, whatever the suite's database does,
+ * and a queued listener receives the failure event with its context intact.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,10 +37,13 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(AfterCommitDispatcher::class)]
+#[CoversClass(TransactionGenerations::class)]
 #[CoversClass(EventContexts::class)]
 #[CoversClass(FlowFailed::class)]
 final class AfterCommitDispatchTest extends TestCase
 {
+    use FailsDatabaseStatements;
+
     /** @var string The connection the package's tables are moved to. */
     private const string STORE = 'sso_events_store';
 
@@ -139,6 +145,80 @@ final class AfterCommitDispatchTest extends TestCase
 
         self::assertSame(0, $store->table(self::TABLE)->count());
         self::assertCount(0, $this->delivered);
+    }
+
+    /**
+     * A change whose commit fails reports nothing, then or later: the next
+     * change to commit on the storage connection delivers its own event alone,
+     * whichever Laravel runs, though Laravel 12 leaves the failed commit's
+     * callback pending until then.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAChangeWhoseCommitFailsIsNeverReported(): void
+    {
+        $kept  = $this->failure();
+        $store = DB::connection(self::STORE);
+
+        $this->failCommit();
+
+        $this->assertCommitFails(function () use ($store): void {
+            $store->table(self::TABLE)->insert(['reference' => 'ref_1']);
+
+            $this->dispatcher()->dispatch($this->failure());
+        });
+
+        self::assertSame(0, $store->transactionLevel());
+        self::assertSame(0, $store->table(self::TABLE)->count());
+        self::assertCount(0, $this->delivered);
+
+        $store->transaction(function () use ($store, $kept): void {
+            $store->table(self::TABLE)->insert(['reference' => 'ref_2']);
+
+            $this->dispatcher()->dispatch($kept);
+        });
+
+        self::assertSame(['ref_2'], $store->table(self::TABLE)->pluck('reference')->all());
+        self::assertSame([$kept], $this->delivered->getArrayCopy());
+    }
+
+    /**
+     * An event dispatched in the package's savepoint, inside the application's
+     * own outermost transaction on the storage connection, goes with that
+     * transaction when its commit fails, though the savepoint committed; the
+     * next transaction to commit delivers its own event alone.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testTheApplicationsFailedCommitTakesThePackagesEventsWithIt(): void
+    {
+        $kept  = $this->failure();
+        $store = DB::connection(self::STORE);
+
+        $this->failCommit();
+
+        $this->assertCommitFails(function () use ($store): void {
+            $store->table(self::TABLE)->insert(['reference' => 'the application\'s']);
+
+            $store->transaction(function () use ($store): void {
+                $store->table(self::TABLE)->insert(['reference' => 'ref_1']);
+
+                $this->dispatcher()->dispatch($this->failure());
+            });
+        });
+
+        self::assertSame(0, $store->table(self::TABLE)->count());
+        self::assertCount(0, $this->delivered);
+
+        $store->transaction(function () use ($kept): void {
+            $this->dispatcher()->dispatch($kept);
+        });
+
+        self::assertSame([$kept], $this->delivered->getArrayCopy());
     }
 
     /**
@@ -252,6 +332,28 @@ final class AfterCommitDispatchTest extends TestCase
 
         config()->set('database.connections.' . self::STORE, ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
         config()->set('sso.storage.connection', self::STORE);
+    }
+
+    /**
+     * Run the work in an outermost transaction on the storage connection, and
+     * assert its commit fails with the injected failure, which fired once.
+     *
+     * @param  \Closure(): void  $work
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    private function assertCommitFails(\Closure $work): void
+    {
+        try {
+            DB::connection(self::STORE)->transaction($work);
+
+            self::fail('The commit succeeded.');
+        } catch (QueryException $exception) {
+            self::assertTrue(self::isInjectedFailure($exception));
+        }
+
+        self::assertSame(1, $this->databaseFailuresFired());
     }
 
     /**

@@ -67,17 +67,22 @@ final class KeysCheckTest extends TestCase
         $rsa     = 'sso.keys.rsa_bits must be one of 3072, 4096.';
         $days    = 'sso.keys.certificate_days must be an integer from 1 to 3650.';
         $overlap = 'sso.keys.overlap_seconds must be an integer from 0 to 7776000.';
-        $warning = 'sso.keys.expiry_warning_days must be an integer from 1 to 365.';
+        $warning = 'sso.keys.expiry_thresholds must be a list of distinct integers from 0 to 365, including 0.';
+        $claim   = 'sso.keys.expiry_claim_seconds must be an integer from 1 to 3600.';
 
         yield from [
-            'valid strings'         => [['rsa_bits' => '4096', 'certificate_days' => '365', 'overlap_seconds' => '0', 'expiry_warning_days' => '7'], []],
+            'valid strings' => [
+                ['rsa_bits' => '4096', 'certificate_days' => '365', 'overlap_seconds' => '0', 'expiry_thresholds' => ['7', 0], 'expiry_claim_seconds' => '60'],
+                [],
+            ],
             'a weak rsa modulus'    => [['rsa_bits' => 2048], [$rsa]],
             'a malformed validity'  => [['certificate_days' => 0], [$days]],
             'a malformed overlap'   => [['overlap_seconds' => 7776001], [$overlap]],
-            'a malformed warning'   => [['expiry_warning_days' => 'soon'], [$warning]],
+            'malformed thresholds'  => [['expiry_thresholds' => 'soon'], [$warning]],
+            'a malformed claim'     => [['expiry_claim_seconds' => 0], [$claim]],
             'every problem at once' => [
-                ['rsa_bits' => 'big', 'certificate_days' => 3651, 'overlap_seconds' => -1, 'expiry_warning_days' => 366],
-                [$rsa, $days, $overlap, $warning],
+                ['rsa_bits' => 'big', 'certificate_days' => 3651, 'overlap_seconds' => -1, 'expiry_thresholds' => [366], 'expiry_claim_seconds' => 3601],
+                [$rsa, $days, $overlap, $warning, $claim],
             ],
         ];
     }

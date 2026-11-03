@@ -401,7 +401,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     private static function waitersQuery(string $driver): string
     {
         return match ($driver) {
-            'pgsql' => 'select count(*) as waiting from pg_stat_activity where pg_backend_pid() = any(pg_blocking_pids(pid))',
+            'pgsql' => 'select count(*) as waiting from (select distinct pid from pg_locks where not granted) as waits where pg_backend_pid() = any(pg_blocking_pids(waits.pid))',
             'mysql' => 'select count(*) as waiting from performance_schema.data_lock_waits where BLOCKING_THREAD_ID = ps_current_thread_id()',
             default => throw new \LogicException(sprintf('No query finds the sessions waiting on a lock on [%s].', $driver)),
         };

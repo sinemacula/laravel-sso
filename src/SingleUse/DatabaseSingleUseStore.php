@@ -18,9 +18,11 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * by inserting its digest under the unique index of the single-use table, on
  * the storage connection.
  *
- * The index answers, never a read: an insert that goes in is `recorded`, and
- * one the index refuses is `seen`, unless the row it collides with has expired,
- * in which case that row alone is deleted and the insert tried once more. Each
+ * The index answers, never a read: an insert that goes in is `recorded`. After
+ * one the index refuses, the row it collided with is deleted if it has expired,
+ * and the insert is tried once more, whatever the delete removed: a prune or
+ * another record may have just deleted that row, so only the index can say
+ * whether a holder is left. `seen` therefore always names a live row. Each
  * statement runs in a transaction of its own, which Laravel makes a savepoint
  * when the caller already has one open, so a refused insert never aborts the
  * caller's transaction (PostgreSQL would refuse every statement after it), and
@@ -101,9 +103,7 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
             return SingleUseOutcome::RECORDED;
         }
 
-        if (!$this->deleteExpired($connection, $table, $namespace, $digest, $this->format($model, $now))) {
-            return SingleUseOutcome::SEEN;
-        }
+        $this->deleteExpired($connection, $table, $namespace, $digest, $this->format($model, $now));
 
         return $this->store($connection, $table, $row) ? SingleUseOutcome::RECORDED : SingleUseOutcome::SEEN;
     }
@@ -164,21 +164,18 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
 
     /**
      * Delete the key's row if its expiry has passed, in a transaction of its
-     * own (a savepoint inside the caller's). Returns whether a row went; a row
-     * still held is never touched.
+     * own (a savepoint inside the caller's). A row still held is never touched.
      *
      * @param  \Illuminate\Database\Connection  $connection
      * @param  string  $table
      * @param  string  $namespace
      * @param  string  $digest
      * @param  string  $now
-     * @return bool
+     * @return void
      *
      * @throws \Throwable
-     *
-     * @phpstan-impure
      */
-    private function deleteExpired(Connection $connection, string $table, string $namespace, string $digest, string $now): bool
+    private function deleteExpired(Connection $connection, string $table, string $namespace, string $digest, string $now): void
     {
         $delete = static fn (Connection $connection): int => $connection->table($table)
             ->where('namespace', $namespace)
@@ -186,7 +183,7 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
             ->where('expires_at', '<=', $now)
             ->delete();
 
-        return $connection->transaction($delete, self::ATTEMPTS) === 1;
+        $connection->transaction($delete, self::ATTEMPTS);
     }
 
     /**

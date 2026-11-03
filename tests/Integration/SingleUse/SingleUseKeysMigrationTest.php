@@ -99,7 +99,8 @@ final class SingleUseKeysMigrationTest extends TestCase
 
     /**
      * The secondary indexes are the unique index on the namespace and the
-     * digest, which answers `seen`, and the index on the expiry, for pruning.
+     * digest, which answers `seen`, and the index on the expiry and the id, in
+     * the order pruning pages by keyset.
      *
      * @return void
      */
@@ -109,11 +110,11 @@ final class SingleUseKeysMigrationTest extends TestCase
 
         $indexes = array_map(static fn (array $index): array => ['columns' => $index['columns'], 'unique' => $index['unique']], $secondary);
 
-        usort($indexes, static fn (array $a, array $b): int => count($b['columns']) <=> count($a['columns']));
+        usort($indexes, static fn (array $a, array $b): int => $a['columns'][0] <=> $b['columns'][0]);
 
         self::assertSame([
+            ['columns' => ['expires_at', 'id'], 'unique' => false],
             ['columns' => ['namespace', 'key_digest'], 'unique' => true],
-            ['columns' => ['expires_at'], 'unique' => false],
         ], $indexes);
     }
 

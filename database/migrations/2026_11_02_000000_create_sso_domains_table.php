@@ -83,12 +83,13 @@ return new class extends Migration {
             // One claim of a domain per connection; one verified connection per
             // domain; a claim or a verification locks every claim of its
             // domain; the recheck reads verified domains by their last
-            // successful check, and pruning reads pending claims by expiry.
+            // successful check, and pruning pages pending claims by expiry, by
+            // keyset.
             $blueprint->unique(['connection_id', 'domain'], self::indexName($table, 'connection_domain_unique'));
             $blueprint->unique(['verified_domain'], self::indexName($table, 'verified_unique'));
             $blueprint->index(['domain'], self::indexName($table, 'domain_index'));
             $blueprint->index(['state', 'last_successful_check_at'], self::indexName($table, 'recheck_index'));
-            $blueprint->index(['state', 'pending_expires_at'], self::indexName($table, 'pending_index'));
+            $blueprint->index(['state', 'pending_expires_at', 'id'], self::indexName($table, 'pending_index'));
         });
     }
 

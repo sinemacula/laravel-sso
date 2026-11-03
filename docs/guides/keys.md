@@ -14,13 +14,14 @@ $keys = app(KeyService::class);
 
 ## Settings
 
-| Key                        | Default    | Env                            | What it sets                                                                                 |
-|----------------------------|------------|--------------------------------|----------------------------------------------------------------------------------------------|
-| `keys.table`               | `sso_keys` | `SSO_KEYS_TABLE`               | The table keys and certificates are kept in, on the storage connection                       |
-| `keys.rsa_bits`            | `3072`     | `SSO_KEYS_RSA_BITS`            | The modulus of a generated RSA key: `3072` or `4096`                                         |
-| `keys.certificate_days`    | `730`      | `SSO_KEYS_CERTIFICATE_DAYS`    | How long a generated self-signed certificate is valid for: `1` to `3650` days                |
-| `keys.overlap_seconds`     | `604800`   | `SSO_KEYS_OVERLAP_SECONDS`     | How long a replaced key is still accepted for decryption: `0` to `7776000` seconds (90 days) |
-| `keys.expiry_warning_days` | `30`       | `SSO_KEYS_EXPIRY_WARNING_DAYS` | How far ahead a certificate's expiry is reported as near: `1` to `365` days                  |
+| Key                         | Default             | Env                             | What it sets                                                                                 |
+|-----------------------------|---------------------|---------------------------------|----------------------------------------------------------------------------------------------|
+| `keys.table`                | `sso_keys`          | `SSO_KEYS_TABLE`                | The table keys and certificates are kept in, on the storage connection                       |
+| `keys.rsa_bits`             | `3072`              | `SSO_KEYS_RSA_BITS`             | The modulus of a generated RSA key: `3072` or `4096`                                         |
+| `keys.certificate_days`     | `730`               | `SSO_KEYS_CERTIFICATE_DAYS`     | How long a generated self-signed certificate is valid for: `1` to `3650` days                |
+| `keys.overlap_seconds`      | `604800`            | `SSO_KEYS_OVERLAP_SECONDS`      | How long a replaced key is still accepted for decryption: `0` to `7776000` seconds (90 days) |
+| `keys.expiry_thresholds`    | `[30, 14, 7, 1, 0]` |                                 | The days before its end of validity a key is warned of: see [Operations](operations.md)      |
+| `keys.expiry_claim_seconds` | `300`               | `SSO_KEYS_EXPIRY_CLAIM_SECONDS` | How long one reporter holds a key while it sends a warning: `1` to `3600` seconds            |
 
 Each is read when a key is generated or rotated. A value outside its range, or anything but a whole number (or the
 digit string `env()` gives for one), fails closed with a message naming its key, such as
@@ -119,7 +120,8 @@ A certificate is refused with `settings_invalid` and one violation at `certifica
 
 A certificate's dates are reported, never enforced: an expired certificate is trusted and keeps verifying signatures,
 since trust comes from the certificate you configured, not from its dates. Read a summary's dates, or ask
-`$summary->isExpiredAt($now)` and `$summary->expiresWithin($now, $seconds)`, to warn an administrator.
+`$summary->isExpiredAt($now)` and `$summary->expiresWithin($now, $seconds)`, or run `sso:keys:expiring` on a schedule: see
+[Operations](operations.md#keys-and-certificates-nearing-expiry).
 
 Removing the last certificate is allowed; the connection then cannot complete a sign-in until another is trusted.
 
