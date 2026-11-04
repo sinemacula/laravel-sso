@@ -141,6 +141,7 @@ package's default or binds the application's own.
 | `Provisioning\ProvisioningHelper::link()`      | Linking a just-created identity from the one provisioning listener                                                                              | AUTH-3.9            |
 | `Links\LinkService`                            | Listing an identity's links (accepting `me`) and removing one                                                                                   | AUTH-3.9            |
 | `Sessions\AuthenticationContext::fromStored()` | Projecting a session's stored `Sessions\Provenance` into the `sso` namespace ([The `sso` contributor](#the-sso-contributor))                    | AUTH-11.8           |
+| `Config\ConfigurationChecks::add()`            | Adding `laravel-iam`'s checks across the packages it composes to SSO's boot check and `sso:check`, each applying only while SSO is in use       | IAM-13.12           |
 
 ### Events
 

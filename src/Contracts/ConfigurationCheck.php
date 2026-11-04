@@ -8,12 +8,17 @@ namespace SineMacula\Laravel\Sso\Contracts;
  * Configuration check contract: the checks of one part of the package's
  * configuration, run at boot and by `sso:check` (SSO-12.3).
  *
- * A check is registered under a subject in
- * `SsoServiceProvider::CONFIGURATION_CHECKS` and resolved from the container
- * each time the configuration is checked, so it reads the configuration as it
- * is then. It applies only to what is enabled: the checker asks `applies()`
- * first and skips a check that does not apply, so a feature that is off is
- * never checked and never fails a boot.
+ * A check is registered under a subject: the package's own in
+ * `SsoServiceProvider::CONFIGURATION_CHECKS`, and a composing package's or the
+ * application's through `Config\ConfigurationChecks::add()`. It is resolved
+ * from the container each time the configuration is checked, so it reads the
+ * configuration as it is then. It applies only to what is enabled: the checker
+ * asks `applies()` first and skips a check that does not apply, so a feature
+ * that is off is never checked and never fails a boot. It is built before
+ * `applies()` is asked, so building it must not depend on what it covers being
+ * on. An added check that covers the package's use applies only while
+ * `Config\Features::isInUse()`, so it never fails the boot of an application
+ * with the package off.
  *
  * Each check reads configuration only: it opens no database connection, makes
  * no network request and names no secret or configured value in its message,

@@ -13,6 +13,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Clock\SystemClock;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
+use SineMacula\Laravel\Sso\Config\ConfigurationChecks;
 use SineMacula\Laravel\Sso\Contracts\ApplicationPolicy;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -117,6 +118,7 @@ final class SsoServiceProviderTest extends TestCase
         ProtocolManager::class,
         DriverScope::class,
         TransactionGenerations::class,
+        ConfigurationChecks::class,
         ConfigurationChecker::class,
     ];
 

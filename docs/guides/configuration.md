@@ -313,10 +313,73 @@ php artisan sso:check
 
 It prints `[subject] OK`, `[subject] not enabled` for what is off, or one line per problem, and exits `1` when there is
 a problem. The subjects are `features` (always checked), `extensions`, `storage`, `endpoints`, `applications`, `clock`,
-`secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys`, `mapping`, `domains`, `flows`, `linking`, `pruning`
-and `operations` (each checked while a protocol is on). The check reads configuration only: it opens no database
-connection and prints no secret or configured value. What the last thirteen check is in their guides and sections:
+`secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys`, `mapping`, `domains`, `flows`, `linking`,
+`metadata`, `pruning` and `operations` (each checked while a protocol is on), and `saml2` and `oidc` (each checked while
+its protocol is on). The check reads configuration only: it opens no database connection and prints no secret or
+configured value. What the last thirteen check is in their guides and sections:
 [Clock](clock.md), [Secrets](secrets.md), [Outbound requests](outbound-requests.md), [Logging](logging.md),
 [Rate limits](rate-limits.md), [Fresh authentication](freshness.md), [Keys and certificates](keys.md),
 [Managing connections](managing-connections.md), [Domains](domains.md), [Flows](#flows),
 [Linking by domain](linking-by-domain.md) and [Operations](operations.md).
+
+### Adding your own checks
+
+An application or a package that composes this one can add its own checks, so a problem in its settings fails the boot,
+a worker command and `sso:check` with the package's own. Write a `ConfigurationCheck`: `applies()` says whether what it
+covers is on, and `checks()` returns closures, each throwing an exception whose message names one problem and the key,
+never the configured value. The check is built before `applies()` is asked, so building it must not depend on what it
+covers being on. This one checks the client hosts the redirect URI resolver above reads, and applies only while the
+package is in use (`Features::isInUse()`, a protocol on), so an application with single sign-on off never fails its boot
+on it. `ClientHostsCheck implements ConfigurationCheck` with these two methods:
+
+<!-- snippet: tests/Integration/Examples/Configuration/ClientHostsCheck.php#configuration-added-check -->
+
+```php
+/**
+ * Whether the package is in use, so an application with it off never fails
+ * its boot on this check.
+ *
+ * @return bool
+ */
+#[\Override]
+public function applies(): bool
+{
+    return Features::isInUse();
+}
+
+/**
+ * Each client's host must be a non-empty string.
+ *
+ * @return list<\Closure(): mixed>
+ */
+#[\Override]
+public function checks(): array
+{
+    return [
+        static function (): void {
+            $hosts = config('clients.hosts');
+
+            if (!is_array($hosts) || $hosts === [] || array_filter($hosts, static fn (mixed $host): bool => !is_string($host) || $host === '') !== []) {
+                throw new \InvalidArgumentException('`clients.hosts` must give each client a host.');
+            }
+        },
+    ];
+}
+```
+
+Add it to `ConfigurationChecks` from a service provider's `register()`, through `callAfterResolving()`, which adds it
+whichever provider registers first:
+
+<!-- snippet: tests/Integration/Examples/Configuration/AppServiceProvider.php#configuration-add-check -->
+
+```php
+$this->callAfterResolving(ConfigurationChecks::class, static function (ConfigurationChecks $checks): void {
+    $checks->add('clients', ClientHostsCheck::class);
+});
+```
+
+An added check runs after the package's own, in the order added, and its problems are listed under its subject, here
+`[clients]`. A subject already registered, the package's own included, cannot be added again, and neither can an empty
+one: either throws a `LogicException` as the check is added, so an added check never replaces or shadows another. A
+class that cannot be built, or is not a `ConfigurationCheck`, is reported as a problem of its subject, as for the
+package's own.

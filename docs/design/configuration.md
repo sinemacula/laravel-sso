@@ -26,6 +26,14 @@ package registers its settings and its check without editing another's (SSO-12.2
   `SsoServiceProvider::CONFIGURATION_CHECKS`. A check says whether it applies (what it covers is enabled; the
   package's infrastructure applies while the package is in use; `[features]` always applies) and returns closures,
   each throwing on one problem. A check must not throw from `applies()`, and reads configuration only.
+- A composing package or the application adds its own checks through `Config\ConfigurationChecks`, the application's
+  singleton the checker is built from: `add($subject, $class)`, from a service provider's `register()` through
+  `callAfterResolving()`, so the order the providers register in does not matter. An added check runs after the
+  package's own, in the order added, wherever the package's run (at boot, as a worker command starts, in `sso:check`).
+  A subject already registered, the package's own included, cannot be added again, and an empty one is refused, each
+  with a `LogicException` as the check is added, so an added check never replaces or shadows another. An added check
+  is built before `applies()` is asked, and one that covers the package's use applies only while `Features::isInUse()`,
+  so it never fails the boot of an application with the package off.
 - `Config\ConfigurationChecker` resolves each check from the container when the configuration is checked, never
   before; skips one that does not apply; runs every closure of one that does; and reports a check that cannot be built
   or is not a check as a problem of its subject.
@@ -65,6 +73,8 @@ package registers its settings and its check without editing another's (SSO-12.2
 - A part of the package that adds settings adds its section to `config/sso.php`, its check class implementing
   `ConfigurationCheck` under its own namespace, and its entry in `CONFIGURATION_CHECKS`; it reads its settings through
   the shared readers, so the check and the code that uses a setting judge it the same way.
+- A composing package (`laravel-iam`'s checks across the packages it composes, IAM-13.12) adds its check with
+  `ConfigurationChecks::add()`, and its problems are reported under its own subject beside the package's.
 
 ## Failure / Edge Cases
 
@@ -72,7 +82,9 @@ package registers its settings and its check without editing another's (SSO-12.2
 - A feature on without the protocol it needs is a problem, including over a malformed protocol switch.
 - A malformed switch fails a flow closed (`enabled()`), and is reported by `[features]` at boot.
 - A check class that does not exist is reported under its subject, so a registry entry left behind fails the boot
-  rather than being skipped.
+  rather than being skipped. An added check is judged the same way.
+- Adding a check under a subject already registered, or an empty one, throws a `LogicException` rather than replacing
+  the check or being ignored, even for the same class.
 - A long-running or scheduled process started from the console is checked as it starts rather than skipped: a queue
   worker, Horizon or the scheduler in a misconfigured application exits with the exception, and the process each
   spawns (a `queue:work` under `queue:listen`, a supervisor or worker under `horizon`, a `schedule:run` under
@@ -85,7 +97,7 @@ package registers its settings and its check without editing another's (SSO-12.2
 
 - `src/Config/Enums/Feature.php`, `src/Config/Features.php`, `src/Config/BooleanSetting.php`,
   `src/Config/IntegerSetting.php`, `src/Config/UrlSetting.php`.
-- `src/Contracts/ConfigurationCheck.php`, `src/Config/ConfigurationChecker.php`,
+- `src/Contracts/ConfigurationCheck.php`, `src/Config/ConfigurationChecker.php`, `src/Config/ConfigurationChecks.php`,
   `src/Exceptions/InvalidConfigurationException.php`, `src/Exceptions/MissingExtensionException.php`.
 - `src/Config/Checks/FeaturesCheck.php`, `ExtensionsCheck.php`, `StorageCheck.php`, `EndpointsCheck.php`,
   `ApplicationsCheck.php`.
@@ -99,7 +111,8 @@ package registers its settings and its check without editing another's (SSO-12.2
 
 ## Authoritative Tests
 
-- `tests/Unit/Config/ConfigurationCheckerTest.php`, `tests/Unit/Config/BooleanSettingTest.php`,
+- `tests/Unit/Config/ConfigurationCheckerTest.php`, `tests/Unit/Config/ConfigurationChecksTest.php`,
+  `tests/Feature/Config/AddedConfigurationChecksTest.php`, `tests/Unit/Config/BooleanSettingTest.php`,
   `tests/Unit/Config/IntegerSettingTest.php`, `tests/Unit/Config/UrlSettingTest.php`,
   `tests/Unit/Config/Enums/FeatureTest.php`.
 - `tests/Feature/Config/FeaturesTest.php` and every test under `tests/Feature/Config/Checks/`.
@@ -112,6 +125,7 @@ package registers its settings and its check without editing another's (SSO-12.2
 ## Change Triggers
 
 - A new setting, section or feature switch; a new check, or a change to when one applies.
+- A change to how a composing package or the application adds a check, or to what it may add.
 - A change to where the boot check runs, to the commands checked as they start, or to what `sso:check` prints or
   exits with.
 - A change to the application or endpoint settings, or to what a redirect URI may be.
