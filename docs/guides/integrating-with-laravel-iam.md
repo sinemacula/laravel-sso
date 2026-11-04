@@ -472,10 +472,14 @@ Each contract the admission asks is asked under the package's locks; the adapter
   subaddress or dot removal, Unicode folding or confusable matching. Rely on a uniqueness guarantee on the verified
   email, or a guard every writer of a verified email takes.
 - **`PrincipalScope`.** Judge the identity's complete set of principals against the tenant: a platform principal or
-  another tenant's membership is `outside_tenant`, and a set it cannot read completely is `unknown`.
-- **`TenantMembership`.** Answer the membership and the time the person, not an administrator, accepted it.
+  another tenant's membership is `outside_tenant`, and a set it cannot read completely is `unknown`. Under `laravel-iam`
+  it is composed (IAM-6.8) from the application's membership contract (IAM-7.4) and `laravel-authorization`'s grant
+  scope query (AUTHZ-14.2): `within_tenant` only when both are, `outside_tenant` when either is, `unknown` otherwise.
+- **`TenantMembership`.** Answer the membership and the time the person, not an administrator, accepted it. Memberships
+  and their acceptance times are the application's: under `laravel-iam` this is answered by the one membership contract
+  the application implements (IAM-7.4), never by `laravel-authorization`.
 - **`LinkEligibility`.** For the `link` purpose: whether the identity may link through the connection, for example only
-  as a member of its tenant.
+  as a member of its tenant. Under `laravel-iam` the same membership contract answers it (IAM-7.4).
 - **`LinkConfirmation`.** `independent` only when the current session was not established through a link that had
   verified domain provenance when it was established, and its freshness was not renewed through one or through that
   link's connection. A password or a passkey the person holds is independent. The session's recorded link provenance
