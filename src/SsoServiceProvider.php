@@ -266,7 +266,7 @@ final class SsoServiceProvider extends ServiceProvider
         $this->app->scoped(DriverScope::class);
         $this->app->singleton(TransactionGenerations::class);
         $this->app->when(self::LOGGING_CLASSES)->needs(LoggerInterface::class)->give(SanitizingLogger::class);
-        $this->app->singleton(ConfigurationChecks::class);
+        $this->app->singleton(ConfigurationChecks::class, static fn (): ConfigurationChecks => new ConfigurationChecks(self::CONFIGURATION_CHECKS));
         $this->app->bindIf(
             ConfigurationChecker::class,
             static fn (Application $app): ConfigurationChecker => new ConfigurationChecker($app, $app->make(ConfigurationChecks::class)->all()),

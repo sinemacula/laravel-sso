@@ -4,8 +4,6 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Config;
 
-use SineMacula\Laravel\Sso\SsoServiceProvider;
-
 /**
  * The configuration checks the `ConfigurationChecker` runs, by subject
  * (SSO-12.3): the package's own (`SsoServiceProvider::CONFIGURATION_CHECKS`),
@@ -27,8 +25,16 @@ use SineMacula\Laravel\Sso\SsoServiceProvider;
  */
 final class ConfigurationChecks
 {
-    /** @var array<string, class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>> The checks, by subject, in the order they run. */
-    private array $checks = SsoServiceProvider::CONFIGURATION_CHECKS;
+    /**
+     * Constructor.
+     *
+     * @param  array<string, class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>>  $checks
+     */
+    public function __construct(
+
+        /** The checks, by subject, in the order they run: the package's own to begin with. */
+        private array $checks,
+    ) {}
 
     /**
      * Add a check, to run after every check registered before it.

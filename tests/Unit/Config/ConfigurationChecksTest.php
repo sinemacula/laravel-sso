@@ -8,14 +8,14 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecks;
-use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\Unit\Config\Fixtures\FailingCheck;
+use Tests\Unit\Config\Fixtures\InapplicableCheck;
 use Tests\Unit\Config\Fixtures\PassingCheck;
 
 /**
- * Unit tests for the configuration checks registry: it starts with the
- * package's own checks, adds a check after them in the order added, and refuses
- * a subject already registered or an empty one.
+ * Unit tests for the configuration checks registry: it starts with the checks
+ * it is given (the package's own), adds a check after them in the order added,
+ * and refuses a subject already registered or an empty one.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,30 +25,33 @@ use Tests\Unit\Config\Fixtures\PassingCheck;
 #[CoversClass(ConfigurationChecks::class)]
 final class ConfigurationChecksTest extends TestCase
 {
+    /** @var array<string, class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>> The checks it starts with, standing in for the package's own. */
+    private const array OWN = ['features' => PassingCheck::class, 'storage' => InapplicableCheck::class];
+
     /**
-     * It starts with the package's own checks, in their order.
+     * It starts with the checks it is given, in their order.
      *
      * @return void
      */
-    public function testStartsWithThePackagesOwnChecks(): void
+    public function testStartsWithTheChecksItIsGiven(): void
     {
-        self::assertSame(SsoServiceProvider::CONFIGURATION_CHECKS, (new ConfigurationChecks)->all());
+        self::assertSame(self::OWN, (new ConfigurationChecks(self::OWN))->all());
     }
 
     /**
-     * An added check runs after the package's own, in the order added.
+     * An added check runs after those it started with, in the order added.
      *
      * @return void
      */
     public function testAddsEachCheckAfterThoseBeforeIt(): void
     {
-        $checks = new ConfigurationChecks;
+        $checks = new ConfigurationChecks(self::OWN);
 
         $checks->add('directory', PassingCheck::class);
         $checks->add('provisioning', FailingCheck::class);
 
         self::assertSame(
-            [...SsoServiceProvider::CONFIGURATION_CHECKS, 'directory' => PassingCheck::class, 'provisioning' => FailingCheck::class],
+            [...self::OWN, 'directory' => PassingCheck::class, 'provisioning' => FailingCheck::class],
             $checks->all(),
         );
     }
@@ -78,7 +81,7 @@ final class ConfigurationChecksTest extends TestCase
     #[DataProvider('refusedSubjects')]
     public function testRefusesASubjectThatIsTakenOrEmpty(string $subject, string $message): void
     {
-        $checks = new ConfigurationChecks;
+        $checks = new ConfigurationChecks(self::OWN);
 
         $checks->add('directory', PassingCheck::class);
 
