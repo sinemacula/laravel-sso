@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Config\Checks\ExtensionsCheck;
 use SineMacula\Laravel\Sso\Config\Checks\FeaturesCheck;
 use SineMacula\Laravel\Sso\Config\Checks\StorageCheck;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
+use SineMacula\Laravel\Sso\Config\ConfigurationChecks;
 use SineMacula\Laravel\Sso\Connections\MappingCheck;
 use SineMacula\Laravel\Sso\Console\CheckConfigurationCommand;
 use SineMacula\Laravel\Sso\Console\ExpiringKeysCommand;
@@ -115,7 +116,7 @@ use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
  */
 final class SsoServiceProvider extends ServiceProvider
 {
-    /** @var array<string, class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>> Every configuration check, by the subject its problems are reported under, in the order they run. A part of the package that adds settings adds its check here. */
+    /** @var array<string, class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>> The package's configuration checks, by the subject its problems are reported under, in the order they run; a part of the package that adds settings adds its check here. A composing package or the application adds its own through `Config\ConfigurationChecks`. */
     public const array CONFIGURATION_CHECKS = [
         'features'     => FeaturesCheck::class,
         'extensions'   => ExtensionsCheck::class,
@@ -265,9 +266,10 @@ final class SsoServiceProvider extends ServiceProvider
         $this->app->scoped(DriverScope::class);
         $this->app->singleton(TransactionGenerations::class);
         $this->app->when(self::LOGGING_CLASSES)->needs(LoggerInterface::class)->give(SanitizingLogger::class);
+        $this->app->singleton(ConfigurationChecks::class, static fn (): ConfigurationChecks => new ConfigurationChecks(self::CONFIGURATION_CHECKS));
         $this->app->bindIf(
             ConfigurationChecker::class,
-            static fn (Application $app): ConfigurationChecker => new ConfigurationChecker($app, self::CONFIGURATION_CHECKS),
+            static fn (Application $app): ConfigurationChecker => new ConfigurationChecker($app, $app->make(ConfigurationChecks::class)->all()),
         );
     }
 

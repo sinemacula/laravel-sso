@@ -12,6 +12,8 @@ use SineMacula\Laravel\Sso\Applications\ApplicationGate;
 use SineMacula\Laravel\Sso\Applications\ApplicationRegistry;
 use SineMacula\Laravel\Sso\Applications\Enums\HandoffDelivery;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
+use SineMacula\Laravel\Sso\Config\ConfigurationChecks;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Endpoints\ConnectionEndpoints;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -47,6 +49,7 @@ use Tests\Integration\Examples\ExampleTestCase;
 #[CoversClass(Application::class)]
 #[CoversClass(ApplicationRegistry::class)]
 #[CoversClass(ApplicationGate::class)]
+#[CoversClass(ConfigurationChecks::class)]
 final class ConfigurationExampleTest extends ExampleTestCase
 {
     /** @var string The tenant of the second client. */
@@ -326,6 +329,27 @@ final class ConfigurationExampleTest extends ExampleTestCase
         $this->expectExceptionObject(new \LogicException('The bound redirect URI resolver answered the [web] application with a URI that is not an exact redirect URI.'));
 
         $this->completeAt($provider, $connectionId, $start);
+    }
+
+    /**
+     * The application's own check runs with the package's, after them, under
+     * its own subject: it passes while each client has a host, and reports a
+     * client without one.
+     *
+     * @return void
+     */
+    public function testTheApplicationsOwnCheckRunsWithThePackages(): void
+    {
+        app()->register(AppServiceProvider::class);
+
+        $report = app(ConfigurationChecker::class)->report();
+
+        self::assertSame('clients', array_key_last($report));
+        self::assertSame([], $report['clients']);
+
+        config()->set('clients.hosts', [self::TENANT => 'acme.app.example.com', self::OTHER_TENANT => '']);
+
+        self::assertSame(['`clients.hosts` must give each client a host.'], app(ConfigurationChecker::class)->report()['clients']);
     }
 
     /**
