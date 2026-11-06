@@ -17,9 +17,11 @@ use Illuminate\Http\Request;
  * The IP address and the user agent come from the client and are made safe to
  * keep rather than trusted, by the constructor, so a context built by hand is
  * held to the same rules as one read from a request: an IP address is kept only
- * when it is a valid IPv4 or IPv6 address, and a user agent has NUL bytes
- * removed, invalid UTF-8 replaced, and is cut to 512 characters. PostgreSQL,
- * and MySQL in strict mode, reject invalid UTF-8 and an over-long value, and a
+ * when it is a valid IPv4 or IPv6 address, and a user agent has invalid UTF-8
+ * replaced, its control characters (C0, NUL among them, DEL, C1) and Unicode
+ * bidirectional controls removed, and is then cut to 512 characters, so
+ * characters that are removed never use up the length kept. PostgreSQL, and
+ * MySQL in strict mode, reject invalid UTF-8 and an over-long value, and a
  * crafted header must not turn a request into a server error; PostgreSQL cannot
  * store a NUL byte in text, and through PDO a value is cut short at the first
  * one. A value that is missing, invalid, or empty after cleaning is `null`.
@@ -37,6 +39,9 @@ final readonly class ClientContext
 {
     /** @var int Longest user agent kept, in characters. */
     private const int USER_AGENT_MAX_LENGTH = 512;
+
+    /** @var string Characters removed from a user agent: C0 controls, DEL, C1 controls and the Unicode bidirectional embeddings, overrides and isolates. */
+    private const string UNSAFE_CHARACTERS = '/[\x{0000}-\x{001F}\x{007F}-\x{009F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
 
     /** @var ?string Validated IP address the client came from. */
     public ?string $ip;
@@ -79,8 +84,9 @@ final readonly class ClientContext
     }
 
     /**
-     * Clean a user agent: NUL bytes removed, invalid UTF-8 replaced, cut to
-     * `USER_AGENT_MAX_LENGTH` characters, and `null` when nothing is left.
+     * Clean a user agent: invalid UTF-8 replaced, control and bidirectional
+     * characters removed, then cut to `USER_AGENT_MAX_LENGTH` characters, and
+     * `null` when nothing is left.
      *
      * @param  ?string  $userAgent
      * @return ?string
@@ -91,7 +97,7 @@ final readonly class ClientContext
             return null;
         }
 
-        $cleaned = mb_substr(mb_scrub(str_replace("\0", '', $userAgent), 'UTF-8'), 0, self::USER_AGENT_MAX_LENGTH, 'UTF-8');
+        $cleaned = mb_substr((string) preg_replace(self::UNSAFE_CHARACTERS, '', mb_scrub($userAgent, 'UTF-8')), 0, self::USER_AGENT_MAX_LENGTH, 'UTF-8');
 
         return $cleaned === '' ? null : $cleaned;
     }

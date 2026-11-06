@@ -64,9 +64,9 @@ final class EventContextsTest extends TestCase
 
     /**
      * The client comes from the context given: its IP address, and its user
-     * agent with the control characters (C0, DEL, C1) and bidirectional
-     * controls the client context keeps removed as well, on top of what it
-     * cleaned (NUL bytes, invalid UTF-8, the 512 characters).
+     * agent as the context cleaned it: control characters (C0, DEL, C1),
+     * bidirectional controls and invalid UTF-8 are removed before the cut, so
+     * all 512 characters kept are ones that survived.
      *
      * @return void
      */
@@ -77,7 +77,7 @@ final class EventContextsTest extends TestCase
         $context = $this->contexts()->make(new ClientContext('203.0.113.7', $userAgent));
 
         self::assertSame('203.0.113.7', $context->ip);
-        self::assertSame('Mozilla/5.0 (X11; ?)' . str_repeat('a', 485), $context->userAgent);
+        self::assertSame('Mozilla/5.0 (X11; ?)' . str_repeat('a', 492), $context->userAgent);
     }
 
     /**

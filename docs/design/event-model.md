@@ -59,8 +59,8 @@ are a contract.
   projection; the application builds it with `ClientContext::fromRequest($request)`, and work with no client (a console
   command, a queued job, the schedule) passes `new ClientContext(null, null)`, so its events carry neither value.
 - Every value is cleaned before it is kept, without reading configuration, on top of what the client context already
-  made safe (an IP address kept only when valid; a user agent without NUL bytes or invalid UTF-8, cut to 512
-  characters):
+  made safe (an IP address kept only when valid; a user agent without control or bidirectional characters or invalid
+  UTF-8, then cut to 512 characters):
   - the IP address is kept only when it is a valid IPv4 or IPv6 address;
   - the user agent has invalid UTF-8 replaced (`mb_scrub`), C0 controls, DEL, C1 controls and the Unicode
     bidirectional controls (U+202A to U+202E, U+2066 to U+2069) removed, and is cut to 512 characters

@@ -73,7 +73,9 @@ final class ClientContextTest extends TestCase
             'plain'                       => ['Mozilla/5.0', 'Mozilla/5.0'],
             'NUL bytes removed'           => ["Mozilla\0/5.0\0", 'Mozilla/5.0'],
             'invalid UTF-8 replaced'      => ["Agent \xC3\x28 \xFF", 'Agent ?( ?'],
-            'other controls kept'         => ["Agent\x1b/1.0", "Agent\x1b/1.0"],
+            'controls removed'            => ["Agent\x1b/\t1.0\x7f\u{0085}", 'Agent/1.0'],
+            'bidirectional controls'      => ["Agent\u{202E}/1.0\u{2066}", 'Agent/1.0'],
+            'removed before the cut'      => [str_repeat("\t", 512) . 'Mozilla/5.0', 'Mozilla/5.0'],
             'exactly 512 characters'      => [str_repeat('é', 512), str_repeat('é', 512)],
             'over 512 characters cut'     => [str_repeat('é', 513), str_repeat('é', 512)],
             'cut after cleaning, by char' => ["\0" . str_repeat('日', 600), str_repeat('日', 512)],
@@ -84,9 +86,9 @@ final class ClientContextTest extends TestCase
     }
 
     /**
-     * A user agent read from a request has its NUL bytes removed and invalid
-     * UTF-8 replaced, and is cut to 512 characters (not bytes); one empty after
-     * cleaning, or not sent, is `null`.
+     * A user agent read from a request has invalid UTF-8 replaced and its
+     * control and bidirectional characters removed, and is then cut to 512
+     * characters (not bytes); one empty after cleaning, or not sent, is `null`.
      *
      * @param  ?string  $header
      * @param  ?string  $expected

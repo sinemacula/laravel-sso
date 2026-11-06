@@ -82,9 +82,10 @@ return $this->responses->from($result, $request->getMethod());
 
 `CompletionRequest::fromRequest()` keeps the method, the raw query string and the posted fields, and nothing else: it
 never reaches a log, an event or a queue. `Http\ClientContext::fromRequest()` keeps the client's IP address, only when
-it is a valid IPv4 or IPv6 address, and its user agent, without NUL bytes or invalid UTF-8 and cut to 512 characters:
-the completion is counted against that address, and every event it reports carries both. [Completion
-responses](completion-responses.md) explains the statuses, the redirect and the headers each result answers with.
+it is a valid IPv4 or IPv6 address, and its user agent, without control or bidirectional characters or invalid UTF-8
+and then cut to 512 characters: the completion is counted against that address, and every event it reports carries
+both. [Completion responses](completion-responses.md) explains the statuses, the redirect and the headers each result
+answers with.
 
 ## What a completion does
 
