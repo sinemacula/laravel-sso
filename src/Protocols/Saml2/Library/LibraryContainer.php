@@ -18,11 +18,12 @@ use SimpleSAML\SAML2\Compat\ContainerSingleton;
  *
  * The package uses only the library's low-level parsing, schema, signature and
  * decryption calls (`docs/design/saml-library.md`), none of which needs the
- * library's clock, temporary files or redirects, so each of those fails closed
- * with a `LogicException` rather than reading the system's time or disk. The
- * logger discards everything and debug messages are dropped, so no message the
- * library might pass them ever reaches a log (SSO-9.8). Changing the blacklist
- * is refused: the adapter holds every algorithm to the connection's allow-list
+ * library's clock, temporary files, redirects or HTTP-Redirect decoding (the
+ * package reads only posted responses), so each of those fails closed with a
+ * `LogicException` rather than reading the system's time or disk. The logger
+ * discards everything and debug messages are dropped, so no message the library
+ * might pass them ever reaches a log (SSO-9.8). Changing the blacklist is
+ * refused: the adapter holds every algorithm to the connection's allow-list
  * itself.
  *
  * `ensure()` sets the package's own container when none is set yet, and does
@@ -173,5 +174,19 @@ final class LibraryContainer extends AbstractContainer
     public function getClock(): ClockInterface
     {
         throw new \LogicException(sprintf(self::UNUSED, 'clock'));
+    }
+
+    /**
+     * Refuse: the package reads only posted responses, never an HTTP-Redirect
+     * message, so the library never inflates one for it.
+     *
+     * @return int
+     *
+     * @throws \LogicException
+     */
+    #[\Override]
+    public function getInflateSizeLimit(): int
+    {
+        throw new \LogicException(sprintf(self::UNUSED, 'inflate size limit'));
     }
 }
