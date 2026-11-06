@@ -30,7 +30,7 @@
         "guzzlehttp/guzzle": "^7.9",
         "laravel/framework": "^12.40|^13.3",
         "psr/clock": "^1.0",
-        "simplesamlphp/saml2": "~6.2.4",
+        "simplesamlphp/saml2": "~6.2.5",
         "simplesamlphp/xml-security": "~2.3.1",
         "symfony/polyfill-intl-idn": "^1.31",
         "web-token/jwt-library": "^4.2.4"
