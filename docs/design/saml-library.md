@@ -6,7 +6,7 @@ This note records the comparison behind the choice of SAML library: which mainta
 verifies their signatures (SSO-6.1). Three candidates went through the same adversarial fixture set, and then through
 the remaining criteria: schema validation, whether the verified element can be reached for SSO-6.3's absolute-path
 check, per-connection algorithm control (SSO-6.7), PHP 8.3 to 8.5, dependency fit with Laravel 12 and 13 (Symfony 7.4
-and 8), release cadence and maintenance. The package uses `simplesamlphp/saml2` `~6.2.4` with
+and 8), release cadence and maintenance. The package uses `simplesamlphp/saml2` `~6.2.5` with
 `simplesamlphp/xml-security` `~2.3.1`, under the conditions in the decision below. The fixtures go on to seed the
 package's fake SAML identity provider.
 
@@ -171,9 +171,15 @@ one assertion, schema).
   - The project is active (last push 2026-10-26, 14 open issues). The 6.x releases came about monthly through 2026
     (6.1.0 in February to 6.2.4 on 2026-08-09), and security advisories were patched within days (GHSA-r7hw-jx6r-756g
     in 6.2.4).
+  - 6.2.5 (2026-11-05) fixed GHSA-6vhm-xfmv-94pj, unbounded DEFLATE decompression in the HTTP-Redirect binding, by
+    adding an abstract `getInflateSizeLimit()` to the container, which breaks every container that extends
+    `AbstractContainer`, the package's included, in a patch release. The package reads only posted responses, so the
+    advisory never reached it; its container refuses the new method as it refuses every service it never uses, and the
+    constraint's floor is 6.2.5, since the method cannot be overridden on 6.2.4.
   - Version 6.3.0 is a hazard. It was tagged on 2026-08-09 from the older `release-6.x` line (PHP `^8.2`). It requires
     `assert` `~1.9`, which pins `guzzlehttp/psr7` `~2.8.0`, and every 2.8.x has advisories. Composer's advisory blocking
-    makes it uninstallable; with blocking off, `^6.2` would select it. The package must constrain to `~6.2.4`.
+    makes it uninstallable; with blocking off, `^6.2` would select it. The package must constrain to a patch line
+    (`~6.2.5`), never `^6.2`.
   - Upstream's own README still names 4.x as the preferred version. The v5 and v6 release notes call those versions
     "in no way a replacement" and "still no full replacement" for v4.
   - SimpleSAMLphp master still processes responses with `simplesamlphp/saml2-legacy` 4.20, so the v6 response path is
@@ -239,7 +245,7 @@ one assertion, schema).
 
 ## Decision
 
-The package uses `simplesamlphp/saml2` v6, constrained to `~6.2.4`, with `simplesamlphp/xml-security` constrained to
+The package uses `simplesamlphp/saml2` v6, constrained to `~6.2.5`, with `simplesamlphp/xml-security` constrained to
 `~2.3.1`. It is the only candidate that meets SSO-6.3 and SSO-6.7 through the library rather than around it.
 onelogin's handling of wrapping is sound, but it cannot control algorithms, it decrypts before verifying, it keeps
 process-wide state, and it is pinned to an xmlseclibs line with unfixed advisories, so it fails SSO-6.7 and the suite's

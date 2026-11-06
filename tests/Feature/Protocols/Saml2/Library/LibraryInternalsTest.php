@@ -139,6 +139,7 @@ final class LibraryInternalsTest extends TestCase
             'temporary directory' => static fn () => $container->getTempDir(),
             'files'               => static fn () => $container->writeFile('a', 'b'),
             'clock'               => static fn () => $container->getClock(),
+            'inflate size limit'  => static fn () => $container->getInflateSizeLimit(),
         ];
 
         foreach ($refusals as $service => $call) {
