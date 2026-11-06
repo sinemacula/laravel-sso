@@ -62,11 +62,13 @@ are a contract.
   made safe (an IP address kept only when valid; a user agent without control or bidirectional characters or invalid
   UTF-8, then cut to 512 characters):
   - the IP address is kept only when it is a valid IPv4 or IPv6 address;
-  - the user agent has invalid UTF-8 replaced (`mb_scrub`), C0 controls, DEL, C1 controls and the Unicode
-    bidirectional controls (U+202A to U+202E, U+2066 to U+2069) removed, and is cut to 512 characters
-    (`EventContexts::USER_AGENT_MAX_LENGTH`);
-  - every named field is cleaned the same way and cut to 255 characters (`EventContexts::FIELD_MAX_LENGTH`), so an id
-    can never smuggle a payload, forge a log line or reorder text in an audit view;
+  - the user agent has invalid UTF-8 replaced (`mb_scrub`), C0 controls, DEL, C1 controls, the Unicode
+    bidirectional marks (U+061C, U+200E, U+200F) and controls (U+202A to U+202E, U+2066 to U+2069) removed, and is
+    cut to 512 characters (`EventContexts::USER_AGENT_MAX_LENGTH`);
+  - every named field is cleaned the same way, except that it keeps the bidirectional marks right-to-left text uses,
+    and is cut to 255 characters (`EventContexts::FIELD_MAX_LENGTH`), so an id can never smuggle a payload, forge a
+    log line or override the direction of the text around it. An audit view still isolates and escapes each value
+    it shows, since right-to-left text reorders without any control;
   - a value that is empty once cleaned is `null`.
 - Events report only. Nothing that must happen for security depends on a listener: enforcement is a synchronous
   contract call (SSO-4.5, SSO-4.6), never a listener (SSO-10.5).

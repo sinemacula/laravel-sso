@@ -19,8 +19,8 @@ use Illuminate\Http\Request;
  * held to the same rules as one read from a request: an IP address is kept only
  * when it is a valid IPv4 or IPv6 address, and a user agent has invalid UTF-8
  * replaced, its control characters (C0, NUL among them, DEL, C1) and Unicode
- * bidirectional controls removed, and is then cut to 512 characters, so
- * characters that are removed never use up the length kept. PostgreSQL, and
+ * bidirectional marks and controls removed, and is then cut to 512 characters,
+ * so characters that are removed never use up the length kept. PostgreSQL, and
  * MySQL in strict mode, reject invalid UTF-8 and an over-long value, and a
  * crafted header must not turn a request into a server error; PostgreSQL cannot
  * store a NUL byte in text, and through PDO a value is cut short at the first
@@ -40,8 +40,8 @@ final readonly class ClientContext
     /** @var int Longest user agent kept, in characters. */
     private const int USER_AGENT_MAX_LENGTH = 512;
 
-    /** @var string Characters removed from a user agent: C0 controls, DEL, C1 controls and the Unicode bidirectional embeddings, overrides and isolates. */
-    private const string UNSAFE_CHARACTERS = '/[\x{0000}-\x{001F}\x{007F}-\x{009F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
+    /** @var string Characters removed from a user agent: C0 controls, DEL, C1 controls, the Unicode bidirectional marks and the embeddings, overrides and isolates. */
+    private const string UNSAFE_CHARACTERS = '/[\x{0000}-\x{001F}\x{007F}-\x{009F}\x{061C}\x{200E}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
 
     /** @var ?string Validated IP address the client came from. */
     public ?string $ip;

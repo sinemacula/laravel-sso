@@ -252,6 +252,24 @@ final class EventContextsTest extends TestCase
     }
 
     /**
+     * A named field keeps the bidirectional marks (U+061C, U+200E, U+200F)
+     * right-to-left text uses, while the client context removes them from a
+     * user agent.
+     *
+     * @return void
+     */
+    public function testANamedFieldKeepsTheBidirectionalMarks(): void
+    {
+        $context = $this->contexts()->make(
+            new ClientContext('203.0.113.7', "Agent\u{200F}/1.0"),
+            application: "\u{05D0}\u{200F}-\u{061C}1\u{200E}",
+        );
+
+        self::assertSame("\u{05D0}\u{200F}-\u{061C}1\u{200E}", $context->application);
+        self::assertSame('Agent/1.0', $context->userAgent);
+    }
+
+    /**
      * Each call takes its own client, and the projection holds none: one
      * projection reports each call's client.
      *

@@ -30,8 +30,11 @@ use SineMacula\Laravel\Sso\Http\ClientContext;
  * agent and every named field have their control characters (C0, DEL, C1) and
  * Unicode bidirectional controls removed and invalid UTF-8 replaced, and are
  * cut to `USER_AGENT_MAX_LENGTH` and `FIELD_MAX_LENGTH` characters, so no value
- * can smuggle a payload, forge a log line or reorder text in an audit view; a
- * value that is empty once cleaned is `null`.
+ * can smuggle a payload, forge a log line or override the direction of the text
+ * around it; a value that is empty once cleaned is `null`. The bidirectional
+ * marks (U+061C, U+200E, U+200F) are kept in a named field, where right-to-left
+ * text uses them; an audit view still isolates and escapes each value it shows,
+ * since right-to-left text reorders without any control.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -75,6 +75,7 @@ final class ClientContextTest extends TestCase
             'invalid UTF-8 replaced'      => ["Agent \xC3\x28 \xFF", 'Agent ?( ?'],
             'controls removed'            => ["Agent\x1b/\t1.0\x7f\u{0085}", 'Agent/1.0'],
             'bidirectional controls'      => ["Agent\u{202E}/1.0\u{2066}", 'Agent/1.0'],
+            'bidirectional marks'         => ["\u{200E}Agent\u{061C}/1.0\u{200F}", 'Agent/1.0'],
             'removed before the cut'      => [str_repeat("\t", 512) . 'Mozilla/5.0', 'Mozilla/5.0'],
             'exactly 512 characters'      => [str_repeat('é', 512), str_repeat('é', 512)],
             'over 512 characters cut'     => [str_repeat('é', 513), str_repeat('é', 512)],
