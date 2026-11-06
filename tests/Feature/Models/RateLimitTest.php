@@ -4,10 +4,8 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Models;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Models\RateLimit;
@@ -27,14 +25,11 @@ use Tests\TestCase;
 #[CoversClass(RateLimit::class)]
 final class RateLimitTest extends TestCase
 {
-    /** @var string Absolute path to the shipped rate limits migration. */
-    private const string MIGRATION_PATH = __DIR__ . '/../../../database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
-
     /** @var string The table's default name. */
     private const string TABLE = 'sso_rate_limits';
 
     /**
-     * Bind the fixed clock and create the shipped table.
+     * Bind the fixed clock and give the test the package's tables.
      *
      * @return void
      */
@@ -45,21 +40,7 @@ final class RateLimitTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock);
 
-        $this->migration()->up(); // @phpstan-ignore method.notFound
-    }
-
-    /**
-     * Drop the shipped table, so a persistent database starts the next test
-     * without it.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        Schema::dropIfExists(self::TABLE);
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**
@@ -208,24 +189,5 @@ final class RateLimitTest extends TestCase
     private function prunableKeys(): array
     {
         return (new RateLimit)->prunable()->pluck('key')->all();
-    }
-
-    /**
-     * Require the shipped anonymous-class migration and return it.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     *
-     * @SuppressWarnings("php:S4833")
-     * @SuppressWarnings("php:S2003")
-     */
-    private function migration(): Migration
-    {
-        $migration = include self::MIGRATION_PATH;
-
-        if (!$migration instanceof Migration) {
-            self::fail('The rate limits migration did not return a Migration instance.');
-        }
-
-        return $migration;
     }
 }

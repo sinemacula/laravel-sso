@@ -14,7 +14,6 @@ use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -37,7 +36,7 @@ use Tests\TestCase;
 #[CoversClass(ConnectionLifecycle::class)]
 final class TrustVersionTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var string The tenant. */
     private const string TENANT = 'tenant-1';
@@ -58,22 +57,7 @@ final class TrustVersionTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

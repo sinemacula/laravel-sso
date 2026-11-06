@@ -26,7 +26,6 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
@@ -49,7 +48,7 @@ use Tests\TestCase;
 #[CoversClass(ProviderKeys::class)]
 final class ProviderKeysTest extends TestCase
 {
-    use CapturesLogs, UsesConnections, UsesFlowTables;
+    use CapturesLogs, UsesConnections;
 
     /** @var string The provider's issuer. */
     private const string ISSUER = FakeOpenIdProvider::ISSUER;
@@ -86,23 +85,8 @@ final class ProviderKeysTest extends TestCase
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Fetcher::class, $this->fetcher);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
         $this->captureLogs();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

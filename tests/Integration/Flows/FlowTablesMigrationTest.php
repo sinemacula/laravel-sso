@@ -36,6 +36,20 @@ final class FlowTablesMigrationTest extends TestCase
     ];
 
     /**
+     * Drop the tables an earlier test kept, so each test starts from an empty
+     * database.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->dropKeptTables();
+    }
+
+    /**
      * Drop every table the tests may have made.
      *
      * @return void

@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Domains;
 
-use Illuminate\Database\Migrations\Migration;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
@@ -39,9 +38,6 @@ abstract class DomainServiceTestCase extends TestCase
 
     /** @var string The tenant whose connection the helpers act on. */
     protected const string TENANT = 'tenant-1';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
 
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     protected FixedClock $clock;
@@ -78,30 +74,11 @@ abstract class DomainServiceTestCase extends TestCase
         $this->app?->instance(Freshness::class, $this->freshness);
         $this->app?->instance(DnsResolver::class, $this->dns);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection();
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -157,15 +134,5 @@ abstract class DomainServiceTestCase extends TestCase
         static::assertNotNull($result->domain, 'The result carries no domain: ' . json_encode($result));
 
         return $result->domain;
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

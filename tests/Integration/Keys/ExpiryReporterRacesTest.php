@@ -26,7 +26,6 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RaceFlows;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesEveryTable;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -70,7 +69,7 @@ use Tests\TestCase;
 #[CoversClass(ConnectionLifecycle::class)]
 final class ExpiryReporterRacesTest extends TestCase
 {
-    use RaceFlows, UsesConnections, UsesEveryTable;
+    use RaceFlows, UsesConnections;
 
     /** @var string The tenant whose connection it is. */
     private const string TENANT = 'tenant-1';
@@ -117,9 +116,6 @@ final class ExpiryReporterRacesTest extends TestCase
     /** @var int How many keys have been made, so each has its own fingerprint. */
     private int $keys = 0;
 
-    /** @var bool Whether the tables were made. */
-    private bool $created = false;
-
     /**
      * Skip where processes cannot share the database; bind a fixed clock and a
      * fresh caller; retire a key at once when another is made current; read the
@@ -147,14 +143,13 @@ final class ExpiryReporterRacesTest extends TestCase
 
         $this->publicKey = (string) MaskedKey::fromCertificate(Certificates::distinct(50))->publicKey;
 
-        $this->createEveryTable();
+        $this->usePackageTables();
 
-        $this->created    = true;
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
     }
 
     /**
-     * Remove what the race used and drop the tables.
+     * Remove what the race used.
      *
      * @return void
      */
@@ -162,10 +157,6 @@ final class ExpiryReporterRacesTest extends TestCase
     protected function tearDown(): void
     {
         $this->tearDownRace();
-
-        if ($this->created) {
-            $this->dropEveryTable();
-        }
 
         parent::tearDown();
     }

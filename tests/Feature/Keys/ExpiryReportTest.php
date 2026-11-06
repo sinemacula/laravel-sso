@@ -7,6 +7,7 @@ namespace Tests\Feature\Keys;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
@@ -82,24 +83,11 @@ final class ExpiryReportTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock(self::NOW));
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         $this->saml = $this->makeConnection(['protocol' => 'saml2']);
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -1008,9 +996,9 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Run the test with the tables made afresh under the settings, on the new
-     * connection they name when one does, and make them again as they were
-     * however it ends.
+     * Run the test with the connections table and the keys and certificates
+     * table made afresh under the settings, on the new connection they name
+     * when one does, and dropped again however it ends.
      *
      * @param  array<string, string>  $settings
      * @param  \Closure(): void  $test
@@ -1018,15 +1006,11 @@ final class ExpiryReportTest extends TestCase
      */
     private function withTablesUnder(array $settings, \Closure $test): void
     {
-        $this->dropConnectionTables();
+        $this->migrateConnectionTables(false);
 
-        $before = array_map(static fn (string $key): mixed => config($key), array_combine(array_keys($settings), array_keys($settings)));
+        config()->set($settings);
 
-        foreach ($settings as $key => $value) {
-            config()->set($key, $value);
-        }
-
-        $this->createConnectionTables();
+        $this->migrateConnectionTables(true);
 
         try {
 
@@ -1034,14 +1018,33 @@ final class ExpiryReportTest extends TestCase
 
             $test();
         } finally {
+            $this->migrateConnectionTables(false);
+        }
+    }
 
-            $this->dropConnectionTables();
+    /**
+     * Run the shipped migrations of the connections table and the keys and
+     * certificates table up, in order, or down, in reverse, under the settings
+     * as they stand.
+     *
+     * @param  bool  $up
+     * @return void
+     */
+    private function migrateConnectionTables(bool $up): void
+    {
+        $files = ['2026_11_01_000000_create_sso_connections_table.php', '2026_11_01_000001_create_sso_keys_table.php'];
 
-            foreach ($before as $key => $value) {
-                config()->set($key, $value);
+        foreach ($up ? $files : array_reverse($files) as $file) {
+
+            $migration = require dirname(__DIR__, 3) . '/database/migrations/' . $file;
+
+            self::assertInstanceOf(Migration::class, $migration);
+
+            if ($up) {
+                $migration->up(); // @phpstan-ignore method.notFound
+            } else {
+                $migration->down(); // @phpstan-ignore method.notFound
             }
-
-            $this->createConnectionTables();
         }
     }
 

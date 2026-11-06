@@ -108,8 +108,7 @@ final class EnforcementServiceTest extends TestCase
         $this->app?->instance(Freshness::class, $this->freshness);
         $this->app?->instance(SessionRevocation::class, $this->revocation);
 
-        $this->createConnectionTables();
-        $this->createEnforcementTable();
+        $this->usePackageTables();
 
         Config::set('sso.features.enforcement', true);
 
@@ -117,20 +116,6 @@ final class EnforcementServiceTest extends TestCase
         $this->untried   = $this->makeConnection(['enabled' => true, 'has_completed_sign_in' => false]);
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEnforcementTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

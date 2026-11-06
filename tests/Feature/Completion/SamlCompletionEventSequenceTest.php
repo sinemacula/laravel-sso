@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Completion;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
@@ -33,7 +32,6 @@ use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
@@ -57,13 +55,7 @@ use Tests\TestCase;
 #[CoversClass(AssertionValidator::class)]
 final class SamlCompletionEventSequenceTest extends TestCase
 {
-    use CapturesLogs, DumpsValues, RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use CapturesLogs, DumpsValues, RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The `AuthnRequest` id the request was started with. */
     private const string REQUEST_ID = '_request-reported-1';
@@ -115,11 +107,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
         config()->set('sso.applications', ['web' => ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true, 'unlinked_handoffs' => true]]);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
-        self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'tenant_id'         => 'tenant-reported',
@@ -135,23 +123,6 @@ final class SamlCompletionEventSequenceTest extends TestCase
 
         $this->captureLogs();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::migration(self::RATE_LIMITS_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        self::migration(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        $this->dropDomainsTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -343,16 +314,5 @@ final class SamlCompletionEventSequenceTest extends TestCase
     private static function idp(): FakeSamlIdentityProvider
     {
         return self::$idp ??= new FakeSamlIdentityProvider;
-    }
-
-    /**
-     * The shipped migration of the file.
-     *
-     * @param  string  $file
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function migration(string $file): Migration
-    {
-        return require dirname(__DIR__, 3) . $file;
     }
 }

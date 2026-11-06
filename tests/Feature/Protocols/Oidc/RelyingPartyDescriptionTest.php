@@ -48,7 +48,6 @@ use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
@@ -72,7 +71,7 @@ use Tests\TestCase;
 #[CoversClass(RelyingPartyDescription::class)]
 final class RelyingPartyDescriptionTest extends TestCase
 {
-    use DumpsValues, RecordsEventSequences, UsesConnections, UsesFlowTables;
+    use DumpsValues, RecordsEventSequences, UsesConnections;
 
     /** @var string The tenant whose connections are described. */
     private const string TENANT = 'tenant-1';
@@ -137,24 +136,9 @@ final class RelyingPartyDescriptionTest extends TestCase
         config()->set('sso.features.oidc', true);
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

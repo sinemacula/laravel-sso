@@ -62,9 +62,6 @@ final class ConcurrentExpiryReportersTest extends TestCase
     /** @var \SineMacula\Laravel\Sso\Models\Connection The connection the keys belong to. */
     private Connection $connection;
 
-    /** @var bool Whether the tables were made. */
-    private bool $created = false;
-
     /**
      * Skip where processes cannot share the database; bind a fixed clock, make
      * the certificate before any process forks, and create the tables and the
@@ -85,14 +82,13 @@ final class ConcurrentExpiryReportersTest extends TestCase
 
         Certificates::distinct(50);
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
-        $this->created    = true;
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
     }
 
     /**
-     * Remove what the race used and drop the tables.
+     * Remove what the race used.
      *
      * @return void
      */
@@ -100,10 +96,6 @@ final class ConcurrentExpiryReportersTest extends TestCase
     protected function tearDown(): void
     {
         $this->tearDownRace();
-
-        if ($this->created) {
-            $this->dropConnectionTables();
-        }
 
         parent::tearDown();
     }

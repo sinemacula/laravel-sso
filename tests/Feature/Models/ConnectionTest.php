@@ -49,23 +49,7 @@ final class ConnectionTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        $this->createConnectionTables();
-    }
-
-    /**
-     * Drop the tables, wherever a test moved the storage.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        config()->set('sso.storage.connection', null);
-        config()->set('sso.connections.table', 'sso_connections');
-
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

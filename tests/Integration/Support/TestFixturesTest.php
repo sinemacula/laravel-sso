@@ -71,7 +71,7 @@ final class TestFixturesTest extends TestCase
             return;
         }
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
     }
 
     /**
@@ -84,8 +84,6 @@ final class TestFixturesTest extends TestCase
     {
         if ($this->lagging) {
             $this->removeLaggingReplicaFiles();
-        } else {
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();

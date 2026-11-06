@@ -6,7 +6,6 @@ namespace Tests\Feature\Flows;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Encryption\DecryptException;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -52,9 +51,6 @@ final class RequestConsumptionTest extends TestCase
 {
     use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
     /** @var string The protocol state the request was started with. */
     private const string STATE = 'the-protocol-state-of-the-request-0123456789';
 
@@ -95,28 +91,11 @@ final class RequestConsumptionTest extends TestCase
             'web' => ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true],
         ]);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        self::singleUseMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['enabled' => true]);
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::singleUseMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -764,15 +743,5 @@ final class RequestConsumptionTest extends TestCase
             (string) $row->key_digest, // @phpstan-ignore property.notFound
             CarbonImmutable::parse((string) $row->expires_at, 'UTC')->toIso8601String(), // @phpstan-ignore property.notFound
         ])->all());
-    }
-
-    /**
-     * The shipped migration of the single-use keys.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function singleUseMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::SINGLE_USE_MIGRATION;
     }
 }

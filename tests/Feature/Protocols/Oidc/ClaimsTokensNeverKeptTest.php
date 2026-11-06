@@ -28,8 +28,6 @@ use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
@@ -50,7 +48,7 @@ use Tests\TestCase;
 #[CoversClass(UserInfoReader::class)]
 final class ClaimsTokensNeverKeptTest extends TestCase
 {
-    use CapturesLogs, DumpsValues, UsesConnections, UsesDomains, UsesFlowTables;
+    use CapturesLogs, DumpsValues, UsesConnections;
 
     /** @var string The connection's UserInfo endpoint. */
     private const string ENDPOINT = 'https://op.example.test/userinfo';
@@ -98,28 +96,11 @@ final class ClaimsTokensNeverKeptTest extends TestCase
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Fetcher::class, $this->fetcher);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->captureLogs();
 
         config()->set('sso.features.domain_linking', true);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

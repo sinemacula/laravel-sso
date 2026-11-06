@@ -36,7 +36,7 @@ final class EnforcementMigrationTest extends TestCase
     private const string TABLE = 'sso_enforcement';
 
     /**
-     * Run the shipped migration.
+     * Drop the tables an earlier test kept, then run the shipped migration.
      *
      * @return void
      */
@@ -44,6 +44,8 @@ final class EnforcementMigrationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->dropKeptTables();
 
         $this->migration()->up(); // @phpstan-ignore method.notFound
     }

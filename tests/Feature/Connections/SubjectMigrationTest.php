@@ -45,7 +45,6 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Enforcement\RecordingRevocation;
 use Tests\Fixtures\FixedClock;
@@ -77,7 +76,7 @@ use Tests\TestCase;
 #[CoversClass(ScopeWidening::class)]
 final class SubjectMigrationTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesEnforcement, UsesFlowTables;
+    use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The tenant the connection belongs to. */
     private const string TENANT = 'tenant-1';
@@ -133,9 +132,7 @@ final class SubjectMigrationTest extends TestCase
 
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createEnforcementTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC);
 
@@ -147,21 +144,6 @@ final class SubjectMigrationTest extends TestCase
 
         $this->freshness->reset();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropEnforcementTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Integration\Handoffs;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
@@ -29,7 +28,6 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -59,13 +57,10 @@ use Tests\TestCase;
 #[CoversClass(HandoffRedemption::class)]
 final class ConcurrentRedemptionTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var int Processes racing to redeem one code. */
     private const int REDEEMERS = 4;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
 
     /** @var string The client's verifier (RFC 7636, appendix B). */
     private const string VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
@@ -136,9 +131,7 @@ final class ConcurrentRedemptionTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        self::singleUseMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true, 'settings' => ['issuer' => VerifyingDriver::ISSUER]]);
         $this->code       = $this->issue();
@@ -148,7 +141,7 @@ final class ConcurrentRedemptionTest extends TestCase
     }
 
     /**
-     * Remove this test's outcomes and drop the tables.
+     * Remove this test's outcomes.
      *
      * @return void
      */
@@ -162,12 +155,6 @@ final class ConcurrentRedemptionTest extends TestCase
             }
 
             @rmdir($this->outcomes);
-        }
-
-        if (isset($this->code)) {
-            self::singleUseMigration()->down(); // @phpstan-ignore method.notFound
-            $this->dropFlowTables();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();
@@ -341,15 +328,5 @@ final class ConcurrentRedemptionTest extends TestCase
         );
 
         return app(DatabaseHandoffStore::class)->issue($grant)->code->reveal();
-    }
-
-    /**
-     * The shipped migration of the single-use keys.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function singleUseMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::SINGLE_USE_MIGRATION;
     }
 }

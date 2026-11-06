@@ -63,20 +63,7 @@ final class MetadataSourcesTest extends TestCase
         config()->set('sso.features.oidc', true);
         config()->set('sso.features.metadata_refresh', true);
 
-        $this->createConnectionTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

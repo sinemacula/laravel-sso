@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Integration\Connections;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
@@ -38,7 +37,6 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
@@ -80,10 +78,7 @@ use Tests\TestCase;
 #[CoversClass(InFlightVoider::class)]
 final class ConcurrentLifecycleTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
+    use UsesConnections, UsesFlowTables;
 
     /** @var string The tenant the connection belongs to. */
     private const string TENANT = 'tenant-1';
@@ -176,10 +171,7 @@ final class ConcurrentLifecycleTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::singleUseMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true, 'settings' => ['issuer' => VerifyingDriver::ISSUER]]);
         $this->outcomes   = sys_get_temp_dir() . '/lifecycle-race-' . bin2hex(random_bytes(8));
@@ -188,7 +180,7 @@ final class ConcurrentLifecycleTest extends TestCase
     }
 
     /**
-     * Remove this test's outcomes and drop the tables.
+     * Remove this test's outcomes.
      *
      * @return void
      */
@@ -202,13 +194,6 @@ final class ConcurrentLifecycleTest extends TestCase
             }
 
             @rmdir($this->outcomes);
-        }
-
-        if (isset($this->connection)) {
-            self::singleUseMigration()->down(); // @phpstan-ignore method.notFound
-            $this->dropDomainsTable();
-            $this->dropFlowTables();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();
@@ -539,15 +524,5 @@ final class ConcurrentLifecycleTest extends TestCase
         );
 
         return app(DatabaseHandoffStore::class)->issue($grant)->code->reveal();
-    }
-
-    /**
-     * The shipped migration of the single-use keys.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function singleUseMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::SINGLE_USE_MIGRATION;
     }
 }

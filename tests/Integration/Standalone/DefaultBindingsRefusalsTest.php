@@ -154,21 +154,8 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
         config()->set('sso.applications', [self::FLOW_APPLICATION => ['redirect_uri' => self::FLOW_REDIRECT_URI, 'external_sign_in' => true]]);
 
         $this->assertStandalone();
-        $this->createEveryTable();
+        $this->usePackageTables();
         $this->registerFlowRoutes();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEveryTable();
-
-        parent::tearDown();
     }
 
     /**

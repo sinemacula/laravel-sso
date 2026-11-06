@@ -4,9 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\RateLimiting;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -37,9 +35,6 @@ use Tests\TestCase;
 #[CoversClass(RateLimitStore::class)]
 final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
 {
-    /** @var string Absolute path to the shipped rate limits migration. */
-    private const string MIGRATION_PATH = __DIR__ . '/../../../database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
-
     /** @var string The table's default name. */
     private const string TABLE = 'sso_rate_limits';
 
@@ -63,7 +58,8 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
 
     /**
      * Skip where processes cannot share the database, bind a fixed clock so
-     * every process counts in the same window, and create the shipped table.
+     * every process counts in the same window, and give the test the package's
+     * tables.
      *
      * @return void
      *
@@ -82,7 +78,7 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        $this->migration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->outcomes = sys_get_temp_dir() . '/sso-limiter-race-' . bin2hex(random_bytes(8));
 
@@ -90,7 +86,7 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Remove the outcomes and the table.
+     * Remove the outcomes.
      *
      * @return void
      */
@@ -104,8 +100,6 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
         if (isset($this->outcomes) && is_dir($this->outcomes)) {
             rmdir($this->outcomes);
         }
-
-        Schema::dropIfExists(self::TABLE);
 
         parent::tearDown();
     }
@@ -342,24 +336,5 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
         $hits = DB::table(self::TABLE)->where('key', $keys->counter($flow, $scope, $value))->value('hits');
 
         return is_numeric($hits) ? (int) $hits : null;
-    }
-
-    /**
-     * Require the shipped anonymous-class migration and return it.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     *
-     * @SuppressWarnings("php:S4833")
-     * @SuppressWarnings("php:S2003")
-     */
-    private function migration(): Migration
-    {
-        $migration = include self::MIGRATION_PATH;
-
-        if (!$migration instanceof Migration) {
-            self::fail('The rate limits migration did not return a Migration instance.');
-        }
-
-        return $migration;
     }
 }

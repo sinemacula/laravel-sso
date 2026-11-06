@@ -27,7 +27,6 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -49,7 +48,7 @@ use Tests\TestCase;
 #[CoversClass(ResultBuilder::class)]
 final class ResultBuilderTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
+    use UsesConnections, UsesDomains;
 
     /** @var string The request's public reference. */
     private const string REFERENCE = 'Bq8tVv3w0kLmNoPqRsTuVwXyZ0123456';
@@ -80,30 +79,13 @@ final class ResultBuilderTest extends TestCase
 
         config()->set('sso.mapping.custom_attributes', ['department']);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'tenant_id'         => 'tenant-7',
             'protocol'          => 'oidc',
             'attribute_mapping' => ['email' => 'mail', 'given_name' => 'given', 'groups' => 'memberOf', 'department' => 'dept'],
         ]);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

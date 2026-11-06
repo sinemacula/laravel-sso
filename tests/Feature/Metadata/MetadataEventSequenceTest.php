@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Metadata;
 
-use Illuminate\Database\Migrations\Migration;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\MetadataEvents;
@@ -30,7 +29,6 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -55,10 +53,7 @@ use Tests\TestCase;
 #[CoversClass(MetadataRefresher::class)]
 final class MetadataEventSequenceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use RecordsEventSequences, UsesConnections;
 
     /** @var string The tenant whose connection refreshes. */
     private const string TENANT = 'tenant-1';
@@ -102,9 +97,7 @@ final class MetadataEventSequenceTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.metadata_refresh', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2', 'enabled' => true, 'settings' => [
             'idp_entity_id'    => FakeSamlIdentityProvider::ENTITY_ID,
@@ -116,21 +109,6 @@ final class MetadataEventSequenceTest extends TestCase
 
         $this->trust(self::idp()->certificate());
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -392,15 +370,5 @@ final class MetadataEventSequenceTest extends TestCase
     private static function idp(): FakeSamlIdentityProvider
     {
         return self::$idp ??= new FakeSamlIdentityProvider;
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

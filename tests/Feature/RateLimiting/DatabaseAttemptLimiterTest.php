@@ -65,8 +65,8 @@ final class DatabaseAttemptLimiterTest extends TestCase
     private FixedClock $clock;
 
     /**
-     * Bind the fixed clock, 15 seconds after 12:00, and create the shipped
-     * table.
+     * Bind the fixed clock, 15 seconds after 12:00, and give the test the
+     * package's tables.
      *
      * @return void
      */
@@ -79,21 +79,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        $this->migration()->up(); // @phpstan-ignore method.notFound
-    }
-
-    /**
-     * Drop the shipped table, so a persistent database starts the next test
-     * without it.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        Schema::dropIfExists(self::TABLE);
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

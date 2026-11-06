@@ -109,13 +109,13 @@ final class CacheOutageTest extends TestCase
         parent::setUp();
 
         $this->prepareFlows();
-        $this->createEveryTable();
+        $this->usePackageTables();
         $this->registerFlowRoutes();
     }
 
     /**
      * Restore Laravel's clock and the schedule's polling, remove the mutex
-     * cache, and drop the tables.
+     * cache.
      *
      * @return void
      */
@@ -129,8 +129,6 @@ final class CacheOutageTest extends TestCase
         if ($this->mutexDirectory !== null) {
             (new Filesystem)->deleteDirectory($this->mutexDirectory);
         }
-
-        $this->dropEveryTable();
 
         parent::tearDown();
     }

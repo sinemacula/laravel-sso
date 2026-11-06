@@ -65,24 +65,11 @@ final class ExpiringKeysCommandTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock(self::NOW));
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

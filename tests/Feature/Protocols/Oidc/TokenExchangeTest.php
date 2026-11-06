@@ -120,20 +120,7 @@ final class TokenExchangeTest extends TestCase
         config()->set('sso.features.oidc', true);
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
 
-        $this->createConnectionTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

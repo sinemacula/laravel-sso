@@ -90,7 +90,7 @@ final class QueueWorkerIsolationTest extends TestCase
         parent::setUp();
 
         $this->prepareFlows();
-        $this->createEveryTable();
+        $this->usePackageTables();
         $this->createWorkerQueue();
 
         config()->set('sso.features.metadata_refresh', true);
@@ -107,7 +107,7 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * Drop the queue and the tables.
+     * Drop the queue.
      *
      * @return void
      */
@@ -115,7 +115,6 @@ final class QueueWorkerIsolationTest extends TestCase
     protected function tearDown(): void
     {
         $this->dropWorkerQueue();
-        $this->dropEveryTable();
 
         parent::tearDown();
     }

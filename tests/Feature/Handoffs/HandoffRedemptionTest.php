@@ -7,7 +7,6 @@ namespace Tests\Feature\Handoffs;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +47,6 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Enforcement\ListedExemption;
 use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
@@ -87,13 +85,7 @@ use Tests\TestCase;
 #[CoversClass(HandoffRecheck::class)]
 final class HandoffRedemptionTest extends TestCase
 {
-    use RecordsLockOrder, UsesConnections, UsesEnforcement, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use RecordsLockOrder, UsesConnections, UsesEnforcement;
 
     /** @var string The client's verifier (RFC 7636, appendix B). */
     private const string VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
@@ -151,31 +143,10 @@ final class HandoffRedemptionTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createEnforcementTable();
-        self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
-        self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true, 'settings' => ['issuer' => VerifyingDriver::ISSUER]]);
         $this->other      = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true, 'settings' => ['issuer' => VerifyingDriver::ISSUER]]);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::migration(self::RATE_LIMITS_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        self::migration(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        $this->dropEnforcementTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -1069,8 +1040,6 @@ final class HandoffRedemptionTest extends TestCase
             self::fail('A database error was answered.');
         } catch (QueryException) {
             self::assertNull($this->stored($code)->redeemed_at);
-        } finally {
-            self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
         }
     }
 
@@ -1456,17 +1425,6 @@ final class HandoffRedemptionTest extends TestCase
                 return ExampleLinks::resolution(($this->resolve)($result));
             }
         };
-    }
-
-    /**
-     * The shipped migration of the file.
-     *
-     * @param  string  $file
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function migration(string $file): Migration
-    {
-        return require dirname(__DIR__, 3) . $file;
     }
 
     /**

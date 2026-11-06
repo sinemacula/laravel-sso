@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Feature\Linking;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
@@ -81,12 +80,6 @@ abstract class LinkingTestCase extends TestCase
     /** @var string The linking email the driver verifies, exactly as asserted. */
     protected const string EMAIL = 'Person@Example.COM';
 
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
-
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     protected FixedClock $clock;
 
@@ -144,11 +137,7 @@ abstract class LinkingTestCase extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): ProtocolDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
-        self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'protocol'                => VerifyingDriver::NAME,
@@ -184,23 +173,6 @@ abstract class LinkingTestCase extends TestCase
         $this->verifying->claims = $this->claims();
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::migration(self::RATE_LIMITS_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        self::migration(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        $this->dropDomainsTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -272,17 +244,6 @@ abstract class LinkingTestCase extends TestCase
         return $this->connection->getConnection()->transaction(
             fn (): RedemptionResult => app(HandoffRedemption::class)->admit($purpose, 'web', $this->connection->id, $code, $verifier, $caller),
         );
-    }
-
-    /**
-     * A shipped migration.
-     *
-     * @param  string  $file
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function migration(string $file): Migration
-    {
-        return require dirname(__DIR__, 3) . $file;
     }
 
     /**

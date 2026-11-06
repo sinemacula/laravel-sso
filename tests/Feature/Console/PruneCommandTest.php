@@ -16,7 +16,6 @@ use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Concerns\MakesPrunableRows;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesEveryTable;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Logging\UnwritableLogHandler;
@@ -37,7 +36,7 @@ use Tests\TestCase;
 #[CoversClass(PruneCommand::class)]
 final class PruneCommandTest extends TestCase
 {
-    use FailsDatabaseStatements, MakesPrunableRows, UsesConnections, UsesDomains, UsesEveryTable, UsesFlowTables;
+    use FailsDatabaseStatements, MakesPrunableRows, UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var string The instant the clock holds. */
     private const string NOW = '2026-11-01T12:00:00Z';
@@ -54,20 +53,7 @@ final class PruneCommandTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock(self::NOW));
 
-        $this->createEveryTable();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEveryTable();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Domains;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
@@ -23,8 +22,6 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -53,16 +50,13 @@ use Tests\TestCase;
 #[CoversClass(DomainFinder::class)]
 final class ConcurrentDomainClaimsTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
+    use UsesConnections;
 
     /** @var int Processes racing in each test. */
     private const int PROCESSES = 8;
 
     /** @var string The domain the processes race for. */
     private const string DOMAIN = 'example.com';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
 
     /** @var list<\SineMacula\Laravel\Sso\Models\Connection> One connection per process, each of its own tenant. */
     private array $connections = [];
@@ -94,10 +88,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
 
         config()->set('sso.rate_limits.domain_check.per_connection', ['max' => 1000, 'decay_seconds' => 3600]);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         for ($process = 0; $process < self::PROCESSES; $process++) {
             $this->connections[] = $this->makeConnection(['tenant_id' => 'tenant-' . $process]);
@@ -109,7 +100,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Remove the outcomes and drop the tables.
+     * Remove the outcomes.
      *
      * @return void
      */
@@ -122,13 +113,6 @@ final class ConcurrentDomainClaimsTest extends TestCase
 
         if (isset($this->outcomes) && is_dir($this->outcomes)) {
             rmdir($this->outcomes);
-        }
-
-        if ($this->connections !== []) {
-            self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-            $this->dropFlowTables();
-            $this->dropDomainsTable();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();
@@ -437,15 +421,5 @@ final class ConcurrentDomainClaimsTest extends TestCase
         $app = $this->app;
 
         return $app->make(AttemptLimiter::class);
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

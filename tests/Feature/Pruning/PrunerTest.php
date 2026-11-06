@@ -78,11 +78,21 @@ final class PrunerTest extends TestCase
     /** @var int The default retention, in seconds. */
     private const int RETENTION = 86400;
 
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
     /** @var string The shipped migration of the counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    private const string RATE_LIMITS_MIGRATION = '2026_10_31_000001_create_sso_rate_limits_table.php';
+
+    /** @var list<string> The shipped migrations of every table a run reads, in the order they run. */
+    private const array PRUNING_MIGRATIONS = [
+        '2026_10_31_000000_create_sso_single_use_keys_table.php',
+        self::RATE_LIMITS_MIGRATION,
+        '2026_11_01_000000_create_sso_connections_table.php',
+        '2026_11_01_000001_create_sso_keys_table.php',
+        '2026_11_02_000000_create_sso_domains_table.php',
+        '2026_11_03_000000_create_sso_links_table.php',
+        '2026_11_03_000001_create_sso_authorization_requests_table.php',
+        '2026_11_03_000002_create_sso_handoff_codes_table.php',
+        '2026_11_03_000003_create_sso_identity_guards_table.php',
+    ];
 
     /** @var \SineMacula\Laravel\Sso\Models\Connection The connection the rows belong to. */
     private Connection $connection;
@@ -100,25 +110,12 @@ final class PrunerTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock(self::NOW));
 
-        $this->createPruningTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
 
         $this->captureLogs();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables, restoring any name a test changed first.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropPruningTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -898,12 +895,6 @@ final class PrunerTest extends TestCase
         self::assertSame(1, $this->pruner()->run()->deleted(PruneKind::RATE_LIMITS));
         self::assertSame([$kept], $this->prunableRowsLeft(PruneKind::RATE_LIMITS));
         self::assertFalse(Schema::hasTable('sso_rate_limits'));
-
-        $this->dropRateLimits();
-
-        config()->set('sso.rate_limits.connection');
-
-        $this->createRateLimits();
     }
 
     /**
@@ -971,12 +962,7 @@ final class PrunerTest extends TestCase
             self::assertSame(1, $database->table('sso_links')->count());
             self::assertSame(1, $this->linksVersion($this->connection));
         } finally {
-
             $this->dropPruningTables();
-
-            config()->set('sso.storage.connection');
-
-            $this->createPruningTables();
         }
     }
 
@@ -1022,23 +1008,20 @@ final class PrunerTest extends TestCase
 
         $this->createPruningTables();
 
-        $this->connection = $this->makeConnection(['protocol' => 'saml2']);
+        try {
 
-        foreach (PruneKind::cases() as $kind) {
-            $this->prunableRow($kind, $this->connection, $now);
+            $this->connection = $this->makeConnection(['protocol' => 'saml2']);
+
+            foreach (PruneKind::cases() as $kind) {
+                $this->prunableRow($kind, $this->connection, $now);
+            }
+
+            self::assertSame(6, $this->pruner()->run()->total());
+            self::assertSame(0, Link::query()->count());
+            self::assertSame(1, $this->linksVersion($this->connection));
+        } finally {
+            $this->dropPruningTables();
         }
-
-        self::assertSame(6, $this->pruner()->run()->total());
-        self::assertSame(0, Link::query()->count());
-        self::assertSame(1, $this->linksVersion($this->connection));
-
-        $this->dropPruningTables();
-
-        foreach (['single_use', 'rate_limits', 'connections', 'keys', 'domains', 'links', 'identity_guards', 'authorization_requests', 'handoff_codes'] as $section) {
-            config()->set("sso.{$section}.table", StorageConnection::TABLES["{$section}.table"]);
-        }
-
-        $this->createPruningTables();
     }
 
     /**
@@ -1424,11 +1407,9 @@ final class PrunerTest extends TestCase
      */
     private function createPruningTables(): void
     {
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
-        self::shipped(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
-        $this->createRateLimits();
+        foreach (self::PRUNING_MIGRATIONS as $migration) {
+            self::shipped($migration)->up(); // @phpstan-ignore method.notFound
+        }
     }
 
     /**
@@ -1438,11 +1419,9 @@ final class PrunerTest extends TestCase
      */
     private function dropPruningTables(): void
     {
-        $this->dropRateLimits();
-        self::shipped(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
+        foreach (array_reverse(self::PRUNING_MIGRATIONS) as $migration) {
+            self::shipped($migration)->down(); // @phpstan-ignore method.notFound
+        }
     }
 
     /**
@@ -1466,13 +1445,13 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * The shipped migration at the path.
+     * The shipped migration of the file name.
      *
-     * @param  string  $path
+     * @param  string  $file
      * @return object
      */
-    private static function shipped(string $path): object
+    private static function shipped(string $file): object
     {
-        return require dirname(__DIR__, 3) . $path;
+        return require dirname(__DIR__, 3) . '/database/migrations/' . $file;
     }
 }

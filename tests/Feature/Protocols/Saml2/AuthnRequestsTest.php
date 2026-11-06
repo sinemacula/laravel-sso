@@ -108,20 +108,7 @@ final class AuthnRequestsTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.endpoints.base_url', self::BASE_URL);
 
-        $this->createConnectionTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

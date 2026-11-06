@@ -27,7 +27,6 @@ use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
-use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
@@ -52,7 +51,7 @@ use Tests\TestCase;
 #[CoversClass(SubjectMigration::class)]
 final class LifecycleRevocationTransactionTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
+    use RecordsEventSequences, UsesDomains, UsesFlowTables;
 
     /** @var string The table the revocation writes to, as an adapter writes its revoked sessions. */
     private const string REVOKED = 'example_revoked_sessions';
@@ -95,9 +94,7 @@ final class LifecycleRevocationTransactionTest extends TestCase
 
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         Schema::connection(StorageConnection::name())->create(self::REVOKED, static function (Blueprint $table): void {
             $table->id();
@@ -121,7 +118,7 @@ final class LifecycleRevocationTransactionTest extends TestCase
     }
 
     /**
-     * Drop the tables.
+     * Drop the table the revocation writes to.
      *
      * @return void
      */
@@ -129,10 +126,6 @@ final class LifecycleRevocationTransactionTest extends TestCase
     protected function tearDown(): void
     {
         Schema::connection(StorageConnection::name())->dropIfExists(self::REVOKED);
-
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
 
         parent::tearDown();
     }

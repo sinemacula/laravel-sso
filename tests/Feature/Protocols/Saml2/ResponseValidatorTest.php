@@ -66,7 +66,7 @@ final class ResponseValidatorTest extends TestCase
 
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'protocol' => 'saml2',
@@ -86,19 +86,6 @@ final class ResponseValidatorTest extends TestCase
             'public_key'    => is_array($details) ? $details['key'] : '',
             'fingerprint'   => (string) openssl_x509_fingerprint($certificate, 'sha256'),
         ])->save();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

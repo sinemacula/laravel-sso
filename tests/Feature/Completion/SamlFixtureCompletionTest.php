@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Completion;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -35,7 +34,6 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
@@ -70,16 +68,10 @@ use Tests\TestCase;
 #[CoversClass(AssertionValidator::class)]
 final class SamlFixtureCompletionTest extends TestCase
 {
-    use CapturesLogs, RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
+    use CapturesLogs, RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The fixtures' directory. */
     private const string FIXTURES = __DIR__ . '/../../Fixtures/Saml';
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
 
     /** @var string The `RelayState` the request was started with. */
     private const string RELAY_STATE = 'the-relay-state-of-the-fixtures-request';
@@ -124,11 +116,7 @@ final class SamlFixtureCompletionTest extends TestCase
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
         config()->set('sso.applications', ['web' => ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true, 'unlinked_handoffs' => true]]);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
-        self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'protocol'          => 'saml2',
@@ -147,23 +135,6 @@ final class SamlFixtureCompletionTest extends TestCase
 
         $this->captureLogs();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::migration(self::RATE_LIMITS_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        self::migration(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        $this->dropDomainsTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -443,16 +414,5 @@ final class SamlFixtureCompletionTest extends TestCase
     {
         /** @var array{idp_entity_id: string, sp_entity_id: string, acs_url: string, request_id: string, subject: string, fixtures: list<Fixture>} */
         return json_decode(self::file('manifest.json'), true, flags: JSON_THROW_ON_ERROR);
-    }
-
-    /**
-     * The shipped migration of the file.
-     *
-     * @param  string  $file
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function migration(string $file): Migration
-    {
-        return require dirname(__DIR__, 3) . $file;
     }
 }

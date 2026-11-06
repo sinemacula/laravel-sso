@@ -21,7 +21,6 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
@@ -57,7 +56,7 @@ use Tests\TestCase;
 #[CoversClass(AuthorizationRequestService::class)]
 final class StartTrustChangeRaceTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var float Seconds a racer waits for the other's signal before it gives up. */
     private const float SIGNAL_SECONDS = 10.0;
@@ -110,8 +109,7 @@ final class StartTrustChangeRaceTest extends TestCase
 
         app(ProtocolManager::class)->extend(StartingDriver::NAME, fn (): StartingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => StartingDriver::NAME, 'enabled' => true, 'settings' => ['issuer' => 'https://idp.example.com']]);
         $this->outcomes   = sys_get_temp_dir() . '/start-trust-race-' . bin2hex(random_bytes(8));
@@ -120,7 +118,7 @@ final class StartTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Remove this test's signals and outcomes, and drop the tables.
+     * Remove this test's signals and outcomes.
      *
      * @return void
      */
@@ -135,9 +133,6 @@ final class StartTrustChangeRaceTest extends TestCase
 
             @rmdir($this->outcomes);
         }
-
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
 
         parent::tearDown();
     }

@@ -99,27 +99,12 @@ final class LinkStoreTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['enabled' => true, 'protocol' => 'saml2']);
         $this->identity   = new IdentityReference('user', '1');
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

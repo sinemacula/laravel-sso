@@ -20,7 +20,6 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -41,7 +40,7 @@ use Tests\TestCase;
 #[CoversClass(LinkEvents::class)]
 final class LinkEventSequenceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
+    use RecordsEventSequences, UsesConnections;
 
     /** @var \Tests\Fixtures\Freshness\RecordingFreshness The freshness contract the removal asks. */
     private RecordingFreshness $freshness;
@@ -68,27 +67,12 @@ final class LinkEventSequenceTest extends TestCase
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Freshness::class, $this->freshness);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['enabled' => true]);
         $this->identity   = new IdentityReference('user', '1');
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

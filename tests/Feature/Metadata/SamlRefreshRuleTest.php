@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Metadata;
 
-use Illuminate\Database\Migrations\Migration;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
@@ -56,9 +55,6 @@ final class SamlRefreshRuleTest extends TestCase
 {
     use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
-
     /** @var string The tenant whose connection refreshes. */
     private const string TENANT = 'tenant-1';
 
@@ -100,26 +96,9 @@ final class SamlRefreshRuleTest extends TestCase
         config()->set('sso.features.metadata_refresh', true);
         config()->set('sso.endpoints.base_url', 'https://api.example.com');
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->serve(self::metadata()->with(['aggregate' => ['https://other.example.test/saml'], 'sign' => 'aggregate']));
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -677,16 +656,5 @@ final class SamlRefreshRuleTest extends TestCase
     private static function actor(): ActingIdentity
     {
         return new ActingIdentity('App\Models\User', '42');
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        /** @var \Illuminate\Database\Migrations\Migration */
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

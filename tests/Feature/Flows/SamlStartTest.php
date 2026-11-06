@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Flows;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -26,7 +25,6 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\AuthnRequests;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -49,10 +47,7 @@ use Tests\TestCase;
 #[CoversClass(AuthorizationRequestService::class)]
 final class SamlStartTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use RecordsEventSequences, UsesConnections;
 
     /** @var string The identity provider's single sign-on URL. */
     private const string SSO_URL = 'https://idp.example.com/saml/sso';
@@ -87,26 +82,9 @@ final class SamlStartTest extends TestCase
         config()->set('sso.endpoints.base_url', 'https://api.example.com');
         config()->set('sso.applications', ['web' => ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true]]);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -354,15 +332,5 @@ final class SamlStartTest extends TestCase
         self::assertMatchesRegularExpression('/^_[0-9a-f]{64}$/D', $root->getAttribute('ID'));
 
         return $root->getAttribute('ID');
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

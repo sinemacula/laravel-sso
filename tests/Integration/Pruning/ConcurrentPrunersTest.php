@@ -15,7 +15,6 @@ use Tests\Concerns\MakesPrunableRows;
 use Tests\Concerns\RacesProcesses;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesEveryTable;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
@@ -40,7 +39,7 @@ use Tests\TestCase;
 #[CoversClass(PruneTarget::class)]
 final class ConcurrentPrunersTest extends TestCase
 {
-    use MakesPrunableRows, RacesProcesses, UsesConnections, UsesDomains, UsesEveryTable, UsesFlowTables;
+    use MakesPrunableRows, RacesProcesses, UsesConnections, UsesDomains, UsesFlowTables;
 
     /** @var int Processes racing. */
     private const int PROCESSES = 4;
@@ -53,9 +52,6 @@ final class ConcurrentPrunersTest extends TestCase
 
     /** @var list<\SineMacula\Laravel\Sso\Models\Connection> The connections the rows alternate between. */
     private array $connections = [];
-
-    /** @var bool Whether the tables were made. */
-    private bool $created = false;
 
     /**
      * Skip where processes cannot share the database; bind a fixed clock, and
@@ -74,14 +70,13 @@ final class ConcurrentPrunersTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock(self::NOW));
 
-        $this->createEveryTable();
+        $this->usePackageTables();
 
-        $this->created     = true;
         $this->connections = [$this->makeConnection(['protocol' => 'saml2']), $this->makeConnection(['tenant_id' => 'tenant-2', 'protocol' => 'saml2'])];
     }
 
     /**
-     * Remove what the race used and drop the tables.
+     * Remove what the race used.
      *
      * @return void
      */
@@ -89,10 +84,6 @@ final class ConcurrentPrunersTest extends TestCase
     protected function tearDown(): void
     {
         $this->tearDownRace();
-
-        if ($this->created) {
-            $this->dropEveryTable();
-        }
 
         parent::tearDown();
     }

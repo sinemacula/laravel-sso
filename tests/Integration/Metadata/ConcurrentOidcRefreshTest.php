@@ -27,7 +27,6 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -65,7 +64,7 @@ use Tests\TestCase;
 #[CoversClass(MetadataRefresher::class)]
 final class ConcurrentOidcRefreshTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var string The tenant the connection belongs to. */
     private const string TENANT = 'tenant-1';
@@ -126,8 +125,7 @@ final class ConcurrentOidcRefreshTest extends TestCase
         config()->set('sso.features.oidc', true);
         config()->set('sso.features.metadata_refresh', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['jwks' => self::stored([self::key()]), 'settings' => OidcSettings::fromArray([
             'issuer'                 => self::ISSUER,
@@ -146,7 +144,7 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * Remove the signals and outcomes and drop the tables.
+     * Remove the signals and outcomes.
      *
      * @return void
      */
@@ -160,11 +158,6 @@ final class ConcurrentOidcRefreshTest extends TestCase
             }
 
             @rmdir($this->outcomes);
-        }
-
-        if ($this->connection !== null) {
-            $this->dropFlowTables();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();

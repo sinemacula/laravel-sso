@@ -6,7 +6,6 @@ namespace Tests\Concerns;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Container\Container;
-use Illuminate\Database\Migrations\Migration;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
@@ -15,17 +14,13 @@ use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
 
 /**
- * Creates and drops the links, authorisation requests, handoff codes and
- * identity guards tables through their shipped migrations, on the storage
- * connection and under their configured names, and makes rows for a test to
- * work on. A test that uses it uses `UsesConnections` too, since each row
- * belongs to a connection.
+ * Makes links, authorisation requests and handoff codes for a test to work on.
+ * A test that uses it uses `UsesConnections` too, since each row belongs to a
+ * connection, and calls `usePackageTables()` in its `setUp()`, so the tables
+ * exist.
  *
- * A test calls `createFlowTables()` in its `setUp()` and `dropFlowTables()` in
- * its `tearDown()`, before the parent's, so a persistent database starts the
- * next test without them. Each row is written through its model, so its key and
- * stamps come from the package's clock; what the attributes given name replaces
- * the defaults.
+ * Each row is written through its model, so its key and stamps come from the
+ * package's clock; what the attributes given name replaces the defaults.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,38 +29,6 @@ use SineMacula\Laravel\Sso\Models\Link;
  */
 trait UsesFlowTables
 {
-    /** @var list<string> The shipped migrations of the flow tables, in the order they run. */
-    private static array $flowMigrations = [
-        '2026_11_03_000000_create_sso_links_table.php',
-        '2026_11_03_000001_create_sso_authorization_requests_table.php',
-        '2026_11_03_000002_create_sso_handoff_codes_table.php',
-        '2026_11_03_000003_create_sso_identity_guards_table.php',
-    ];
-
-    /**
-     * Run the flow tables' shipped migrations.
-     *
-     * @return void
-     */
-    protected function createFlowTables(): void
-    {
-        foreach (self::$flowMigrations as $migration) {
-            self::flowMigration($migration)->up(); // @phpstan-ignore method.notFound
-        }
-    }
-
-    /**
-     * Roll the flow tables' shipped migrations back.
-     *
-     * @return void
-     */
-    protected function dropFlowTables(): void
-    {
-        foreach (array_reverse(self::$flowMigrations) as $migration) {
-            self::flowMigration($migration)->down(); // @phpstan-ignore method.notFound
-        }
-    }
-
     /**
      * Make and save an authorisation request through the connection: a
      * `sign_in` for `web`, with a random reference and state digest, a fixed
@@ -181,16 +144,5 @@ trait UsesFlowTables
     private static function flowNow(): CarbonImmutable
     {
         return Container::getInstance()->make(Clock::class)->now();
-    }
-
-    /**
-     * The shipped migration of the name.
-     *
-     * @param  string  $name
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function flowMigration(string $name): Migration
-    {
-        return require dirname(__DIR__, 2) . '/database/migrations/' . $name;
     }
 }

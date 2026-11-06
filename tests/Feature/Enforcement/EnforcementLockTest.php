@@ -72,24 +72,9 @@ final class EnforcementLockTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        $this->createConnectionTables();
-        $this->createEnforcementTable();
+        $this->usePackageTables();
 
         Config::set('sso.features.enforcement', true);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEnforcementTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

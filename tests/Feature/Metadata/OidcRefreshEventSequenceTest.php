@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Metadata;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -41,7 +40,6 @@ use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -66,10 +64,7 @@ use Tests\TestCase;
 #[CoversClass(ProviderKeys::class)]
 final class OidcRefreshEventSequenceTest extends TestCase
 {
-    use CapturesLogs, RecordsEventSequences, UsesConnections, UsesFlowTables;
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use CapturesLogs, RecordsEventSequences, UsesConnections;
 
     /** @var string The tenant whose connection refreshes. */
     private const string TENANT = 'tenant-1';
@@ -127,9 +122,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
         config()->set('sso.features.oidc', true);
         config()->set('sso.features.metadata_refresh', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'jwks'     => self::stored([self::key()]),
@@ -147,21 +140,6 @@ final class OidcRefreshEventSequenceTest extends TestCase
 
         $this->captureLogs();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -677,15 +655,5 @@ final class OidcRefreshEventSequenceTest extends TestCase
     private static function next(): FakeSigningKey
     {
         return self::$next ??= FakeSigningKey::rsa('rsa-2');
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

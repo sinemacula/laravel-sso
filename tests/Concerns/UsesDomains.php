@@ -5,20 +5,14 @@ declare(strict_types = 1);
 namespace Tests\Concerns;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Migrations\Migration;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * Creates and drops the domains table through its shipped migration, on the
- * storage connection and under its configured name, and makes claims for a test
- * to work on. A test that uses it uses `UsesConnections` too, since a claim
- * belongs to a connection.
- *
- * A test calls `createDomainsTable()` in its `setUp()` and `dropDomainsTable()`
- * in its `tearDown()`, before the parent's, so a persistent database starts the
- * next test without it.
+ * Makes domain claims for a test to work on. A test that uses it uses
+ * `UsesConnections` too, since a claim belongs to a connection, and calls
+ * `usePackageTables()` in its `setUp()`, so the tables exist.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,26 +21,6 @@ use SineMacula\Laravel\Sso\Models\Domain;
  */
 trait UsesDomains
 {
-    /**
-     * Run the domains table's shipped migration.
-     *
-     * @return void
-     */
-    protected function createDomainsTable(): void
-    {
-        self::domainsMigration()->up(); // @phpstan-ignore method.notFound
-    }
-
-    /**
-     * Roll the domains table's shipped migration back.
-     *
-     * @return void
-     */
-    protected function dropDomainsTable(): void
-    {
-        self::domainsMigration()->down(); // @phpstan-ignore method.notFound
-    }
-
     /**
      * Make and save the connection's claim of the domain: pending, claimed at
      * the clock's now with the default record name and a fixed token, expiring
@@ -80,15 +54,5 @@ trait UsesDomains
         ])->save();
 
         return $claim;
-    }
-
-    /**
-     * The shipped migration of the domains table.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function domainsMigration(): Migration
-    {
-        return require dirname(__DIR__, 2) . '/database/migrations/2026_11_02_000000_create_sso_domains_table.php';
     }
 }

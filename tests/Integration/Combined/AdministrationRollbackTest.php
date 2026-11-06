@@ -37,7 +37,6 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RaceFlows;
-use Tests\Concerns\UsesEnforcement;
 use Tests\Feature\Linking\LinkingTestCase;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -73,7 +72,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 #[CoversClass(DomainRechecker::class)]
 final class AdministrationRollbackTest extends LinkingTestCase
 {
-    use RaceFlows, UsesEnforcement;
+    use RaceFlows;
 
     /** @var string The table the revocation writes to, as an adapter writes its revoked sessions. */
     private const string REVOKED = 'combined_rollback_revocations';
@@ -114,7 +113,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
         $this->app?->instance(SessionRevocation::class, self::revocation());
 
-        $this->createEnforcementTable();
+        $this->usePackageTables();
 
         self::storageDatabase()->getSchemaBuilder()->create(self::REVOKED, static function (Blueprint $table): void {
             $table->id();
@@ -147,8 +146,6 @@ final class AdministrationRollbackTest extends LinkingTestCase
     protected function tearDown(): void
     {
         self::storageDatabase()->getSchemaBuilder()->dropIfExists(self::REVOKED);
-
-        $this->dropEnforcementTable();
 
         parent::tearDown();
     }

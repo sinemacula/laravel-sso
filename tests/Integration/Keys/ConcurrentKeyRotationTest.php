@@ -80,7 +80,7 @@ final class ConcurrentKeyRotationTest extends TestCase
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
 
@@ -92,7 +92,7 @@ final class ConcurrentKeyRotationTest extends TestCase
     }
 
     /**
-     * Remove the outcomes and drop the tables.
+     * Remove the outcomes.
      *
      * @return void
      */
@@ -105,10 +105,6 @@ final class ConcurrentKeyRotationTest extends TestCase
 
         if (isset($this->outcomes) && is_dir($this->outcomes)) {
             rmdir($this->outcomes);
-        }
-
-        if (isset($this->connection)) {
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();

@@ -70,7 +70,7 @@ final class DatabaseFailureConsoleTest extends TestCase
         parent::setUp();
 
         $this->prepareFlows();
-        $this->createEveryTable();
+        $this->usePackageTables();
 
         $this->dns = new FakeDnsResolver;
 
@@ -79,19 +79,6 @@ final class DatabaseFailureConsoleTest extends TestCase
         $this->app?->bind(DnsResolver::class, static fn (): DnsResolver => $resolver);
 
         config()->set('sso.features.metadata_refresh', true);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEveryTable();
-
-        parent::tearDown();
     }
 
     /**

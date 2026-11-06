@@ -39,9 +39,10 @@ final class SingleUseKeysMigrationTest extends TestCase
     private const string STORE = 'package_store';
 
     /**
-     * Run the shipped migration, with the schema builder's default time
-     * precision raised to microseconds while it runs, so the whole-second
-     * precision is what the migration itself declares.
+     * Drop the tables an earlier test kept, then run the shipped migration,
+     * with the schema builder's default time precision raised to microseconds
+     * while it runs, so the whole-second precision is what the migration itself
+     * declares.
      *
      * @return void
      */
@@ -49,6 +50,8 @@ final class SingleUseKeysMigrationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->dropKeptTables();
 
         $precision = Builder::$defaultTimePrecision;
 

@@ -27,8 +27,6 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
-use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -51,7 +49,7 @@ use Tests\TestCase;
 #[CoversClass(KeyService::class)]
 final class AdministrationEventsAfterCommitTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
+    use RecordsEventSequences;
 
     /** @var string The connection the package's tables are moved to. */
     private const string STORE = 'sso_administration_store';
@@ -94,26 +92,11 @@ final class AdministrationEventsAfterCommitTest extends TestCase
 
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = (string) $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC, actor: $this->actor)->connection?->id;
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

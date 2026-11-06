@@ -24,7 +24,6 @@ use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesEnforcement;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -46,7 +45,7 @@ use Tests\TestCase;
 #[CoversClass(EnforcementEvents::class)]
 final class DomainAndEnforcementEventsTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains, UsesEnforcement, UsesFlowTables;
+    use RecordsEventSequences, UsesConnections, UsesDomains, UsesEnforcement;
 
     /**
      * Bind a fixed clock, create the tables and record events.
@@ -60,27 +59,8 @@ final class DomainAndEnforcementEventsTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
-        $this->createEnforcementTable();
+        $this->usePackageTables();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEnforcementTable();
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

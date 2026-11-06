@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Feature\Completion;
 
 use Illuminate\Contracts\Encryption\DecryptException;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -61,7 +60,6 @@ use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
@@ -90,13 +88,7 @@ use Tests\TestCase;
 #[CoversClass(TokenResponseReader::class)]
 final class OidcCallbackTest extends TestCase
 {
-    use CapturesLogs, DumpsValues, RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use CapturesLogs, DumpsValues, RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The `web` application's redirect URI. */
     private const string REDIRECT_URI = 'https://app.example.com/sso';
@@ -165,34 +157,13 @@ final class OidcCallbackTest extends TestCase
             'admin' => ['redirect_uri' => self::ADMIN_REDIRECT_URI, 'external_sign_in' => true, 'unlinked_handoffs' => true],
         ]);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
-        self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->provider   = $this->provider(FakeOpenIdProvider::ISSUER);
         $this->connection = $this->connectionOf($this->provider);
 
         $this->captureLogs();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::migration(self::RATE_LIMITS_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        self::migration(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        $this->dropDomainsTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -1258,16 +1229,5 @@ final class OidcCallbackTest extends TestCase
     private static function clientSigningKey(): FakeSigningKey
     {
         return self::$clientKey ??= FakeSigningKey::ec('client-assertion-key');
-    }
-
-    /**
-     * The shipped migration of the file.
-     *
-     * @param  string  $file
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function migration(string $file): Migration
-    {
-        return require dirname(__DIR__, 3) . $file;
     }
 }

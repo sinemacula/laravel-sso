@@ -4,9 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\SingleUse;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
@@ -34,9 +32,6 @@ final class ConcurrentSingleUseStoreTest extends TestCase
     /** @var int Processes racing in each test. */
     private const int PROCESSES = 12;
 
-    /** @var string Absolute path to the shipped single-use keys migration. */
-    private const string MIGRATION_PATH = __DIR__ . '/../../../database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
     /** @var string The table's default name. */
     private const string TABLE = 'sso_single_use_keys';
 
@@ -54,8 +49,8 @@ final class ConcurrentSingleUseStoreTest extends TestCase
 
     /**
      * Skip where processes cannot share the database, bind the fixed clock so
-     * every process compares with the same now, create the shipped table, and
-     * make the directory the processes report in.
+     * every process compares with the same now, give the test the package's
+     * tables, and make the directory the processes report in.
      *
      * @return void
      *
@@ -74,7 +69,7 @@ final class ConcurrentSingleUseStoreTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        $this->migration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->outcomes = sys_get_temp_dir() . '/single-use-race-' . bin2hex(random_bytes(8));
 
@@ -82,7 +77,7 @@ final class ConcurrentSingleUseStoreTest extends TestCase
     }
 
     /**
-     * Remove the outcomes and drop the shipped table.
+     * Remove the outcomes.
      *
      * @return void
      */
@@ -96,8 +91,6 @@ final class ConcurrentSingleUseStoreTest extends TestCase
         if (isset($this->outcomes) && is_dir($this->outcomes)) {
             rmdir($this->outcomes);
         }
-
-        Schema::dropIfExists(self::TABLE);
 
         parent::tearDown();
     }
@@ -226,24 +219,5 @@ final class ConcurrentSingleUseStoreTest extends TestCase
             ->where('key_digest', hash('sha256', self::KEY))
             ->pluck('expires_at')
             ->all());
-    }
-
-    /**
-     * Require the shipped anonymous-class migration and return it.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     *
-     * @SuppressWarnings("php:S4833")
-     * @SuppressWarnings("php:S2003")
-     */
-    private function migration(): Migration
-    {
-        $migration = include self::MIGRATION_PATH;
-
-        if (!$migration instanceof Migration) {
-            self::fail('The single-use keys migration did not return a Migration instance.');
-        }
-
-        return $migration;
     }
 }

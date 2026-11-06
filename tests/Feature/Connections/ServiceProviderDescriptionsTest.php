@@ -70,20 +70,7 @@ final class ServiceProviderDescriptionsTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.endpoints.base_url', 'https://api.example.com');
 
-        $this->createConnectionTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

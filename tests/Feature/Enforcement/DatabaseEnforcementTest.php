@@ -7,6 +7,7 @@ namespace Tests\Feature\Enforcement;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -64,24 +65,9 @@ final class DatabaseEnforcementTest extends TestCase
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Freshness::class, new RecordingFreshness);
 
-        $this->createConnectionTables();
-        $this->createEnforcementTable();
+        $this->usePackageTables();
 
         Config::set('sso.features.enforcement', true);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEnforcementTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -415,15 +401,11 @@ final class DatabaseEnforcementTest extends TestCase
      */
     public function testADatabaseErrorPropagates(): void
     {
-        $this->dropEnforcementTable();
+        Schema::connection(StorageConnection::name())->dropIfExists(StorageConnection::table('enforcement.table'));
 
-        try {
-            $this->expectException(QueryException::class);
+        $this->expectException(QueryException::class);
 
-            $this->enforcement()->policy(self::TENANT, self::APPLICATION);
-        } finally {
-            $this->createEnforcementTable();
-        }
+        $this->enforcement()->policy(self::TENANT, self::APPLICATION);
     }
 
     /**

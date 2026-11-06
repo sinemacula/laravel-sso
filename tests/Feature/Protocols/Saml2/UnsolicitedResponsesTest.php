@@ -95,7 +95,7 @@ final class UnsolicitedResponsesTest extends TestCase
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
 
         $this->captureLogs();
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'protocol' => 'saml2',
@@ -110,19 +110,6 @@ final class UnsolicitedResponsesTest extends TestCase
 
         $this->key(KeyUse::IDP_SIGNING, null, self::idp()->certificate(), null);
         $this->key(KeyUse::SP_ENCRYPTION, KeyState::CURRENT, self::spKeys()[1], self::spKeys()[0]);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
