@@ -27,9 +27,6 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
-use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -60,7 +57,7 @@ use Tests\TestCase;
 #[CoversClass(FreshnessGate::class)]
 final class FreshnessConventionTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
+    use RecordsEventSequences;
 
     /** @var string The tenant whose connections the helpers act on. */
     private const string TENANT = 'tenant-1';
@@ -139,26 +136,9 @@ final class FreshnessConventionTest extends TestCase
             config()->set('sso.freshness.max_age_seconds.' . $key, $seconds);
         }
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
         $this->prepare();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

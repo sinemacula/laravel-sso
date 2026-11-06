@@ -22,7 +22,6 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
@@ -43,7 +42,7 @@ use Tests\TestCase;
 #[CoversClass(DatabaseHandoffStore::class)]
 final class DatabaseHandoffStoreTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var string The connection every example result names. */
     private const string CONNECTION_ID = '01jbexampleconnection00000';
@@ -63,22 +62,7 @@ final class DatabaseHandoffStoreTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

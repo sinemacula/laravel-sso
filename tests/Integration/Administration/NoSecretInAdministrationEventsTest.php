@@ -23,8 +23,6 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
-use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -48,7 +46,7 @@ use Tests\TestCase;
 #[CoversClass(KeyService::class)]
 final class NoSecretInAdministrationEventsTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
+    use RecordsEventSequences;
 
     /** @var string The tenant whose connections the helpers act on. */
     private const string TENANT = 'tenant-1';
@@ -91,23 +89,8 @@ final class NoSecretInAdministrationEventsTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

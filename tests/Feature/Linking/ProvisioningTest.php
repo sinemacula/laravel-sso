@@ -71,7 +71,6 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsLockOrder;
-use Tests\Concerns\UsesEnforcement;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -102,7 +101,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 #[CoversClass(ResultUnlinked::class)]
 final class ProvisioningTest extends LinkingTestCase
 {
-    use DumpsValues, RecordsLockOrder, UsesEnforcement;
+    use DumpsValues, RecordsLockOrder;
 
     /** @var string The application's table of identities, which the listener writes to. */
     private const string IDENTITIES = 'provisioned_identities';
@@ -137,7 +136,7 @@ final class ProvisioningTest extends LinkingTestCase
         $this->matcher->match = LinkEmailMatch::none();
         $this->other          = new IdentityReference('App\Models\User', '8');
 
-        $this->createEnforcementTable();
+        $this->usePackageTables();
 
         Schema::connection(StorageConnection::name())->create(self::IDENTITIES, static function (Blueprint $table): void {
             $table->string('id')->primary();
@@ -149,7 +148,7 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Drop the application's table of identities and the enforcement table.
+     * Drop the application's table of identities.
      *
      * @return void
      */
@@ -157,8 +156,6 @@ final class ProvisioningTest extends LinkingTestCase
     protected function tearDown(): void
     {
         Schema::connection(StorageConnection::name())->dropIfExists(self::IDENTITIES);
-
-        $this->dropEnforcementTable();
 
         parent::tearDown();
     }

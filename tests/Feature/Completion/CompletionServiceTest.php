@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Completion;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -37,7 +36,6 @@ use SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
@@ -69,13 +67,7 @@ use Tests\TestCase;
 #[CoversClass(CompletionPipeline::class)]
 final class CompletionServiceTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use UsesConnections, UsesFlowTables;
 
     /** @var string The protocol state the request was started with. */
     private const string STATE = 'the-protocol-state-of-the-completed-request-01';
@@ -155,30 +147,9 @@ final class CompletionServiceTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
-        self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeVerifyingConnection();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::migration(self::RATE_LIMITS_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        self::migration(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        $this->dropDomainsTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -1094,16 +1065,5 @@ final class CompletionServiceTest extends TestCase
                 return ExampleLinks::resolution(($this->resolve)($result));
             }
         };
-    }
-
-    /**
-     * The shipped migration of the file.
-     *
-     * @param  string  $file
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function migration(string $file): Migration
-    {
-        return require dirname(__DIR__, 3) . $file;
     }
 }

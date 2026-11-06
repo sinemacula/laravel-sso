@@ -61,20 +61,7 @@ final class MetadataExpiryTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        $this->createConnectionTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

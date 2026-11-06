@@ -50,20 +50,7 @@ final class ConnectionSecretsTest extends TestCase
     {
         parent::setUp();
 
-        $this->createConnectionTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

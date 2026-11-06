@@ -31,7 +31,6 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -74,7 +73,7 @@ use Tests\TestCase;
 #[CoversClass(AuthorizationRequestService::class)]
 final class OidcStartRaceTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var float Seconds a racer waits for the other's signal before it gives up. */
     private const float SIGNAL_SECONDS = 10.0;
@@ -188,8 +187,7 @@ final class OidcStartRaceTest extends TestCase
             }
         });
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'tenant_id'     => self::TENANT,
@@ -211,7 +209,7 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * Remove this test's signals and outcomes, and drop the tables.
+     * Remove this test's signals and outcomes.
      *
      * @return void
      */
@@ -226,9 +224,6 @@ final class OidcStartRaceTest extends TestCase
 
             @rmdir($this->outcomes);
         }
-
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
 
         parent::tearDown();
     }

@@ -33,7 +33,6 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Enforcement\RecordingRevocation;
 use Tests\Fixtures\FixedClock;
@@ -59,7 +58,7 @@ use Tests\TestCase;
 #[CoversClass(LinkEvents::class)]
 final class LinkServiceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesEnforcement, UsesFlowTables;
+    use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     private FixedClock $clock;
@@ -95,29 +94,12 @@ final class LinkServiceTest extends TestCase
         $this->app?->instance(Freshness::class, $this->freshness);
         $this->app?->instance(SessionRevocation::class, $this->revocation);
 
-        $this->createConnectionTables();
-        $this->createEnforcementTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['enabled' => true]);
         $this->identity   = new IdentityReference('user', '1');
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropEnforcementTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Feature\Completion;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -34,7 +33,6 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use SineMacula\Laravel\Sso\Testing\Saml\SignatureWrapping;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
@@ -67,13 +65,7 @@ use Tests\TestCase;
 #[CoversClass(UnsolicitedResponses::class)]
 final class SamlReinitiationTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use UsesConnections, UsesFlowTables;
 
     /** @var string The application start URL the connection sends the browser to. */
     private const string START_URL = 'https://app.example.com/sso/start';
@@ -137,11 +129,7 @@ final class SamlReinitiationTest extends TestCase
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
         config()->set('sso.applications', ['web' => ['redirect_uri' => self::REDIRECT_URI, 'external_sign_in' => true, 'unlinked_handoffs' => true]]);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
-        self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'tenant_id' => 'tenant-saml',
@@ -160,23 +148,6 @@ final class SamlReinitiationTest extends TestCase
         $this->key(KeyUse::SP_ENCRYPTION, KeyState::CURRENT, self::spKeys()[1], self::spKeys()[0]);
 
         $this->stored = $this->makeAuthorizationRequest($this->connection, ['saml_request_id' => self::REQUEST_ID, 'state_digest' => hash('sha256', self::RELAY_STATE)]);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::migration(self::RATE_LIMITS_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        self::migration(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        $this->dropDomainsTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -725,16 +696,5 @@ final class SamlReinitiationTest extends TestCase
     private static function spKeys(): array
     {
         return self::$spKeys ??= FakeSamlIdentityProvider::keyPair('sp.example.test');
-    }
-
-    /**
-     * The shipped migration of the file.
-     *
-     * @param  string  $file
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function migration(string $file): Migration
-    {
-        return require dirname(__DIR__, 3) . $file;
     }
 }

@@ -74,8 +74,7 @@ final class LinkRemovalTransactionTest extends TestCase
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         Schema::connection(StorageConnection::name())->create(self::REVOKED, static function (Blueprint $table): void {
             $table->id();
@@ -91,7 +90,7 @@ final class LinkRemovalTransactionTest extends TestCase
     }
 
     /**
-     * Drop the tables.
+     * Drop the table the revocation writes to.
      *
      * @return void
      */
@@ -99,9 +98,6 @@ final class LinkRemovalTransactionTest extends TestCase
     protected function tearDown(): void
     {
         Schema::connection(StorageConnection::name())->dropIfExists(self::REVOKED);
-
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
 
         parent::tearDown();
     }

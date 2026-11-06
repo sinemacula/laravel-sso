@@ -20,7 +20,6 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesEnforcement;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -50,7 +49,7 @@ use Tests\TestCase;
 #[CoversClass(EnforcementFinder::class)]
 final class ConcurrentEnforcementChangesTest extends TestCase
 {
-    use UsesConnections, UsesEnforcement;
+    use UsesConnections;
 
     /** @var int Processes racing in each test. */
     private const int PROCESSES = 8;
@@ -90,8 +89,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
 
         Config::set('sso.features.enforcement', true);
 
-        $this->createConnectionTables();
-        $this->createEnforcementTable();
+        $this->usePackageTables();
 
         for ($process = 0; $process < self::PROCESSES; $process++) {
             $this->connections[] = $this->makeConnection(['enabled' => true, 'has_completed_sign_in' => true]);
@@ -103,7 +101,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * Remove the outcomes and drop the tables.
+     * Remove the outcomes.
      *
      * @return void
      */
@@ -116,11 +114,6 @@ final class ConcurrentEnforcementChangesTest extends TestCase
 
         if (isset($this->outcomes) && is_dir($this->outcomes)) {
             rmdir($this->outcomes);
-        }
-
-        if ($this->connections !== []) {
-            $this->dropEnforcementTable();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();

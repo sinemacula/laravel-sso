@@ -166,22 +166,9 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
         ]);
 
         $this->assertStandalone();
-        $this->createEveryTable();
+        $this->usePackageTables();
         $this->registerFlowRoutes();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEveryTable();
-
-        parent::tearDown();
     }
 
     /**

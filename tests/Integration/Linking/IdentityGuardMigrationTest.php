@@ -35,7 +35,7 @@ final class IdentityGuardMigrationTest extends TestCase
     private const string TABLE = 'sso_identity_guards';
 
     /**
-     * Run the shipped migration.
+     * Drop the tables an earlier test kept, then run the shipped migration.
      *
      * @return void
      */
@@ -43,6 +43,8 @@ final class IdentityGuardMigrationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->dropKeptTables();
 
         $this->migration()->up(); // @phpstan-ignore method.notFound
     }

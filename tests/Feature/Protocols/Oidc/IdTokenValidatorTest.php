@@ -32,7 +32,6 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -51,7 +50,7 @@ use Tests\TestCase;
 #[CoversClass(IdTokenValidator::class)]
 final class IdTokenValidatorTest extends TestCase
 {
-    use CapturesLogs, DumpsValues, UsesConnections, UsesFlowTables;
+    use CapturesLogs, DumpsValues, UsesConnections;
 
     /** @var string The instant every token is issued and judged at. */
     private const string NOW = '2026-11-01T09:30:00Z';
@@ -116,26 +115,11 @@ final class IdTokenValidatorTest extends TestCase
         config()->set('sso.features.oidc', true);
         config()->set('sso.clock.skew_seconds', 60);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->connectionWith();
 
         $this->captureLogs();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

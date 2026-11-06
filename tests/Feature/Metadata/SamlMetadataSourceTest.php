@@ -26,7 +26,6 @@ use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -45,7 +44,7 @@ use Tests\TestCase;
 #[CoversClass(SamlMetadataSource::class)]
 final class SamlMetadataSourceTest extends TestCase
 {
-    use CapturesLogs, UsesConnections, UsesFlowTables;
+    use CapturesLogs, UsesConnections;
 
     /** @var string The URL the provider serves its metadata at. */
     private const string URL = 'https://idp.example.test/metadata.xml';
@@ -82,24 +81,9 @@ final class SamlMetadataSourceTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.endpoints.base_url', 'https://api.example.com');
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], self::idp()->metadata()->toXml()));
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

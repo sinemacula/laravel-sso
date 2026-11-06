@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Metadata;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,8 +50,6 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Links\ExampleLinks;
@@ -100,10 +97,7 @@ use Tests\TestCase;
 #[CoversClass(KeyService::class)]
 final class ConcurrentMetadataRefreshTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
+    use UsesConnections;
 
     /** @var string The tenant the connection belongs to. */
     private const string TENANT = 'tenant-1';
@@ -192,10 +186,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
         config()->set('sso.endpoints.base_url', 'https://api.example.com');
         config()->set('sso.applications', ['web' => ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true]]);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::singleUseMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2', 'enabled' => true, 'settings' => [
             'idp_entity_id'    => FakeSamlIdentityProvider::ENTITY_ID,
@@ -214,7 +205,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Remove the signals and outcomes and drop the tables.
+     * Remove the signals and outcomes.
      *
      * @return void
      */
@@ -228,13 +219,6 @@ final class ConcurrentMetadataRefreshTest extends TestCase
             }
 
             @rmdir($this->outcomes);
-        }
-
-        if ($this->connection !== null) {
-            self::singleUseMigration()->down(); // @phpstan-ignore method.notFound
-            $this->dropDomainsTable();
-            $this->dropFlowTables();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();
@@ -934,16 +918,6 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     private static function idp(): FakeSamlIdentityProvider
     {
         return self::$idp ??= new FakeSamlIdentityProvider;
-    }
-
-    /**
-     * The shipped migration of the single-use keys.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function singleUseMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::SINGLE_USE_MIGRATION;
     }
 
     /**

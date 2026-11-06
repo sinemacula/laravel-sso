@@ -32,7 +32,6 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RacesProcesses;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -71,7 +70,7 @@ use Tests\TestCase;
 #[CoversClass(InFlightVoider::class)]
 final class TrustChangeRedemptionRaceTest extends TestCase
 {
-    use RacesProcesses, UsesConnections, UsesFlowTables;
+    use RacesProcesses, UsesConnections;
 
     /** @var string The tenant the connection belongs to. */
     private const string TENANT = 'tenant-1';
@@ -140,8 +139,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
         $this->createOwnCodesTable();
 
         $this->created    = true;
@@ -150,7 +148,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * Remove what the race used and drop the tables.
+     * Remove what the race used and drop the application's table of codes.
      *
      * @return void
      */
@@ -161,8 +159,6 @@ final class TrustChangeRedemptionRaceTest extends TestCase
 
         if ($this->created) {
             Schema::connection(StorageConnection::name())->dropIfExists(OwnHandoffCodes::TABLE);
-            $this->dropFlowTables();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();

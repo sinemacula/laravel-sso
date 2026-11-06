@@ -86,7 +86,7 @@ use Tests\Fixtures\Linking\RecordingSessions;
  */
 trait FlowRoutes
 {
-    use UsesConnections, UsesDomains, UsesEnforcement, UsesEveryTable, UsesFlowTables;
+    use UsesConnections, UsesDomains, UsesEnforcement, UsesFlowTables;
 
     /** @var string The application that signs people in. */
     protected const string FLOW_APPLICATION = 'web';

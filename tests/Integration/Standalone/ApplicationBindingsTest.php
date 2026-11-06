@@ -192,7 +192,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         config()->set('sso.applications', [self::FLOW_APPLICATION => ['redirect_uri' => self::FLOW_REDIRECT_URI, 'external_sign_in' => true, 'unlinked_handoffs' => true]]);
 
         $this->assertStandalone();
-        $this->createEveryTable();
+        $this->usePackageTables();
 
         ApplicationRevocation::create();
 
@@ -201,7 +201,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * Drop the tables.
+     * Drop the application's tables.
      *
      * @return void
      */
@@ -213,8 +213,6 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         }
 
         ApplicationRevocation::drop();
-
-        $this->dropEveryTable();
 
         parent::tearDown();
     }

@@ -50,7 +50,8 @@ final class CountersConnectionTest extends TestCase
     private const string IP = '203.0.113.7';
 
     /**
-     * Bind the fixed clock.
+     * Bind the fixed clock, and drop the tables an earlier test kept, so each
+     * test starts from an empty database.
      *
      * @return void
      */
@@ -58,6 +59,8 @@ final class CountersConnectionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->dropKeptTables();
 
         $this->app?->instance(Clock::class, new FixedClock);
     }

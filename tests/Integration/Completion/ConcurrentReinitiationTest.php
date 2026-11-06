@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Completion;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -32,8 +31,6 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Keys\Certificates;
@@ -78,10 +75,7 @@ use Tests\TestCase;
 #[CoversClass(UnsolicitedReinitiation::class)]
 final class ConcurrentReinitiationTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
+    use UsesConnections;
 
     /** @var string The application start URL the connection sends the browser to. */
     private const string START_URL = 'https://app.example.com/sso/start';
@@ -148,10 +142,7 @@ final class ConcurrentReinitiationTest extends TestCase
         config()->set('sso.features.idp_initiated', true);
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::singleUseMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'protocol' => 'saml2',
@@ -174,7 +165,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Remove this test's signals and outcomes, and drop the tables.
+     * Remove this test's signals and outcomes.
      *
      * @return void
      */
@@ -189,11 +180,6 @@ final class ConcurrentReinitiationTest extends TestCase
 
             @rmdir($this->outcomes);
         }
-
-        self::singleUseMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropDomainsTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
 
         parent::tearDown();
     }
@@ -698,15 +684,5 @@ final class ConcurrentReinitiationTest extends TestCase
     private static function idp(): FakeSamlIdentityProvider
     {
         return self::$idp ??= new FakeSamlIdentityProvider;
-    }
-
-    /**
-     * The shipped migration of the single-use keys.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function singleUseMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::SINGLE_USE_MIGRATION;
     }
 }

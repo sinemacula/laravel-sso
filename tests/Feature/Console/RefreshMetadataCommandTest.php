@@ -25,7 +25,6 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -50,7 +49,7 @@ use Tests\TestCase;
 #[CoversClass(RefreshConnectionMetadata::class)]
 final class RefreshMetadataCommandTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var string The summary of a run that refreshed nothing. */
     private const string NOTHING = 'Metadata refreshed: refreshed 0, failed 0, conflict 0, in_progress 0, rate_limited 0, skipped 0, refused 0';
@@ -86,22 +85,7 @@ final class RefreshMetadataCommandTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.metadata_refresh', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

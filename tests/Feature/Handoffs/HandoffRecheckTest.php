@@ -136,24 +136,9 @@ final class HandoffRecheckTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createEnforcementTable();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true, 'settings' => ['issuer' => VerifyingDriver::ISSUER]]);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEnforcementTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

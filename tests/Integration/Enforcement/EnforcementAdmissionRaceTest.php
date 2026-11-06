@@ -6,7 +6,6 @@ namespace Tests\Integration\Enforcement;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Connection as DatabaseConnection;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -42,8 +41,6 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesEnforcement;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Enforcement\TableSessions;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
@@ -90,16 +87,13 @@ use Tests\TestCase;
 #[CoversClass(EnforcementService::class)]
 final class EnforcementAdmissionRaceTest extends TestCase
 {
-    use UsesConnections, UsesEnforcement, UsesFlowTables;
+    use UsesConnections;
 
     /** @var string The tenant whose enforcement changes. */
     private const string TENANT = 'tenant-1';
 
     /** @var string The client's verifier (RFC 7636, appendix B). */
     private const string VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
 
     /** @var float How long, in seconds, a process waits for the other before it gives up. */
     private const float DEADLINE_SECONDS = 30.0;
@@ -184,10 +178,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createEnforcementTable();
-        self::singleUseMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
         TableSessions::create();
 
         $usable         = ['protocol' => VerifyingDriver::NAME, 'enabled' => true, 'has_completed_sign_in' => true, 'settings' => ['issuer' => VerifyingDriver::ISSUER]];
@@ -200,7 +191,8 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Remove the signals and outcomes and drop the tables.
+     * Remove the signals and outcomes and drop the application's sessions
+     * table.
      *
      * @return void
      */
@@ -218,10 +210,6 @@ final class EnforcementAdmissionRaceTest extends TestCase
 
         if (isset($this->code)) {
             TableSessions::drop();
-            self::singleUseMigration()->down(); // @phpstan-ignore method.notFound
-            $this->dropEnforcementTable();
-            $this->dropFlowTables();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();
@@ -639,15 +627,5 @@ final class EnforcementAdmissionRaceTest extends TestCase
         $app = $this->app;
 
         return $app->make(EnforcementService::class);
-    }
-
-    /**
-     * The shipped migration of the single-use keys.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function singleUseMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::SINGLE_USE_MIGRATION;
     }
 }

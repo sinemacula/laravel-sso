@@ -73,23 +73,10 @@ final class KeyRingTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
         $this->other      = $this->makeConnection(['protocol' => 'saml2']);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

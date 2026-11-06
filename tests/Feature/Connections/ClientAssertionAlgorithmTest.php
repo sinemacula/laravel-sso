@@ -72,22 +72,7 @@ final class ClientAssertionAlgorithmTest extends TestCase
 
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

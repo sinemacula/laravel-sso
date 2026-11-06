@@ -95,8 +95,7 @@ final class ConcurrentLinkRemovalTest extends TestCase
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
         $this->app?->instance(SessionRevocation::class, self::writingRevocation());
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         Schema::connection(StorageConnection::name())->create(self::REVOKED, static function (Blueprint $table): void {
             $table->id();
@@ -115,7 +114,7 @@ final class ConcurrentLinkRemovalTest extends TestCase
     }
 
     /**
-     * Remove the outcomes and drop the tables.
+     * Remove the outcomes and drop the table the revocation writes to.
      *
      * @return void
      */
@@ -133,9 +132,6 @@ final class ConcurrentLinkRemovalTest extends TestCase
 
         if ($this->connection !== null) {
             Schema::connection(StorageConnection::name())->dropIfExists(self::REVOKED);
-
-            $this->dropFlowTables();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();

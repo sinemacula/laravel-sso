@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Domains;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Administration\DomainEvents;
@@ -21,8 +20,6 @@ use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -42,10 +39,7 @@ use Tests\TestCase;
 #[CoversClass(DomainEvents::class)]
 final class DomainEventsAfterCommitTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use RecordsEventSequences, UsesConnections;
 
     /** @var \SineMacula\Laravel\Sso\Testing\FakeDnsResolver The resolver the helpers look records up through. */
     private FakeDnsResolver $dns;
@@ -67,28 +61,9 @@ final class DomainEventsAfterCommitTest extends TestCase
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
         $this->app?->instance(DnsResolver::class, $this->dns);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -156,15 +131,5 @@ final class DomainEventsAfterCommitTest extends TestCase
         $app = $this->app;
 
         return $app->make(DomainService::class);
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

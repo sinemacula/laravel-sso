@@ -117,23 +117,8 @@ final class ConnectionServiceTest extends TestCase
         config()->set('sso.freshness.max_age_seconds.connection_trust', self::TRUST_MAX_AGE);
         config()->set('sso.mapping.custom_attributes', ['department']);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

@@ -18,8 +18,6 @@ use SineMacula\Laravel\Sso\Database\CiphertextWrite;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\RecordsEventSequences;
-use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -42,7 +40,7 @@ use Tests\TestCase;
 #[CoversClass(CiphertextWrite::class)]
 final class ConnectionServiceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
+    use RecordsEventSequences;
 
     /** @var string The tenant the connections belong to. */
     private const string TENANT = 'tenant-1';
@@ -87,23 +85,8 @@ final class ConnectionServiceTest extends TestCase
 
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

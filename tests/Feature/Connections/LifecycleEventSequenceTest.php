@@ -25,8 +25,6 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
-use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
@@ -50,7 +48,7 @@ use Tests\TestCase;
 #[CoversClass(ConnectionService::class)]
 final class LifecycleEventSequenceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
+    use RecordsEventSequences, UsesFlowTables;
 
     /** @var string The tenant the connection belongs to. */
     private const string TENANT = 'tenant-1';
@@ -105,9 +103,7 @@ final class LifecycleEventSequenceTest extends TestCase
 
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC);
 
@@ -119,21 +115,6 @@ final class LifecycleEventSequenceTest extends TestCase
         }
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

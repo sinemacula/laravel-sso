@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Completion;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -47,7 +46,6 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
@@ -86,10 +84,7 @@ use Tests\TestCase;
 #[CoversClass(CompletionPipeline::class)]
 final class OidcTrustChangeRaceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
+    use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The tenant of the connection. */
     private const string TENANT = 'tenant-1';
@@ -188,10 +183,7 @@ final class OidcTrustChangeRaceTest extends TestCase
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
         config()->set('sso.applications', ['web' => ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true, 'unlinked_handoffs' => true]]);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::singleUseMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->outcomes = sys_get_temp_dir() . '/oidc-trust-race-' . bin2hex(random_bytes(8));
 
@@ -199,7 +191,7 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Remove this test's signals and outcomes, and drop the tables.
+     * Remove this test's signals and outcomes.
      *
      * @return void
      */
@@ -214,11 +206,6 @@ final class OidcTrustChangeRaceTest extends TestCase
 
             @rmdir($this->outcomes);
         }
-
-        self::singleUseMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropDomainsTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
 
         parent::tearDown();
     }
@@ -752,15 +739,5 @@ final class OidcTrustChangeRaceTest extends TestCase
     private static function next(): FakeSigningKey
     {
         return self::$next ??= FakeSigningKey::rsa('rsa-2');
-    }
-
-    /**
-     * The shipped migration of the single-use keys.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function singleUseMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::SINGLE_USE_MIGRATION;
     }
 }

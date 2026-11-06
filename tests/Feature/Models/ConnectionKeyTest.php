@@ -10,7 +10,6 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
-use Tests\Concerns\UsesConnections;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -27,8 +26,6 @@ use Tests\TestCase;
 #[CoversClass(ConnectionKey::class)]
 final class ConnectionKeyTest extends TestCase
 {
-    use UsesConnections;
-
     /**
      * Bind a fixed clock and create the tables.
      *
@@ -41,22 +38,7 @@ final class ConnectionKeyTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
 
-        $this->createConnectionTables();
-    }
-
-    /**
-     * Drop the tables, under their default names.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        config()->set('sso.keys.table', 'sso_keys');
-
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

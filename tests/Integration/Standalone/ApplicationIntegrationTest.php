@@ -144,7 +144,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
         config()->set('sso.applications', [self::FLOW_APPLICATION => ['redirect_uri' => self::FLOW_REDIRECT_URI, 'external_sign_in' => true]]);
 
         $this->assertStandalone();
-        $this->createEveryTable();
+        $this->usePackageTables();
 
         ApplicationRevocation::create();
         ApplicationSingleUseStore::create();
@@ -162,7 +162,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Drop the tables.
+     * Drop the application's tables.
      *
      * @return void
      */
@@ -171,8 +171,6 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     {
         ApplicationSingleUseStore::drop();
         ApplicationRevocation::drop();
-
-        $this->dropEveryTable();
 
         parent::tearDown();
     }

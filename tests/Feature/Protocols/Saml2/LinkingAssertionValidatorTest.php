@@ -99,20 +99,7 @@ final class LinkingAssertionValidatorTest extends TestCase
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
         config()->set('sso.features.domain_linking', true);
 
-        $this->createConnectionTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

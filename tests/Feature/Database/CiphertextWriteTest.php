@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Database\CiphertextWrite;
 use SineMacula\Laravel\Sso\Models\Connection;
-use Tests\Concerns\UsesConnections;
 use Tests\TestCase;
 
 /**
@@ -18,8 +17,9 @@ use Tests\TestCase;
  * `RuntimeException` that names only the SQLSTATE and chains nothing, while a
  * write that binds none is left to Laravel's own `QueryException`.
  *
- * The connections table is not created unless a test needs it, so a write to it
- * fails on every engine.
+ * Each test starts without the package's tables, those an earlier test kept
+ * dropped, and only a test that needs them has them, so a write fails on every
+ * engine otherwise.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,13 +29,24 @@ use Tests\TestCase;
 #[CoversClass(CiphertextWrite::class)]
 final class CiphertextWriteTest extends TestCase
 {
-    use UsesConnections;
-
     /** @var string The ciphertext no failure may quote. */
     private const string CIPHERTEXT = '{"client_secret":"the-ciphertext-under-test"}';
 
     /** @var string The failure the write is given. */
     private const string FAILURE = 'The connection\'s secrets could not be written';
+
+    /**
+     * Drop the tables an earlier test kept, so each test starts without them.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->dropKeptTables();
+    }
 
     /**
      * A failed write that binds the ciphertext is a `RuntimeException` with the
@@ -117,18 +128,14 @@ final class CiphertextWriteTest extends TestCase
      */
     public function testASuccessfulWriteIsSaved(): void
     {
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
-        try {
-            $connection = self::connection(self::CIPHERTEXT);
+        $connection = self::connection(self::CIPHERTEXT);
 
-            CiphertextWrite::save($connection, 'secrets', self::FAILURE);
+        CiphertextWrite::save($connection, 'secrets', self::FAILURE);
 
-            self::assertTrue($connection->exists);
-            self::assertSame(self::CIPHERTEXT, Connection::query()->findOrFail($connection->id)->secrets);
-        } finally {
-            $this->dropConnectionTables();
-        }
+        self::assertTrue($connection->exists);
+        self::assertSame(self::CIPHERTEXT, Connection::query()->findOrFail($connection->id)->secrets);
     }
 
     /**

@@ -118,7 +118,7 @@ final class ConsecutiveRequestsTest extends TestCase
         parent::setUp();
 
         $this->prepareFlows();
-        $this->createEveryTable();
+        $this->usePackageTables();
         $this->registerFlowRoutes();
 
         Route::get('/sso/throw', static function (): never {
@@ -143,19 +143,6 @@ final class ConsecutiveRequestsTest extends TestCase
         ];
 
         $this->bootLongLivedWorker();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEveryTable();
-
-        parent::tearDown();
     }
 
     /**

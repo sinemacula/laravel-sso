@@ -24,7 +24,6 @@ use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
-use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
@@ -56,7 +55,7 @@ use Tests\TestCase;
 #[CoversClass(KeyService::class)]
 final class TrustChangeVoidingTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesFlowTables;
 
     /** @var string The tenant the connections belong to. */
     private const string TENANT = 'tenant-1';
@@ -111,22 +110,7 @@ final class TrustChangeVoidingTest extends TestCase
         config()->set('sso.features.idp_initiated', true);
         config()->set('sso.mapping.custom_attributes', ['department']);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

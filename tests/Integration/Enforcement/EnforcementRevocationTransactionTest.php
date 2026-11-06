@@ -23,7 +23,6 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesEnforcement;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -45,7 +44,7 @@ use Tests\TestCase;
 #[CoversClass(EnforcementEvents::class)]
 final class EnforcementRevocationTransactionTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesEnforcement;
+    use RecordsEventSequences, UsesConnections;
 
     /** @var string The table the revocation writes to, as an adapter writes its revoked sessions. */
     private const string REVOKED = 'example_revoked_sessions';
@@ -70,8 +69,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        $this->createConnectionTables();
-        $this->createEnforcementTable();
+        $this->usePackageTables();
 
         Schema::connection(StorageConnection::name())->create(self::REVOKED, static function (Blueprint $table): void {
             $table->id();
@@ -87,7 +85,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
     }
 
     /**
-     * Drop the tables.
+     * Drop the table the revocation writes to.
      *
      * @return void
      */
@@ -95,9 +93,6 @@ final class EnforcementRevocationTransactionTest extends TestCase
     protected function tearDown(): void
     {
         Schema::connection(StorageConnection::name())->dropIfExists(self::REVOKED);
-
-        $this->dropEnforcementTable();
-        $this->dropConnectionTables();
 
         parent::tearDown();
     }

@@ -102,22 +102,7 @@ final class JwksRefetcherTest extends TestCase
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(Fetcher::class, $this->fetcher);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

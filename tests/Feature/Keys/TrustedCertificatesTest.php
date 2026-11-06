@@ -85,26 +85,11 @@ final class TrustedCertificatesTest extends TestCase
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(Freshness::class, $this->freshness);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

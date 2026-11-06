@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Flows;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -23,7 +22,6 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
@@ -45,10 +43,7 @@ use Tests\TestCase;
 #[CoversClass(RequestEvents::class)]
 final class StartAfterCommitTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use RecordsEventSequences, UsesConnections;
 
     /** @var \SineMacula\Laravel\Sso\Models\Connection A usable connection. */
     private Connection $connection;
@@ -79,9 +74,7 @@ final class StartAfterCommitTest extends TestCase
 
         app(ProtocolManager::class)->extend(StartingDriver::NAME, fn (): StartingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'protocol' => StartingDriver::NAME,
@@ -90,21 +83,6 @@ final class StartAfterCommitTest extends TestCase
         ]);
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -196,15 +174,5 @@ final class StartAfterCommitTest extends TestCase
         $app = $this->app;
 
         return $app->make(AuthorizationRequestService::class)->start($application, Purpose::SIGN_IN, $this->connection->id);
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

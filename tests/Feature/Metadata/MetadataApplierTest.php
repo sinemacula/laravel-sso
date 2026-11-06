@@ -95,8 +95,7 @@ final class MetadataApplierTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.metadata_refresh', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'protocol' => 'saml2',
@@ -116,20 +115,6 @@ final class MetadataApplierTest extends TestCase
         $this->trust(Certificates::distinct(0));
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

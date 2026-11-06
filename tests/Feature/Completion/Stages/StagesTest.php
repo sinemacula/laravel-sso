@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Feature\Completion\Stages;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Migrations\Migration;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Applications\Application;
@@ -54,7 +53,6 @@ use SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
@@ -84,10 +82,7 @@ use Tests\TestCase;
 #[CoversClass(IssueHandoff::class)]
 final class StagesTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
+    use UsesConnections, UsesFlowTables;
 
     /** @var string The protocol state the request was started with. */
     private const string STATE = 'the-protocol-state-of-the-staged-request-001';
@@ -150,10 +145,7 @@ final class StagesTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::singleUseMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection([
             'protocol'          => VerifyingDriver::NAME,
@@ -161,22 +153,6 @@ final class StagesTest extends TestCase
             'settings'          => ['issuer' => VerifyingDriver::ISSUER],
             'attribute_mapping' => ['email' => 'mail'],
         ]);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::singleUseMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropDomainsTable();
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -1112,15 +1088,5 @@ final class StagesTest extends TestCase
     private static function recordedKeys(): int
     {
         return SingleUseKey::query()->count();
-    }
-
-    /**
-     * The shipped migration of the single-use keys.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function singleUseMigration(): Migration
-    {
-        return require dirname(__DIR__, 4) . self::SINGLE_USE_MIGRATION;
     }
 }

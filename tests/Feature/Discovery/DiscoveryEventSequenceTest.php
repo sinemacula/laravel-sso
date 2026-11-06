@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Feature\Discovery;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -26,7 +25,6 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\StartingDriver;
@@ -48,10 +46,7 @@ use Tests\TestCase;
 #[CoversClass(DiscoveryService::class)]
 final class DiscoveryEventSequenceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use RecordsEventSequences, UsesConnections, UsesDomains;
 
     /** @var string The time every event is built at. */
     private const string OCCURRED_AT = '2026-11-01T09:30:00.000000Z';
@@ -113,32 +108,13 @@ final class DiscoveryEventSequenceTest extends TestCase
 
         app(ProtocolManager::class)->extend(StartingDriver::NAME, fn (): StartingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->usableConnection(['tenant_id' => 'tenant-7']);
 
         $this->makeDomain($this->connection, 'example.com', ['state' => DomainState::VERIFIED]);
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -475,15 +451,5 @@ final class DiscoveryEventSequenceTest extends TestCase
             'enabled'  => true,
             'settings' => ['issuer' => 'https://idp.example.com'],
         ]);
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

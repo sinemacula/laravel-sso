@@ -72,22 +72,9 @@ final class KeyRotationTest extends TestCase
 
         config()->set('sso.keys.overlap_seconds', self::OVERLAP);
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2']);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

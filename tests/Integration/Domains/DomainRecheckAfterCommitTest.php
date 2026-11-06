@@ -22,7 +22,6 @@ use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -42,7 +41,7 @@ use Tests\TestCase;
 #[CoversClass(DomainEvents::class)]
 final class DomainRecheckAfterCommitTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesDomains, UsesFlowTables;
+    use RecordsEventSequences, UsesConnections, UsesDomains;
 
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     private FixedClock $clock;
@@ -70,28 +69,11 @@ final class DomainRecheckAfterCommitTest extends TestCase
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(DnsResolver::class, $this->dns);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection();
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

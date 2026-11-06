@@ -16,7 +16,6 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -44,7 +43,7 @@ use Tests\TestCase;
 #[CoversClass(LinkStore::class)]
 final class ConcurrentLinkCreationTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var string The issuer every subject is from. */
     private const string ISSUER = 'https://idp.example.com';
@@ -75,8 +74,7 @@ final class ConcurrentLinkCreationTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['enabled' => true]);
 
@@ -86,7 +84,7 @@ final class ConcurrentLinkCreationTest extends TestCase
     }
 
     /**
-     * Remove the outcomes and drop the tables.
+     * Remove the outcomes.
      *
      * @return void
      */
@@ -99,11 +97,6 @@ final class ConcurrentLinkCreationTest extends TestCase
 
         if (isset($this->outcomes) && is_dir($this->outcomes)) {
             rmdir($this->outcomes);
-        }
-
-        if ($this->connection !== null) {
-            $this->dropFlowTables();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();

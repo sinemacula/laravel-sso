@@ -35,6 +35,20 @@ final class StorageConnectionModelTest extends TestCase
     private const string STORE = 'package_store';
 
     /**
+     * Drop the tables an earlier test kept, so each test starts from an empty
+     * database.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->dropKeptTables();
+    }
+
+    /**
      * The migration and the model meet on the configured connection and table,
      * and the default connection holds nothing.
      *

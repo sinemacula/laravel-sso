@@ -77,23 +77,10 @@ final class ResponsePoliciesTest extends TestCase
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(SecretEncrypter::class, $this->encrypter);
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2', 'enabled' => true, 'settings' => ['idp_entity_id' => 'https://idp.example.test/saml']]);
         $this->other      = $this->makeConnection(['protocol' => 'saml2', 'enabled' => true]);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

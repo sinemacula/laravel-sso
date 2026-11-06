@@ -6,7 +6,6 @@ namespace Tests\Feature\Discovery;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -38,7 +37,6 @@ use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptScope;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\StartingDriver;
@@ -64,10 +62,7 @@ use Tests\TestCase;
 #[CoversClass(Pacer::class)]
 final class DiscoveryServiceTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use UsesConnections, UsesDomains;
 
     /** @var string The IP address every start comes from. */
     private const string IP = '203.0.113.7';
@@ -133,30 +128,11 @@ final class DiscoveryServiceTest extends TestCase
 
         app(ProtocolManager::class)->extend(StartingDriver::NAME, fn (): StartingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->usableConnection(['tenant_id' => 'tenant-7']);
 
         $this->makeDomain($this->connection, 'example.com', ['state' => DomainState::VERIFIED]);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -880,15 +856,5 @@ final class DiscoveryServiceTest extends TestCase
     private static function identity(): IdentityReference
     {
         return new IdentityReference('App\Models\User', '42');
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

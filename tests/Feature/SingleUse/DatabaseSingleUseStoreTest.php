@@ -56,8 +56,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     private FixedClock $clock;
 
     /**
-     * Bind the fixed clock and create the shipped table on the storage
-     * connection.
+     * Bind the fixed clock and give the test the package's tables.
      *
      * @return void
      */
@@ -70,23 +69,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        $this->migration()->up(); // @phpstan-ignore method.notFound
-    }
-
-    /**
-     * Drop the table from the default connection, wherever a test moved the
-     * storage, so a persistent database starts the next test without it.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        config()->set('sso.storage.connection', null);
-
-        Schema::dropIfExists(self::TABLE);
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

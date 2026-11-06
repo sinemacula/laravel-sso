@@ -37,6 +37,11 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * so a rollback test compares what stood before with what stands after, whole,
  * once `armFailure()` has failed the statement or the commit it names.
  *
+ * A race starts from the package's tables migrated afresh, never from those an
+ * earlier test kept (`reusesKeptTables()`): the rows a delete leaves in
+ * InnoDB's indexes until its purge removes them change which session waits on
+ * which lock.
+ *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  *
@@ -48,6 +53,18 @@ trait RaceFlows
 
     /** @var string The signal a racer raises once it holds what the other must find held. */
     protected const string HOLDS = 'holds';
+
+    /**
+     * Start from tables migrated afresh, since the rows a delete leaves until
+     * InnoDB's purge removes them change which session waits on which lock.
+     *
+     * @return bool
+     */
+    #[\Override]
+    protected function reusesKeptTables(): bool
+    {
+        return false;
+    }
 
     /**
      * The connection the package's tables live on.

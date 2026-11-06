@@ -27,7 +27,6 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -48,7 +47,7 @@ use Tests\TestCase;
 #[CoversClass(MetadataApplier::class)]
 final class MetadataEventsAfterCommitTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
+    use RecordsEventSequences, UsesConnections;
 
     /** @var string The provider's entity id. */
     private const string ENTITY_ID = 'https://idp.example.test/saml';
@@ -72,8 +71,7 @@ final class MetadataEventsAfterCommitTest extends TestCase
         config()->set('sso.features.saml2', true);
         config()->set('sso.features.metadata_refresh', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => 'saml2', 'enabled' => true, 'settings' => [
             'idp_entity_id'    => self::ENTITY_ID,
@@ -98,20 +96,6 @@ final class MetadataEventsAfterCommitTest extends TestCase
         ])->save();
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

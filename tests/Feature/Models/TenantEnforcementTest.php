@@ -43,20 +43,7 @@ final class TenantEnforcementTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
 
-        $this->createEnforcementTable();
-    }
-
-    /**
-     * Drop the table.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEnforcementTable();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

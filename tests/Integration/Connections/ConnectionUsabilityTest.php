@@ -49,22 +49,9 @@ final class ConnectionUsabilityTest extends TestCase
         config()->set('sso.features.oidc', true);
         config()->set('sso.endpoints.base_url', 'https://api.example.com');
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         app(ProtocolManager::class)->extend('example', fn (): ProtocolDriver => new ExampleDriver);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

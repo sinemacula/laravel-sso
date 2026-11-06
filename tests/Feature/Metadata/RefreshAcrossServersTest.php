@@ -26,7 +26,6 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -50,7 +49,7 @@ use Tests\TestCase;
 #[CoversClass(RefreshConnectionMetadata::class)]
 final class RefreshAcrossServersTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var string The URL the SAML provider serves its metadata at. */
     private const string URL = 'https://idp.example.test/metadata.xml';
@@ -92,22 +91,7 @@ final class RefreshAcrossServersTest extends TestCase
         config()->set('sso.features.oidc', true);
         config()->set('sso.features.metadata_refresh', true);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

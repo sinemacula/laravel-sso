@@ -16,9 +16,9 @@ use Tests\TestCase;
  * Shared base for the deterministic query-budget tests of the package's
  * database-backed defaults.
  *
- * It binds a fixed clock, creates the shipped tables, and records every
- * statement sent on the storage connection, a failing one included, so a test
- * asserts the exact reads and writes a call costs rather than a wall-clock
+ * It binds a fixed clock, gives the test the package's tables, and records
+ * every statement sent on the storage connection, a failing one included, so a
+ * test asserts the exact reads and writes a call costs rather than a wall-clock
  * time. Every statement recorded must also be data manipulation only: the
  * package needs nothing but SELECT, INSERT, UPDATE and DELETE at runtime
  * (SSO-11.7), so one that changes the schema fails the budget.
@@ -37,25 +37,8 @@ abstract class PerformanceContractTestCase extends TestCase
     /** @var string The connection `useSeparateCounters()` moves the counters to. */
     protected const string COUNTERS = 'sso_counters';
 
-    /** @var list<string> File names of the shipped migrations. */
-    private const array MIGRATIONS = [
-        '2026_10_31_000000_create_sso_single_use_keys_table.php',
-        '2026_10_31_000001_create_sso_rate_limits_table.php',
-        '2026_11_01_000000_create_sso_connections_table.php',
-        '2026_11_01_000001_create_sso_keys_table.php',
-        '2026_11_02_000000_create_sso_domains_table.php',
-        '2026_11_02_000001_create_sso_enforcement_table.php',
-        '2026_11_03_000000_create_sso_links_table.php',
-        '2026_11_03_000001_create_sso_authorization_requests_table.php',
-        '2026_11_03_000002_create_sso_handoff_codes_table.php',
-        '2026_11_03_000003_create_sso_identity_guards_table.php',
-    ];
-
-    /** @var list<string> The tables the shipped migrations create, by their default names. */
-    private const array TABLES = [
-        'sso_single_use_keys', 'sso_rate_limits', 'sso_connections', 'sso_keys', 'sso_domains', 'sso_enforcement', 'sso_links',
-        'sso_authorization_requests', 'sso_handoff_codes', 'sso_identity_guards',
-    ];
+    /** @var string The shipped migration of the counters. */
+    private const string RATE_LIMITS_MIGRATION = '2026_10_31_000001_create_sso_rate_limits_table.php';
 
     /** @var string What a statement may start with: data manipulation, or a transaction's savepoint. */
     private const string RUNTIME_STATEMENT = '/^\s*(?:select|insert|update|delete|savepoint|release|rollback)\b/i';
@@ -75,15 +58,12 @@ abstract class PerformanceContractTestCase extends TestCase
     /** @var \ArrayObject<int, string> Every statement sent on the counters' own connection while recording. */
     private \ArrayObject $counterStatements;
 
-    /** @var bool Whether the counters are on a connection of their own. */
-    private bool $separateCounters = false;
-
     /** @var bool Whether statements are being recorded. */
     private bool $recording = false;
 
     /**
-     * Bind the fixed clock, create the shipped tables, and listen for every
-     * statement before it is sent.
+     * Bind the fixed clock, give the test the package's tables, and listen for
+     * every statement before it is sent.
      *
      * @return void
      */
@@ -98,9 +78,7 @@ abstract class PerformanceContractTestCase extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
 
-        foreach (self::MIGRATIONS as $migration) {
-            self::migration($migration)->up(); // @phpstan-ignore method.notFound
-        }
+        $this->usePackageTables();
 
         DB::connection()->beforeExecuting(function (string $query): void {
             if (!$this->recording) {
@@ -109,27 +87,6 @@ abstract class PerformanceContractTestCase extends TestCase
 
             $this->statements->append($query);
         });
-    }
-
-    /**
-     * Drop the shipped tables, the counters' from their own connection when
-     * they moved there, so a persistent database starts the next test without
-     * them.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        if ($this->separateCounters) {
-            Schema::connection(self::COUNTERS)->dropIfExists('sso_rate_limits');
-        }
-
-        foreach (self::TABLES as $table) {
-            Schema::dropIfExists($table);
-        }
-
-        parent::tearDown();
     }
 
     /**
@@ -147,9 +104,7 @@ abstract class PerformanceContractTestCase extends TestCase
         Config::set('database.connections.' . self::COUNTERS, Config::array('database.connections.' . Config::string('database.default')));
         Config::set('sso.rate_limits.connection', self::COUNTERS);
 
-        self::migration(self::MIGRATIONS[1])->up(); // @phpstan-ignore method.notFound
-
-        $this->separateCounters = true;
+        self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
 
         DB::connection(self::COUNTERS)->beforeExecuting(function (string $query): void {
             if (!$this->recording) {

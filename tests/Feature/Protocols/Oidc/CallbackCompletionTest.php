@@ -133,7 +133,7 @@ final class CallbackCompletionTest extends TestCase
         config()->set('sso.features.oidc', true);
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
 
-        $this->createConnectionTables();
+        $this->usePackageTables();
 
         $this->provider->serve($this->fetcher);
         $this->provider->respond('token', FakeTokenEndpoint::json(200, [
@@ -146,19 +146,6 @@ final class CallbackCompletionTest extends TestCase
         $this->connection = $this->oidc(['client_authentication' => 'client_secret_basic']);
 
         $this->captureLogs();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

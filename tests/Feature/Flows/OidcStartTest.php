@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Feature\Flows;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -46,7 +45,6 @@ use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
@@ -75,10 +73,7 @@ use Tests\TestCase;
 #[CoversClass(AuthorizationRequestService::class)]
 final class OidcStartTest extends TestCase
 {
-    use CapturesLogs, DumpsValues, RecordsEventSequences, UsesConnections, UsesFlowTables;
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use CapturesLogs, DumpsValues, RecordsEventSequences, UsesConnections;
 
     /** @var string The tenant of every connection. */
     private const string TENANT = 'tenant-7';
@@ -148,27 +143,10 @@ final class OidcStartTest extends TestCase
         config()->set('sso.endpoints.base_url', 'https://api.example.com');
         config()->set('sso.applications', ['web' => ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true]]);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        self::rateLimitsMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->captureLogs();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::rateLimitsMigration()->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -955,15 +933,5 @@ final class OidcStartTest extends TestCase
     private static function s256(string $value): string
     {
         return rtrim(strtr(base64_encode(hash('sha256', $value, true)), '+/', '-_'), '=');
-    }
-
-    /**
-     * The shipped migration of the rate limit counters.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function rateLimitsMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::RATE_LIMITS_MIGRATION;
     }
 }

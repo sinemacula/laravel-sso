@@ -74,24 +74,7 @@ final class ConnectionDeletionTest extends TestCase
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createFlowTables();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**

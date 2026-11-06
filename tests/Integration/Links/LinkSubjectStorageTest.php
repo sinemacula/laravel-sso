@@ -17,7 +17,6 @@ use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
@@ -38,7 +37,7 @@ use Tests\TestCase;
 #[CoversClass(LinkSubject::class)]
 final class LinkSubjectStorageTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use UsesConnections;
 
     /** @var string The issuer every subject is from. */
     private const string ISSUER = 'https://idp.example.com';
@@ -70,24 +69,9 @@ final class LinkSubjectStorageTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['enabled' => true]);
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**

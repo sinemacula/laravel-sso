@@ -23,8 +23,6 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
-use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Enforcement\RecordingRevocation;
 use Tests\Fixtures\FixedClock;
@@ -61,7 +59,7 @@ use Tests\TestCase;
 #[CoversClass(LinkStore::class)]
 final class ConcurrentSubjectMigrationTest extends TestCase
 {
-    use UsesConnections, UsesEnforcement, UsesFlowTables;
+    use UsesFlowTables;
 
     /** @var string The tenant the connection belongs to. */
     private const string TENANT = 'tenant-1';
@@ -120,9 +118,7 @@ final class ConcurrentSubjectMigrationTest extends TestCase
 
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createEnforcementTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $created = $this->service()->create(self::TENANT, 'oidc', 'Acme', self::OIDC);
 
@@ -138,7 +134,7 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * Remove the signals and outcomes and drop the tables.
+     * Remove the signals and outcomes.
      *
      * @return void
      */
@@ -152,12 +148,6 @@ final class ConcurrentSubjectMigrationTest extends TestCase
             }
 
             @rmdir($this->outcomes);
-        }
-
-        if ($this->connection !== null) {
-            $this->dropFlowTables();
-            $this->dropEnforcementTable();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();

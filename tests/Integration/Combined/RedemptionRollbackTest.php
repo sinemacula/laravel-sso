@@ -149,15 +149,13 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Put the counters back, and drop the application's tables.
+     * Drop the application's tables.
      *
      * @return void
      */
     #[\Override]
     protected function tearDown(): void
     {
-        config()->set('sso.rate_limits.connection', null);
-
         $schema = self::storageDatabase()->getSchemaBuilder();
 
         $schema->dropIfExists(self::EVIDENCE);

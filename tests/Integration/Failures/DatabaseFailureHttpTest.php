@@ -83,22 +83,9 @@ final class DatabaseFailureHttpTest extends TestCase
         parent::setUp();
 
         $this->prepareFlows();
-        $this->createEveryTable();
+        $this->usePackageTables();
         $this->registerFlowRoutes();
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropEveryTable();
-
-        parent::tearDown();
     }
 
     /**

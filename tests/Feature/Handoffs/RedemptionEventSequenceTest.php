@@ -6,7 +6,6 @@ namespace Tests\Feature\Handoffs;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -44,7 +43,6 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
@@ -73,13 +71,7 @@ use Tests\TestCase;
 #[CoversClass(HandoffEvents::class)]
 final class RedemptionEventSequenceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
-
-    /** @var string The shipped migration of the rate limit counters. */
-    private const string RATE_LIMITS_MIGRATION = '/database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php';
+    use RecordsEventSequences, UsesConnections;
 
     /** @var string When every event occurs. */
     private const string OCCURRED_AT = '2026-11-01T09:30:00.000000Z';
@@ -163,30 +155,11 @@ final class RedemptionEventSequenceTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        self::migration(self::SINGLE_USE_MIGRATION)->up(); // @phpstan-ignore method.notFound
-        self::migration(self::RATE_LIMITS_MIGRATION)->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true, 'settings' => ['issuer' => VerifyingDriver::ISSUER]]);
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        self::migration(self::RATE_LIMITS_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        self::migration(self::SINGLE_USE_MIGRATION)->down(); // @phpstan-ignore method.notFound
-        $this->dropFlowTables();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
@@ -636,17 +609,6 @@ final class RedemptionEventSequenceTest extends TestCase
             'session_id'                  => null,
             'method'                      => null,
         ], $fields);
-    }
-
-    /**
-     * The shipped migration of the file.
-     *
-     * @param  string  $file
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function migration(string $file): Migration
-    {
-        return require dirname(__DIR__, 3) . $file;
     }
 
     /**

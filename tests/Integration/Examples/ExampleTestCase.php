@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
@@ -44,17 +43,20 @@ use Tests\TestCase;
  * guide's snippets are taken (`docs/guides/testing.md`), and on which every
  * other executable example in the documentation runs.
  *
- * It stands on the package's public API alone. It binds the package's fakes
- * and the application's own contracts, configures both protocols, and creates
- * the package's tables through its shipped migrations, as an application runs
- * them; the steps a client and an identity provider take are its methods,
- * each calling one public helper of the package or one fake. Nothing here, and
- * nothing in an example, uses the package's own test traits or fixtures, reads
- * the package's tables, or builds a verified result by hand: the base class
- * only supplies the database connection the suite runs on, as an application's
- * own `TestCase` does. `tests/Unit/Documentation/ExamplesUsePublicApiTest.php`
- * holds every example to that, and `ExampleSnippetsTest` holds every snippet in
- * the documentation to its source here.
+ * It stands on the package's public API alone. It binds the package's fakes and
+ * the application's own contracts, configures both protocols, and has the base
+ * class create the package's tables through its shipped migrations, as an
+ * application runs them; the steps a client and an identity provider take are
+ * its methods, each calling one public helper of the package or one fake.
+ * Nothing here, and nothing in an example, uses the package's own test traits
+ * or fixtures, reads the package's tables, or builds a verified result by hand:
+ * the base class only supplies the database connection the suite runs on and
+ * the package's tables, as an application's own `TestCase` does. The flows'
+ * helpers refuse to run inside a transaction on the package's storage
+ * connection, so an example never wraps itself in one as `RefreshDatabase`
+ * does. `tests/Unit/Documentation/ExamplesUsePublicApiTest.php` holds every
+ * example to that, and `ExampleSnippetsTest` holds every snippet in the
+ * documentation to its source here.
  *
  * Examples call the package's helpers in place of the routes an application
  * adds, since the package adds none: a route only turns a helper's value into a
@@ -130,20 +132,7 @@ abstract class ExampleTestCase extends TestCase
             'web' => ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true],
         ]);
         // @snippet-end test-case
-        $this->migrate(false);
-    }
-
-    /**
-     * Drop the package's tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->migrate(true);
-
-        parent::tearDown();
+        $this->usePackageTables();
     }
 
     /**
@@ -379,34 +368,5 @@ abstract class ExampleTestCase extends TestCase
         static::assertTrue($connections->get(self::TENANT, $connectionId)?->usable);
 
         return $connectionId;
-    }
-
-    /**
-     * Run every shipped migration up, in order, or down, in reverse, as an
-     * application's published migrations run. The flows' helpers refuse to run
-     * inside a transaction on the package's storage connection, so an example
-     * never wraps itself in one as `RefreshDatabase` does.
-     *
-     * @param  bool  $down
-     * @return void
-     */
-    private function migrate(bool $down): void
-    {
-        $files = glob(dirname(__DIR__, 3) . '/database/migrations/*.php') ?: [];
-
-        sort($files);
-
-        foreach ($down ? array_reverse($files) : $files as $file) {
-
-            $migration = require $file;
-
-            static::assertInstanceOf(Migration::class, $migration);
-
-            if ($down) {
-                $migration->down(); // @phpstan-ignore method.notFound
-            } else {
-                $migration->up(); // @phpstan-ignore method.notFound
-            }
-        }
     }
 }

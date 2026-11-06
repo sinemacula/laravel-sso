@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Completion;
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
@@ -22,7 +21,6 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use Tests\Concerns\UsesConnections;
-use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
@@ -62,13 +60,10 @@ use Tests\TestCase;
 #[CoversClass(ConsumeRequest::class)]
 final class ConcurrentCompletionTest extends TestCase
 {
-    use UsesConnections, UsesDomains, UsesFlowTables;
+    use UsesConnections, UsesFlowTables;
 
     /** @var int Processes racing to complete one response. */
     private const int COMPLETERS = 4;
-
-    /** @var string The shipped migration of the single-use keys. */
-    private const string SINGLE_USE_MIGRATION = '/database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php';
 
     /** @var string The protocol state the request was started with. */
     private const string STATE = 'the-protocol-state-of-the-raced-completion-1';
@@ -136,10 +131,7 @@ final class ConcurrentCompletionTest extends TestCase
 
         app(ProtocolManager::class)->extend(VerifyingDriver::NAME, fn (): VerifyingDriver => $driver);
 
-        $this->createConnectionTables();
-        $this->createFlowTables();
-        $this->createDomainsTable();
-        self::singleUseMigration()->up(); // @phpstan-ignore method.notFound
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'enabled' => true, 'settings' => ['issuer' => VerifyingDriver::ISSUER]]);
         $this->request    = $this->makeAuthorizationRequest($this->connection, [
@@ -154,7 +146,7 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * Remove this test's outcomes and drop the tables.
+     * Remove this test's outcomes.
      *
      * @return void
      */
@@ -168,13 +160,6 @@ final class ConcurrentCompletionTest extends TestCase
             }
 
             @rmdir($this->outcomes);
-        }
-
-        if (isset($this->request)) {
-            self::singleUseMigration()->down(); // @phpstan-ignore method.notFound
-            $this->dropDomainsTable();
-            $this->dropFlowTables();
-            $this->dropConnectionTables();
         }
 
         parent::tearDown();
@@ -439,15 +424,5 @@ final class ConcurrentCompletionTest extends TestCase
     private function reread(): AuthorizationRequest
     {
         return AuthorizationRequest::query()->whereKey($this->request->id)->sole();
-    }
-
-    /**
-     * The shipped migration of the single-use keys.
-     *
-     * @return \Illuminate\Database\Migrations\Migration
-     */
-    private static function singleUseMigration(): Migration
-    {
-        return require dirname(__DIR__, 3) . self::SINGLE_USE_MIGRATION;
     }
 }

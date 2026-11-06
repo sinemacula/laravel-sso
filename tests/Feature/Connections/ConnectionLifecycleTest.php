@@ -121,31 +121,12 @@ final class ConnectionLifecycleTest extends TestCase
 
         config()->set('sso.features.oidc', true);
 
-        $this->createConnectionTables();
-        $this->createDomainsTable();
-        $this->createEnforcementTable();
-        $this->createFlowTables();
+        $this->usePackageTables();
 
         $this->connection = $this->makeConnection(['enabled' => true]);
         $this->other      = $this->makeConnection(['enabled' => true]);
 
         $this->startRecordingEvents();
-    }
-
-    /**
-     * Drop the tables.
-     *
-     * @return void
-     */
-    #[\Override]
-    protected function tearDown(): void
-    {
-        $this->dropFlowTables();
-        $this->dropEnforcementTable();
-        $this->dropDomainsTable();
-        $this->dropConnectionTables();
-
-        parent::tearDown();
     }
 
     /**
