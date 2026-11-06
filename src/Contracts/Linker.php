@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Contracts;
 
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
@@ -33,11 +34,12 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * for.
  *
  * A resolution can write: the package's store latches a suspension when the
- * principal scope contract answers `outside_tenant`. A caller resolving inside
- * a transaction of its own therefore locks the result's connection first, as
- * the package's completion and redemptions do, so a link is never locked before
- * its connection (`docs/design/links.md`); one with no transaction open needs
- * nothing more.
+ * principal scope contract answers `outside_tenant`, and reports it with the
+ * client the resolution is made for (`Http\ClientContext`), so every call takes
+ * one. A caller resolving inside a transaction of its own therefore locks the
+ * result's connection first, as the package's completion and redemptions do, so
+ * a link is never locked before its connection (`docs/design/links.md`); one
+ * with no transaction open needs nothing more.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,10 +47,12 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 interface Linker
 {
     /**
-     * What the result's connection, issuer and subject resolve to.
+     * What the result's connection, issuer and subject resolve to, for the
+     * client.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResolution
      */
-    public function resolve(VerifiedResult $result): LinkResolution;
+    public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution;
 }

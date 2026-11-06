@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
@@ -141,6 +142,7 @@ final readonly class DomainService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $domain
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Domains\DomainResult
      *
@@ -148,7 +150,7 @@ final readonly class DomainService
      * @throws \Random\RandomException
      * @throws \Throwable
      */
-    public function claim(string $tenantId, string $connectionId, string $domain, ?ActingIdentity $actor = null): DomainResult
+    public function claim(string $tenantId, string $connectionId, string $domain, ClientContext $client, ?ActingIdentity $actor = null): DomainResult
     {
         $name       = DomainName::normalize($domain);
         $recordName = $this->settings->recordName();
@@ -161,7 +163,7 @@ final readonly class DomainService
         $token  = bin2hex(random_bytes(self::TOKEN_BYTES));
         $expiry = $this->settings->pendingExpirySeconds();
 
-        return $this->change($tenantId, $connectionId, fn (Connection $locked): DomainResult => $this->writeClaim($locked, $name, $recordName, $token, $expiry, $actor));
+        return $this->change($tenantId, $connectionId, fn (Connection $locked): DomainResult => $this->writeClaim($locked, $name, $recordName, $token, $expiry, $actor, $client));
     }
 
     /**
@@ -170,13 +172,14 @@ final readonly class DomainService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $domain
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Domains\DomainResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function verify(string $tenantId, string $connectionId, string $domain, ?ActingIdentity $actor = null): DomainResult
+    public function verify(string $tenantId, string $connectionId, string $domain, ClientContext $client, ?ActingIdentity $actor = null): DomainResult
     {
         $found = $this->claimFor($tenantId, $connectionId, $domain);
 
@@ -187,7 +190,7 @@ final readonly class DomainService
         $token = $found->verification_token;
 
         return $this->verificationRefusal($found)
-            ?? $this->change($tenantId, $connectionId, fn (Connection $locked): DomainResult => $this->writeVerification($locked, $found, $token, $actor));
+            ?? $this->change($tenantId, $connectionId, fn (Connection $locked): DomainResult => $this->writeVerification($locked, $found, $token, $actor, $client));
     }
 
     /**
@@ -196,13 +199,14 @@ final readonly class DomainService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $domain
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Domains\DomainResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function remove(string $tenantId, string $connectionId, string $domain, ?ActingIdentity $actor = null): DomainResult
+    public function remove(string $tenantId, string $connectionId, string $domain, ClientContext $client, ?ActingIdentity $actor = null): DomainResult
     {
         $found = $this->claimFor($tenantId, $connectionId, $domain);
 
@@ -214,7 +218,7 @@ final readonly class DomainService
             return DomainResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
-        return $this->change($tenantId, $connectionId, fn (Connection $locked): DomainResult => $this->deleteClaim($locked, $found->domain, $actor));
+        return $this->change($tenantId, $connectionId, fn (Connection $locked): DomainResult => $this->deleteClaim($locked, $found->domain, $actor, $client));
     }
 
     /**
@@ -309,13 +313,21 @@ final readonly class DomainService
      * @param  string  $token
      * @param  int  $expiry
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\DomainResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function writeClaim(Connection $locked, string $name, string $recordName, #[\SensitiveParameter] string $token, int $expiry, ?ActingIdentity $actor): DomainResult
-    {
+    private function writeClaim(
+        Connection $locked,
+        string $name,
+        string $recordName,
+        #[\SensitiveParameter] string $token,
+        int $expiry,
+        ?ActingIdentity $actor,
+        ClientContext $client,
+    ): DomainResult {
         $claims   = $this->domains->claimsOf($name, true);
         $existing = $claims->of($locked->id);
         $now      = $this->clock->now();
@@ -349,7 +361,7 @@ final readonly class DomainService
             'recheck_leased_until'     => null,
         ])->save();
 
-        $this->events->claimed($locked, $claim, $actor);
+        $this->events->claimed($locked, $claim, $actor, $client);
 
         return DomainResult::claimed(DomainSummary::of($claim));
     }
@@ -437,13 +449,14 @@ final readonly class DomainService
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $seen
      * @param  string  $token
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\DomainResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    private function writeVerification(Connection $locked, Domain $seen, #[\SensitiveParameter] string $token, ?ActingIdentity $actor): DomainResult
+    private function writeVerification(Connection $locked, Domain $seen, #[\SensitiveParameter] string $token, ?ActingIdentity $actor, ClientContext $client): DomainResult
     {
         $claims = $this->domains->claimsOf($seen->domain, true);
         $claim  = $claims->of($locked->id);
@@ -459,7 +472,7 @@ final readonly class DomainService
             default                                                   => null,
         };
 
-        return $refusal ?? $this->markVerified($locked, $claim, $now, $actor);
+        return $refusal ?? $this->markVerified($locked, $claim, $now, $actor, $client);
     }
 
     /**
@@ -470,13 +483,14 @@ final readonly class DomainService
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \Carbon\CarbonImmutable  $now
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\DomainResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    private function markVerified(Connection $locked, Domain $claim, CarbonImmutable $now, ?ActingIdentity $actor): DomainResult
+    private function markVerified(Connection $locked, Domain $claim, CarbonImmutable $now, ?ActingIdentity $actor, ClientContext $client): DomainResult
     {
         $claim->forceFill([
             'state'                    => DomainState::VERIFIED,
@@ -494,7 +508,7 @@ final readonly class DomainService
             return DomainResult::refused(FailureReason::DOMAIN_UNAVAILABLE);
         }
 
-        $this->events->verified($locked, $claim, $actor);
+        $this->events->verified($locked, $claim, $actor, $client);
 
         return DomainResult::verified(DomainSummary::of($claim));
     }
@@ -507,9 +521,10 @@ final readonly class DomainService
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  string  $name
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\DomainResult
      */
-    private function deleteClaim(Connection $locked, string $name, ?ActingIdentity $actor): DomainResult
+    private function deleteClaim(Connection $locked, string $name, ?ActingIdentity $actor, ClientContext $client): DomainResult
     {
         $claim = $this->domains->find($locked, $name, true);
 
@@ -523,7 +538,7 @@ final readonly class DomainService
 
         $claim->delete();
 
-        $this->events->removed($locked, $claim, $actor);
+        $this->events->removed($locked, $claim, $actor, $client);
 
         return DomainResult::removed($summary);
     }

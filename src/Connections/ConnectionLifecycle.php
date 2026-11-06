@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
@@ -136,17 +137,18 @@ final readonly class ConnectionLifecycle
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function disable(string $tenantId, string $connectionId, ?ActingIdentity $actor = null): ConnectionResult
+    public function disable(string $tenantId, string $connectionId, ClientContext $client, ?ActingIdentity $actor = null): ConnectionResult
     {
         $refusal = $this->refusal($tenantId, $connectionId, FreshnessOperation::CONNECTION_DISABLE);
 
-        return $refusal ?? $this->transaction(function () use ($tenantId, $connectionId, $actor): ConnectionResult {
+        return $refusal ?? $this->transaction(function () use ($tenantId, $connectionId, $client, $actor): ConnectionResult {
 
             $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -158,7 +160,7 @@ final readonly class ConnectionLifecycle
 
             $this->voider->voidFor($locked);
             $this->revoke($locked, RevocationReason::CONNECTION_DISABLED);
-            $this->events->connectionDisabled($locked, $actor);
+            $this->events->connectionDisabled($locked, $actor, $client);
 
             return ConnectionResult::disabled($this->summary($locked));
         });
@@ -171,17 +173,18 @@ final readonly class ConnectionLifecycle
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function delete(string $tenantId, string $connectionId, ?ActingIdentity $actor = null): ConnectionResult
+    public function delete(string $tenantId, string $connectionId, ClientContext $client, ?ActingIdentity $actor = null): ConnectionResult
     {
         $refusal = $this->refusal($tenantId, $connectionId, FreshnessOperation::CONNECTION_DELETE);
 
-        return $refusal ?? $this->transaction(function () use ($tenantId, $connectionId, $actor): ConnectionResult {
+        return $refusal ?? $this->transaction(function () use ($tenantId, $connectionId, $client, $actor): ConnectionResult {
 
             $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -199,7 +202,7 @@ final readonly class ConnectionLifecycle
             $locked->delete();
 
             $this->revoke($locked, RevocationReason::CONNECTION_DELETED);
-            $this->events->connectionDeleted($locked, $actor);
+            $this->events->connectionDeleted($locked, $actor, $client);
 
             return ConnectionResult::deleted();
         });

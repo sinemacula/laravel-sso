@@ -34,6 +34,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Concerns\FlowRoutes;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\ScriptedEmailMatcher;
 use Tests\Fixtures\Linking\ScriptedPrincipalScope;
 use Tests\Fixtures\Linking\ScriptedTenantMembership;
@@ -527,7 +528,7 @@ final class DatabaseFailureHttpTest extends TestCase
     {
         $connection = $this->flowOidcConnection(self::TENANT, 'op-http', settings: ['client_authentication' => 'private_key_jwt']);
 
-        app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, KeyType::EC);
+        app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC);
 
         $this->failStatement(self::onTable('select', 'sso_keys'));
 

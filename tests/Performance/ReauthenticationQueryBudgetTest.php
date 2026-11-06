@@ -28,6 +28,7 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Links\FixedLinker;
@@ -308,7 +309,7 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
         $redemption = $app->make(HandoffRedemption::class);
 
         return DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => $redemption->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, self::VERIFIER, $this->identity),
+            fn (): RedemptionResult => $redemption->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser(), $this->identity),
         );
     }
 }

@@ -44,6 +44,7 @@ use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -496,7 +497,13 @@ final class ProvenanceCaptureTest extends LinkingTestCase
      */
     private function hold(LinkOrigin $origin): Link
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, $origin);
+        $creation = app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            $origin,
+            Clients::browser(),
+        );
 
         self::assertTrue($creation->isCreated());
 

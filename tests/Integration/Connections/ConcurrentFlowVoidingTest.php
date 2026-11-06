@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
@@ -21,6 +22,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
@@ -34,6 +36,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -154,10 +157,11 @@ final class ConcurrentFlowVoidingTest extends TestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 
@@ -271,8 +275,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
         self::await($flowed);
 
         $result = $change === self::TRUST_CHANGE
-            ? app(ConnectionService::class)->update(self::TENANT, $connectionId, ['settings' => ['issuer' => self::NEW_ISSUER]])
-            : app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId);
+            ? app(ConnectionService::class)->update(self::TENANT, $connectionId, ['settings' => ['issuer' => self::NEW_ISSUER]], Clients::browser())
+            : app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, Clients::browser());
 
         $database->commit();
 
@@ -297,7 +301,7 @@ final class ConcurrentFlowVoidingTest extends TestCase
 
         try {
             $status = $flow === self::START
-                ? app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connectionId)->status->value
+                ? app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connectionId, Clients::browser())->status->value
                 : $this->complete();
         } finally {
             touch($flowed);
@@ -325,7 +329,12 @@ final class ConcurrentFlowVoidingTest extends TestCase
             'code_verifier'     => app(SecretEncrypter::class)->encrypt('the-pkce-verifier-of-the-raced-voiding-1'),
         ]);
 
-        return app(CompletionService::class)->callback($connection->id, new CompletionRequest('GET', 'state=' . self::STATE, []))->status->value;
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $connection->id,
+            new CompletionRequest('GET', 'state=' . self::STATE, []),
+            Clients::browser(),
+        )->status->value;
     }
 
     /**

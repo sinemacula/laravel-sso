@@ -42,6 +42,7 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RaceFlows;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -390,7 +391,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     {
         $answer = self::storageDatabase()->transaction(function (): RedemptionResult {
 
-            $answer = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $this->code, $this->verifier);
+            $answer = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $this->code, $this->verifier, Clients::browser());
 
             if ($answer->isRedeemed()) {
                 $this->sessions()->insert([
@@ -418,7 +419,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     private function changed(string $change): string
     {
         return match ($change) {
-            self::TRUST    => app(KeyService::class)->distrustCertificate('tenant-1', $this->connection->id, $this->certificate)->status->value,
+            self::TRUST    => app(KeyService::class)->distrustCertificate('tenant-1', $this->connection->id, $this->certificate, Clients::browser())->status->value,
             self::UNLINK   => $this->removal(),
             self::REASSIGN => $this->reassignment(),
             default        => throw new \LogicException(sprintf('No change is named [%s].', $change)),
@@ -432,7 +433,7 @@ final class RedemptionRacesTest extends LinkingTestCase
      */
     private function removal(): string
     {
-        $removal = app(LinkService::class)->remove($this->person, $this->link->id);
+        $removal = app(LinkService::class)->remove($this->person, $this->link->id, Clients::browser());
 
         return $removal->isRemoved() ? 'removed' : 'refused:' . $removal->reason?->value;
     }
@@ -447,14 +448,14 @@ final class RedemptionRacesTest extends LinkingTestCase
     {
         return self::storageDatabase()->transaction(function (): string {
 
-            $removal = app(LinkService::class)->remove($this->person, $this->link->id);
+            $removal = app(LinkService::class)->remove($this->person, $this->link->id, Clients::browser());
 
             if (!$removal->isRemoved()) {
                 return 'refused:' . $removal->reason?->value;
             }
 
             $subject  = new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT);
-            $creation = app(LinkStore::class)->create($this->connection, $subject, $this->other, LinkOrigin::LINK_PURPOSE);
+            $creation = app(LinkStore::class)->create($this->connection, $subject, $this->other, LinkOrigin::LINK_PURPOSE, Clients::browser());
 
             return $creation->isCreated() ? 'reassigned' : 'refused:' . $creation->reason()?->value;
         });
@@ -483,7 +484,13 @@ final class RedemptionRacesTest extends LinkingTestCase
      */
     private function heldLink(): Link
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, LinkOrigin::PROVISIONING);
+        $creation = app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            LinkOrigin::PROVISIONING,
+            Clients::browser(),
+        );
 
         self::assertTrue($creation->isCreated());
 

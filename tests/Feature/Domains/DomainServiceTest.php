@@ -1,0 +1,159 @@
+<?php
+
+declare(strict_types = 1);
+
+namespace Tests\Feature\Domains;
+
+use Illuminate\Http\Request;
+use PHPUnit\Framework\Attributes\CoversClass;
+use SineMacula\Laravel\Sso\Contracts\SsoEvent;
+use SineMacula\Laravel\Sso\Domains\DomainService;
+use SineMacula\Laravel\Sso\Domains\Enums\DomainStatus;
+use SineMacula\Laravel\Sso\Events\DomainClaimed;
+use SineMacula\Laravel\Sso\Events\DomainRemoved;
+use SineMacula\Laravel\Sso\Events\DomainVerified;
+use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Http\ClientContext;
+
+/**
+ * Feature tests for the client the domain helpers are given: each claim,
+ * verification and removal reports its event with the IP address and user agent
+ * of the client context passed, never of the request being served, with the
+ * acting identity when one is given; and a verification is counted against its
+ * connection's domain checks, whatever the client.
+ *
+ * @author      Ben Carey <bdmc@sinemacula.co.uk>
+ * @copyright   2026 Sine Macula Limited
+ *
+ * @internal
+ */
+#[CoversClass(DomainService::class)]
+final class DomainServiceTest extends DomainServiceTestCase
+{
+    /** @var string The TXT record name of `example.com`'s claim. */
+    private const string RECORD = '_sso-verification.example.com';
+
+    /** @var \SineMacula\Laravel\Sso\Http\ClientContext The client every change is made for. */
+    private ClientContext $client;
+
+    /**
+     * Take the client, and bind another request as the one being served, which
+     * the helpers must never read.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->client = new ClientContext('203.0.113.7', 'Example/1.0');
+
+        $this->app?->instance('request', Request::create('/', 'POST', server: ['REMOTE_ADDR' => '198.51.100.9', 'HTTP_USER_AGENT' => 'Served/1.0']));
+    }
+
+    /**
+     * A claim reports `DomainClaimed` carrying the client and the acting
+     * identity.
+     *
+     * @return void
+     */
+    public function testAClaimReportsTheClient(): void
+    {
+        $result = $this->domains()->claim(self::TENANT, $this->connection->id, 'example.com', $this->client, $this->actor);
+
+        self::assertSame(DomainStatus::CLAIMED, $result->status);
+        $this->assertEventSequence([DomainClaimed::class]);
+        $this->assertCarriesTheClient($this->recordedEvents()[0], '42');
+    }
+
+    /**
+     * A verification reports `DomainVerified` carrying the client and the
+     * acting identity.
+     *
+     * @return void
+     */
+    public function testAVerificationReportsTheClient(): void
+    {
+        $this->dns->publishes(self::summaryOf($this->domains()->claim(self::TENANT, $this->connection->id, 'example.com', $this->client)));
+        $this->startRecordingEvents();
+
+        $result = $this->domains()->verify(self::TENANT, $this->connection->id, 'example.com', $this->client, $this->actor);
+
+        self::assertSame(DomainStatus::VERIFIED, $result->status);
+        $this->assertEventSequence([DomainVerified::class]);
+        $this->assertCarriesTheClient($this->recordedEvents()[0], '42');
+    }
+
+    /**
+     * A removal reports `DomainRemoved` carrying the client, and no acting
+     * identity when none is given.
+     *
+     * @return void
+     */
+    public function testARemovalReportsTheClient(): void
+    {
+        $this->domains()->claim(self::TENANT, $this->connection->id, 'example.com', $this->client);
+        $this->startRecordingEvents();
+
+        $result = $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com', $this->client);
+
+        self::assertSame(DomainStatus::REMOVED, $result->status);
+        $this->assertEventSequence([DomainRemoved::class]);
+        $this->assertCarriesTheClient($this->recordedEvents()[0], null);
+    }
+
+    /**
+     * A change made for no client, as a console command makes one, reports
+     * neither an IP address nor a user agent.
+     *
+     * @return void
+     */
+    public function testAChangeForNoClientReportsNone(): void
+    {
+        $this->domains()->claim(self::TENANT, $this->connection->id, 'example.com', new ClientContext(null, null), $this->actor);
+
+        $context = $this->recordedEvents()[0]->context();
+
+        self::assertSame([null, null], [$context->ip, $context->userAgent]);
+    }
+
+    /**
+     * A verification is counted against its connection's domain checks, not
+     * against the client: another client's verification is refused once the
+     * connection's checks are used up.
+     *
+     * @return void
+     */
+    public function testAVerificationIsCountedAgainstTheConnectionWhateverTheClient(): void
+    {
+        config()->set('sso.rate_limits.domain_check.per_connection', ['max' => 1, 'decay_seconds' => 3600]);
+
+        $this->domains()->claim(self::TENANT, $this->connection->id, 'example.com', $this->client);
+        $this->dns->absent(self::RECORD);
+
+        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $this->domains()->verify(self::TENANT, $this->connection->id, 'example.com', $this->client)->reason);
+
+        $limited = $this->domains()->verify(self::TENANT, $this->connection->id, 'example.com', new ClientContext('198.51.100.20', 'Other/1.0'));
+
+        self::assertTrue($limited->isRateLimited());
+        $this->dns->assertLookedUp(self::RECORD, 1);
+    }
+
+    /**
+     * Assert the event carries the client's IP address and user agent, never
+     * the served request's, and the acting identity's id given.
+     *
+     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  ?string  $actingIdentityId
+     * @return void
+     */
+    private function assertCarriesTheClient(SsoEvent $event, ?string $actingIdentityId): void
+    {
+        $context = $event->context();
+
+        self::assertSame(['203.0.113.7', 'Example/1.0'], [$context->ip, $context->userAgent]);
+        self::assertSame($actingIdentityId, $context->actingIdentityId);
+        self::assertSame($this->connection->id, $context->connectionId);
+    }
+}

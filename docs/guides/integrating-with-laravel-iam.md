@@ -143,6 +143,13 @@ package's default or binds the application's own.
 | `Sessions\AuthenticationContext::fromStored()` | Projecting a session's stored `Sessions\Provenance` into the `sso` namespace ([The `sso` contributor](#the-sso-contributor))                    | AUTH-11.8           |
 | `Config\ConfigurationChecks::add()`            | Adding `laravel-iam`'s checks across the packages it composes to SSO's boot check and `sso:check`, each applying only while SSO is in use       | IAM-13.12           |
 
+Every helper above that counts an attempt or reports an event takes the client it acts for as an `Http\ClientContext`:
+the IP address and the user agent, made safe to keep under the rules `laravel-authentication`'s own `ClientContext`
+applies to the same two values. None reads the request being served. The adapter builds the context where it reads the
+request, with `ClientContext::fromRequest($request)`, and passes `new ClientContext(null, null)` from a job or a
+command. So do the contract methods that report: `Linker::resolve()`, `LinkStorage::create()`, `confirm()` and
+`suspend()`, and `ProtocolDriver::complete()`; a wrapper of one passes on the client it was given.
+
 ### Events
 
 Every event implements `Contracts\SsoEvent`, carries `Events\EventContext`, and is dispatched after the transaction that
@@ -192,9 +199,9 @@ use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 
 $storage = DB::connection(StorageConnection::name());
 
-$answer = $storage->transaction(static function () use ($application, $connectionId, $code, $verifier): RedemptionResult|SignInResult {
+$answer = $storage->transaction(static function () use ($application, $connectionId, $code, $verifier, $client): RedemptionResult|SignInResult {
     $redemption = app(HandoffRedemption::class)
-        ->admit(Purpose::SIGN_IN, $application, $connectionId, $code, $verifier);
+        ->admit(Purpose::SIGN_IN, $application, $connectionId, $code, $verifier, $client);
 
     if (!$redemption->isRedeemed()) {
         return $redemption; // a refusal commits: the code is spent and one FlowFailed follows
@@ -218,6 +225,11 @@ $answer = $storage->transaction(static function () use ($application, $connectio
 // Only now, after the commit, build the response from $answer, with
 // Cache-Control: no-store.
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 `AdmittedRedemptions`, `ExternalResults`, `UnlinkedSignIn` and `ExternalSignInRefused` are the adapter's own. `Auth`
 is authentication's facade, `SineMacula\Laravel\Authentication\Facades\Auth` (PR #127), which declares `sessions()`:
@@ -260,7 +272,7 @@ transaction open. It needs the caller the application has authenticated, as an `
 <!-- snippet: tests/Integration/Examples/IntegratingWithLaravelIam/RedeemingByPurposeExampleTest.php#iam-link -->
 ```php
 $redemption = app(HandoffRedemption::class)
-    ->redeem(Purpose::LINK, $application, $connectionId, $code, $verifier, $caller);
+    ->redeem(Purpose::LINK, $application, $connectionId, $code, $verifier, $client, $caller);
 ```
 
 The caller comes from authentication's current session, never from the request body. The package asks freshness
@@ -350,8 +362,8 @@ use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 
-DB::connection(StorageConnection::name())->transaction(static function () use ($identity, $tenantId): void {
-    app(ScopeWidening::class)->widened($identity, $tenantId); // 1. the guard, suspensions, revocation
+DB::connection(StorageConnection::name())->transaction(static function () use ($identity, $tenantId, $client): void {
+    app(ScopeWidening::class)->widened($identity, $tenantId, $client); // 1. the guard, suspensions, revocation
 
     $principals = app(Principals::class);
 
@@ -415,11 +427,11 @@ choice of principal, on every switch and on refresh:
    on every call; never cache it.
 2. When `isRequired()`, the requirement names the policy's satisfying connections, checked against the session's
    recorded provenance connection, and carries `$policy->version` as its version.
-3. A session the rule would refuse is passed to `Enforcement\ExemptionGate::admit($policy, $application, $identity,
-   $sessionId)`, which asks the exemption contract and reports `ExemptionUsed` for an exemption it grants. This gate is
-   the only place the exemption is asked: the package's own completion and redemption refuse a sign-in through an
-   unlisted connection as `enforcement_unsatisfied` without asking
-   ([Enforcement](enforcement.md#exemptions)).
+3. A session the rule would refuse is passed to
+   `Enforcement\ExemptionGate::admit($policy, $application, $identity, $client, $sessionId)`, with the client of the
+   request being judged, which asks the exemption contract and reports `ExemptionUsed` for an exemption it grants. This
+   gate is the only place the exemption is asked: the package's own completion and redemption refuse a sign-in through
+   an unlisted connection as `enforcement_unsatisfied` without asking ([Enforcement](enforcement.md#exemptions)).
 4. A non-compliant session is refused as `sso_required` (reported), with no pending continuation.
 
 The redemption rechecks enforcement under its locks (SSO-4.6), and the version it judged there, never the one the
@@ -847,6 +859,8 @@ An adapter ships only when each holds, on SQLite, MySQL and PostgreSQL, with the
   `ExternalResultRedeemed` by `connection_id` and `request_reference`, and counts one sign-in.
 - [ ] An audit mapping reads the active tenant from `tenant_id` in both packages' contexts, and the connection's tenant
   from this package's `connection_tenant_id`.
+- [ ] Every event of a call the adapter makes for a request carries that request's IP address and user agent, from the
+  `Http\ClientContext` the adapter passed; an event of a job or a command carries neither.
 
 ## Requirements this guide maps
 

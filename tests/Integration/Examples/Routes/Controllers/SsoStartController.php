@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Discovery\DiscoveryService;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use Tests\Integration\Examples\Routes\Application\Caller;
 
 /**
@@ -65,8 +66,8 @@ final readonly class SsoStartController
 
         // The purpose is this endpoint's: a `purpose` in the body is never read
         $result = isset($input['email'])
-            ? $this->discovery->start($input['application'], Purpose::SIGN_IN, $input['email'], $challenge)
-            : $this->requests->start($input['application'], Purpose::SIGN_IN, $input['connection'] ?? '', $challenge);
+            ? $this->discovery->start($input['application'], Purpose::SIGN_IN, $input['email'], ClientContext::fromRequest($request), $challenge)
+            : $this->requests->start($input['application'], Purpose::SIGN_IN, $input['connection'] ?? '', ClientContext::fromRequest($request), $challenge);
         // @snippet-end route-start-sign-in
         return self::answer($result);
     }
@@ -86,7 +87,14 @@ final readonly class SsoStartController
         // @snippet-start route-start-link
         $input = self::input($request);
 
-        $result = $this->requests->start($input['application'], Purpose::LINK, $input['connection'], $input['code_challenge'] ?? null, Caller::identity($request));
+        $result = $this->requests->start(
+            $input['application'],
+            Purpose::LINK,
+            $input['connection'],
+            ClientContext::fromRequest($request),
+            $input['code_challenge'] ?? null,
+            Caller::identity($request),
+        );
         // @snippet-end route-start-link
         return self::answer($result);
     }
@@ -110,6 +118,7 @@ final readonly class SsoStartController
             $input['application'],
             Purpose::REAUTHENTICATE,
             $input['connection'],
+            ClientContext::fromRequest($request),
             $input['code_challenge'] ?? null,
             Caller::identity($request),
             Caller::sessionId($request),

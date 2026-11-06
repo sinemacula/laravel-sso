@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -87,7 +88,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
         self::assertTrue(app(ConnectionService::class)->get(self::TENANT, $this->makeSamlConnection(new FakeSamlIdentityProvider))?->usable);
         self::assertFalse(app(ConnectionService::class)->get(self::TENANT, $oidcConnectionId)?->usable);
 
-        $refused = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Example OIDC');
+        $refused = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Example OIDC', Clients::browser());
 
         self::assertTrue($refused->isRefused());
         self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $refused->reason);
@@ -108,7 +109,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
 
         self::assertFalse($protocols->isAvailable('saml2'));
         self::assertFalse($protocols->isAvailable('oidc'));
-        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example SAML')->reason);
+        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example SAML', Clients::browser())->reason);
 
         putenv('SSO_OIDC=true');
         $this->publishSwitches();
@@ -136,7 +137,10 @@ final class ConnectionsExampleTest extends ExampleTestCase
         self::assertInstanceOf(CasDriver::class, $protocols->protocol('cas'));
         self::assertTrue($protocols->isAvailable('cas'));
         self::assertFalse($protocols->isRegistered('CAS'));
-        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, app(ConnectionService::class)->create(self::TENANT, 'CAS', 'Acme CAS', ['server_url' => self::CAS_SERVER])->reason);
+        self::assertSame(
+            FailureReason::PROTOCOL_UNAVAILABLE,
+            app(ConnectionService::class)->create(self::TENANT, 'CAS', 'Acme CAS', Clients::browser(), ['server_url' => self::CAS_SERVER])->reason,
+        );
 
         $connectionId = $this->makeCasConnection();
         $start        = $this->startFlow(Purpose::SIGN_IN, $connectionId);
@@ -209,12 +213,12 @@ final class ConnectionsExampleTest extends ExampleTestCase
         $usable = app(ConnectionService::class)->get($tenantId, $connectionId)?->usable;
         // @snippet-end connection-usable
         self::assertTrue($usable);
-        self::assertTrue(app(ConnectionLifecycle::class)->disable($tenantId, $connectionId)->isSucceeded());
+        self::assertTrue(app(ConnectionLifecycle::class)->disable($tenantId, $connectionId, Clients::browser())->isSucceeded());
         self::assertFalse($this->isUsableNow($connectionId));
 
-        $incomplete = (string) app(ConnectionService::class)->create($tenantId, 'oidc', 'Incomplete OIDC', ['client_id' => 'client-1'])->connection?->id;
+        $incomplete = (string) app(ConnectionService::class)->create($tenantId, 'oidc', 'Incomplete OIDC', Clients::browser(), ['client_id' => 'client-1'])->connection?->id;
 
-        self::assertTrue(app(ConnectionService::class)->enable($tenantId, $incomplete)->isSucceeded());
+        self::assertTrue(app(ConnectionService::class)->enable($tenantId, $incomplete, Clients::browser())->isSucceeded());
         self::assertFalse($this->isUsableNow($incomplete));
 
         $unknown = strtolower((string) Str::ulid());
@@ -296,8 +300,14 @@ final class ConnectionsExampleTest extends ExampleTestCase
 
         $connections = app(ConnectionService::class);
 
-        self::assertEquals([new SettingViolation('preset', ViolationCode::NOT_ALLOWED)], $connections->create(self::TENANT, 'saml2', 'Acme SAML', preset: 'acme')->violations);
-        self::assertEquals([new SettingViolation('preset', ViolationCode::UNKNOWN)], $connections->create(self::TENANT, 'oidc', 'Acme OIDC', preset: 'unknown')->violations);
+        self::assertEquals(
+            [new SettingViolation('preset', ViolationCode::NOT_ALLOWED)],
+            $connections->create(self::TENANT, 'saml2', 'Acme SAML', Clients::browser(), preset: 'acme')->violations,
+        );
+        self::assertEquals(
+            [new SettingViolation('preset', ViolationCode::UNKNOWN)],
+            $connections->create(self::TENANT, 'oidc', 'Acme OIDC', Clients::browser(), preset: 'unknown')->violations,
+        );
     }
 
     /**
@@ -326,12 +336,12 @@ final class ConnectionsExampleTest extends ExampleTestCase
     private function makeCasConnection(): string
     {
         $connections  = app(ConnectionService::class);
-        $created      = $connections->create(self::TENANT, 'cas', 'Acme CAS', ['server_url' => self::CAS_SERVER]);
+        $created      = $connections->create(self::TENANT, 'cas', 'Acme CAS', Clients::browser(), ['server_url' => self::CAS_SERVER]);
         $connectionId = (string) $created->connection?->id;
 
         self::assertTrue($created->isSucceeded());
         self::assertSame(['server_url' => self::CAS_SERVER], $created->connection?->settings);
-        self::assertTrue($connections->enable(self::TENANT, $connectionId)->isSucceeded());
+        self::assertTrue($connections->enable(self::TENANT, $connectionId, Clients::browser())->isSucceeded());
         self::assertTrue($connections->get(self::TENANT, $connectionId)?->usable);
 
         return $connectionId;
@@ -349,7 +359,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
         $provider->serve($this->fetcher);
 
         $connections = app(ConnectionService::class);
-        $created     = $connections->create(self::TENANT, 'oidc', 'Acme', [
+        $created     = $connections->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), [
             'issuer'                 => $provider->issuer,
             'authorization_endpoint' => $provider->endpoint('authorization'),
             'token_endpoint'         => $provider->endpoint('token'),
@@ -361,7 +371,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
         $connectionId = (string) $created->connection?->id;
 
         self::assertTrue($created->isSucceeded());
-        self::assertTrue($connections->enable(self::TENANT, $connectionId)->isSucceeded());
+        self::assertTrue($connections->enable(self::TENANT, $connectionId, Clients::browser())->isSucceeded());
         self::assertTrue($connections->get(self::TENANT, $connectionId)?->usable);
 
         return $connectionId;

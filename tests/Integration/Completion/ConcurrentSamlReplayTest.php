@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\CompletionState;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\ResultBuilder;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
 use SineMacula\Laravel\Sso\Completion\Stages\RecordReplay;
@@ -36,6 +37,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
@@ -246,7 +248,7 @@ final class ConcurrentSamlReplayTest extends TestCase
      */
     private function complete(Connection $connection, CompletionRequest $request): CompletionResult
     {
-        return app(CompletionService::class)->assertionConsumerService($connection->id, $request);
+        return app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $connection->id, $request, Clients::browser());
     }
 
     /**
@@ -314,7 +316,7 @@ final class ConcurrentSamlReplayTest extends TestCase
                 usleep((int) ($wait * 1000000));
             }
 
-            $result = app(CompletionService::class)->assertionConsumerService($this->connection->id, $post);
+            $result = app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connection->id, $post, Clients::browser());
             $issuer = app(HandoffIssuer::class);
 
             assert($issuer instanceof RecordingHandoffIssuer);

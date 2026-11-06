@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RaceFlows;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -392,12 +393,12 @@ final class ExpiryReporterRacesTest extends TestCase
             function () use ($distrusted): int {
 
                 foreach ($distrusted as $key) {
-                    app(KeyService::class)->distrustCertificate(self::TENANT, $this->connection->id, $key);
+                    app(KeyService::class)->distrustCertificate(self::TENANT, $this->connection->id, $key, Clients::browser());
                 }
 
                 return count($distrusted);
             },
-            static fn (): string => app(ConnectionLifecycle::class)->delete(self::TENANT, $deleted->id)->status->value,
+            static fn (): string => app(ConnectionLifecycle::class)->delete(self::TENANT, $deleted->id, Clients::browser())->status->value,
         ]);
 
         $results = $this->assertRacersSucceeded($reports);
@@ -448,7 +449,7 @@ final class ExpiryReporterRacesTest extends TestCase
                 });
 
                 try {
-                    app(ExpiryReport::class)->report();
+                    app(ExpiryReport::class)->report(Clients::browser());
 
                     return ['sent' => $sent, 'stopped' => false];
                 } catch (\Throwable $exception) {
@@ -530,7 +531,7 @@ final class ExpiryReporterRacesTest extends TestCase
             $dispatching();
         });
 
-        $run = app(ExpiryReport::class)->report();
+        $run = app(ExpiryReport::class)->report(Clients::browser());
 
         return ['sent' => count($keys), 'keys' => $keys, 'listed' => $run->listed, 'notices' => $run->notices];
     }
@@ -564,7 +565,7 @@ final class ExpiryReporterRacesTest extends TestCase
     {
         $key = $this->ownKey(KeyState::RETIRING, self::ENDS_IN, ['retiring_until' => CarbonImmutable::parse(self::NOW)->addWeek()])->id;
 
-        return [$key, fn (): string => app(KeyService::class)->retire(self::TENANT, $this->connection->id, $key)->status->value];
+        return [$key, fn (): string => app(KeyService::class)->retire(self::TENANT, $this->connection->id, $key, Clients::browser())->status->value];
     }
 
     /**
@@ -578,7 +579,7 @@ final class ExpiryReporterRacesTest extends TestCase
         $key  = $this->ownKey(KeyState::CURRENT, self::ENDS_IN)->id;
         $next = $this->ownKey(KeyState::NEXT, 86400 * 400)->id;
 
-        return [$key, fn (): string => app(KeyService::class)->makeCurrent(self::TENANT, $this->connection->id, $next)->status->value];
+        return [$key, fn (): string => app(KeyService::class)->makeCurrent(self::TENANT, $this->connection->id, $next, Clients::browser())->status->value];
     }
 
     /**
@@ -590,7 +591,7 @@ final class ExpiryReporterRacesTest extends TestCase
     {
         $key = $this->certificate()->id;
 
-        return [$key, fn (): string => app(KeyService::class)->distrustCertificate(self::TENANT, $this->connection->id, $key)->status->value];
+        return [$key, fn (): string => app(KeyService::class)->distrustCertificate(self::TENANT, $this->connection->id, $key, Clients::browser())->status->value];
     }
 
     /**
@@ -600,7 +601,7 @@ final class ExpiryReporterRacesTest extends TestCase
      */
     private function deletion(): array
     {
-        return [$this->certificate()->id, fn (): string => app(ConnectionLifecycle::class)->delete(self::TENANT, $this->connection->id)->status->value];
+        return [$this->certificate()->id, fn (): string => app(ConnectionLifecycle::class)->delete(self::TENANT, $this->connection->id, Clients::browser())->status->value];
     }
 
     /**

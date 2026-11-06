@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\CompletionState;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\Enums\CompletionStep;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
 use SineMacula\Laravel\Sso\Completion\Stages\CheckEnforcement;
@@ -46,6 +47,7 @@ use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\UnsolicitedResponseReinitiated;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Metadata\MetadataSettings;
@@ -69,6 +71,7 @@ use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\ListedExemption;
 use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
@@ -1029,7 +1032,7 @@ final class CompletionPipelineTest extends TestCase
 
         $this->app?->instance(ResolveLink::class, self::answering(static function (CompletionState $state) use ($consumed): StageOutcome {
 
-            $arrived = CompletionState::arrived($state->connectionId, $state->request);
+            $arrived = CompletionState::arrived($state->connectionId, $state->request, Clients::browser());
             $hollow  = $consumed ? $arrived->withAuthorizationRequest($state->authorizationRequest, $state->consumed, $state->application) : $arrived;
 
             return StageOutcome::refuse($hollow, FailureReason::UNLINKED);
@@ -1057,7 +1060,7 @@ final class CompletionPipelineTest extends TestCase
      */
     public function testReinitiationNeedsAnUnsolicitedResponseAtAReinitiatingDriver(): void
     {
-        $arrived = CompletionState::arrived($this->connection->id, new CompletionRequest('POST', '', []));
+        $arrived = CompletionState::arrived($this->connection->id, new CompletionRequest('POST', '', []), Clients::browser());
         $read    = $arrived->withConnection($this->connection);
         $cases   = [
             ['Only an unsolicited response is re-initiated.', $read],
@@ -1189,7 +1192,12 @@ final class CompletionPipelineTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', 'state=' . $state, []));
+        return $app->make(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connection->id,
+            new CompletionRequest('GET', 'state=' . $state, []),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -1348,10 +1356,11 @@ final class CompletionPipelineTest extends TestCase
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
              * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Protocols\Completion
              */
             #[\Override]
-            public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed): Completion
+            public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed, ClientContext $client): Completion
             {
                 unset($connection, $request, $consumed);
 
@@ -1429,7 +1438,12 @@ final class CompletionPipelineTest extends TestCase
      */
     private function completeAtAssertionConsumerService(Connection $connection): CompletionResult
     {
-        return app(CompletionService::class)->assertionConsumerService($connection->id, new CompletionRequest('POST', '', ['SAMLResponse' => 'unread']));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $connection->id,
+            new CompletionRequest('POST', '', ['SAMLResponse' => 'unread']),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -1543,10 +1557,11 @@ final class CompletionPipelineTest extends TestCase
              * The one identity.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 

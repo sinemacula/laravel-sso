@@ -30,8 +30,13 @@ $result = app(EvidenceSettingsService::class)->set($tenantId, $connectionId, [
         ['amr' => ['pwd', 'otp']],
         ['amr' => ['hwk'], 'acr' => 'urn:example:loa:2'],
     ],
-]);
+], $client);
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 A SAML connection names `authn_context_class_ref` instead, and its combinations name one class each:
 
@@ -42,7 +47,7 @@ $result = app(EvidenceSettingsService::class)->set($tenantId, $samlConnectionId,
     'combinations'            => [
         ['authn_context_class_ref' => 'https://refeds.org/profile/mfa'],
     ],
-]);
+], $client);
 ```
 
 `set()` replaces the whole policy, and `set($tenantId, $connectionId, [])` clears it. `get($tenantId, $connectionId)`

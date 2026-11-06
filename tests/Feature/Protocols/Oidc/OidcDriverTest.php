@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
@@ -225,7 +226,7 @@ final class OidcDriverTest extends TestCase
         $request   = new StartRequest(Purpose::SIGN_IN, 'web', $reference, new Secret('state'), new Secret('nonce'), new Secret('verifier'));
         $start     = $driver->start($connection, $request);
         $consumed  = new ConsumedRequest(Purpose::SIGN_IN, 'web', $reference, CarbonImmutable::now());
-        $complete  = $driver->complete($connection, new CompletionRequest('GET', 'error=access_denied&state=b', []), $consumed);
+        $complete  = $driver->complete($connection, new CompletionRequest('GET', 'error=access_denied&state=b', []), $consumed, Clients::browser());
 
         return [$start->reason, $complete->reason];
     }

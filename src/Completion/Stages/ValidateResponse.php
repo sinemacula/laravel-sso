@@ -81,7 +81,7 @@ final readonly class ValidateResponse implements CompletionStage
             return StageOutcome::refuse($state, FailureReason::CONNECTION_UNAVAILABLE);
         }
 
-        $completion = $this->protocols->protocol($connection->protocol)->complete($connection, $state->request, $consumed);
+        $completion = $this->protocols->protocol($connection->protocol)->complete($connection, $state->request, $consumed, $state->client);
         $claims     = $completion->claims;
 
         if ($claims === null) {

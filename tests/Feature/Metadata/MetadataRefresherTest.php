@@ -47,6 +47,7 @@ use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Protocols\ExampleDriver;
@@ -138,22 +139,22 @@ final class MetadataRefresherTest extends TestCase
     public function testADueConnectionIsRefreshedOnceUntilTheIntervalEnds(): void
     {
         $connection = $this->saml();
-        $results    = $this->refresher()->refreshDue();
+        $results    = $this->refresher()->refreshDue(Clients::browser());
 
         self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, [], 1, false]], self::summaries($results));
         self::assertSame([[FetchPurpose::METADATA, self::URL, null]], array_map(
             static fn (FetchRequest $request): array => [$request->purpose, $request->url, $request->credentials],
             $this->fetcher->requests(),
         ));
-        self::assertSame([], $this->refresher()->refreshDue());
+        self::assertSame([], $this->refresher()->refreshDue(Clients::browser()));
 
         $this->clock->advance(86399);
 
-        self::assertSame([], $this->refresher()->refreshDue());
+        self::assertSame([], $this->refresher()->refreshDue(Clients::browser()));
 
         $this->clock->advance(1);
 
-        self::assertCount(1, app(MetadataRefresher::class)->refreshDue());
+        self::assertCount(1, app(MetadataRefresher::class)->refreshDue(Clients::browser()));
         self::assertCount(2, $this->fetcher->requests());
     }
 
@@ -197,7 +198,7 @@ final class MetadataRefresherTest extends TestCase
     {
         $this->saml($settings, $attributes);
 
-        self::assertCount($due ? 1 : 0, $this->refresher()->refreshDue());
+        self::assertCount($due ? 1 : 0, $this->refresher()->refreshDue(Clients::browser()));
         self::assertCount($due ? 1 : 0, $this->fetcher->requests());
     }
 
@@ -212,7 +213,7 @@ final class MetadataRefresherTest extends TestCase
 
         config()->set('sso.features.metadata_refresh', false);
 
-        self::assertSame([], $this->refresher()->refreshDue());
+        self::assertSame([], $this->refresher()->refreshDue(Clients::browser()));
 
         $this->fetcher->assertNothingFetched();
     }
@@ -233,10 +234,10 @@ final class MetadataRefresherTest extends TestCase
         config()->set('sso.features.oidc', true);
 
         self::assertSame([], $this->refresher()->dueConnectionIds());
-        self::assertSame([], $this->refresher()->refreshDue());
+        self::assertSame([], $this->refresher()->refreshDue(Clients::browser()));
 
-        $queued  = $this->refresher()->refreshQueued($connection->id);
-        $refused = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $queued  = $this->refresher()->refreshQueued($connection->id, Clients::browser());
+        $refused = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertSame([RefreshOutcome::SKIPPED, $connection->id], [$queued->outcome, $queued->connectionId]);
         self::assertSame([RefreshOutcome::REFUSED, FailureReason::FEATURE_DISABLED, $connection->id], [$refused->outcome, $refused->reason, $refused->connectionId]);
@@ -260,8 +261,8 @@ final class MetadataRefresherTest extends TestCase
         $saml = $this->saml();
 
         self::assertSame([$saml->id], $this->refresher()->dueConnectionIds());
-        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($oidc->id)->outcome);
-        self::assertSame([$saml->id], array_map(static fn (RefreshResult $result): string => (string) $result->connectionId, $this->refresher()->refreshDue()));
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($oidc->id, Clients::browser())->outcome);
+        self::assertSame([$saml->id], array_map(static fn (RefreshResult $result): string => (string) $result->connectionId, $this->refresher()->refreshDue(Clients::browser())));
     }
 
     /**
@@ -277,7 +278,7 @@ final class MetadataRefresherTest extends TestCase
             $ids[] = $this->saml([], ['id' => sprintf('01jb%022d', $index)])->id;
         }
 
-        $results = $this->refresher()->refreshDue();
+        $results = $this->refresher()->refreshDue(Clients::browser());
 
         self::assertSame($ids, array_map(static fn (RefreshResult $result): ?string => $result->connectionId, $results));
         self::assertSame(['refreshed'], array_values(array_unique(array_map(static fn (RefreshResult $result): string => $result->outcome->value, $results))));
@@ -321,7 +322,7 @@ final class MetadataRefresherTest extends TestCase
 
         self::assertSame(
             [[RefreshOutcome::REFRESHED, $first->id, [], 1, false], [RefreshOutcome::SKIPPED, $second->id, [], null, false]],
-            self::summaries($this->refresher()->refreshDue()),
+            self::summaries($this->refresher()->refreshDue(Clients::browser())),
         );
         self::assertCount(1, $this->fetcher->requests());
     }
@@ -339,7 +340,10 @@ final class MetadataRefresherTest extends TestCase
 
         $this->serve(self::metadata()->with(['signing_certificates' => [self::idp()->certificate(), Certificates::distinct(5)]]));
 
-        self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, ['idp_signing_certificates'], 1, false]], self::summaries($this->refresher()->refreshDue()));
+        self::assertSame(
+            [[RefreshOutcome::REFRESHED, $connection->id, ['idp_signing_certificates'], 1, false]],
+            self::summaries($this->refresher()->refreshDue(Clients::browser())),
+        );
         self::assertSame(0, $this->row($connection)->trust_version);
         self::assertNull($request->refresh()->voided_at);
         self::assertSame(2, ConnectionKey::query()->where('use', KeyUse::IDP_SIGNING->value)->count());
@@ -359,7 +363,10 @@ final class MetadataRefresherTest extends TestCase
 
         $request = $this->makeAuthorizationRequest($connection);
 
-        self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, ['idp_signing_certificates'], 1, true]], self::summaries($this->refresher()->refreshDue()));
+        self::assertSame(
+            [[RefreshOutcome::REFRESHED, $connection->id, ['idp_signing_certificates'], 1, true]],
+            self::summaries($this->refresher()->refreshDue(Clients::browser())),
+        );
         self::assertNotNull($request->refresh()->voided_at);
         self::assertSame(1, $this->row($connection)->trust_version);
 
@@ -368,7 +375,7 @@ final class MetadataRefresherTest extends TestCase
         $this->serve(self::metadata(self::MOVED_URL));
         $this->clock->advance(86400);
 
-        self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, ['sso_url'], 2, true]], self::summaries($this->refresher()->refreshDue()));
+        self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, ['sso_url'], 2, true]], self::summaries($this->refresher()->refreshDue(Clients::browser())));
         self::assertNotNull($moved->refresh()->voided_at);
         self::assertSame([2, self::MOVED_URL], [$this->row($connection)->trust_version, $this->row($connection)->settings['sso_url']]);
     }
@@ -407,7 +414,7 @@ final class MetadataRefresherTest extends TestCase
 
         $this->fetcher->respond(self::URL, $response);
 
-        $result = $this->refresher()->refreshDue()[0];
+        $result = $this->refresher()->refreshDue(Clients::browser())[0];
 
         self::assertSame(
             [RefreshOutcome::FAILED, $reason, 1, '2026-11-01T09:35:00+00:00'],
@@ -468,7 +475,7 @@ final class MetadataRefresherTest extends TestCase
 
         $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], $xml()));
 
-        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
         $row    = $this->row($connection);
 
         self::assertSame([RefreshOutcome::FAILED, $reason], [$result->outcome, $result->reason]);
@@ -495,7 +502,7 @@ final class MetadataRefresherTest extends TestCase
         $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], str_replace('ID="_aggregate"', 'ID="_aggregate" validUntil="2026-13-01T00:00:00Z"', $aggregate)));
         $this->fetcher->respond(self::SECOND_URL, FetchResult::fetched(200, [], self::metadata()->toXml()));
 
-        $results = $this->refresher()->refreshDue();
+        $results = $this->refresher()->refreshDue(Clients::browser());
 
         self::assertCount(2, $results);
         self::assertSame(
@@ -535,7 +542,7 @@ final class MetadataRefresherTest extends TestCase
             return FetchResult::fetched(200, [], self::metadata()->toXml());
         });
 
-        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertSame([RefreshOutcome::FAILED, FailureReason::METADATA_INVALID, 1], [$result->outcome, $result->reason, $result->failures]);
         self::assertSame([0, 1, '2026-11-01T09:35:00+00:00', null, null], self::refreshState($this->row($connection)));
@@ -554,7 +561,7 @@ final class MetadataRefresherTest extends TestCase
     public function testAConnectionWithNoPinnedEntityIdFindsNoEntity(): void
     {
         $connection = $this->saml(['idp_entity_id' => null]);
-        $result     = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $result     = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertSame([RefreshOutcome::FAILED, FailureReason::METADATA_ENTITY_NOT_FOUND], [$result->outcome, $result->reason]);
         self::assertArrayNotHasKey('idp_entity_id', $this->row($connection)->settings);
@@ -572,7 +579,7 @@ final class MetadataRefresherTest extends TestCase
         $this->trust($connection, self::idp()->certificate(), KeyUse::METADATA_SIGNING);
         $this->serve(self::metadata()->with(['aggregate' => ['https://other.example.test/saml'], 'sign' => 'aggregate']));
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->isRefreshed());
     }
 
     /**
@@ -590,7 +597,7 @@ final class MetadataRefresherTest extends TestCase
 
         foreach (range(1, 9) as $failure) {
 
-            $result  = $this->refresher()->refreshDue()[0] ?? null;
+            $result  = $this->refresher()->refreshDue(Clients::browser())[0] ?? null;
             $wait    = (int) $this->clock->now()->diffInSeconds($result?->nextAttemptAt);
             $waits[] = $wait;
 
@@ -598,7 +605,7 @@ final class MetadataRefresherTest extends TestCase
 
             $this->clock->advance($wait - 1);
 
-            self::assertSame([], $this->refresher()->refreshDue());
+            self::assertSame([], $this->refresher()->refreshDue(Clients::browser()));
 
             $this->clock->advance(1);
         }
@@ -607,7 +614,7 @@ final class MetadataRefresherTest extends TestCase
 
         $this->serve(self::metadata());
 
-        self::assertTrue($this->refresher()->refreshDue()[0]->isRefreshed());
+        self::assertTrue($this->refresher()->refreshDue(Clients::browser())[0]->isRefreshed());
         self::assertSame(0, $this->row($connection)->metadata_refresh_failures);
         self::assertSame($this->clock->now()->addDay()->toIso8601String(), $this->row($connection)->metadata_refresh_at?->toIso8601String());
     }
@@ -621,9 +628,9 @@ final class MetadataRefresherTest extends TestCase
     {
         $connection = $this->saml([], ['metadata_refresh_at' => $this->clock->now()->addHours(6), 'metadata_refresh_failures' => 8]);
 
-        self::assertSame([], $this->refresher()->refreshDue());
+        self::assertSame([], $this->refresher()->refreshDue(Clients::browser()));
 
-        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, [], 1, false]], self::summaries([$result]));
         self::assertSame(0, $this->row($connection)->metadata_refresh_failures);
@@ -640,7 +647,7 @@ final class MetadataRefresherTest extends TestCase
     public function testARefreshNowNeverSkipsAHeldClaim(): void
     {
         $connection = $this->saml([], ['metadata_claimed_until' => $this->clock->now()->addSecond()]);
-        $result     = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $result     = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertSame([RefreshOutcome::IN_PROGRESS, FailureReason::METADATA_REFRESH_IN_PROGRESS, $connection->id], [$result->outcome, $result->reason, $result->connectionId]);
         self::assertSame('2026-11-01T09:30:01+00:00', $this->row($connection)->metadata_claimed_until?->toIso8601String());
@@ -650,7 +657,7 @@ final class MetadataRefresherTest extends TestCase
 
         $this->clock->advance(1);
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->isRefreshed());
     }
 
     /**
@@ -667,13 +674,13 @@ final class MetadataRefresherTest extends TestCase
 
         $connection = $this->saml();
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->isRefreshed());
 
         $this->startRecordingEvents();
 
         $before  = $this->row($connection)->getAttributes();
-        $limited = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $limited = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertSame(
             [RefreshOutcome::RATE_LIMITED, FailureReason::RATE_LIMITED, $connection->id, 1800],
@@ -685,15 +692,15 @@ final class MetadataRefresherTest extends TestCase
 
         $this->row($connection)->forceFill(['metadata_refresh_at' => null])->save();
 
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshDue()[0]->outcome ?? null);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshDue(Clients::browser())[0]->outcome ?? null);
 
         $this->clock->advance(1799);
 
-        self::assertSame(RefreshOutcome::RATE_LIMITED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+        self::assertSame(RefreshOutcome::RATE_LIMITED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->outcome);
 
         $this->clock->advance(1);
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->isRefreshed());
     }
 
     /**
@@ -715,10 +722,10 @@ final class MetadataRefresherTest extends TestCase
 
         self::assertTrue($import($imported)->isProposed());
         self::assertTrue($import($imported)->isProposed());
-        self::assertSame(RefreshOutcome::RATE_LIMITED, $this->refresher()->refreshNow(self::TENANT, $imported->id, self::actor())->outcome);
+        self::assertSame(RefreshOutcome::RATE_LIMITED, $this->refresher()->refreshNow(self::TENANT, $imported->id, self::actor(), Clients::browser())->outcome);
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $refreshed->id, self::actor())->isRefreshed());
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $refreshed->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $refreshed->id, self::actor(), Clients::browser())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $refreshed->id, self::actor(), Clients::browser())->isRefreshed());
         self::assertSame([true, 1800], [$import($refreshed)->isRateLimited(), $import($refreshed)->retryAfter]);
 
         self::assertCount(4, $this->fetcher->requests());
@@ -741,14 +748,14 @@ final class MetadataRefresherTest extends TestCase
         $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], $xml));
 
         $connection = $this->saml();
-        $over       = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $over       = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertSame([RefreshOutcome::FAILED, FailureReason::FETCH_FAILED], [$over->outcome, $over->reason]);
         self::assertSame(69999, $this->fetcher->requests()[0]->maxBytes);
 
         config()->set('sso.metadata.max_bytes', 70000);
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->isRefreshed());
         self::assertSame(70000, $this->fetcher->requests()[1]->maxBytes);
     }
 
@@ -770,7 +777,7 @@ final class MetadataRefresherTest extends TestCase
 
         $connection = $this->saml();
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->isRefreshed());
         self::assertSame('2026-11-01T09:30:07+00:00', $this->row($connection)->metadata_fetched_at?->toIso8601String());
     }
 
@@ -791,8 +798,8 @@ final class MetadataRefresherTest extends TestCase
             return FetchResult::fetched(200, [], self::metadata()->toXml());
         });
 
-        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
-        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
+        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertCount(2, $tokens);
         self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/D', (string) $tokens[0][0]);
@@ -820,7 +827,7 @@ final class MetadataRefresherTest extends TestCase
                 return $served === null ? FetchResult::failed() : FetchResult::fetched(200, [], $served);
             });
 
-            $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+            $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
             self::assertSame([RefreshOutcome::CONFLICT, FailureReason::METADATA_CONFLICT], [$result->outcome, $result->reason]);
             self::assertSame([str_repeat('b', 32), 0, 0], [
@@ -850,7 +857,7 @@ final class MetadataRefresherTest extends TestCase
             return FetchResult::fetched(200, [], self::metadata()->toXml());
         });
 
-        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertSame(RefreshOutcome::CONFLICT, $result->outcome);
         self::assertCount(2, ConnectionKey::query()->where('connection_id', $connection->id)->where('use', KeyUse::IDP_SIGNING->value)->get());
@@ -876,20 +883,20 @@ final class MetadataRefresherTest extends TestCase
         sort($expected);
 
         self::assertSame($expected, $this->refresher()->dueConnectionIds());
-        self::assertTrue($this->refresher()->refreshQueued($one->id)->isRefreshed());
+        self::assertTrue($this->refresher()->refreshQueued($one->id, Clients::browser())->isRefreshed());
         self::assertSame(
             [RefreshOutcome::SKIPPED, RefreshOutcome::SKIPPED, RefreshOutcome::SKIPPED, RefreshOutcome::SKIPPED],
             [
-                $this->refresher()->refreshQueued($one->id)->outcome,
-                $this->refresher()->refreshQueued($off->id)->outcome,
-                $this->refresher()->refreshQueued($later->id)->outcome,
-                $this->refresher()->refreshQueued('01jbunknownconnection00000')->outcome,
+                $this->refresher()->refreshQueued($one->id, Clients::browser())->outcome,
+                $this->refresher()->refreshQueued($off->id, Clients::browser())->outcome,
+                $this->refresher()->refreshQueued($later->id, Clients::browser())->outcome,
+                $this->refresher()->refreshQueued('01jbunknownconnection00000', Clients::browser())->outcome,
             ],
         );
 
         config()->set('sso.features.metadata_refresh', false);
 
-        self::assertSame([[], RefreshOutcome::SKIPPED], [$this->refresher()->dueConnectionIds(), $this->refresher()->refreshQueued($two->id)->outcome]);
+        self::assertSame([[], RefreshOutcome::SKIPPED], [$this->refresher()->dueConnectionIds(), $this->refresher()->refreshQueued($two->id, Clients::browser())->outcome]);
         self::assertCount(1, $this->fetcher->requests());
     }
 
@@ -929,7 +936,7 @@ final class MetadataRefresherTest extends TestCase
 
         config()->set('sso.features.metadata_refresh', $feature);
 
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->outcome);
         self::assertSame([FreshnessOperation::CONNECTION_TRUST], array_column($freshness->asked(), 'operation'));
     }
 
@@ -953,7 +960,7 @@ final class MetadataRefresherTest extends TestCase
 
         config()->set('sso.features.metadata_refresh', $feature);
 
-        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
         $row    = $this->row($connection);
 
         self::assertSame([RefreshOutcome::REFUSED, FailureReason::FRESHNESS_REQUIRED, $connection->id], [$result->outcome, $result->reason, $result->connectionId]);
@@ -964,7 +971,7 @@ final class MetadataRefresherTest extends TestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->outcome);
     }
 
     /**
@@ -1003,7 +1010,7 @@ final class MetadataRefresherTest extends TestCase
             $this->serve(self::metadata()->with(['aggregate' => ['https://other.example.test/saml'], 'sign' => 'aggregate']));
         }
 
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->outcome);
         self::assertSame([], $freshness->asked());
     }
 
@@ -1020,7 +1027,7 @@ final class MetadataRefresherTest extends TestCase
 
         $this->app?->instance(Freshness::class, $freshness);
 
-        self::assertSame(FailureReason::FEATURE_DISABLED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->reason);
+        self::assertSame(FailureReason::FEATURE_DISABLED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->reason);
         self::assertSame([], $freshness->asked());
     }
 
@@ -1041,7 +1048,7 @@ final class MetadataRefresherTest extends TestCase
 
         self::assertTrue($expiry->isExpired($connection));
 
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->outcome);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->outcome);
         self::assertFalse($expiry->isExpired($connection->refresh()));
     }
 
@@ -1065,12 +1072,12 @@ final class MetadataRefresherTest extends TestCase
         }
 
         self::assertSame([$unset->id], $this->refresher()->dueConnectionIds());
-        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($unanchored->id)->outcome);
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($unanchored->id, Clients::browser())->outcome);
 
         config()->set('sso.features.metadata_refresh', false);
 
         self::assertSame([], $this->refresher()->dueConnectionIds());
-        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($unset->id)->outcome);
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($unset->id, Clients::browser())->outcome);
 
         $this->fetcher->assertNothingFetched();
     }
@@ -1114,7 +1121,7 @@ final class MetadataRefresherTest extends TestCase
         config()->set('sso.features.saml2', $kind !== 'protocol-off');
 
         $id     = $kind === 'unknown' ? '01jbunknownconnection00000' : $connection->id;
-        $result = $this->refresher()->refreshNow(self::TENANT, $id, self::actor());
+        $result = $this->refresher()->refreshNow(self::TENANT, $id, self::actor(), Clients::browser());
         $named  = $reason === FailureReason::CONNECTION_NOT_FOUND ? null : $connection->id;
 
         self::assertSame([RefreshOutcome::REFUSED, $reason, $named], [$result->outcome, $result->reason, $result->connectionId]);
@@ -1135,10 +1142,10 @@ final class MetadataRefresherTest extends TestCase
     {
         $connection = $this->saml();
         $refreshes  = [
-            fn (): mixed => $this->refresher()->refreshDue(),
-            fn (): mixed => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()),
+            fn (): mixed => $this->refresher()->refreshDue(Clients::browser()),
+            fn (): mixed => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()),
             fn (): mixed => $this->refresher()->dueConnectionIds(),
-            fn (): mixed => $this->refresher()->refreshQueued($connection->id),
+            fn (): mixed => $this->refresher()->refreshQueued($connection->id, Clients::browser()),
         ];
 
         foreach ($refreshes as $refresh) {
@@ -1164,7 +1171,7 @@ final class MetadataRefresherTest extends TestCase
     {
         $connection = $this->saml();
 
-        $this->refresher()->refreshDue();
+        $this->refresher()->refreshDue(Clients::browser());
         $this->clock->advance(2592000 - 1);
 
         self::assertNull($this->startReason($connection));
@@ -1186,7 +1193,7 @@ final class MetadataRefresherTest extends TestCase
 
         $connection = $this->saml();
 
-        $this->refresher()->refreshDue();
+        $this->refresher()->refreshDue(Clients::browser());
         $this->clock->advance(86400 * 365);
 
         self::assertNull($this->startReason($connection));
@@ -1204,7 +1211,7 @@ final class MetadataRefresherTest extends TestCase
 
         $connection = $this->makeConnection(['protocol' => 'example']);
 
-        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id)->outcome);
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
         self::assertSame([], $this->fetcher->requests());
     }
 

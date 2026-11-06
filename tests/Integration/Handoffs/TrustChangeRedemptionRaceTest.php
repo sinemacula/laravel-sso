@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Flows\S256Challenge;
 use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -32,6 +33,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RacesProcesses;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -253,7 +255,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
                 $this->awaitSignal($after);
             }
 
-            return app(ConnectionService::class)->update(self::TENANT, $connectionId, ['settings' => ['issuer' => 'https://login.example.com']])->status->value;
+            return app(ConnectionService::class)->update(self::TENANT, $connectionId, ['settings' => ['issuer' => 'https://login.example.com']], Clients::browser())->status->value;
         };
     }
 
@@ -275,7 +277,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
                 $this->awaitSignal($after);
             }
 
-            return app(OwnHandoffRedemption::class)->redeem(Purpose::SIGN_IN, $code, self::VERIFIER)->value ?? 'admitted';
+            return app(OwnHandoffRedemption::class)->redeem(Purpose::SIGN_IN, $code, self::VERIFIER, Clients::browser())->value ?? 'admitted';
         };
     }
 
@@ -304,10 +306,11 @@ final class TrustChangeRedemptionRaceTest extends TestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 

@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Models\Domain;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Domains\RecordingWithdrawal;
 
 /**
@@ -504,11 +505,11 @@ final class DomainVerificationTest extends DomainServiceTestCase
 
         $domains = $this->domains();
 
-        self::assertSame(FailureReason::DOMAIN_NOT_FOUND, $domains->verify(self::TENANT, $this->connection->id, 'example.org')->reason);
-        self::assertSame(FailureReason::DOMAIN_NOT_FOUND, $domains->verify(self::TENANT, $this->connection->id, '*.example.com')->reason);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->verify('tenant-2', $this->connection->id, 'example.com')->reason);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->remove(self::TENANT, '01jbunknownconnection00000', 'example.com')->reason);
-        self::assertSame(FailureReason::DOMAIN_NOT_FOUND, $domains->remove(self::TENANT, $this->connection->id, 'example.org')->reason);
+        self::assertSame(FailureReason::DOMAIN_NOT_FOUND, $domains->verify(self::TENANT, $this->connection->id, 'example.org', Clients::browser())->reason);
+        self::assertSame(FailureReason::DOMAIN_NOT_FOUND, $domains->verify(self::TENANT, $this->connection->id, '*.example.com', Clients::browser())->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->verify('tenant-2', $this->connection->id, 'example.com', Clients::browser())->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->remove(self::TENANT, '01jbunknownconnection00000', 'example.com', Clients::browser())->reason);
+        self::assertSame(FailureReason::DOMAIN_NOT_FOUND, $domains->remove(self::TENANT, $this->connection->id, 'example.org', Clients::browser())->reason);
         self::assertSame([], $this->freshness->operations());
     }
 
@@ -541,7 +542,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
 
         $this->app?->instance(DomainWithdrawal::class, $withdrawal);
 
-        $result = $this->domains()->remove(self::TENANT, $this->connection->id, 'Example.COM', $this->actor);
+        $result = $this->domains()->remove(self::TENANT, $this->connection->id, 'Example.COM', Clients::browser(), $this->actor);
 
         self::assertSame(DomainStatus::REMOVED, $result->status);
         self::assertSame($state, $result->domain?->state);
@@ -570,7 +571,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $result = $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com');
+        $result = $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com', Clients::browser());
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
         self::assertTrue(Domain::query()->whereKey($claim->id)->exists());
@@ -591,7 +592,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
 
         self::assertSame(FailureReason::DOMAIN_UNAVAILABLE, $this->claimDomain('example.com', $other)->reason);
 
-        $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com');
+        $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com', Clients::browser());
 
         $claimed = self::summaryOf($this->claimDomain('example.com', $other));
 
@@ -618,9 +619,9 @@ final class DomainVerificationTest extends DomainServiceTestCase
         });
 
         try {
-            $verified  = $domains->verify(self::TENANT, $id, 'example.com');
-            $unchanged = $domains->verify(self::TENANT, $id, 'example.com');
-            $removed   = $domains->remove(self::TENANT, $id, 'example.com');
+            $verified  = $domains->verify(self::TENANT, $id, 'example.com', Clients::browser());
+            $unchanged = $domains->verify(self::TENANT, $id, 'example.com', Clients::browser());
+            $removed   = $domains->remove(self::TENANT, $id, 'example.com', Clients::browser());
         } finally {
             DB::connection(StorageConnection::name())->setReadPdo(null);
         }

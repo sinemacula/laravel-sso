@@ -6,6 +6,7 @@ namespace Tests\Integration\Examples;
 
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -145,8 +146,9 @@ abstract class ExampleTestCase extends TestCase
      */
     protected function makeSamlConnection(FakeSamlIdentityProvider $idp, array $settings = []): string
     {
+        $client = Clients::browser();
         // @snippet-start saml-connection
-        $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example SAML', [
+        $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example SAML', $client, [
             'idp_entity_id' => $idp->entityId,
             'sso_url'       => FakeSamlIdentityProvider::SSO_URL,
             ...$settings,
@@ -154,7 +156,7 @@ abstract class ExampleTestCase extends TestCase
 
         $connectionId = (string) $created->connection?->id;
 
-        static::assertTrue(app(KeyService::class)->trustCertificate(self::TENANT, $connectionId, $idp->certificate())->isSucceeded());
+        static::assertTrue(app(KeyService::class)->trustCertificate(self::TENANT, $connectionId, $idp->certificate(), $client)->isSucceeded());
         // @snippet-end saml-connection
         return $this->enabled($created);
     }
@@ -169,10 +171,11 @@ abstract class ExampleTestCase extends TestCase
      */
     protected function makeOidcConnection(FakeOpenIdProvider $provider, array $settings = []): string
     {
+        $client = Clients::browser();
         // @snippet-start oidc-connection
         $provider->serve($this->fetcher);
 
-        $created = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Example OIDC', [
+        $created = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Example OIDC', $client, [
             'issuer'                 => $provider->issuer,
             'authorization_endpoint' => $provider->endpoint('authorization'),
             'token_endpoint'         => $provider->endpoint('token'),
@@ -198,7 +201,7 @@ abstract class ExampleTestCase extends TestCase
      */
     protected function startFlow(Purpose $purpose, string $connectionId, ?IdentityReference $identity = null, ?string $sessionId = null): StartResult
     {
-        return app(AuthorizationRequestService::class)->start(self::APPLICATION, $purpose, $connectionId, null, $identity, $sessionId);
+        return app(AuthorizationRequestService::class)->start(self::APPLICATION, $purpose, $connectionId, Clients::browser(), null, $identity, $sessionId);
     }
 
     /**
@@ -221,7 +224,7 @@ abstract class ExampleTestCase extends TestCase
 
             /** @var ?IdTokenTailor $tailor */
             $grant  = $provider->authorize($start, $tailor);
-            $result = app(CompletionService::class)->callback($connectionId, new CompletionRequest('GET', $grant->query(), []));
+            $result = app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connectionId, new CompletionRequest('GET', $grant->query(), []), Clients::browser());
 
             return HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
         }
@@ -231,7 +234,12 @@ abstract class ExampleTestCase extends TestCase
 
         /** @var ?ResponseTailor $tailor */
         $response = $tailor === null ? $response : $tailor($response);
-        $result   = app(CompletionService::class)->assertionConsumerService($connectionId, $response->completionRequest($request->relayState));
+        $result   = app(CompletionService::class)->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $connectionId,
+            $response->completionRequest($request->relayState),
+            Clients::browser(),
+        );
 
         return HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'POST'));
     }
@@ -249,8 +257,9 @@ abstract class ExampleTestCase extends TestCase
      */
     protected function redeemLink(string $connectionId, HandoffRedirect $redirect, StartResult $start, IdentityReference $caller): RedemptionResult
     {
+        $client = Clients::browser();
         // @snippet-start redeem-link
-        return app(HandoffRedemption::class)->redeem(Purpose::LINK, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start), $caller);
+        return app(HandoffRedemption::class)->redeem(Purpose::LINK, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start), $client, $caller);
         // @snippet-end redeem-link
     }
 
@@ -267,10 +276,11 @@ abstract class ExampleTestCase extends TestCase
      */
     protected function admitSignIn(string $connectionId, HandoffRedirect $redirect, StartResult $start, string $sessionId): RedemptionResult
     {
+        $client = Clients::browser();
         // @snippet-start admit-sign-in
-        return DB::connection(StorageConnection::name())->transaction(function () use ($connectionId, $redirect, $start, $sessionId): RedemptionResult {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($connectionId, $redirect, $start, $sessionId, $client): RedemptionResult {
 
-            $result = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start));
+            $result = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start), $client);
 
             if ($result->isRedeemed() && $result->linkedIdentity !== null) {
                 // As fresh as the provider says, or now when it said nothing
@@ -299,7 +309,7 @@ abstract class ExampleTestCase extends TestCase
         $verifier = self::verifierOf($start);
 
         return DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, self::APPLICATION, $connectionId, $code, $verifier),
+            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, self::APPLICATION, $connectionId, $code, $verifier, Clients::browser()),
         );
     }
 
@@ -364,7 +374,7 @@ abstract class ExampleTestCase extends TestCase
         $connectionId = (string) $created->connection?->id;
         $connections  = app(ConnectionService::class);
 
-        static::assertTrue($connections->enable(self::TENANT, $connectionId)->isSucceeded());
+        static::assertTrue($connections->enable(self::TENANT, $connectionId, Clients::browser())->isSucceeded());
         static::assertTrue($connections->get(self::TENANT, $connectionId)?->usable);
 
         return $connectionId;

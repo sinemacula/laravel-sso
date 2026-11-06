@@ -35,6 +35,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 
 /**
  * Query budgets for an import, a refetch and a refresh of an OIDC connection
@@ -158,8 +159,15 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     public function testADisqualifiedTokenIsOneRead(): void
     {
         $connection = $this->oidc([self::key()]);
-        $select     = static fn (): KeySelection => app(ProviderKeys::class)->select($connection, self::token('rsa-2'), self::rs256(), null, static fn (): bool => true);
-        $selection  = $this->assertQueryBudget(1, 0, $select);
+        $select     = static fn (): KeySelection => app(ProviderKeys::class)->select(
+            $connection,
+            self::token('rsa-2'),
+            self::rs256(),
+            Clients::browser(),
+            null,
+            static fn (): bool => true,
+        );
+        $selection = $this->assertQueryBudget(1, 0, $select);
 
         self::assertSame(KeySelectionOutcome::UNKNOWN, $selection->outcome);
 
@@ -210,7 +218,11 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
         $request    = $this->makeAuthorizationRequest($connection, ['consumed_at' => $this->clock->now()]);
         $consumed   = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString($request->reference), $this->clock->now());
 
-        $selection = $this->assertQueryBudget(3, 6, fn (): KeySelection => app(ProviderKeys::class)->select($connection, self::token('rsa-1'), self::rs256(), $consumed));
+        $selection = $this->assertQueryBudget(
+            3,
+            6,
+            fn (): KeySelection => app(ProviderKeys::class)->select($connection, self::token('rsa-1'), self::rs256(), Clients::browser(), $consumed),
+        );
 
         self::assertSame(KeySelectionOutcome::FOUND, $selection->outcome);
         self::assertNotNull($selection->receipt);
@@ -271,7 +283,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
         $this->oidc([self::key()]);
         $this->provider->publish(self::next());
 
-        $results = $this->assertQueryBudget(2, 2, fn (): array => $this->refresher()->refreshDue());
+        $results = $this->assertQueryBudget(2, 2, fn (): array => $this->refresher()->refreshDue(Clients::browser()));
 
         self::assertSame([RefreshOutcome::REFRESHED], array_map(static fn (RefreshResult $result): RefreshOutcome => $result->outcome, $results));
     }
@@ -287,7 +299,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $this->provider->publish(self::next());
 
-        $result = $this->assertQueryBudget(2, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(2, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['jwks'], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
     }
@@ -304,7 +316,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $this->provider->withDiscovery(['token_endpoint' => 'https://moved.example.test/token']);
 
-        $result = $this->assertQueryBudget(2, 8, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(2, 8, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['token_endpoint', 'jwks'], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
         self::assertSame(1, $this->row($connection)->trust_version);
@@ -321,7 +333,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $this->provider->respond('discovery', FetchResult::failed());
 
-        $result = $this->assertQueryBudget(2, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(2, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame(RefreshOutcome::FAILED, $result->outcome);
     }
@@ -336,7 +348,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     {
         $connection = $this->oidc([self::key()], ['metadata_claimed_until' => $this->clock->now()->addMinute()]);
 
-        $result = $this->assertQueryBudget(1, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(1, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame(RefreshOutcome::IN_PROGRESS, $result->outcome);
 
@@ -355,9 +367,9 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $connection = $this->oidc([self::key()], ['metadata_claimed_until' => $this->clock->now()->addMinute()]);
 
-        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
-        $result = $this->assertQueryBudget(2, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(2, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame(RefreshOutcome::RATE_LIMITED, $result->outcome);
 
@@ -376,7 +388,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::stale());
 
-        $result = $this->assertQueryBudget(1, 0, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(1, 0, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
 
@@ -394,7 +406,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
         $this->oidc([self::key()], ['jwks_fetched_at' => $this->clock->now()], ['metadata_refresh' => false]);
         $this->provider->publish(self::next());
 
-        $results = $this->assertQueryBudget(2, 2, fn (): array => $this->refresher()->refreshDue());
+        $results = $this->assertQueryBudget(2, 2, fn (): array => $this->refresher()->refreshDue(Clients::browser()));
 
         self::assertSame([RefreshOutcome::REFRESHED], array_map(static fn (RefreshResult $result): RefreshOutcome => $result->outcome, $results));
     }
@@ -409,7 +421,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     {
         $connection = $this->oidc([self::key(), self::next()], ['jwks_fetched_at' => $this->clock->now()], ['metadata_refresh' => false]);
 
-        $result = $this->assertQueryBudget(2, 8, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(2, 8, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['jwks'], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
         self::assertSame(1, $this->row($connection)->trust_version);
@@ -427,7 +439,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $this->provider->respond('discovery', FetchResult::failed());
 
-        $result = $this->assertQueryBudget(2, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(2, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame(RefreshOutcome::REFRESHED, $result->outcome);
     }
@@ -466,7 +478,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
      */
     private function selected(Connection $connection, string $kid): KeySelection
     {
-        return app(ProviderKeys::class)->select($connection, self::token($kid), self::rs256());
+        return app(ProviderKeys::class)->select($connection, self::token($kid), self::rs256(), Clients::browser());
     }
 
     /**

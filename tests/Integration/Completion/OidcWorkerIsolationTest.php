@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
@@ -30,6 +31,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -379,14 +381,14 @@ final class OidcWorkerIsolationTest extends TestCase
     private function flow(string $side, ?\Closure $tailor = null, string &$reference = ''): CompletionResult
     {
         $connection = $this->connectionOf($side);
-        $started    = $this->starts->start('web', Purpose::SIGN_IN, $connection->id);
+        $started    = $this->starts->start('web', Purpose::SIGN_IN, $connection->id, Clients::browser());
 
         self::assertTrue($started->isStarted());
 
         $reference = (string) $started->reference?->value;
         $grant     = $this->providerOf($side)->authorize((string) $started->navigation?->url(), $tailor);
 
-        return $this->completions->callback($connection->id, new CompletionRequest('GET', $grant->query(), []));
+        return $this->completions->complete(CompletionEndpoint::CALLBACK, $connection->id, new CompletionRequest('GET', $grant->query(), []), Clients::browser());
     }
 
     /**

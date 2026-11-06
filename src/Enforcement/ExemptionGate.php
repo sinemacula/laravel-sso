@@ -8,6 +8,7 @@ use Illuminate\Contracts\Container\Container;
 use SineMacula\Laravel\Sso\Administration\EnforcementEvents;
 use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
 use SineMacula\Laravel\Sso\Enforcement\Enums\ExemptionOutcome;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
@@ -26,8 +27,11 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
  * returned. An exception from the contract propagates: the gate never answers
  * `exempt` when it cannot tell.
  *
- * It holds the container and the reporter, neither of which keeps anything of
- * one call for the next (SSO-11.2). Resolve it from the container per request.
+ * It takes the client the session is admitted for as an `Http\ClientContext`,
+ * whose IP address and user agent `Events\ExemptionUsed` carries, and reads no
+ * request. It holds the container and the reporter, neither of which keeps
+ * anything of one call for the next (SSO-11.2). Resolve it from the container
+ * per request.
  *
  * @api
  *
@@ -54,18 +58,19 @@ final readonly class ExemptionGate
     /**
      * Whether the identity may have a session in the policy's tenant, on the
      * application, without a satisfying connection; `exempt` is reported, with
-     * the session's id when the caller has one.
+     * the client and the session's id when the caller has one.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $sessionId
      * @return \SineMacula\Laravel\Sso\Enforcement\Enums\ExemptionOutcome
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    public function admit(EnforcementPolicy $policy, string $application, IdentityReference $identity, ?string $sessionId = null): ExemptionOutcome
+    public function admit(EnforcementPolicy $policy, string $application, IdentityReference $identity, ClientContext $client, ?string $sessionId = null): ExemptionOutcome
     {
         self::assertApplication($application);
 
@@ -76,7 +81,7 @@ final readonly class ExemptionGate
         $outcome = $this->container->make(EnforcementExemption::class)->exemption($policy, $application, $identity);
 
         if ($outcome->isExempt()) {
-            $this->events->exemptionUsed($policy, $application, $identity, $sessionId);
+            $this->events->exemptionUsed($policy, $application, $identity, $client, $sessionId);
         }
 
         return $outcome;

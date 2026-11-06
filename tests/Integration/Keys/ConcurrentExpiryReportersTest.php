@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use Tests\Concerns\RacesProcesses;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -120,7 +121,7 @@ final class ConcurrentExpiryReportersTest extends TestCase
                 $sent[] = $event->keyId;
             });
 
-            $run = app(ExpiryReport::class)->report();
+            $run = app(ExpiryReport::class)->report(Clients::browser());
 
             return ['sent' => $sent, 'listed' => $run->listed];
         });
@@ -163,7 +164,7 @@ final class ConcurrentExpiryReportersTest extends TestCase
                     $this->awaitSignal('looked');
                 });
 
-                return ['run' => app(ExpiryReport::class)->report()->jsonSerialize(), 'count' => $sent];
+                return ['run' => app(ExpiryReport::class)->report(Clients::browser())->jsonSerialize(), 'count' => $sent];
             },
             function (): array {
 
@@ -176,7 +177,7 @@ final class ConcurrentExpiryReportersTest extends TestCase
                 });
 
                 try {
-                    $run = app(ExpiryReport::class)->report();
+                    $run = app(ExpiryReport::class)->report(Clients::browser());
                 } finally {
                     $this->signal('looked');
                 }

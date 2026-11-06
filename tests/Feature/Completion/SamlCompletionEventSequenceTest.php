@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
@@ -33,6 +34,7 @@ use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
@@ -219,7 +221,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
             $posted[] = $request->body()['SAMLResponse'];
             $posted[] = $relay;
 
-            app(CompletionService::class)->assertionConsumerService($this->connection->id, $request);
+            app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connection->id, $request, Clients::browser());
         }
 
         self::assertNotSame([], $this->capturedLogRecords());
@@ -264,7 +266,12 @@ final class SamlCompletionEventSequenceTest extends TestCase
      */
     private function complete(FakeSamlResponse $response): CompletionResult
     {
-        return app(CompletionService::class)->assertionConsumerService($this->connection->id, $response->completionRequest(self::RELAY_STATE));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $this->connection->id,
+            $response->completionRequest(self::RELAY_STATE),
+            Clients::browser(),
+        );
     }
 
     /**

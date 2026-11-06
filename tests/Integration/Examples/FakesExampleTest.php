@@ -62,13 +62,14 @@ final class FakesExampleTest extends ExampleTestCase
     {
         $connectionId = $this->makeOidcConnection(new FakeOpenIdProvider(clock: $this->clock));
 
+        $client = Clients::browser();
         // @snippet-start resolver-unexpected
-        app(DomainService::class)->claim(self::TENANT, $connectionId, 'example.com');
+        app(DomainService::class)->claim(self::TENANT, $connectionId, 'example.com', $client);
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('The fake DNS resolver has no answer for [_sso-verification.example.com].');
 
-        app(DomainService::class)->verify(self::TENANT, $connectionId, 'example.com');
+        app(DomainService::class)->verify(self::TENANT, $connectionId, 'example.com', $client);
         // @snippet-end resolver-unexpected
     }
 

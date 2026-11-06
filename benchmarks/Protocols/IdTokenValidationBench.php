@@ -25,6 +25,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FrozenClock;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
+use Tests\Fixtures\Clients;
 
 /**
  * PHPBench suite for validating an ID token
@@ -192,6 +193,6 @@ final class IdTokenValidationBench
      */
     private function validate(TokenResponse $tokens): IdTokenValidation
     {
-        return $this->validator->validate($this->connection, $this->options, $tokens, $this->consumed);
+        return $this->validator->validate($this->connection, $this->options, $tokens, $this->consumed, Clients::browser());
     }
 }

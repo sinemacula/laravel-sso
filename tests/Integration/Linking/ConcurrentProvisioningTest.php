@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
@@ -36,6 +37,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -569,7 +571,7 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
 
             self::runIfGiven($before);
 
-            $answer = app(ProvisioningHelper::class)->link($event->grant, $event->result, $identity);
+            $answer = app(ProvisioningHelper::class)->link($event->grant, $event->result, $identity, Clients::browser());
             $status = $answer->status->value;
 
             self::runIfGiven($holding);
@@ -654,6 +656,7 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
             new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
             $this->other,
             LinkOrigin::LINK_PURPOSE,
+            Clients::browser(),
         );
 
         if ($inTransaction) {
@@ -688,7 +691,7 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
      */
     private function disabled(): string
     {
-        return app(ConnectionLifecycle::class)->disable('tenant-1', $this->connection->id)->status->value;
+        return app(ConnectionLifecycle::class)->disable('tenant-1', $this->connection->id, Clients::browser())->status->value;
     }
 
     /**
@@ -699,7 +702,7 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
      */
     private function trustChanged(): string
     {
-        return app(ConnectionService::class)->update('tenant-1', $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]])->status->value;
+        return app(ConnectionService::class)->update('tenant-1', $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], Clients::browser())->status->value;
     }
 
     /**
@@ -722,7 +725,12 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
      */
     private function completion(string $state): CompletionResult
     {
-        return app(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', 'state=' . rawurlencode($state), []));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connection->id,
+            new CompletionRequest('GET', 'state=' . rawurlencode($state), []),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -739,7 +747,7 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
         $verifier = (string) $start->verifier?->reveal();
 
         return DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier, Clients::browser()),
         );
     }
 

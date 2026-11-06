@@ -10,6 +10,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
 
@@ -59,17 +60,23 @@ final readonly class OwnHandoffRedemption
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $value
      * @param  string  $verifier
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
      *
      * @throws \Throwable
      */
-    public function redeem(Purpose $purpose, #[\SensitiveParameter] string $value, #[\SensitiveParameter] string $verifier, ?IdentityReference $caller = null): ?FailureReason
-    {
+    public function redeem(
+        Purpose $purpose,
+        #[\SensitiveParameter] string $value,
+        #[\SensitiveParameter] string $verifier,
+        ClientContext $client,
+        ?IdentityReference $caller = null,
+    ): ?FailureReason {
         // Read the code plainly first, to learn the result it carries
         $code = $this->codes->find($value);
 
-        return $code === null ? FailureReason::HANDOFF_UNKNOWN : $this->admit($code, $purpose, $verifier, $caller);
+        return $code === null ? FailureReason::HANDOFF_UNKNOWN : $this->admit($code, $purpose, $verifier, $client, $caller);
     }
 
     /**
@@ -79,15 +86,16 @@ final readonly class OwnHandoffRedemption
      * @param  \Tests\Integration\Examples\RedeemingAHandoff\OwnHandoffCode  $code
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $verifier
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
      *
      * @throws \Throwable
      */
-    private function admit(OwnHandoffCode $code, Purpose $purpose, #[\SensitiveParameter] string $verifier, ?IdentityReference $caller): ?FailureReason
+    private function admit(OwnHandoffCode $code, Purpose $purpose, #[\SensitiveParameter] string $verifier, ClientContext $client, ?IdentityReference $caller): ?FailureReason
     {
         // @snippet-start own-code-redemption
-        return DB::connection(StorageConnection::name())->transaction(function () use ($code, $purpose, $verifier, $caller): ?FailureReason {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($code, $purpose, $verifier, $client, $caller): ?FailureReason {
             $result = $code->result;
 
             // The lock comes first, before your code is locked
@@ -115,7 +123,7 @@ final readonly class OwnHandoffRedemption
                 trustVersion: $code->trustVersion,     // the connection's trust version it was issued under
             );
 
-            $admission = $refusal === null ? $recheck->admit($result, $binding, $lock, $caller) : null;
+            $admission = $refusal === null ? $recheck->admit($result, $binding, $lock, $client, $caller) : null;
 
             if ($admission === null || !$admission->isPassed()) {
                 $recheck->discardReservation($binding, $result->connectionId);

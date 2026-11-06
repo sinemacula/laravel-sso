@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Feature\Flows;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
@@ -22,6 +21,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
 use SineMacula\Laravel\Sso\Flows\RequestEvents;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -91,10 +91,6 @@ final class StartEventSequenceTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Freshness::class, $this->freshness);
-        $this->app?->instance('request', Request::create('/auth/sso/authorization-requests', 'POST', server: [
-            'REMOTE_ADDR'     => self::IP,
-            'HTTP_USER_AGENT' => self::USER_AGENT,
-        ]));
 
         config()->set('sso.features.oidc', true);
         config()->set('sso.applications', [
@@ -495,7 +491,15 @@ final class StartEventSequenceTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(AuthorizationRequestService::class)->start($application, $purpose, $connectionId ?? $this->connection->id, $codeChallenge, $identity, $sessionId);
+        return $app->make(AuthorizationRequestService::class)->start(
+            $application,
+            $purpose,
+            $connectionId ?? $this->connection->id,
+            self::client(),
+            $codeChallenge,
+            $identity,
+            $sessionId,
+        );
     }
 
     /**
@@ -577,5 +581,16 @@ final class StartEventSequenceTest extends TestCase
     private static function identity(): IdentityReference
     {
         return new IdentityReference('App\Models\User', '42');
+    }
+
+    /**
+     * The client every action of the test is taken for: the browser's IP
+     * address and user agent, which its events carry.
+     *
+     * @return \SineMacula\Laravel\Sso\Http\ClientContext
+     */
+    private static function client(): ClientContext
+    {
+        return new ClientContext(self::IP, self::USER_AGENT);
     }
 }

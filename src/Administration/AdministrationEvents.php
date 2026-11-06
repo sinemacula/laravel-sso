@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Events\KeyAdded;
 use SineMacula\Laravel\Sso\Events\KeyMadeCurrent;
 use SineMacula\Laravel\Sso\Events\KeyNearingExpiry;
 use SineMacula\Laravel\Sso\Events\KeyRetired;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 
@@ -33,9 +34,11 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
  * never their values, and reports nothing when none did. A key's events carry
  * its id, use and fingerprint, never its private key.
  *
- * It holds the projection and the dispatcher, both of which read the clock, the
- * request and the transaction from the container on each call, so nothing of
- * one request is kept for the next (SSO-11.2).
+ * Every method takes the client the action is taken for (`Http\ClientContext`),
+ * whose IP address and user agent the event's context carries; nothing reads
+ * the request being served. It holds the projection and the dispatcher, which
+ * read the clock and the transaction from the container on each call, so
+ * nothing of one request is kept for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,13 +67,14 @@ final readonly class AdministrationEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function connectionCreated(Connection $connection, ?ActingIdentity $actor): void
+    public function connectionCreated(Connection $connection, ?ActingIdentity $actor, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new ConnectionCreated($this->context($connection, $actor)));
+        $this->dispatcher->dispatch(new ConnectionCreated($this->context($connection, $actor, $client)));
     }
 
     /**
@@ -80,11 +84,12 @@ final readonly class AdministrationEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  list<string>  $changedSettings
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function connectionUpdated(Connection $connection, array $changedSettings, ?ActingIdentity $actor): void
+    public function connectionUpdated(Connection $connection, array $changedSettings, ?ActingIdentity $actor, ClientContext $client): void
     {
         $names = array_values(array_unique($changedSettings));
 
@@ -92,7 +97,7 @@ final readonly class AdministrationEvents
             return;
         }
 
-        $this->dispatcher->dispatch(new ConnectionUpdated($this->context($connection, $actor), $names));
+        $this->dispatcher->dispatch(new ConnectionUpdated($this->context($connection, $actor, $client), $names));
     }
 
     /**
@@ -100,13 +105,14 @@ final readonly class AdministrationEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function connectionEnabled(Connection $connection, ?ActingIdentity $actor): void
+    public function connectionEnabled(Connection $connection, ?ActingIdentity $actor, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new ConnectionEnabled($this->context($connection, $actor)));
+        $this->dispatcher->dispatch(new ConnectionEnabled($this->context($connection, $actor, $client)));
     }
 
     /**
@@ -114,13 +120,14 @@ final readonly class AdministrationEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function connectionDisabled(Connection $connection, ?ActingIdentity $actor): void
+    public function connectionDisabled(Connection $connection, ?ActingIdentity $actor, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new ConnectionDisabled($this->context($connection, $actor)));
+        $this->dispatcher->dispatch(new ConnectionDisabled($this->context($connection, $actor, $client)));
     }
 
     /**
@@ -129,13 +136,14 @@ final readonly class AdministrationEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function connectionDeleted(Connection $connection, ?ActingIdentity $actor): void
+    public function connectionDeleted(Connection $connection, ?ActingIdentity $actor, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new ConnectionDeleted($this->context($connection, $actor)));
+        $this->dispatcher->dispatch(new ConnectionDeleted($this->context($connection, $actor, $client)));
     }
 
     /**
@@ -144,13 +152,14 @@ final readonly class AdministrationEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function keyAdded(Connection $connection, ConnectionKey $key, ?ActingIdentity $actor): void
+    public function keyAdded(Connection $connection, ConnectionKey $key, ?ActingIdentity $actor, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new KeyAdded($this->context($connection, $actor), $key->id, $key->use, $key->state, $key->fingerprint, $key->not_after));
+        $this->dispatcher->dispatch(new KeyAdded($this->context($connection, $actor, $client), $key->id, $key->use, $key->state, $key->fingerprint, $key->not_after));
     }
 
     /**
@@ -161,13 +170,14 @@ final readonly class AdministrationEvents
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  ?\SineMacula\Laravel\Sso\Models\ConnectionKey  $previous
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function keyMadeCurrent(Connection $connection, ConnectionKey $key, ?ConnectionKey $previous, ?ActingIdentity $actor): void
+    public function keyMadeCurrent(Connection $connection, ConnectionKey $key, ?ConnectionKey $previous, ?ActingIdentity $actor, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new KeyMadeCurrent($this->context($connection, $actor), $key->id, $key->use, $key->fingerprint, $previous?->id));
+        $this->dispatcher->dispatch(new KeyMadeCurrent($this->context($connection, $actor, $client), $key->id, $key->use, $key->fingerprint, $previous?->id));
     }
 
     /**
@@ -177,13 +187,14 @@ final readonly class AdministrationEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function keyRetired(Connection $connection, ConnectionKey $key, ?ActingIdentity $actor): void
+    public function keyRetired(Connection $connection, ConnectionKey $key, ?ActingIdentity $actor, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new KeyRetired($this->context($connection, $actor), $key->id, $key->use, $key->fingerprint));
+        $this->dispatcher->dispatch(new KeyRetired($this->context($connection, $actor, $client), $key->id, $key->use, $key->fingerprint));
     }
 
     /**
@@ -193,18 +204,19 @@ final readonly class AdministrationEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  int  $thresholdDays
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function keyNearingExpiry(Connection $connection, ConnectionKey $key, int $thresholdDays, ?ActingIdentity $actor = null): void
+    public function keyNearingExpiry(Connection $connection, ConnectionKey $key, int $thresholdDays, ClientContext $client, ?ActingIdentity $actor = null): void
     {
         if ($key->not_after === null) {
             return;
         }
 
-        $this->dispatcher->dispatch(new KeyNearingExpiry($this->context($connection, $actor), $key->id, $key->use, $key->fingerprint, $key->not_after, $thresholdDays));
+        $this->dispatcher->dispatch(new KeyNearingExpiry($this->context($connection, $actor, $client), $key->id, $key->use, $key->fingerprint, $key->not_after, $thresholdDays));
     }
 
     /**
@@ -212,11 +224,13 @@ final readonly class AdministrationEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Events\EventContext
      */
-    private function context(Connection $connection, ?ActingIdentity $actor): EventContext
+    private function context(Connection $connection, ?ActingIdentity $actor, ClientContext $client): EventContext
     {
         return $this->contexts->make(
+            $client,
             connectionId: $connection->id,
             connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,

@@ -63,10 +63,12 @@ $this->callAfterResolving(ProtocolManager::class, function (ProtocolManager $pro
 
 The names `saml2` and `oidc` are the package's own and cannot be replaced. A driver resolves only by exactly the name it
 was registered under, and is available while either protocol switch is on. The registry keeps one instance of each
-driver per application (one per request under Octane), so a driver must hold no connection, tenant or flow state
-between calls. It reads a connection through `SsoConnection`, and its settings through a class implementing
-`Contracts\ProtocolSettings`, which also says which settings are secrets, which need fresh authentication to change
-and which may change what existing subjects mean.
+driver per application (one per request under Octane), so a driver must hold no connection, tenant or flow state between
+calls. It reads a connection through `SsoConnection`, and its settings through a class implementing
+`Contracts\ProtocolSettings`, which also says which settings are secrets, which need fresh authentication to change and
+which may change what existing subjects mean. Its `complete()` is given the `Http\ClientContext` the response arrived
+from as well as what arrived: a driver never reads the request being served, and any event it reports carries that
+client.
 
 ## When a connection is used
 

@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
@@ -29,6 +30,7 @@ use SineMacula\Laravel\Sso\Fetching\Enums\CredentialKind;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -61,6 +63,7 @@ use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
@@ -807,10 +810,11 @@ final class OidcCallbackTest extends TestCase
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse  $tokens
              * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\IdTokenValidation
              */
             #[\Override]
-            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed): IdTokenValidation
+            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed, ClientContext $client): IdTokenValidation
             {
                 unset($connection, $options, $tokens, $consumed);
 
@@ -976,7 +980,12 @@ final class OidcCallbackTest extends TestCase
      */
     private function receiveCallback(string $query, ?Connection $connection = null): CompletionResult
     {
-        return app(CompletionService::class)->callback(($connection ?? $this->connection)->id, new CompletionRequest('GET', $query, []));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            ($connection ?? $this->connection)->id,
+            new CompletionRequest('GET', $query, []),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -1126,10 +1135,11 @@ final class OidcCallbackTest extends TestCase
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse  $tokens
              * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\IdTokenValidation
              */
             #[\Override]
-            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed): IdTokenValidation
+            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed, ClientContext $client): IdTokenValidation
             {
                 unset($connection, $consumed);
 

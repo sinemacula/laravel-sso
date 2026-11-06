@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -41,6 +42,7 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\TableSessions;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
@@ -160,10 +162,11 @@ final class EnforcementAdmissionRaceTest extends TestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 
@@ -252,7 +255,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
     public function testNoSessionSurvivesThatViolatesTheCommittedRule(string $order, bool $stored, bool $readFirst): void
     {
         if ($stored) {
-            self::assertTrue($this->service()->update(self::TENANT, false, [$this->other->id])->isChanged());
+            self::assertTrue($this->service()->update(self::TENANT, false, [$this->other->id], Clients::browser())->isChanged());
         }
 
         $redeemerFirst        = $order === 'redeemer first';
@@ -352,7 +355,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
         }
 
         $answer = DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->redeemed->id, $this->code, self::VERIFIER),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->redeemed->id, $this->code, self::VERIFIER, Clients::browser()),
         );
 
         if ($answer->isRedeemed()) {
@@ -400,7 +403,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
             self::await($awaited);
         }
 
-        $result = $this->service()->update(self::TENANT, true, [$this->other->id]);
+        $result = $this->service()->update(self::TENANT, true, [$this->other->id], Clients::browser());
 
         if ($readFirst) {
             $database->commit();

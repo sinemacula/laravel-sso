@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -97,7 +98,7 @@ abstract class SamlMetadataExampleTestCase extends ExampleTestCase
     {
         return app(ConnectionService::class)->update(self::TENANT, $this->connection->id, [
             'settings' => ['metadata_url' => self::METADATA_URL, ...$settings],
-        ], self::actor());
+        ], Clients::browser(), self::actor());
     }
 
     /**

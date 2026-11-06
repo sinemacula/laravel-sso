@@ -17,6 +17,8 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\SamlConnections;
 
+use Tests\Integration\Examples\Clients;
+
 /**
  * @var array{
  *     keys: \SineMacula\Laravel\Sso\Keys\KeyService,
@@ -32,7 +34,8 @@ $connectionId   = $input['connection_id'];
 $certificatePem = $input['certificate'];
 $actor          = $input['actor'];
 
+$client = Clients::browser();
 // @snippet-start saml-connections-trust
-$keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $actor);
+$keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $client, $actor);
 // @snippet-end saml-connections-trust
 return $keys->keys($tenant->id, $connectionId);

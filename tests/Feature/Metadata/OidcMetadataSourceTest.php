@@ -48,6 +48,7 @@ use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -198,8 +199,8 @@ final class OidcMetadataSourceTest extends TestCase
 
         $this->fetcher->assertNothingFetched();
 
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshQueued($connection->id)->outcome);
-        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id)->outcome);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
     }
 
     /**
@@ -789,14 +790,14 @@ final class OidcMetadataSourceTest extends TestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor)->outcome);
-        self::assertSame(RefreshOutcome::IN_PROGRESS, $this->refresher()->refreshNow(self::TENANT, $claimed->id, $actor)->outcome);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->refresher()->refreshNow('tenant-2', $connection->id, $actor)->reason);
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $off->id, $actor)->outcome);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor, Clients::browser())->outcome);
+        self::assertSame(RefreshOutcome::IN_PROGRESS, $this->refresher()->refreshNow(self::TENANT, $claimed->id, $actor, Clients::browser())->outcome);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->refresher()->refreshNow('tenant-2', $connection->id, $actor, Clients::browser())->reason);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $off->id, $actor, Clients::browser())->outcome);
 
-        $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor);
+        $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor, Clients::browser());
 
-        $limited = $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor);
+        $limited = $this->refresher()->refreshNow(self::TENANT, $connection->id, $actor, Clients::browser());
 
         self::assertSame([RefreshOutcome::RATE_LIMITED, 1800], [$limited->outcome, $limited->retryAfter]);
     }
@@ -817,7 +818,7 @@ final class OidcMetadataSourceTest extends TestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::stale());
 
-        $refused = $this->refresher()->refreshNow(self::TENANT, $off->id, $actor);
+        $refused = $this->refresher()->refreshNow(self::TENANT, $off->id, $actor, Clients::browser());
 
         self::assertSame([RefreshOutcome::REFUSED, FailureReason::FRESHNESS_REQUIRED, $off->id], [$refused->outcome, $refused->reason, $refused->connectionId]);
         self::assertSame(self::MOVED, $this->row($off)->settings['token_endpoint']);
@@ -825,7 +826,7 @@ final class OidcMetadataSourceTest extends TestCase
 
         $this->fetcher->assertNothingFetched();
 
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $on->id, $actor)->outcome);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $on->id, $actor, Clients::browser())->outcome);
         self::assertSame(self::ISSUER . '/token', $this->row($on)->settings['token_endpoint']);
     }
 
@@ -892,7 +893,7 @@ final class OidcMetadataSourceTest extends TestCase
 
         self::assertTrue($expiry->isExpired($this->row($connection)));
 
-        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, new ActingIdentity('App\Models\User', '42'));
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, new ActingIdentity('App\Models\User', '42'), Clients::browser());
         $row    = $this->row($connection);
 
         self::assertSame([RefreshOutcome::REFRESHED, [], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
@@ -953,8 +954,8 @@ final class OidcMetadataSourceTest extends TestCase
         $on  = $this->oidc([], ['jwks' => self::stored([self::key()])]);
         $off = $this->oidc(['metadata_refresh' => false], ['jwks' => self::stored([self::key()]), 'jwks_fetched_at' => $this->clock->now()]);
 
-        $first  = $this->refresher()->refreshQueued($on->id);
-        $second = $this->refresher()->refreshQueued($off->id);
+        $first  = $this->refresher()->refreshQueued($on->id, Clients::browser());
+        $second = $this->refresher()->refreshQueued($off->id, Clients::browser());
 
         self::assertSame([RefreshOutcome::FAILED, FailureReason::DISCOVERY_INVALID, 1], [$first->outcome, $first->reason, $first->failures]);
         self::assertSame([RefreshOutcome::FAILED, FailureReason::FETCH_FAILED, 1], [$second->outcome, $second->reason, $second->failures]);
@@ -1035,7 +1036,7 @@ final class OidcMetadataSourceTest extends TestCase
 
         $this->clock->advance($seconds);
 
-        $result = $this->source()->write($claim, $fetched, null);
+        $result = $this->source()->write($claim, $fetched, null, Clients::browser());
         $row    = $this->row($connection);
 
         self::assertSame($refreshed ? [RefreshOutcome::REFRESHED, null] : [RefreshOutcome::FAILED, FailureReason::METADATA_EXPIRED], [$result->outcome, $result->reason]);
@@ -1062,7 +1063,7 @@ final class OidcMetadataSourceTest extends TestCase
 
         Connection::query()->whereKey($connection->id)->update(['settings' => self::settings(['metadata_refresh' => false, 'jwks_uri' => self::MOVED])]);
 
-        self::assertSame(RefreshOutcome::CONFLICT, $this->source()->write($claim, $fetched, null)->outcome);
+        self::assertSame(RefreshOutcome::CONFLICT, $this->source()->write($claim, $fetched, null, Clients::browser())->outcome);
         self::assertSame([0, self::stored([self::next()])], [$this->row($connection)->jwks_version, $this->row($connection)->jwks]);
     }
 
@@ -1080,9 +1081,12 @@ final class OidcMetadataSourceTest extends TestCase
         config()->set('sso.features.saml2', true);
 
         self::assertSame([], $this->refresher()->dueConnectionIds());
-        self::assertSame([], $this->refresher()->refreshDue());
-        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id)->outcome);
-        self::assertSame(FailureReason::FEATURE_DISABLED, $this->refresher()->refreshNow(self::TENANT, $connection->id, new ActingIdentity('App\Models\User', '42'))->reason);
+        self::assertSame([], $this->refresher()->refreshDue(Clients::browser()));
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
+        self::assertSame(
+            FailureReason::FEATURE_DISABLED,
+            $this->refresher()->refreshNow(self::TENANT, $connection->id, new ActingIdentity('App\Models\User', '42'), Clients::browser())->reason,
+        );
 
         $this->fetcher->assertNothingFetched();
     }
@@ -1146,7 +1150,7 @@ final class OidcMetadataSourceTest extends TestCase
 
         self::assertInstanceOf(RefreshClaim::class, $claim);
 
-        $result = $this->source()->write($claim, FetchedMetadata::read(new \stdClass, $this->clock->now()), null);
+        $result = $this->source()->write($claim, FetchedMetadata::read(new \stdClass, $this->clock->now()), null, Clients::browser());
 
         self::assertSame([RefreshOutcome::FAILED, FailureReason::DISCOVERY_INVALID], [$result->outcome, $result->reason]);
     }
@@ -1181,7 +1185,7 @@ final class OidcMetadataSourceTest extends TestCase
      */
     private function refreshDue(): RefreshResult
     {
-        $results = $this->refresher()->refreshDue();
+        $results = $this->refresher()->refreshDue(Clients::browser());
 
         self::assertCount(1, $results);
 

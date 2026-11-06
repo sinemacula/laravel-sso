@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -243,7 +244,7 @@ final class ConcurrentLinkRemovalTest extends TestCase
                 usleep((int) ($wait * 1000000));
             }
 
-            $result = app(LinkService::class)->remove(new IdentityReference('user', '1'), $this->link->id);
+            $result = app(LinkService::class)->remove(new IdentityReference('user', '1'), $this->link->id, Clients::browser());
 
             if ($inTransaction) {
                 $database->commit();

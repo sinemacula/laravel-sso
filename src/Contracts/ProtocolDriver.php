@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Contracts;
 
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Protocols\Completion;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
@@ -89,14 +90,17 @@ interface ProtocolDriver
     /**
      * Validate the identity provider's response against the authorisation
      * request the pipeline consumed for it, and everything SSO-6 or SSO-7
-     * requires, or say why it is refused.
+     * requires, or say why it is refused. The client is the one the response
+     * arrived from, which any event the validation records carries (an OIDC
+     * driver's JWKS refetch, say); a driver never reads the request itself.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      */
-    public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed): Completion;
+    public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed, ClientContext $client): Completion;
 
     /**
      * What an administrator registers at the identity provider (SSO-5.9): the

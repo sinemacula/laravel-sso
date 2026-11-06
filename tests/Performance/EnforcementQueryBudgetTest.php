@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 
 /**
@@ -99,11 +100,11 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
 
         $none = $this->assertQueryBudget(1, 0, fn (): EnforcementPolicy => $contract->policy(self::TENANT, 'web'));
 
-        $this->service()->update(self::TENANT, false, [$this->connection->id]);
+        $this->service()->update(self::TENANT, false, [$this->connection->id], Clients::browser());
 
         $stored = $this->assertQueryBudget(1, 0, fn (): EnforcementPolicy => $contract->policy(self::TENANT, 'web'));
 
-        $this->service()->update(self::TENANT, true, [$this->connection->id]);
+        $this->service()->update(self::TENANT, true, [$this->connection->id], Clients::browser());
 
         $on = $this->assertQueryBudget(2, 0, fn (): EnforcementPolicy => $contract->policy(self::TENANT, 'web'));
 
@@ -123,7 +124,7 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
     {
         $created = $this->assertQueryBudget(4, 2, fn (): EnforcementResult => $this->turnOn());
 
-        $off = $this->assertQueryBudget(4, 1, fn (): EnforcementResult => $this->service()->update(self::TENANT, false, [$this->connection->id]));
+        $off = $this->assertQueryBudget(4, 1, fn (): EnforcementResult => $this->service()->update(self::TENANT, false, [$this->connection->id], Clients::browser()));
 
         self::assertSame(EnforcementStatus::UPDATED, $created->status);
         self::assertSame(EnforcementStatus::UPDATED, $off->status);
@@ -143,12 +144,12 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
         $unchanged = $this->assertQueryBudget(4, 0, fn (): EnforcementResult => $this->turnOn());
 
         $untried = $this->makeConnection(['enabled' => true]);
-        $lacking = $this->assertQueryBudget(2, 0, fn (): EnforcementResult => $this->service()->update(self::TENANT, true, [$untried->id]));
-        $unknown = $this->assertQueryBudget(1, 0, fn (): EnforcementResult => $this->service()->update(self::TENANT, true, ['01jbzzzzzzzzzzzzzzzzzzzzzz']));
+        $lacking = $this->assertQueryBudget(2, 0, fn (): EnforcementResult => $this->service()->update(self::TENANT, true, [$untried->id], Clients::browser()));
+        $unknown = $this->assertQueryBudget(1, 0, fn (): EnforcementResult => $this->service()->update(self::TENANT, true, ['01jbzzzzzzzzzzzzzzzzzzzzzz'], Clients::browser()));
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $stale = $this->assertQueryBudget(2, 0, fn (): EnforcementResult => $this->service()->update(self::TENANT, false, [$this->connection->id]));
+        $stale = $this->assertQueryBudget(2, 0, fn (): EnforcementResult => $this->service()->update(self::TENANT, false, [$this->connection->id], Clients::browser()));
 
         Config::set('sso.features.enforcement', false);
 
@@ -182,7 +183,7 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
      */
     private function turnOn(): EnforcementResult
     {
-        return $this->service()->update(self::TENANT, true, [$this->connection->id]);
+        return $this->service()->update(self::TENANT, true, [$this->connection->id], Clients::browser());
     }
 
     /**

@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
 use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -176,7 +177,7 @@ final class CompletionLocksTest extends LinkingTestCase
      */
     private static function withoutResult(CompletionState $state): CompletionState
     {
-        return CompletionState::arrived($state->connectionId, $state->request)
+        return CompletionState::arrived($state->connectionId, $state->request, Clients::browser())
             ->withConnection($state->connection)
             ->withAuthorizationRequest($state->authorizationRequest, $state->consumed, $state->application);
     }
@@ -193,7 +194,7 @@ final class CompletionLocksTest extends LinkingTestCase
         $consumed    = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString(self::REFERENCE), $this->clock->now());
         $application = Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']);
 
-        return CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []))
+        return CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []), Clients::browser())
             ->withConnection($this->connection)
             ->withAuthorizationRequest(AuthorizationRequest::query()->sole(), $consumed, $application)
             ->withResult($this->resultWith(new LinkingEmail(self::EMAIL, LinkingEmailSource::ID_TOKEN)));

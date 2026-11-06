@@ -4,11 +4,11 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Completion;
 
-use Illuminate\Contracts\Container\Container;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
-use SineMacula\Laravel\Sso\Events\Enums\Flow;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcDriver;
@@ -18,10 +18,14 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
  * Completes a flow where the identity provider sends the browser back (SSO-5.5,
- * SSO-5.6, SSO-5.7, SSO-12.1): one call for a connection's SAML assertion
- * consumer service, one for its OIDC callback, each answering a
+ * SSO-5.6, SSO-5.7, SSO-12.1): one call, `complete()`, for a connection's SAML
+ * assertion consumer service and its OIDC callback alike, told which endpoint
+ * the response arrived at (`Enums\CompletionEndpoint`), answering a
  * `Completion\CompletionResult` the application's controller turns into its
- * response (`Responses\CompletionResponses`).
+ * response (`Responses\CompletionResponses`). It takes what arrived as a
+ * `Protocols\CompletionRequest` and the client it came from as an
+ * `Http\ClientContext`, each built from the request by the application's
+ * controller, and never reads the request being served itself.
  *
  * The connection is the one the application's route names, whose endpoint URL
  * the endpoint resolver built from configuration, never from the request
@@ -38,7 +42,8 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * exactly one `FlowFailed` (`Flow::ASSERTION` or `Flow::CALLBACK`):
  *
  * 1. the completion is counted against the client's IP address and the
- *    connection (SSO-11.8), and a full limit is `rate_limited` with its wait;
+ *    connection (SSO-11.8), and a full limit is `rate_limited` with its wait:
+ *    one count for both endpoints, made before the method is looked at;
  * 2. the method must be the endpoint's: `POST` (HTTP-POST binding) at the
  *    assertion consumer service, `GET` at the callback, compared exactly;
  *    anything else is `rejected(request_unknown)`;
@@ -58,10 +63,9 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * A database error, a misconfiguration and a contract's exception propagate as
  * server errors (SSO-11.4), never as a failure.
  *
- * It holds the container, the limiter, the drivers' registry, the pipeline and
- * the reporter, none of which keeps anything of one request for the next, and
- * reads the request being served from the container on each call (SSO-11.2).
- * Resolve it from the container per request.
+ * It holds the limiter, the drivers' registry, the pipeline and the reporter,
+ * none of which keeps anything of one request for the next (SSO-11.2). Resolve
+ * it from the container per request.
  *
  * @api
  *
@@ -79,16 +83,12 @@ final readonly class CompletionService
     /**
      * Constructor.
      *
-     * @param  \Illuminate\Contracts\Container\Container  $container
      * @param  \SineMacula\Laravel\Sso\Contracts\AttemptLimiter  $limiter
      * @param  \SineMacula\Laravel\Sso\Protocols\ProtocolManager  $protocols
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionPipeline  $pipeline
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionEvents  $events
      */
     public function __construct(
-
-        /** The container the request being served is resolved from on each call. */
-        private Container $container,
 
         /** Counts each completion against the IP address and the connection. */
         private AttemptLimiter $limiter,
@@ -104,94 +104,65 @@ final readonly class CompletionService
     ) {}
 
     /**
-     * Complete at the connection's SAML assertion consumer service, with what
-     * the identity provider's response posted.
+     * Complete at the connection's endpoint, with what arrived there from the
+     * client: what the identity provider's response posted to the assertion
+     * consumer service, or the authorisation response's query at the callback.
      *
+     * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
-     * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
-     *
-     * @throws \Throwable
-     */
-    public function assertionConsumerService(string $connectionId, CompletionRequest $request): CompletionResult
-    {
-        return $this->complete(Flow::ASSERTION, 'POST', $connectionId, $request);
-    }
-
-    /**
-     * Complete at the connection's OIDC callback, with the authorisation
-     * response's query.
-     *
-     * @param  string  $connectionId
-     * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
-     * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
-     *
-     * @throws \Throwable
-     */
-    public function callback(string $connectionId, CompletionRequest $request): CompletionResult
-    {
-        return $this->complete(Flow::CALLBACK, 'GET', $connectionId, $request);
-    }
-
-    /**
-     * Count the completion, and refuse a method the endpoint does not take
-     * (steps 1 and 2), then find the connection.
-     *
-     * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
-     * @param  string  $method
-     * @param  string  $connectionId
-     * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
      *
      * @throws \LogicException
      * @throws \Throwable
      */
-    private function complete(Flow $flow, string $method, string $connectionId, CompletionRequest $request): CompletionResult
+    public function complete(CompletionEndpoint $endpoint, string $connectionId, CompletionRequest $request, ClientContext $client): CompletionResult
     {
         StorageConnection::assertNoTransaction(self::INSIDE_TRANSACTION);
 
-        $state   = CompletionState::arrived($connectionId, $request);
-        $attempt = $this->limiter->attempt(AttemptSubject::completion($this->ip(), $connectionId));
+        $state   = CompletionState::arrived($connectionId, $request, $client);
+        $attempt = $this->limiter->attempt(AttemptSubject::completion($client, $connectionId));
 
         if ($attempt->retryAfter !== null) {
-            return $this->refuse($flow, $state, FailureReason::RATE_LIMITED, CompletionResult::rateLimited($attempt->retryAfter));
+            return $this->refuse($endpoint, $state, FailureReason::RATE_LIMITED, CompletionResult::rateLimited($attempt->retryAfter));
         }
 
-        return $request->method === $method ? $this->admit($flow, $state) : $this->refuse($flow, $state, FailureReason::REQUEST_UNKNOWN);
+        return $request->method === $endpoint->method() ? $this->admit($endpoint, $state) : $this->refuse($endpoint, $state, FailureReason::REQUEST_UNKNOWN);
     }
 
     /**
      * Find the connection and check its protocol completes at the endpoint
      * (steps 3 and 4), then run the completion's steps.
      *
-     * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
+     * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
      *
      * @throws \Throwable
      */
-    private function admit(Flow $flow, CompletionState $state): CompletionResult
+    private function admit(CompletionEndpoint $endpoint, CompletionState $state): CompletionResult
     {
         $connection = $this->find($state->connectionId);
 
         if ($connection === null) {
-            return $this->refuse($flow, $state, FailureReason::CONNECTION_UNAVAILABLE);
+            return $this->refuse($endpoint, $state, FailureReason::CONNECTION_UNAVAILABLE);
         }
 
         $state = $state->withConnection($connection);
 
-        if (!$this->completesAt($flow, $connection->protocol)) {
-            return $this->refuse($flow, $state, FailureReason::CONNECTION_UNAVAILABLE);
+        if (!$this->completesAt($endpoint, $connection->protocol)) {
+            return $this->refuse($endpoint, $state, FailureReason::CONNECTION_UNAVAILABLE);
         }
 
-        return $this->pipeline->run($flow, $state);
+        return $this->pipeline->run($endpoint->flow(), $state);
     }
 
     /**
-     * Report a completion refused before its steps, and answer it: `rejected`
-     * for the reason unless the answer is given.
+     * Report a completion refused before its steps, with the endpoint's flow,
+     * and answer it: `rejected` for the reason unless the answer is given.
      *
-     * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
+     * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  ?\SineMacula\Laravel\Sso\Completion\CompletionResult  $answer
@@ -199,27 +170,27 @@ final readonly class CompletionService
      *
      * @throws \InvalidArgumentException
      */
-    private function refuse(Flow $flow, CompletionState $state, FailureReason $reason, ?CompletionResult $answer = null): CompletionResult
+    private function refuse(CompletionEndpoint $endpoint, CompletionState $state, FailureReason $reason, ?CompletionResult $answer = null): CompletionResult
     {
-        $this->events->report($flow, StageOutcome::refuse($state, $reason));
+        $this->events->report($endpoint->flow(), StageOutcome::refuse($state, $reason));
 
         return $answer ?? CompletionResult::rejected($reason);
     }
 
     /**
-     * Whether a connection over the protocol completes at the flow's endpoint:
-     * `saml2` at the assertion consumer service, `oidc` at the callback, and a
-     * protocol an application registered at either.
+     * Whether a connection over the protocol completes at the endpoint: `saml2`
+     * at the assertion consumer service, `oidc` at the callback, and a protocol
+     * an application registered at either.
      *
-     * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
+     * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
      * @param  string  $protocol
      * @return bool
      */
-    private function completesAt(Flow $flow, string $protocol): bool
+    private function completesAt(CompletionEndpoint $endpoint, string $protocol): bool
     {
         return match ($protocol) {
-            Saml2Driver::NAME => $flow === Flow::ASSERTION,
-            OidcDriver::NAME  => $flow === Flow::CALLBACK,
+            Saml2Driver::NAME => $endpoint === CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            OidcDriver::NAME  => $endpoint === CompletionEndpoint::CALLBACK,
             default           => $this->protocols->isRegistered($protocol),
         };
     }
@@ -242,19 +213,5 @@ final readonly class CompletionService
         $connection = Connection::query()->useWritePdo()->whereKey($connectionId)->first();
 
         return $connection?->id === $connectionId ? $connection : null;
-    }
-
-    /**
-     * The IP address of the request being served, or `null` when none is bound,
-     * as in a console command, which counts against no IP address.
-     *
-     * @return ?string
-     */
-    private function ip(): ?string
-    {
-        /** @var ?\Illuminate\Http\Request $request */
-        $request = $this->container->bound('request') ? $this->container->make('request') : null;
-
-        return $request?->ip();
     }
 }

@@ -59,7 +59,8 @@ completes it from the session it already has.
 
 ## Success Path
 
-1. `CompletionService::assertionConsumerService()` counts the attempt, checks the method and finds the connection.
+1. `CompletionService::complete()`, at `CompletionEndpoint::ASSERTION_CONSUMER_SERVICE`, counts the attempt, checks the
+   method and finds the connection.
 2. `CorrelateResponse` asks the SAML driver to correlate; `ResponseCorrelator` finds no `InResponseTo` in the envelope,
    so the stage answers `StageOutcome::reinitiate()` with the unsolicited correlation and the pipeline runs no further
    step.

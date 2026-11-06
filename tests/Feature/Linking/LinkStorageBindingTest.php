@@ -33,6 +33,7 @@ use SineMacula\Laravel\Sso\Provisioning\Enums\ProvisioningStatus;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Links\FixedLinker;
@@ -162,7 +163,7 @@ final class LinkStorageBindingTest extends LinkingTestCase
         $this->app?->instance(Linker::class, new NoLinks);
 
         try {
-            app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['enabled' => true]);
+            app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['enabled' => true], Clients::browser());
             self::fail('Linking went on over a linker that would ignore its rows.');
         } catch (\LogicException $exception) {
             self::assertStringStartsWith('Linking by a verified domain needs links its resolver reads', $exception->getMessage());
@@ -173,7 +174,7 @@ final class LinkStorageBindingTest extends LinkingTestCase
 
         $this->connection->forceFill(['linking_enabled' => true])->save();
 
-        self::assertTrue(app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['enabled' => false])->isChanged());
+        self::assertTrue(app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['enabled' => false], Clients::browser())->isChanged());
     }
 
     /**
@@ -250,6 +251,7 @@ final class LinkStorageBindingTest extends LinkingTestCase
             $this->connection->id,
             (string) $completion->handoff?->code->reveal(),
             (string) $start->verifier?->reveal(),
+            Clients::browser(),
             $this->person,
         );
 
@@ -278,7 +280,7 @@ final class LinkStorageBindingTest extends LinkingTestCase
             $this->app?->instance(Linker::class, new FixedLinker(null));
 
             try {
-                app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person);
+                app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person, Clients::browser());
                 self::fail('The helper wrote through a linker that would ignore it.');
             } catch (\LogicException $exception) {
                 self::assertStringStartsWith('The provisioning helper needs links its resolver reads', $exception->getMessage());
@@ -315,7 +317,7 @@ final class LinkStorageBindingTest extends LinkingTestCase
         $answer = null;
 
         Event::listen(ResultUnlinked::class, function (ResultUnlinked $event) use (&$answer): void {
-            $answer = app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person);
+            $answer = app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person, Clients::browser());
         });
 
         $this->start();

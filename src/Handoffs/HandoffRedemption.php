@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Handoffs;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -17,6 +16,7 @@ use SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\S256Challenge;
 use SineMacula\Laravel\Sso\Flows\Verifier;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
@@ -33,8 +33,9 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  *
  * In this fixed order, the first that refuses ending the redemption:
  *
- * 1. the redemption is counted against the IP address of the request being
- *    served (none in a console) (SSO-11.8); a full limit is `rate_limited`;
+ * 1. the redemption is counted against the IP address of the client it is made
+ *    for (none for a client with no IP address) (SSO-11.8); a full limit is
+ *    `rate_limited`;
  * 2. a code that is not 43 base64url characters is `handoff_unknown`; a
  *    reference, a verifier or anything else never stands for a code;
  * 3. the stored code is read by its digest on the write connection (SSO-11.3)
@@ -147,10 +148,12 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * error and a contract's exception propagate as server errors (SSO-11.4), roll
  * the transaction back, and leave the code unconsumed.
  *
- * It holds the container, the limiter, the store, the encrypter, the recheck,
- * the reporter and the clock, none of which keeps anything of one redemption
- * for the next, and reads the request being served from the container on each
- * call (SSO-11.2). Resolve it from the container per request.
+ * `admit()` and `redeem()` take the client the redemption is made for as an
+ * `Http\ClientContext`, which the application builds where it reads the
+ * request; neither reads the request being served itself. It holds the limiter,
+ * the store, the encrypter, the recheck, the reporter and the clock, none of
+ * which keeps anything of one redemption for the next (SSO-11.2). Resolve it
+ * from the container per request.
  *
  * @api
  *
@@ -171,7 +174,6 @@ final readonly class HandoffRedemption
     /**
      * Constructor.
      *
-     * @param  \Illuminate\Contracts\Container\Container  $container
      * @param  \SineMacula\Laravel\Sso\Contracts\AttemptLimiter  $limiter
      * @param  \SineMacula\Laravel\Sso\Contracts\SingleUseStore  $store
      * @param  \SineMacula\Laravel\Sso\Contracts\SecretEncrypter  $encrypter
@@ -181,10 +183,7 @@ final readonly class HandoffRedemption
      */
     public function __construct(
 
-        /** The container the request being served is resolved from on each call. */
-        private Container $container,
-
-        /** Counts each redemption against the IP address. */
+        /** Counts each redemption against the client's IP address. */
         private AttemptLimiter $limiter,
 
         /** Records each consumed code once. */
@@ -205,14 +204,16 @@ final readonly class HandoffRedemption
 
     /**
      * Redeem the code as the session-admission API, inside the caller's
-     * transaction, for the purpose, the application and the connection, with
-     * the client's verifier and the caller the application has authenticated.
+     * transaction, for the purpose, the application and the connection, for the
+     * client, with its verifier and the caller the application has
+     * authenticated.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $application
      * @param  string  $connectionId
      * @param  string  $code
      * @param  string  $verifier
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *
@@ -224,18 +225,19 @@ final readonly class HandoffRedemption
         string $connectionId,
         #[\SensitiveParameter] string $code,
         #[\SensitiveParameter] string $verifier,
+        ClientContext $client,
         ?IdentityReference $caller = null,
     ): RedemptionResult {
         if (DB::connection(StorageConnection::name())->transactionLevel() === 0) {
             throw new \LogicException('A session is admitted inside the caller\'s transaction on the package\'s storage connection (decision D5).');
         }
 
-        return $this->redeem($purpose, $application, $connectionId, $code, $verifier, $caller);
+        return $this->redeem($purpose, $application, $connectionId, $code, $verifier, $client, $caller);
     }
 
     /**
-     * Redeem the code, for the purpose, the application and the connection,
-     * with the client's verifier and the caller the application has
+     * Redeem the code, for the purpose, the application and the connection, for
+     * the client, with its verifier and the caller the application has
      * authenticated, which a `link` needs: inside the caller's transaction, it
      * is what `admit()` is; with none open, the standalone path of a `link`.
      *
@@ -244,6 +246,7 @@ final readonly class HandoffRedemption
      * @param  string  $connectionId
      * @param  string  $code
      * @param  string  $verifier
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *
@@ -255,13 +258,14 @@ final readonly class HandoffRedemption
         string $connectionId,
         #[\SensitiveParameter] string $code,
         #[\SensitiveParameter] string $verifier,
+        ClientContext $client,
         ?IdentityReference $caller = null,
     ): RedemptionResult {
-        $attempt = $this->limiter->attempt(AttemptSubject::redemption($this->ip()));
+        $attempt = $this->limiter->attempt(AttemptSubject::redemption($client));
 
         if ($attempt->retryAfter !== null) {
 
-            $this->events->refused(FailureReason::RATE_LIMITED, $purpose);
+            $this->events->refused(FailureReason::RATE_LIMITED, $purpose, $client);
 
             return RedemptionResult::rateLimited($attempt->retryAfter);
         }
@@ -270,7 +274,7 @@ final readonly class HandoffRedemption
 
         if ($found === null) {
 
-            $this->events->refused(FailureReason::HANDOFF_UNKNOWN, $purpose);
+            $this->events->refused(FailureReason::HANDOFF_UNKNOWN, $purpose, $client);
 
             return RedemptionResult::refused(FailureReason::HANDOFF_UNKNOWN);
         }
@@ -281,7 +285,9 @@ final readonly class HandoffRedemption
         $admitted = $database->transactionLevel() > 0;
         $tenantId = Connection::query()->useWritePdo()->whereKey($found->connection_id)->value('tenant_id');
         $tenantId = is_string($tenantId) ? $tenantId : null;
-        $attempt  = fn (): RedemptionResult => $database->transaction(fn (): RedemptionResult => $this->locked($found, $tenantId, $mismatch, $caller, $admitted, $purpose));
+        $attempt  = fn (): RedemptionResult => $database->transaction(
+            fn (): RedemptionResult => $this->locked($found, $tenantId, $mismatch, $caller, $admitted, $purpose, $client),
+        );
 
         return $admitted ? $attempt() : self::restartedOnce($attempt);
     }
@@ -338,24 +344,32 @@ final readonly class HandoffRedemption
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @param  bool  $admitted
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *
      * @throws \Throwable
      */
-    private function locked(StoredCode $found, ?string $tenantId, \Closure $mismatch, ?IdentityReference $caller, bool $admitted, Purpose $purpose): RedemptionResult
-    {
+    private function locked(
+        StoredCode $found,
+        ?string $tenantId,
+        \Closure $mismatch,
+        ?IdentityReference $caller,
+        bool $admitted,
+        Purpose $purpose,
+        ClientContext $client,
+    ): RedemptionResult {
         $confirming = $found->purpose === Purpose::LINK ? IdentityReference::fromColumns($found->identity_type, $found->identity_id) : null;
         $lock       = $tenantId       === null ? null : $this->recheck->lock($tenantId, $found->connection_id, $found->application, $found->reservation_id, $confirming);
 
         if ($lock?->connection === null) {
-            return $this->refuse(FailureReason::CONNECTION_UNAVAILABLE, $found);
+            return $this->refuse(FailureReason::CONNECTION_UNAVAILABLE, $found, $client);
         }
 
         $connection = $lock->connection;
         $code       = StoredCode::query()->useWritePdo()->lockForUpdate()->whereKey($found->id)->first();
 
         if (!self::isStill($code, $found)) {
-            return $this->refuse(FailureReason::HANDOFF_UNKNOWN, $found, $connection);
+            return $this->refuse(FailureReason::HANDOFF_UNKNOWN, $found, $client, $connection);
         }
 
         self::assertAdmissible($purpose, $admitted);
@@ -366,7 +380,7 @@ final readonly class HandoffRedemption
             default                                     => null,
         };
 
-        return $refusal === null ? $this->consume($code, $lock, $connection, $mismatch, $caller, $admitted) : $this->refuse($refusal, $code, $connection);
+        return $refusal === null ? $this->consume($code, $lock, $connection, $mismatch, $caller, $admitted, $client) : $this->refuse($refusal, $code, $client, $connection);
     }
 
     /**
@@ -397,19 +411,27 @@ final readonly class HandoffRedemption
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\HandoffCode, \Carbon\CarbonImmutable): ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $mismatch
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @param  bool  $admitted
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *
      * @throws \Throwable
      */
-    private function consume(StoredCode $code, RecheckLock $lock, Connection $connection, \Closure $mismatch, ?IdentityReference $caller, bool $admitted): RedemptionResult
-    {
+    private function consume(
+        StoredCode $code,
+        RecheckLock $lock,
+        Connection $connection,
+        \Closure $mismatch,
+        ?IdentityReference $caller,
+        bool $admitted,
+        ClientContext $client,
+    ): RedemptionResult {
         $now = $this->clock->now();
 
         $code->forceFill(['redeemed_at' => $now])->save();
 
         $refusal = $mismatch($code, $now);
 
-        return $refusal === null ? $this->redeemed($code, $lock, $connection, $caller, $admitted) : $this->refuseConsumed($refusal, $code, $connection);
+        return $refusal === null ? $this->redeemed($code, $lock, $connection, $caller, $admitted, $client) : $this->refuseConsumed($refusal, $code, $connection, $client);
     }
 
     /**
@@ -515,6 +537,7 @@ final readonly class HandoffRedemption
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @param  bool  $admitted
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *
      * @throws \InvalidArgumentException
@@ -522,21 +545,21 @@ final readonly class HandoffRedemption
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
      */
-    private function redeemed(StoredCode $code, RecheckLock $lock, Connection $connection, ?IdentityReference $caller, bool $admitted): RedemptionResult
+    private function redeemed(StoredCode $code, RecheckLock $lock, Connection $connection, ?IdentityReference $caller, bool $admitted, ClientContext $client): RedemptionResult
     {
         $result    = $this->restored($code, $lock);
-        $admission = $this->recheck->admit($result, self::binding($code), $lock, $caller);
+        $admission = $this->recheck->admit($result, self::binding($code), $lock, $client, $caller);
         $reason    = $admission->outcome->reason();
 
         if ($reason !== null) {
-            return $this->refuseConsumed($reason, $code, $connection);
+            return $this->refuseConsumed($reason, $code, $connection, $client);
         }
 
         if ($code->purpose === Purpose::SIGN_IN && $admission->identity !== null) {
             $this->recheck->acknowledgeSignIn($result, $lock);
         }
 
-        $this->events->redeemed($code, $connection, $admission->identity);
+        $this->events->redeemed($code, $connection, $client, $admission->identity);
 
         return RedemptionResult::redeemed(
             result: $result,
@@ -626,14 +649,15 @@ final readonly class HandoffRedemption
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *
      * @throws \InvalidArgumentException
      */
-    private function refuse(FailureReason $reason, StoredCode $code, ?Connection $connection = null): RedemptionResult
+    private function refuse(FailureReason $reason, StoredCode $code, ClientContext $client, ?Connection $connection = null): RedemptionResult
     {
-        $this->events->failed($reason, $code, $connection);
+        $this->events->failed($reason, $code, $client, $connection);
 
         return RedemptionResult::refused($reason);
     }
@@ -644,29 +668,16 @@ final readonly class HandoffRedemption
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function refuseConsumed(FailureReason $reason, StoredCode $code, Connection $connection): RedemptionResult
+    private function refuseConsumed(FailureReason $reason, StoredCode $code, Connection $connection, ClientContext $client): RedemptionResult
     {
         $this->recheck->discardReservation(self::binding($code), $connection->id);
 
-        return $this->refuse($reason, $code, $connection);
-    }
-
-    /**
-     * The IP address of the request being served, or `null` when none is bound,
-     * as in a console command, which counts against no IP address.
-     *
-     * @return ?string
-     */
-    private function ip(): ?string
-    {
-        /** @var ?\Illuminate\Http\Request $request */
-        $request = $this->container->bound('request') ? $this->container->make('request') : null;
-
-        return $request?->ip();
+        return $this->refuse($reason, $code, $client, $connection);
     }
 }

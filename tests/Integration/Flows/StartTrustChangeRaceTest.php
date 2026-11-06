@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
@@ -226,7 +227,7 @@ final class StartTrustChangeRaceTest extends TestCase
      */
     private function start(): StartResult
     {
-        return app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id);
+        return app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id, Clients::browser());
     }
 
     /**

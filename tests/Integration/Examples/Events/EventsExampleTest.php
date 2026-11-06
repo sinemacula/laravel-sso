@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -172,10 +173,11 @@ final class EventsExampleTest extends ExampleTestCase
         $user         = $this->administrator;
         $url          = 'https://op.example.test/oauth2/v2/token';
 
+        $client = Clients::browser();
         // @snippet-start acting-identity
         $actor = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
 
-        $updated = $connections->update($tenantId, $connectionId, ['settings' => ['token_endpoint' => $url]], $actor);
+        $updated = $connections->update($tenantId, $connectionId, ['settings' => ['token_endpoint' => $url]], $client, $actor);
         // @snippet-end acting-identity
         self::assertTrue($updated->isSucceeded());
         self::assertSame(['token_endpoint'], $updated->changedSettings);
@@ -202,7 +204,13 @@ final class EventsExampleTest extends ExampleTestCase
         $connectionId = $this->makeOidcConnection(new FakeOpenIdProvider(clock: $this->clock));
         $actor        = new ActingIdentity($this->administrator->getMorphClass(), (string) $this->administrator->getKey());
 
-        $refused = app(ConnectionService::class)->update('tenant-2', $connectionId, ['settings' => ['token_endpoint' => 'https://op.example.test/other']], $actor);
+        $refused = app(ConnectionService::class)->update(
+            'tenant-2',
+            $connectionId,
+            ['settings' => ['token_endpoint' => 'https://op.example.test/other']],
+            Clients::browser(),
+            $actor,
+        );
 
         self::assertTrue($refused->isRefused());
         self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $refused->reason);
@@ -231,24 +239,24 @@ final class EventsExampleTest extends ExampleTestCase
         $actor        = new ActingIdentity($this->administrator->getMorphClass(), (string) $this->administrator->getKey());
         $connections  = app(ConnectionService::class);
         $keys         = app(KeyService::class);
-        $connectionId = (string) $connections->create(self::TENANT, 'saml2', 'Example SAML', [
+        $connectionId = (string) $connections->create(self::TENANT, 'saml2', 'Example SAML', Clients::browser(), [
             'idp_entity_id' => $idp->entityId,
             'sso_url'       => FakeSamlIdentityProvider::SSO_URL,
         ], actor: $actor)->connection?->id;
 
-        $certificate = (string) $keys->trustCertificate(self::TENANT, $connectionId, $idp->certificate(), $actor)->key?->id;
+        $certificate = (string) $keys->trustCertificate(self::TENANT, $connectionId, $idp->certificate(), Clients::browser(), $actor)->key?->id;
 
-        self::assertTrue($connections->update(self::TENANT, $connectionId, ['display_name' => 'Renamed SAML'], $actor)->isSucceeded());
-        self::assertTrue($connections->update('tenant-2', $connectionId, ['display_name' => 'Not ours'], $actor)->isRefused());
-        self::assertTrue($connections->enable(self::TENANT, $connectionId, $actor)->isSucceeded());
+        self::assertTrue($connections->update(self::TENANT, $connectionId, ['display_name' => 'Renamed SAML'], Clients::browser(), $actor)->isSucceeded());
+        self::assertTrue($connections->update('tenant-2', $connectionId, ['display_name' => 'Not ours'], Clients::browser(), $actor)->isRefused());
+        self::assertTrue($connections->enable(self::TENANT, $connectionId, Clients::browser(), $actor)->isSucceeded());
 
-        $first  = (string) $keys->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, actor: $actor)->key?->id;
-        $second = (string) $keys->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, actor: $actor)->key?->id;
+        $first  = (string) $keys->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, Clients::browser(), actor: $actor)->key?->id;
+        $second = (string) $keys->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, Clients::browser(), actor: $actor)->key?->id;
 
-        self::assertTrue($keys->makeCurrent(self::TENANT, $connectionId, $second, $actor)->isSucceeded());
-        self::assertTrue($keys->retire(self::TENANT, $connectionId, $first, $actor)->isSucceeded());
-        self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId, $actor)->isSucceeded());
-        self::assertTrue(app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, $actor)->isSucceeded());
+        self::assertTrue($keys->makeCurrent(self::TENANT, $connectionId, $second, Clients::browser(), $actor)->isSucceeded());
+        self::assertTrue($keys->retire(self::TENANT, $connectionId, $first, Clients::browser(), $actor)->isSucceeded());
+        self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId, Clients::browser(), $actor)->isSucceeded());
+        self::assertTrue(app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, Clients::browser(), $actor)->isSucceeded());
 
         $entries = AuditEntry::query()->orderBy('id')->get()->all();
 

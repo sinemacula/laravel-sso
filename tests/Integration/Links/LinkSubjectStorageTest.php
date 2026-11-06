@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
@@ -84,7 +85,7 @@ final class LinkSubjectStorageTest extends TestCase
     {
         foreach (self::SUBJECTS as $index => $subject) {
             $identity = new IdentityReference('user', (string) $index);
-            $creation = $this->store()->create($this->connection, new LinkSubject(self::ISSUER, $subject), $identity, LinkOrigin::LINK_PURPOSE);
+            $creation = $this->store()->create($this->connection, new LinkSubject(self::ISSUER, $subject), $identity, LinkOrigin::LINK_PURPOSE, Clients::browser());
 
             self::assertTrue($creation->isCreated(), bin2hex($subject));
         }
@@ -99,7 +100,7 @@ final class LinkSubjectStorageTest extends TestCase
             self::assertSame(bin2hex($subject), bin2hex($link->subject));
             self::assertSame((string) $index, $link->identity_id);
 
-            $resolved = $this->store()->resolve($this->resultFor($subject));
+            $resolved = $this->store()->resolve($this->resultFor($subject), Clients::browser());
 
             self::assertSame(['user', (string) $index], [$resolved->identity?->type, $resolved->identity?->id], bin2hex($subject));
         }
@@ -114,12 +115,24 @@ final class LinkSubjectStorageTest extends TestCase
     public function testTheSameBytesAreLinkedOnce(): void
     {
         foreach (self::SUBJECTS as $index => $subject) {
-            $this->store()->create($this->connection, new LinkSubject(self::ISSUER, $subject), new IdentityReference('user', (string) $index), LinkOrigin::LINK_PURPOSE);
+            $this->store()->create(
+                $this->connection,
+                new LinkSubject(self::ISSUER, $subject),
+                new IdentityReference('user', (string) $index),
+                LinkOrigin::LINK_PURPOSE,
+                Clients::browser(),
+            );
         }
 
         foreach (self::SUBJECTS as $subject) {
 
-            $creation = $this->store()->create($this->connection, new LinkSubject(self::ISSUER, $subject), new IdentityReference('user', 'another'), LinkOrigin::LINK_PURPOSE);
+            $creation = $this->store()->create(
+                $this->connection,
+                new LinkSubject(self::ISSUER, $subject),
+                new IdentityReference('user', 'another'),
+                LinkOrigin::LINK_PURPOSE,
+                Clients::browser(),
+            );
 
             self::assertSame('subject_already_linked', $creation->status->value, bin2hex($subject));
         }

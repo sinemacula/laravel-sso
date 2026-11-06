@@ -9,14 +9,16 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\EventContexts;
+use SineMacula\Laravel\Sso\Http\ClientContext;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
  * Feature tests for the one projection that builds an event's context: the time
- * from the package's clock, the client from the request being served, resolved
- * on each call, and each field cleaned and capped, with strings the only input
- * it admits.
+ * from the package's clock, the client from the client context each call is
+ * given, never from the request being served, and each field cleaned and
+ * capped, with the client context and strings the only input it admits.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,43 +55,52 @@ final class EventContextsTest extends TestCase
     {
         $contexts = $this->contexts();
 
-        self::assertSame('2026-10-31T12:00:00.123456Z', $contexts->make()->toArray()['occurred_at']);
+        self::assertSame('2026-10-31T12:00:00.123456Z', $contexts->make(Clients::browser())->toArray()['occurred_at']);
 
         $this->clock->advance(90);
 
-        self::assertSame('2026-10-31T12:01:30.123456Z', $contexts->make()->toArray()['occurred_at']);
+        self::assertSame('2026-10-31T12:01:30.123456Z', $contexts->make(Clients::browser())->toArray()['occurred_at']);
     }
 
     /**
-     * The client comes from the request being served: its IP address, and its
-     * user agent with control characters (C0, DEL, C1) and bidirectional
-     * controls removed, invalid UTF-8 replaced, and cut to 512 characters.
+     * The client comes from the context given: its IP address, and its user
+     * agent as the context cleaned it: control characters (C0, DEL, C1),
+     * bidirectional controls and invalid UTF-8 are removed before the cut, so
+     * all 512 characters kept are ones that survived.
      *
      * @return void
      */
-    public function testTheClientComesFromTheRequestCleanedAndCapped(): void
+    public function testTheClientComesFromItsContextCleaned(): void
     {
         $userAgent = "Mozilla/5.0\x00\x1b\u{0085}\x7F (X11\u{202A}\u{202E}\u{2066}\u{2069}; \xFF)" . str_repeat('a', 600);
 
-        $this->serve('203.0.113.7', $userAgent);
-
-        $context = $this->contexts()->make();
+        $context = $this->contexts()->make(new ClientContext('203.0.113.7', $userAgent));
 
         self::assertSame('203.0.113.7', $context->ip);
         self::assertSame('Mozilla/5.0 (X11; ?)' . str_repeat('a', 492), $context->userAgent);
-        self::assertSame(EventContexts::USER_AGENT_MAX_LENGTH, mb_strlen($context->userAgent));
     }
 
     /**
-     * An IPv6 address is kept as the request gives it.
+     * A user agent the client context keeps whole keeps its length here too:
+     * 512 characters, none of them removed.
+     *
+     * @return void
+     */
+    public function testAUserAgentAtItsCapIsKeptWhole(): void
+    {
+        $userAgent = str_repeat('é', EventContexts::USER_AGENT_MAX_LENGTH);
+
+        self::assertSame($userAgent, $this->contexts()->make(new ClientContext('203.0.113.7', $userAgent))->userAgent);
+    }
+
+    /**
+     * An IPv6 address is kept as the context gives it.
      *
      * @return void
      */
     public function testAnIpv6AddressIsKept(): void
     {
-        $this->serve('2001:db8::1', 'Example/1.0');
-
-        self::assertSame('2001:db8::1', $this->contexts()->make()->ip);
+        self::assertSame('2001:db8::1', $this->contexts()->make(new ClientContext('2001:db8::1', 'Example/1.0'))->ip);
     }
 
     /**
@@ -100,46 +111,43 @@ final class EventContextsTest extends TestCase
      */
     public function testAnInvalidAddressAndAnEmptyUserAgentAreNone(): void
     {
-        $this->serve('not-an-address', "\x00\u{202E}\x1f");
-
-        $context = $this->contexts()->make();
+        $context = $this->contexts()->make(new ClientContext('not-an-address', "\x00\u{202E}\x1f"));
 
         self::assertNull($context->ip);
         self::assertNull($context->userAgent);
-
-        $request = Request::create('/', 'GET', [], [], [], ['REMOTE_ADDR' => '203.0.113.7']);
-        $request->headers->remove('User-Agent');
-
-        $this->app?->instance('request', $request);
-
-        self::assertNull($this->contexts()->make()->userAgent);
+        self::assertNull($this->contexts()->make(new ClientContext('203.0.113.7', null))->userAgent);
     }
 
     /**
-     * In the console, with no client, the context holds what the request the
-     * application bound for the console reports.
+     * Work with no client gives none: the context of background work holds no
+     * IP address and no user agent.
      *
      * @return void
      */
-    public function testTheConsoleGivesTheRequestsOwnAddress(): void
+    public function testNoClientGivesNoClient(): void
     {
-        /** @var \Illuminate\Http\Request $request */
-        $request = $this->app?->make('request');
+        $context = $this->contexts()->make(new ClientContext(null, null), connectionId: 'conn_1');
 
-        $context = $this->contexts()->make();
-
-        self::assertNotNull($context->ip);
-        self::assertSame($request->ip(), $context->ip);
-        self::assertSame($request->userAgent(), $context->userAgent);
+        self::assertNull($context->ip);
+        self::assertNull($context->userAgent);
+        self::assertSame('conn_1', $context->connectionId);
     }
 
     /**
-     * With no request bound at all, the context holds no client.
+     * The request being served is never read: a context built while one is
+     * bound holds the client given, and one built with no request bound at all
+     * holds it too.
      *
      * @return void
      */
-    public function testNoRequestBoundGivesNoClient(): void
+    public function testTheRequestBeingServedIsNeverRead(): void
     {
+        $this->serve('198.51.100.9', 'Served/1.0');
+
+        $context = $this->contexts()->make(new ClientContext('203.0.113.7', 'Given/1.0'));
+
+        self::assertSame(['203.0.113.7', 'Given/1.0'], [$context->ip, $context->userAgent]);
+
         /** @var \Illuminate\Foundation\Application $app */
         $app     = $this->app;
         $request = $app->make('request');
@@ -147,13 +155,9 @@ final class EventContextsTest extends TestCase
         $app->offsetUnset('request');
 
         try {
-            self::assertFalse($app->bound('request'));
+            $context = $this->contexts()->make(new ClientContext('203.0.113.7', 'Given/1.0'));
 
-            $context = $this->contexts()->make(connectionId: 'conn_1');
-
-            self::assertNull($context->ip);
-            self::assertNull($context->userAgent);
-            self::assertSame('conn_1', $context->connectionId);
+            self::assertSame(['203.0.113.7', 'Given/1.0'], [$context->ip, $context->userAgent]);
         } finally {
             $app->instance('request', $request);
         }
@@ -166,9 +170,8 @@ final class EventContextsTest extends TestCase
      */
     public function testEveryNamedFieldReachesTheContext(): void
     {
-        $this->serve('203.0.113.7', 'Example/1.0');
-
         $context = $this->contexts()->make(
+            new ClientContext('203.0.113.7', 'Example/1.0'),
             connectionId: 'conn_1',
             connectionTenantId: 'tenant_1',
             protocol: 'saml2',
@@ -215,7 +218,7 @@ final class EventContextsTest extends TestCase
      */
     public function testAFieldNotGivenIsNone(): void
     {
-        $context = $this->contexts()->make(connectionId: 'conn_1');
+        $context = $this->contexts()->make(Clients::browser(), connectionId: 'conn_1');
 
         $fields = $context->toArray();
 
@@ -234,6 +237,7 @@ final class EventContextsTest extends TestCase
     public function testEachFieldIsCleanedAndCapped(): void
     {
         $context = $this->contexts()->make(
+            Clients::browser(),
             connectionId: "conn\x00\x1f\u{0085}" . str_repeat('x', 300),
             connectionTenantId: "tenant\r\n_1\u{202E}",
             requestReference: "ref\xC3",
@@ -248,38 +252,56 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * The request is resolved when the context is built, never held: one
-     * projection rebound between two calls reports each call's client.
+     * A named field keeps the bidirectional marks (U+061C, U+200E, U+200F)
+     * right-to-left text uses, while the client context removes them from a
+     * user agent.
      *
      * @return void
      */
-    public function testTheRequestIsResolvedOnEachCall(): void
+    public function testANamedFieldKeepsTheBidirectionalMarks(): void
+    {
+        $context = $this->contexts()->make(
+            new ClientContext('203.0.113.7', "Agent\u{200F}/1.0"),
+            application: "\u{05D0}\u{200F}-\u{061C}1\u{200E}",
+        );
+
+        self::assertSame("\u{05D0}\u{200F}-\u{061C}1\u{200E}", $context->application);
+        self::assertSame('Agent/1.0', $context->userAgent);
+    }
+
+    /**
+     * Each call takes its own client, and the projection holds none: one
+     * projection reports each call's client.
+     *
+     * @return void
+     */
+    public function testEachCallTakesItsOwnClient(): void
     {
         $contexts = $this->contexts();
 
-        $this->serve('203.0.113.7', 'First/1.0');
-
-        $first = $contexts->make();
-
-        $this->serve('198.51.100.9', 'Second/2.0');
-
-        $second = $contexts->make();
+        $first  = $contexts->make(new ClientContext('203.0.113.7', 'First/1.0'));
+        $second = $contexts->make(new ClientContext('198.51.100.9', 'Second/2.0'));
 
         self::assertSame(['203.0.113.7', 'First/1.0'], [$first->ip, $first->userAgent]);
         self::assertSame(['198.51.100.9', 'Second/2.0'], [$second->ip, $second->userAgent]);
     }
 
     /**
-     * The parameter list is the admission control: every parameter is a
-     * nullable string, defaulting to none, and together they are the context's
-     * fields but its time and client, in the context's order. No array or
-     * object can be passed, so a verified result never reaches an event whole.
+     * The parameter list is the admission control: the client context first,
+     * required, then every other parameter a nullable string, defaulting to
+     * none, and together they are the context's fields but its time and client,
+     * in the context's order. No array or other object can be passed, so a
+     * verified result never reaches an event whole.
      *
      * @return void
      */
-    public function testTheProjectionAdmitsTheContextsStringFieldsOnly(): void
+    public function testTheProjectionAdmitsTheClientAndStringFields(): void
     {
         $parameters = (new \ReflectionMethod(EventContexts::class, 'make'))->getParameters();
+        $client     = array_shift($parameters);
+
+        self::assertNotNull($client);
+        self::assertSame(['client', ClientContext::class, false], [$client->getName(), (string) $client->getType(), $client->isOptional()]);
 
         $fields = array_map(
             static fn (\ReflectionParameter $parameter): string => $parameter->getName(),
@@ -300,7 +322,7 @@ final class EventContextsTest extends TestCase
 
     /**
      * Bind a request from the address with the user agent as the one being
-     * served.
+     * served, which the projection must never read.
      *
      * @param  string  $ip
      * @param  string  $userAgent

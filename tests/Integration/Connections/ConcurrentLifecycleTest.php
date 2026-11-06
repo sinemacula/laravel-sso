@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
@@ -24,6 +25,7 @@ use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
 use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
@@ -38,6 +40,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -151,10 +154,11 @@ final class ConcurrentLifecycleTest extends TestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 
@@ -345,7 +349,12 @@ final class ConcurrentLifecycleTest extends TestCase
         $connectionId = $this->connection->id;
 
         return static function () use ($connectionId): string {
-            $result = app(CompletionService::class)->callback($connectionId, new CompletionRequest('GET', 'state=' . self::STATE, []));
+            $result = app(CompletionService::class)->complete(
+                CompletionEndpoint::CALLBACK,
+                $connectionId,
+                new CompletionRequest('GET', 'state=' . self::STATE, []),
+                Clients::browser(),
+            );
 
             return sprintf('%s:%s', $result->status->value, $result->reason->value ?? '-');
         };
@@ -363,7 +372,7 @@ final class ConcurrentLifecycleTest extends TestCase
 
         return static function () use ($connectionId, $code): string {
             $answer = DB::connection(StorageConnection::name())->transaction(
-                static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $connectionId, $code, self::VERIFIER),
+                static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $connectionId, $code, self::VERIFIER, Clients::browser()),
             );
 
             return $answer->isRedeemed() ? 'redeemed' : 'refused:' . $answer->reason?->value;
@@ -380,7 +389,7 @@ final class ConcurrentLifecycleTest extends TestCase
     {
         $connectionId = $this->connection->id;
 
-        return static fn (): string => app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId)->status->value;
+        return static fn (): string => app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId, Clients::browser())->status->value;
     }
 
     /**
@@ -393,7 +402,12 @@ final class ConcurrentLifecycleTest extends TestCase
     {
         $connectionId = $this->connection->id;
 
-        return static fn (): string => app(ConnectionService::class)->update(self::TENANT, $connectionId, ['settings' => ['issuer' => 'https://login.example.com']])->status->value;
+        return static fn (): string => app(ConnectionService::class)->update(
+            self::TENANT,
+            $connectionId,
+            ['settings' => ['issuer' => 'https://login.example.com']],
+            Clients::browser(),
+        )->status->value;
     }
 
     /**

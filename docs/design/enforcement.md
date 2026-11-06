@@ -67,8 +67,8 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   before the locks and again under them, so it must answer in a transaction-safe way: from state that does not change
   under the transaction, or with a current read.
 - `Enforcement\EnforcementService` (`@api`, resolved per request) is the one helper that changes a rule. `get()` answers
-  an `EnforcementSummary` from the write connection. `update($tenantId, $enabled, $connectionIds, $actor)` goes in a
-  fixed order, and every refusal writes, revokes and reports nothing:
+  an `EnforcementSummary` from the write connection. `update($tenantId, $enabled, $connectionIds, $client, $actor)` goes
+  in a fixed order, and every refusal writes, revokes and reports nothing:
   1. the feature switch: off is `refused` with `feature_disabled`;
   2. the ids, validated as a whole: each a string of 1 to 26 bytes (`connection_ids.<n>` `invalid_type` or
      `invalid_format`, `<n>` its position in the list given), de-duplicated silently, at most
@@ -117,12 +117,12 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   `previousVersion`, `null` for a tenant's first change, made on no row or on an unconfigured one), dispatched after
   commit and never when it rolls back (SSO-10.5).
   The event only reports: security never depends on a listener (SSO-9.3).
-- `Enforcement\ExemptionGate::admit($policy, $application, $identity, $sessionId)` (`@api`) is what an adapter calls
-  when a session in an enforcing tenant would otherwise be refused (SSO-4.4, SSO-9.3). A policy that requires nothing
-  answers `not_exempt` with nothing asked or reported. Otherwise it asks `EnforcementExemption`, resolved from the
-  container on each call; `exempt` is reported once through `EnforcementEvents::exemptionUsed()` (`ExemptionUsed`, after
-  the storage connection's open transaction commits, at once when none is open) and returned. An exception from the
-  contract propagates: the gate never answers `exempt` when it cannot tell.
+- `Enforcement\ExemptionGate::admit($policy, $application, $identity, $client, $sessionId)` (`@api`) is what an adapter
+  calls when a session in an enforcing tenant would otherwise be refused (SSO-4.4, SSO-9.3). A policy that requires
+  nothing answers `not_exempt` with nothing asked or reported. Otherwise it asks `EnforcementExemption`, resolved from
+  the container on each call; `exempt` is reported once through `EnforcementEvents::exemptionUsed()` (`ExemptionUsed`,
+  after the storage connection's open transaction commits, at once when none is open) and returned. An exception from
+  the contract propagates: the gate never answers `exempt` when it cannot tell.
 - Every outcome of a change is an `Enforcement\EnforcementResult` (status `Enforcement\Enums\EnforcementStatus`):
   `updated` or `unchanged` with an `EnforcementSummary`; `refused` with `feature_disabled`, `freshness_required` or
   `completed_sign_in_required`; `invalid` with `settings_invalid` and its `Connections\SettingViolation`s. A violation
@@ -131,9 +131,9 @@ transaction; and the gate an adapter calls before refusing a session it could ex
 ## Success Path
 
 1. An administrator enables a connection and signs in through it once, which sets `has_completed_sign_in`.
-2. The administration screen calls `update($tenantId, true, [$connectionId], $actor)`: the id is the tenant's, the
-   connection has completed a sign-in, freshness answers `fresh`, and in one transaction the row is written with a new
-   version, the revocation removes the sessions the rule no longer allows, and `EnforcementChanged` is queued.
+2. The administration screen calls `update($tenantId, true, [$connectionId], $client, $actor)`: the id is the tenant's,
+   the connection has completed a sign-in, freshness answers `fresh`, and in one transaction the row is written with a
+   new version, the revocation removes the sessions the rule no longer allows, and `EnforcementChanged` is queued.
 3. The transaction commits; the change and the revocation become visible together, and the event reaches listeners.
 4. From the next call, `Contracts\Enforcement` answers `required` with the connection and the new version; under
    `laravel-iam` the tenant authentication policy (AUTH-2.12) refuses a session not established through it, unless the

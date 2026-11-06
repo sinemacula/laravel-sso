@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -99,7 +100,7 @@ final class LinkEventSequenceTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertTrue($this->service()->remove($this->identity, $id)->isRemoved());
+        self::assertTrue($this->service()->remove($this->identity, $id, Clients::browser())->isRemoved());
 
         $this->assertEventSequence([LinkRemoved::class]);
         $this->assertNoFailure();
@@ -134,11 +135,11 @@ final class LinkEventSequenceTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertTrue($this->service()->remove(new IdentityReference('user', '2'), $id)->isRefused());
+        self::assertTrue($this->service()->remove(new IdentityReference('user', '2'), $id, Clients::browser())->isRefused());
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        self::assertTrue($this->service()->remove($this->identity, $id)->isRefused());
+        self::assertTrue($this->service()->remove($this->identity, $id, Clients::browser())->isRefused());
 
         $this->assertNoEvents();
     }
@@ -158,7 +159,7 @@ final class LinkEventSequenceTest extends TestCase
 
         $linkSubject = new LinkSubject('https://idp.example.com', $subject);
 
-        return $app->make(LinkStore::class)->create($this->connection, $linkSubject, $identity ?? $this->identity, LinkOrigin::PROVISIONING);
+        return $app->make(LinkStore::class)->create($this->connection, $linkSubject, $identity ?? $this->identity, LinkOrigin::PROVISIONING, Clients::browser());
     }
 
     /**

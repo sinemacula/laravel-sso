@@ -90,11 +90,11 @@ what makes each safe on several servers at once. How a domain is rechecked and h
 
 ### Expiry warnings
 
-- `Keys\ExpiryReport::report(?int $withinDays, ?Closure $each)` extends the report of `administration-events.md`. It
-  lists, through `$each`, every key and certificate whose `not_after` is at or before the window, an expired one
-  included, whatever was notified before, so a problem nobody has solved stays visible. The window is the days given,
-  or the largest threshold. A retiring key whose overlap has ended, and one with no end of validity, are left out; so is
-  a row whose connection is gone.
+- `Keys\ExpiryReport::report(ClientContext $client, ?int $withinDays, ?Closure $each)` extends the report of
+  `administration-events.md`. It lists, through `$each`, every key and certificate whose `not_after` is at or before the
+  window, an expired one included, whatever was notified before, so a problem nobody has solved stays visible. The
+  window is the days given, or the largest threshold. A retiring key whose overlap has ended, and one with no end of
+  validity, are left out; so is a row whose connection is gone.
 - It reads in pages of `PAGE_SIZE` (200) on the write connection, by keyset on (`not_after`, `id`), and each page's
   connections in one query. The answer, `Keys\ExpiryRun`, holds counts, so a run's memory does not grow with the keys.
 - `sso.keys.expiry_thresholds` is a list of days, distinct, from 0 to 365, including 0: by default 30, 14, 7, 1 and 0.

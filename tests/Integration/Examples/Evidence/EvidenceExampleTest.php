@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -140,6 +141,7 @@ final class EvidenceExampleTest extends ExampleTestCase
         $tenantId     = self::TENANT;
         $connectionId = $this->connectionId;
 
+        $client = Clients::browser();
         // @snippet-start oidc-evidence-policy
         $result = app(EvidenceSettingsService::class)->set($tenantId, $connectionId, [
             'amr'          => ['pwd', 'otp', 'hwk'],
@@ -148,7 +150,7 @@ final class EvidenceExampleTest extends ExampleTestCase
                 ['amr' => ['pwd', 'otp']],
                 ['amr' => ['hwk'], 'acr' => 'urn:example:loa:2'],
             ],
-        ]);
+        ], $client);
         // @snippet-end oidc-evidence-policy
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame(['evidence.acr', 'evidence.amr', 'evidence.combinations'], $result->changedSettings);
@@ -187,7 +189,7 @@ final class EvidenceExampleTest extends ExampleTestCase
 
         $this->instance(Freshness::class, $this->freshness);
 
-        $elsewhere = app(EvidenceSettingsService::class)->set('tenant-2', $this->connectionId, $policy);
+        $elsewhere = app(EvidenceSettingsService::class)->set('tenant-2', $this->connectionId, $policy, Clients::browser());
         $overlong  = $this->setPolicy([...$policy, 'max_age_seconds' => 901]);
 
         self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $elsewhere->reason);
@@ -220,13 +222,14 @@ final class EvidenceExampleTest extends ExampleTestCase
 
         $this->linkThroughFlow($idp, $samlConnectionId, $this->person);
 
+        $client = Clients::browser();
         // @snippet-start saml-evidence-policy
         $result = app(EvidenceSettingsService::class)->set($tenantId, $samlConnectionId, [
             'authn_context_class_ref' => ['https://refeds.org/profile/mfa'],
             'combinations'            => [
                 ['authn_context_class_ref' => 'https://refeds.org/profile/mfa'],
             ],
-        ]);
+        ], $client);
         // @snippet-end saml-evidence-policy
         self::assertSame(['evidence.authn_context_class_ref', 'evidence.combinations'], $result->changedSettings);
 
@@ -238,7 +241,7 @@ final class EvidenceExampleTest extends ExampleTestCase
         self::assertSame(self::REFEDS_MFA, $evidence->rawContext());
         self::assertNull($this->signInThroughSaml($idp, $samlConnectionId, FakeSamlResponse::PASSWORD_PROTECTED_TRANSPORT)->evidence);
 
-        $invalid = app(EvidenceSettingsService::class)->set($tenantId, $samlConnectionId, ['amr' => ['pwd'], 'combinations' => [['amr' => ['pwd']]]]);
+        $invalid = app(EvidenceSettingsService::class)->set($tenantId, $samlConnectionId, ['amr' => ['pwd'], 'combinations' => [['amr' => ['pwd']]]], Clients::browser());
 
         self::assertSame(FailureReason::SETTINGS_INVALID, $invalid->reason);
         self::assertContains(['amr', 'unsupported'], self::violationsOf($invalid));
@@ -296,7 +299,7 @@ final class EvidenceExampleTest extends ExampleTestCase
      */
     private function setPolicy(array $policy): ConnectionResult
     {
-        return app(EvidenceSettingsService::class)->set(self::TENANT, $this->connectionId, $policy);
+        return app(EvidenceSettingsService::class)->set(self::TENANT, $this->connectionId, $policy, Clients::browser());
     }
 
     /**

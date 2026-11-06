@@ -19,12 +19,15 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\IntegratingWithLaravelIam;
 
+use Tests\Integration\Examples\Clients;
+
 /** @var array{application: string, connection: string, code: string, verifier: string} $input */
 $application  = $input['application'];
 $connectionId = $input['connection'];
 $code         = $input['code'];
 $verifier     = $input['verifier'];
 
+$client = Clients::browser();
 // @snippet-start iam-sign-in
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
@@ -34,9 +37,9 @@ use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 
 $storage = DB::connection(StorageConnection::name());
 
-$answer = $storage->transaction(static function () use ($application, $connectionId, $code, $verifier): RedemptionResult|SignInResult {
+$answer = $storage->transaction(static function () use ($application, $connectionId, $code, $verifier, $client): RedemptionResult|SignInResult {
     $redemption = app(HandoffRedemption::class)
-        ->admit(Purpose::SIGN_IN, $application, $connectionId, $code, $verifier);
+        ->admit(Purpose::SIGN_IN, $application, $connectionId, $code, $verifier, $client);
 
     if (!$redemption->isRedeemed()) {
         return $redemption; // a refusal commits: the code is spent and one FlowFailed follows

@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\SettingRules;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\EvidencePolicy;
@@ -53,6 +54,7 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -137,7 +139,13 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
         config()->set(self::MAX_AGE_KEY, self::MAX_AGE);
         config()->set('sso.clock.skew_seconds', self::SKEW);
 
-        app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, LinkOrigin::PROVISIONING);
+        app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            LinkOrigin::PROVISIONING,
+            Clients::browser(),
+        );
 
         $this->linkId = Link::query()->sole()->id;
 
@@ -913,7 +921,12 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
         ]);
 
         $response   = $this->samlResponse($connection, $class, $offset);
-        $completion = app(CompletionService::class)->assertionConsumerService($connection->id, $response->completionRequest(self::SAML_RELAY));
+        $completion = app(CompletionService::class)->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $connection->id,
+            $response->completionRequest(self::SAML_RELAY),
+            Clients::browser(),
+        );
 
         self::assertTrue($completion->isCompleted());
 
@@ -955,7 +968,13 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
         $format  = FakeSamlResponse::PERSISTENT;
         $subject = 'v1|7:name_id|52:' . $format . '|-|-|5:alice';
 
-        app(LinkStore::class)->create($connection, new LinkSubject(FakeSamlIdentityProvider::ENTITY_ID, $subject, $format), $this->person, LinkOrigin::PROVISIONING);
+        app(LinkStore::class)->create(
+            $connection,
+            new LinkSubject(FakeSamlIdentityProvider::ENTITY_ID, $subject, $format),
+            $this->person,
+            LinkOrigin::PROVISIONING,
+            Clients::browser(),
+        );
 
         return $connection;
     }
@@ -999,7 +1018,7 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
         $code = (string) $completion->handoff?->code->reveal();
 
         return $connection->getConnection()->transaction(
-            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $connection->id, $code, $verifier->reveal()),
+            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $connection->id, $code, $verifier->reveal(), Clients::browser()),
         );
     }
 

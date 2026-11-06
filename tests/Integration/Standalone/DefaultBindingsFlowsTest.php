@@ -74,6 +74,7 @@ use Tests\Concerns\FlowRoutes;
 use Tests\Concerns\MakesPrunableRows;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesUnreliableCache;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\StandaloneTestCase;
@@ -531,8 +532,8 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
 
         self::assertInstanceOf(NoSessionRevocation::class, $this->app?->make(SessionRevocation::class));
 
-        $changed  = app(EnforcementService::class)->update(self::TENANT, true, [$satisfying->id]);
-        $disabled = app(ConnectionLifecycle::class)->disable(self::TENANT, $disabling->id);
+        $changed  = app(EnforcementService::class)->update(self::TENANT, true, [$satisfying->id], Clients::browser());
+        $disabled = app(ConnectionLifecycle::class)->disable(self::TENANT, $disabling->id, Clients::browser());
 
         $this->assertOnlyRebound(Freshness::class);
 
@@ -659,7 +660,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        app(KeyService::class)->addNext(self::TENANT, $oidc->id, KeyUse::CLIENT_ASSERTION, KeyType::EC);
+        app(KeyService::class)->addNext(self::TENANT, $oidc->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC);
 
         $this->app?->instance(Freshness::class, new RefusingFreshness);
 

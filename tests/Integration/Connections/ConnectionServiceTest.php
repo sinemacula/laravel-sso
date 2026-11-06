@@ -18,6 +18,7 @@ use SineMacula\Laravel\Sso\Database\CiphertextWrite;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -144,10 +145,10 @@ final class ConnectionServiceTest extends TestCase
         $this->useKeys(self::KEY_B, [self::KEY_A]);
 
         self::assertTrue($this->secrets()->reveal($this->connection($id), 'client_secret')?->equals(self::SECRET));
-        self::assertTrue($this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed'])->isSucceeded());
+        self::assertTrue($this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed'], Clients::browser())->isSucceeded());
         self::assertSame($stored, $this->row($id)['secrets']);
 
-        self::assertTrue($this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => 'the-rotated-secret']])->isSucceeded());
+        self::assertTrue($this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => 'the-rotated-secret']], Clients::browser())->isSucceeded());
 
         $this->useKeys(self::KEY_B, []);
 
@@ -200,8 +201,8 @@ final class ConnectionServiceTest extends TestCase
         });
 
         $calls = [
-            fn (): mixed => $this->service()->create(self::TENANT, 'oidc', 'Second', self::OIDC + ['client_secret' => self::SECRET]),
-            fn (): mixed => $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed', 'settings' => ['client_secret' => 'another-secret']]),
+            fn (): mixed => $this->service()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC + ['client_secret' => self::SECRET]),
+            fn (): mixed => $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed', 'settings' => ['client_secret' => 'another-secret']], Clients::browser()),
         ];
 
         foreach ($calls as $call) {
@@ -240,8 +241,8 @@ final class ConnectionServiceTest extends TestCase
         $this->startRecordingEvents();
 
         $calls = [
-            fn (): mixed => $this->service()->create(self::TENANT, 'oidc', 'Second', self::OIDC + ['client_secret' => self::SECRET]),
-            fn (): mixed => $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => self::OTHER_SECRET]]),
+            fn (): mixed => $this->service()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC + ['client_secret' => self::SECRET]),
+            fn (): mixed => $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => self::OTHER_SECRET]], Clients::browser()),
         ];
 
         foreach ($calls as $call) {
@@ -257,7 +258,7 @@ final class ConnectionServiceTest extends TestCase
         }
 
         try {
-            $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed']);
+            $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed'], Clients::browser());
             self::fail('The failed write was swallowed.');
         } catch (QueryException $exception) {
             self::assertIsString($before['secrets']);
@@ -323,8 +324,8 @@ final class ConnectionServiceTest extends TestCase
         });
 
         try {
-            $updated = $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed']);
-            $enabled = $this->service()->enable(self::TENANT, $id);
+            $updated = $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed'], Clients::browser());
+            $enabled = $this->service()->enable(self::TENANT, $id, Clients::browser());
             $found   = $this->service()->get(self::TENANT, $id);
             $listed  = $this->service()->list(self::TENANT);
         } finally {
@@ -344,7 +345,7 @@ final class ConnectionServiceTest extends TestCase
      */
     private function create(): string
     {
-        $result = $this->service()->create(self::TENANT, 'oidc', 'Acme', self::OIDC + ['client_secret' => self::SECRET]);
+        $result = $this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC + ['client_secret' => self::SECRET]);
 
         self::assertTrue($result->isSucceeded());
 
@@ -370,10 +371,10 @@ final class ConnectionServiceTest extends TestCase
         }
 
         $calls = [
-            'create'               => fn (): mixed => $this->service()->create(self::TENANT, 'oidc', 'Second', self::OIDC + ['client_secret' => self::SECRET]),
-            'update'               => fn (): mixed => $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => self::OTHER_SECRET]]),
-            'create for no tenant' => fn (): mixed => $this->service()->create('', 'oidc', 'Second', self::OIDC + ['client_secret' => self::SECRET]),
-            'update for no tenant' => fn (): mixed => $this->service()->update('', $id, ['settings' => ['client_secret' => self::OTHER_SECRET]]),
+            'create'               => fn (): mixed => $this->service()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC + ['client_secret' => self::SECRET]),
+            'update'               => fn (): mixed => $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => self::OTHER_SECRET]], Clients::browser()),
+            'create for no tenant' => fn (): mixed => $this->service()->create('', 'oidc', 'Second', Clients::browser(), self::OIDC + ['client_secret' => self::SECRET]),
+            'update for no tenant' => fn (): mixed => $this->service()->update('', $id, ['settings' => ['client_secret' => self::OTHER_SECRET]], Clients::browser()),
         ];
 
         if ($prepare === null) {

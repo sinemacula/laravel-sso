@@ -119,7 +119,8 @@ Every class here holds its collaborators only, and reads the limits on each call
 ## Success Path
 
 1. The browser arrives at the connection's callback; the application's controller hands
-   `CompletionRequest::fromRequest()` to `CompletionService::callback()`.
+   `CompletionRequest::fromRequest()` and `ClientContext::fromRequest()` to `CompletionService::complete()` at
+   `CompletionEndpoint::CALLBACK`.
 2. `correlate()` reads the `state` from the raw query; the pipeline consumes its request.
 3. `complete()` checks `iss`, finds exactly a code, and sends the one token request.
 4. The token response is read, the ID token validated and the claims assembled.
@@ -156,9 +157,9 @@ Every class here holds its collaborators only, and reads the limits on each call
   credential, the verifier decrypted lazily, the doubles' hand-over.
 - `tests/Feature/Protocols/Oidc/TokenExchangeTest.php`: each client authentication, the assertion's claims, the exact
   form, one attempt, no transaction, every answer's exact reason.
-- `tests/Feature/Completion/OidcCallbackTest.php`: all of it through `CompletionService::callback()` with the fake
-  provider's strict endpoint: the mix-up defence, event sequences, and the scan for provider values in events, logs and
-  dumps.
+- `tests/Feature/Completion/OidcCallbackTest.php`: all of it through `CompletionService::complete()` at the callback,
+  with the fake provider's strict endpoint: the mix-up defence, event sequences, and the scan for provider values in
+  events, logs and dumps.
 - `tests/Integration/Completion/ConcurrentOidcCallbackTest.php`: the same callback twice at once, and a trust change
   with the token request in flight, plainly and inside an administrator's own transaction.
 - `tests/Performance/OidcCallbackQueryBudgetTest.php`: exact query budgets.

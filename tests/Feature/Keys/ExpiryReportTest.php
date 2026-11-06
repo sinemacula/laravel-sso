@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Pruning\TickingClock;
@@ -173,7 +174,7 @@ final class ExpiryReportTest extends TestCase
         $far  = $this->key(10 * self::DAY);
 
         $entries = [];
-        $run     = $this->report()->report(3, static function (ExpiringKey $entry) use (&$entries): void {
+        $run     = $this->report()->report(Clients::browser(), 3, static function (ExpiringKey $entry) use (&$entries): void {
             $entries[] = $entry->key->id;
         });
 
@@ -405,7 +406,7 @@ final class ExpiryReportTest extends TestCase
     {
         $this->key($left);
 
-        $this->report()->report(60);
+        $this->report()->report(Clients::browser(), 60);
 
         if ($threshold === null) {
             $this->assertNoEvents();
@@ -465,7 +466,7 @@ final class ExpiryReportTest extends TestCase
 
             $clock->advance($days * self::DAY);
 
-            $this->report()->report();
+            $this->report()->report(Clients::browser());
 
             $last = $this->recordedEvents()[count($this->recordedEvents()) - 1] ?? null;
 
@@ -495,7 +496,7 @@ final class ExpiryReportTest extends TestCase
 
         $key = $this->key(10 * self::DAY);
 
-        $this->report()->report();
+        $this->report()->report(Clients::browser());
 
         self::assertSame(14, ConnectionKey::query()->whereKey($key->id)->sole()->expiry_notified_threshold);
 
@@ -524,7 +525,7 @@ final class ExpiryReportTest extends TestCase
     {
         $key = $this->key(-self::DAY);
 
-        $this->report()->report();
+        $this->report()->report(Clients::browser());
 
         $entries = $this->entries();
 
@@ -544,7 +545,7 @@ final class ExpiryReportTest extends TestCase
     {
         $this->key(self::DAY);
 
-        $this->report()->report();
+        $this->report()->report(Clients::browser());
 
         $statements = [];
 
@@ -552,7 +553,7 @@ final class ExpiryReportTest extends TestCase
             $statements[] = strtolower($query->sql);
         });
 
-        $this->report()->report();
+        $this->report()->report(Clients::browser());
 
         self::assertSame(['select', 'select'], array_map(static fn (string $sql): string => substr($sql, 0, 6), $statements));
     }
@@ -588,7 +589,7 @@ final class ExpiryReportTest extends TestCase
         $this->key(self::DAY);
         $this->key(40 * self::DAY);
 
-        $run = $this->report()->report(60);
+        $run = $this->report()->report(Clients::browser(), 60);
 
         self::assertSame(3, $run->listed);
         self::assertSame(1, $run->expired);
@@ -655,7 +656,7 @@ final class ExpiryReportTest extends TestCase
         $gone->delete();
 
         $listed = [];
-        $run    = $this->report()->report(60, static function (ExpiringKey $entry) use (&$listed): void {
+        $run    = $this->report()->report(Clients::browser(), 60, static function (ExpiringKey $entry) use (&$listed): void {
             $listed[] = $entry->key->id;
         });
 
@@ -672,7 +673,7 @@ final class ExpiryReportTest extends TestCase
      */
     public function testWithNoKeysReadsOnePageAlone(): void
     {
-        $statements = $this->statementsOf(fn (): ExpiryRun => $this->report()->report());
+        $statements = $this->statementsOf(fn (): ExpiryRun => $this->report()->report(Clients::browser()));
 
         self::assertSame(['select'], array_map(static fn (array $statement): string => $statement['verb'], $statements));
     }
@@ -689,7 +690,7 @@ final class ExpiryReportTest extends TestCase
 
         $run        = null;
         $statements = $this->statementsOf(function () use (&$run): void {
-            $run = $this->report()->report(60);
+            $run = $this->report()->report(Clients::browser(), 60);
         });
 
         self::assertSame(['select', 'select'], array_map(static fn (array $statement): string => $statement['verb'], $statements));
@@ -713,9 +714,9 @@ final class ExpiryReportTest extends TestCase
         $this->key(3 * self::DAY);
         $this->key(4 * self::DAY, KeyUse::CLIENT_ASSERTION, KeyState::CURRENT, connection: $other);
 
-        $this->report()->report();
+        $this->report()->report(Clients::browser());
 
-        $statements = $this->statementsOf(fn (): ExpiryRun => $this->report()->report());
+        $statements = $this->statementsOf(fn (): ExpiryRun => $this->report()->report(Clients::browser()));
 
         self::assertCount(2, $statements);
         self::assertSame([$this->saml->id, $other->id], $statements[1]['bindings']);
@@ -761,7 +762,7 @@ final class ExpiryReportTest extends TestCase
         $database->beginTransaction();
 
         try {
-            $this->report()->report();
+            $this->report()->report(Clients::browser());
             self::fail('A report inside a transaction was accepted.');
         } catch (\LogicException $exception) {
             self::assertStringContainsString('An expiry report runs outside any transaction on the storage connection', $exception->getMessage());
@@ -826,7 +827,7 @@ final class ExpiryReportTest extends TestCase
             $database->beginTransaction();
 
             try {
-                $this->report()->report();
+                $this->report()->report(Clients::browser());
                 self::fail('A report ran inside a transaction.');
             } catch (\LogicException $exception) {
                 self::assertStringContainsString('transaction', $exception->getMessage());
@@ -921,7 +922,7 @@ final class ExpiryReportTest extends TestCase
         $this->key(-self::DAY);
 
         try {
-            $this->report()->report($days);
+            $this->report()->report(Clients::browser(), $days);
             self::fail('A day count out of range was accepted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('An expiry report looks 1 to 365 days ahead.', $exception->getMessage());
@@ -1097,7 +1098,7 @@ final class ExpiryReportTest extends TestCase
     {
         $entries = [];
 
-        $this->report()->report($days, static function (ExpiringKey $entry) use (&$entries): void {
+        $this->report()->report(Clients::browser(), $days, static function (ExpiringKey $entry) use (&$entries): void {
             $entries[] = $entry;
         });
 

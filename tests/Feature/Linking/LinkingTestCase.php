@@ -5,9 +5,9 @@ declare(strict_types = 1);
 namespace Tests\Feature\Linking;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Request;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
 use SineMacula\Laravel\Sso\Contracts\LinkEmailMatcher;
@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
 use SineMacula\Laravel\Sso\Linking\MembershipStanding;
@@ -45,6 +46,7 @@ use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\ScriptedEmailMatcher;
 use Tests\Fixtures\Linking\ScriptedLinkConfirmation;
@@ -127,7 +129,6 @@ abstract class LinkingTestCase extends TestCase
         $this->person    = new IdentityReference('App\Models\User', '7');
 
         $this->app?->instance(Clock::class, $this->clock);
-        $this->app?->instance('request', Request::create('/auth/sso', 'POST', server: ['REMOTE_ADDR' => '203.0.113.7']));
 
         config()->set('sso.features.oidc', true);
         config()->set('sso.features.domain_linking', true);
@@ -205,7 +206,7 @@ abstract class LinkingTestCase extends TestCase
      */
     protected function start(Purpose $purpose = Purpose::SIGN_IN, ?IdentityReference $identity = null, ?string $session = null): StartResult
     {
-        $start = app(AuthorizationRequestService::class)->start('web', $purpose, $this->connection->id, null, $identity, $session);
+        $start = app(AuthorizationRequestService::class)->start('web', $purpose, $this->connection->id, Clients::browser(), null, $identity, $session);
 
         static::assertTrue($start->isStarted());
 
@@ -223,7 +224,12 @@ abstract class LinkingTestCase extends TestCase
     {
         $state = $this->starting->lastStart()->state->reveal();
 
-        return app(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', 'state=' . rawurlencode($state), []));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connection->id,
+            new CompletionRequest('GET', 'state=' . rawurlencode($state), []),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -242,7 +248,7 @@ abstract class LinkingTestCase extends TestCase
         $verifier = (string) $start->verifier?->reveal();
 
         return $this->connection->getConnection()->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit($purpose, 'web', $this->connection->id, $code, $verifier, $caller),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit($purpose, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $caller),
         );
     }
 
@@ -328,12 +334,13 @@ abstract class LinkingTestCase extends TestCase
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
              * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Protocols\Completion
              */
             #[\Override]
-            public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed): Completion
+            public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed, ClientContext $client): Completion
             {
-                return $this->verifying->complete($connection, $request, $consumed);
+                return $this->verifying->complete($connection, $request, $consumed, $client);
             }
 
             /**

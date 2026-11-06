@@ -60,6 +60,7 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -345,7 +346,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     {
         self::assertInstanceOf(NoReauthenticationSessions::class, app(ReauthenticationSessions::class));
 
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $this->connection->id, null, $this->person, self::SESSION);
+        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $this->connection->id, Clients::browser(), null, $this->person, self::SESSION);
 
         self::assertSame(FailureReason::SESSION_INELIGIBLE, $start->reason);
         self::assertSame(0, AuthorizationRequest::query()->count());
@@ -380,7 +381,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         $this->tableSession(self::SESSION, $link->id, [$column => $value]);
         $this->startRecordingEvents();
 
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $this->connection->id, null, $this->person, self::SESSION);
+        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $this->connection->id, Clients::browser(), null, $this->person, self::SESSION);
 
         self::assertSame(FailureReason::SESSION_INELIGIBLE, $start->reason);
         self::assertSame(0, AuthorizationRequest::query()->count());
@@ -465,7 +466,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
 
         [$start, $completion] = $this->flow();
 
-        self::assertTrue(app(LinkService::class)->remove($this->person, $link->id)->isRemoved());
+        self::assertTrue(app(LinkService::class)->remove($this->person, $link->id, Clients::browser())->isRemoved());
 
         $remade = $this->hold($this->person);
 
@@ -536,7 +537,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         [$start, $completion] = $this->flow();
 
         if ($byWidening) {
-            DB::connection(StorageConnection::name())->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2'));
+            DB::connection(StorageConnection::name())->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
         } else {
             $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
         }
@@ -605,7 +606,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
 
         [$start, $completion] = $this->flow();
 
-        self::assertTrue(app(LinkService::class)->remove($this->person, $link->id)->isRemoved());
+        self::assertTrue(app(LinkService::class)->remove($this->person, $link->id, Clients::browser())->isRemoved());
 
         if ($another) {
             $this->hold(new IdentityReference('App\Models\User', '8'));
@@ -816,7 +817,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         $verifier = (string) $start->verifier?->reveal();
 
         try {
-            app(HandoffRedemption::class)->redeem(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier);
+            app(HandoffRedemption::class)->redeem(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier, Clients::browser());
             self::fail('The standalone path redeemed a reauthentication.');
         } catch (\LogicException $exception) {
             self::assertSame(self::STANDALONE, $exception->getMessage());
@@ -844,7 +845,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         $verifier = (string) $start->verifier?->reveal();
 
         try {
-            app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier);
+            app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier, Clients::browser());
             self::fail('A reauthentication was admitted with no transaction open.');
         } catch (\LogicException $exception) {
             self::assertSame(self::NO_TRANSACTION, $exception->getMessage());
@@ -1020,7 +1021,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
 
         [$start, $completion] = $this->flow();
 
-        self::assertTrue(app(LinkService::class)->remove($this->person, $link->id)->isRemoved());
+        self::assertTrue(app(LinkService::class)->remove($this->person, $link->id, Clients::browser())->isRemoved());
 
         $this->start();
 
@@ -1069,7 +1070,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         $this->startRecordingEvents();
 
         $answer = $this->connection->getConnection()->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier->reveal()),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier->reveal(), Clients::browser()),
         );
 
         self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, $answer->reason);
@@ -1110,19 +1111,19 @@ final class ReauthenticationBranchTest extends LinkingTestCase
             $recheck = app(HandoffRecheck::class);
             $lock    = $recheck->lock('tenant-1', $this->connection->id, 'web');
 
-            self::assertSame(RecheckOutcome::AUTHENTICATION_EXPIRED, $recheck->recheck($noTime, $good, $lock));
-            self::assertSame(RecheckOutcome::AUTHENTICATION_EXPIRED, $recheck->admit($noTime, $good, $lock)->outcome);
+            self::assertSame(RecheckOutcome::AUTHENTICATION_EXPIRED, $recheck->recheck($noTime, $good, $lock, Clients::browser()));
+            self::assertSame(RecheckOutcome::AUTHENTICATION_EXPIRED, $recheck->admit($noTime, $good, $lock, Clients::browser())->outcome);
             self::assertSame([], $this->table->calls);
 
-            self::assertSame(RecheckOutcome::PASSED, $recheck->recheck($withTime, $good, $lock));
-            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, $bind($this->person, $link->id, null, self::SESSION), $lock));
+            self::assertSame(RecheckOutcome::PASSED, $recheck->recheck($withTime, $good, $lock, Clients::browser()));
+            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, $bind($this->person, $link->id, null, self::SESSION), $lock, Clients::browser()));
             $another = new IdentityReference('App\Models\User', '8');
 
-            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, $bind($this->person, $link->id, $another, self::SESSION), $lock));
-            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, $bind($this->person, null, $this->person, self::SESSION), $lock));
+            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, $bind($this->person, $link->id, $another, self::SESSION), $lock, Clients::browser()));
+            self::assertSame(RecheckOutcome::IDENTITY_MISMATCH, $recheck->recheck($withTime, $bind($this->person, null, $this->person, self::SESSION), $lock, Clients::browser()));
 
             try {
-                $recheck->recheck($withTime, new HandoffBinding($this->person, $link->id, $this->person, trustVersion: 0), $lock);
+                $recheck->recheck($withTime, new HandoffBinding($this->person, $link->id, $this->person, trustVersion: 0), $lock, Clients::browser());
                 self::fail('A binding naming no session was accepted.');
             } catch (\LogicException $exception) {
                 self::assertSame('A reauthenticate flow names the session it was started on.', $exception->getMessage());
@@ -1170,7 +1171,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
             self::assertNotNull($lock->connection);
 
             try {
-                app(ReauthenticationBranch::class)->admit(new RedemptionContext($result, $binding, $lock, $lock->connection));
+                app(ReauthenticationBranch::class)->admit(new RedemptionContext($result, $binding, $lock, $lock->connection, Clients::browser()));
                 self::fail('The branch admitted out of turn.');
             } catch (\LogicException $exception) {
                 self::assertSame($message, $exception->getMessage());
@@ -1190,7 +1191,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
      */
     public function testTheRulesRefuseAStateOutOfTurn(): void
     {
-        $arrived = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []));
+        $arrived = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []), Clients::browser());
 
         try {
             app(ReauthenticationRules::class)->refusal($arrived);
@@ -1218,7 +1219,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
      */
     public function testTheRulesFailClosedOnAStateWithoutAResolutionOrAResult(): void
     {
-        $arrived = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []));
+        $arrived = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []), Clients::browser());
         $state   = $this->consumedState($arrived, ['identity_type' => $this->person->type, 'identity_id' => $this->person->id, 'session_id' => self::SESSION]);
         $rules   = app(ReauthenticationRules::class);
 
@@ -1236,7 +1237,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
      */
     private function hold(IdentityReference $identity, LinkOrigin $origin = LinkOrigin::PROVISIONING, string $subject = VerifyingDriver::SUBJECT): Link
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, $subject), $identity, $origin);
+        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, $subject), $identity, $origin, Clients::browser());
 
         self::assertTrue($creation->isCreated());
 
@@ -1289,7 +1290,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         $code = (string) $completion->handoff?->code->reveal();
 
         return DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit($purpose, $application, $connection, $code, $verifier),
+            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit($purpose, $application, $connection, $code, $verifier, Clients::browser()),
         );
     }
 

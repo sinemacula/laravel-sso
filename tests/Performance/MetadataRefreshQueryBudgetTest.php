@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Keys\Certificates;
 
 /**
@@ -112,7 +113,7 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $this->serve(self::idp()->metadata()->with(['signing_certificates' => [self::idp()->certificate(), Certificates::distinct(0)]]));
 
-        $result = $this->assertQueryBudget(7, 5, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(7, 5, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['idp_signing_certificates'], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
     }
@@ -160,7 +161,7 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $this->serve(self::idp()->metadata('https://login.example.test/saml/sso'));
 
-        $result = $this->assertQueryBudget(6, 9, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(6, 9, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['sso_url', 'idp_signing_certificates'], true], [$result->outcome, $result->changedSettings, $result->trustChanged]);
     }
@@ -176,7 +177,7 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
         $this->saml([self::idp()->certificate()]);
         $this->serve(self::idp()->metadata());
 
-        $results = $this->assertQueryBudget(6, 2, fn (): array => $this->refresher()->refreshDue());
+        $results = $this->assertQueryBudget(6, 2, fn (): array => $this->refresher()->refreshDue(Clients::browser()));
 
         self::assertSame([RefreshOutcome::REFRESHED], array_map(static fn (RefreshResult $result): RefreshOutcome => $result->outcome, $results));
     }
@@ -192,7 +193,7 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $this->fetcher->respond(self::URL, FetchResult::failed());
 
-        $result = $this->assertQueryBudget(5, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(5, 4, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame(RefreshOutcome::FAILED, $result->outcome);
     }
@@ -207,7 +208,7 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     {
         $connection = $this->saml([self::idp()->certificate()], ['metadata_claimed_until' => $this->clock->now()->addMinute()]);
 
-        $result = $this->assertQueryBudget(3, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(3, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame(RefreshOutcome::IN_PROGRESS, $result->outcome);
 
@@ -226,9 +227,9 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
 
         $connection = $this->saml([self::idp()->certificate()], ['metadata_claimed_until' => $this->clock->now()->addMinute()]);
 
-        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
-        $result = $this->assertQueryBudget(2, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor()));
+        $result = $this->assertQueryBudget(2, 3, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame(RefreshOutcome::RATE_LIMITED, $result->outcome);
 

@@ -79,8 +79,13 @@ existing identity (SSO-8.5). It creates no session. Start it for the user your a
 ```php
 $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-$start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, null, $identity);
+$start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, $client, null, $identity);
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 The flow then goes as any other does, and its handoff code is redeemed at an endpoint of your own that gives the caller
 it has authenticated, `$user` again, never an identity the request names:
@@ -95,6 +100,7 @@ $result = app(HandoffRedemption::class)->redeem(
     $request->string('connection')->toString(),
     $request->string('code')->toString(),
     $request->string('verifier')->toString(),
+    ClientContext::fromRequest($request),
     $caller,
 );
 ```
@@ -304,7 +310,7 @@ $caller = new IdentityReference($user->getMorphClass(), (string) $user->getKey()
 $mine = $links->list('me', $caller);                            // list<LinkSummary>, oldest first
 $some = $links->list(new IdentityReference(User::class, '42')); // another identity's, for administrators
 
-$result = $links->remove('me', $linkId, $caller, new ActingIdentity($user->getMorphClass(), (string) $user->getKey()));
+$result = $links->remove('me', $linkId, $client, $caller, new ActingIdentity($user->getMorphClass(), (string) $user->getKey()));
 ```
 
 The identity is an `IdentityReference`, or `'me'` for the caller you pass. `'me'` without a caller, or any other

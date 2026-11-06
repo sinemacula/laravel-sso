@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
+use Tests\Fixtures\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 use Tests\Integration\Examples\RedeemingAHandoff\TrustChanges;
 
@@ -130,9 +131,9 @@ final class HandoffTrustVersionTest extends ExampleTestCase
     {
         $before = $this->trustVersion();
 
-        self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $this->connectionId)->isSucceeded());
+        self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $this->connectionId, Clients::browser())->isSucceeded());
         self::assertSame($before + 1, $this->trustVersion());
-        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $this->connectionId)->isSucceeded());
+        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $this->connectionId, Clients::browser())->isSucceeded());
         self::assertSame($before + 2, $this->trustVersion());
     }
 

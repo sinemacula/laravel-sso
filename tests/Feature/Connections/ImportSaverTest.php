@@ -38,6 +38,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -134,7 +135,7 @@ final class ImportSaverTest extends TestCase
         self::assertNotNull($fetch);
         self::assertSame([self::NOW, '2026-11-10T00:00:00+00:00'], [$fetch->validatedAt->toIso8601String(), $fetch->validUntil?->toIso8601String()]);
 
-        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $fetch);
+        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $fetch, Clients::browser());
         $row    = $this->row($connection);
 
         self::assertTrue($result->isChanged());
@@ -190,7 +191,7 @@ final class ImportSaverTest extends TestCase
             $this->anchor($connection);
         }
 
-        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed));
+        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed), Clients::browser());
         $row    = $this->row($connection);
 
         self::assertTrue($result->isChanged());
@@ -216,8 +217,8 @@ final class ImportSaverTest extends TestCase
         $optedIn  = $this->saml(['metadata_url' => self::URL]);
         $optedOut = $this->saml(['metadata_url' => self::URL, 'metadata_refresh' => true], ['metadata_fetched_at' => $this->clock->now()->subDays(40)]);
 
-        $this->saver()->save(self::TENANT, $optedIn->id, ['settings' => [...$proposed->settings(), 'metadata_refresh' => true]], $this->fetchOf($proposed));
-        $this->saver()->save(self::TENANT, $optedOut->id, ['settings' => [...$proposed->settings(), 'metadata_refresh' => null]], $this->fetchOf($proposed));
+        $this->saver()->save(self::TENANT, $optedIn->id, ['settings' => [...$proposed->settings(), 'metadata_refresh' => true]], $this->fetchOf($proposed), Clients::browser());
+        $this->saver()->save(self::TENANT, $optedOut->id, ['settings' => [...$proposed->settings(), 'metadata_refresh' => null]], $this->fetchOf($proposed), Clients::browser());
 
         self::assertSame(self::NOW, $this->row($optedIn)->metadata_fetched_at?->toIso8601String());
         self::assertSame([null, null], [$this->row($optedOut)->metadata_fetched_at, $this->row($optedOut)->metadata_valid_until]);
@@ -240,7 +241,7 @@ final class ImportSaverTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertFalse($this->saver()->save(self::TENANT, $stamped->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed))->isChanged());
+        self::assertFalse($this->saver()->save(self::TENANT, $stamped->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed), Clients::browser())->isChanged());
 
         $events = $this->recordedEvents();
 
@@ -251,7 +252,7 @@ final class ImportSaverTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertFalse($this->saver()->save(self::TENANT, $clean->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed))->isChanged());
+        self::assertFalse($this->saver()->save(self::TENANT, $clean->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed), Clients::browser())->isChanged());
         self::assertSame([], $this->recordedEvents());
         self::assertSame(0, $this->row($clean)->trust_version);
     }
@@ -271,7 +272,7 @@ final class ImportSaverTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertFalse($this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed))->isChanged());
+        self::assertFalse($this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed), Clients::browser())->isChanged());
 
         $events = $this->recordedEvents();
 
@@ -292,7 +293,7 @@ final class ImportSaverTest extends TestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::stale());
 
-        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed));
+        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $this->fetchOf($proposed), Clients::browser());
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
         self::assertSame('2026-09-22T09:30:00+00:00', $this->row($connection)->metadata_fetched_at?->toIso8601String());
@@ -325,7 +326,7 @@ final class ImportSaverTest extends TestCase
         self::assertSame(self::NOW, $proposed->fetch()->validatedAt->toIso8601String());
         self::assertNull($proposed->fetch()->validUntil);
 
-        self::assertTrue($this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch())->isSucceeded());
+        self::assertTrue($this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch(), Clients::browser())->isSucceeded());
 
         $row = $this->row($connection);
 
@@ -347,7 +348,7 @@ final class ImportSaverTest extends TestCase
         $connection = $this->oidc(['issuer' => 'https://old.example.test'], ['jwks' => '{"keys":[]}', 'jwks_fetched_at' => $yesterday, 'metadata_fetched_at' => $yesterday]);
         $proposed   = $this->oidcProposal();
 
-        self::assertTrue($this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch())->isChanged());
+        self::assertTrue($this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch(), Clients::browser())->isChanged());
 
         $row = $this->row($connection);
 
@@ -371,7 +372,14 @@ final class ImportSaverTest extends TestCase
 
         $this->startRecordingEvents();
 
-        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch(), new ActingIdentity('App\Models\User', '42'));
+        $result = $this->saver()->save(
+            self::TENANT,
+            $connection->id,
+            ['settings' => $proposed->settings()],
+            $proposed->fetch(),
+            Clients::browser(),
+            new ActingIdentity('App\Models\User', '42'),
+        );
         $row    = $this->row($connection);
         $events = $this->recordedEvents();
 
@@ -399,7 +407,10 @@ final class ImportSaverTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertSame(['token_endpoint'], $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch())->changedSettings);
+        self::assertSame(
+            ['token_endpoint'],
+            $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch(), Clients::browser())->changedSettings,
+        );
 
         $events = $this->recordedEvents();
 
@@ -425,7 +436,7 @@ final class ImportSaverTest extends TestCase
         $this->freshness = FakeFreshness::stale();
         $this->app?->instance(Freshness::class, $this->freshness);
 
-        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch());
+        $result = $this->saver()->save(self::TENANT, $connection->id, ['settings' => $proposed->settings()], $proposed->fetch(), Clients::browser());
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
         self::assertNull($this->row($connection)->metadata_fetched_at);
@@ -441,7 +452,7 @@ final class ImportSaverTest extends TestCase
     {
         $proposed   = $this->oidcProposal();
         $connection = $this->oidc();
-        $result     = $this->saver()->save(self::TENANT, $connection->id, ['settings' => ['token_endpoint' => 'http://nope.example.test']], $proposed->fetch());
+        $result     = $this->saver()->save(self::TENANT, $connection->id, ['settings' => ['token_endpoint' => 'http://nope.example.test']], $proposed->fetch(), Clients::browser());
 
         self::assertTrue($result->isInvalid());
         self::assertNull($this->row($connection)->metadata_fetched_at);
@@ -460,12 +471,12 @@ final class ImportSaverTest extends TestCase
         $fetch      = $proposed->fetch();
         $asked      = $this->freshness->asked();
 
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->saver()->save('tenant-2', $connection->id, [], $fetch)->reason);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->saver()->save(self::TENANT, '01jbunknownconnection00000', [], $fetch)->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->saver()->save('tenant-2', $connection->id, [], $fetch, Clients::browser())->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->saver()->save(self::TENANT, '01jbunknownconnection00000', [], $fetch, Clients::browser())->reason);
 
         config()->set('sso.features.oidc', false);
 
-        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $this->saver()->save(self::TENANT, $connection->id, [], $fetch)->reason);
+        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $this->saver()->save(self::TENANT, $connection->id, [], $fetch, Clients::browser())->reason);
         self::assertSame($asked, $this->freshness->asked());
         self::assertNull($this->row($connection)->metadata_fetched_at);
     }

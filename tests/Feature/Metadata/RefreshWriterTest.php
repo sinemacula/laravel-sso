@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Metadata\RefreshWriter;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -90,7 +91,7 @@ final class RefreshWriterTest extends TestCase
             $seen = [$locked->id, $locked->metadata_claim_token, DB::connection(StorageConnection::name())->transactionLevel()];
 
             return $expected;
-        }, null);
+        }, null, Clients::browser());
 
         self::assertSame($expected, $result);
         self::assertSame([$claim->connection->id, self::TOKEN, 1], $seen);
@@ -130,7 +131,7 @@ final class RefreshWriterTest extends TestCase
         Connection::query()->whereKey($claim->connection->id)->update([...$columns, 'metadata_refresh_failures' => 4, 'metadata_refresh_at' => $next]);
 
         $before = $this->row($claim)->getAttributes();
-        $result = $this->writer()->locked($claim, static fn (): array => self::TRUSTED, self::neverRuns(...), new ActingIdentity('App\Models\User', '42'));
+        $result = $this->writer()->locked($claim, static fn (): array => self::TRUSTED, self::neverRuns(...), new ActingIdentity('App\Models\User', '42'), Clients::browser());
 
         $this->assertConflict($result, $claim);
         self::assertSame($before, $this->row($claim)->getAttributes());
@@ -178,7 +179,7 @@ final class RefreshWriterTest extends TestCase
             $read = $locked->id;
 
             return $snapshot;
-        }, self::neverRuns(...), null);
+        }, self::neverRuns(...), null, Clients::browser());
 
         $this->assertConflict($result, $claim);
         self::assertSame($claim->connection->id, $read);
@@ -199,7 +200,7 @@ final class RefreshWriterTest extends TestCase
 
         Connection::query()->whereKey($claim->connection->id)->delete();
 
-        $result = $this->writer()->locked($claim, static fn (): array => throw new \LogicException('The snapshot was read.'), self::neverRuns(...), null);
+        $result = $this->writer()->locked($claim, static fn (): array => throw new \LogicException('The snapshot was read.'), self::neverRuns(...), null, Clients::browser());
 
         $this->assertConflict($result, $claim);
         $this->assertNoEvents();
@@ -237,7 +238,7 @@ final class RefreshWriterTest extends TestCase
         $claim = $this->claim(['metadata_refresh_failures' => $before, 'metadata_claimed_until' => $this->clock->now()->addMinute()]);
         $next  = $this->clock->now()->addSeconds($backoff);
 
-        $result = $this->writer()->failed($this->row($claim), FailureReason::FETCH_FAILED, null);
+        $result = $this->writer()->failed($this->row($claim), FailureReason::FETCH_FAILED, null, Clients::browser());
         $row    = $this->row($claim);
 
         self::assertSame(
@@ -363,7 +364,7 @@ final class RefreshWriterTest extends TestCase
     public function testARefreshReportsAndAnswersWhatChanged(): void
     {
         $claim  = $this->claim();
-        $result = $this->writer()->refreshed($this->row($claim), ['issuer', 'jwks'], true, new ActingIdentity('App\Models\User', '42'));
+        $result = $this->writer()->refreshed($this->row($claim), ['issuer', 'jwks'], true, new ActingIdentity('App\Models\User', '42'), Clients::browser());
 
         self::assertSame(
             [RefreshOutcome::REFRESHED, $claim->connection->id, ['issuer', 'jwks'], 2, true],

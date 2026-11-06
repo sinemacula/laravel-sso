@@ -8,6 +8,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use SineMacula\Laravel\Sso\Domains\DomainService;
+use SineMacula\Laravel\Sso\Http\ClientContext;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\Caller;
 
@@ -51,7 +53,7 @@ final readonly class SsoDomainController
         // @snippet-start route-domain-claim
         /** @var array{domain: string} $input */
         $input  = Validator::validate($request->all(), ['domain' => ['required', 'string', 'max:253']]);
-        $result = $this->domains->claim(Caller::tenantId($request), $connection, $input['domain'], Caller::actor($request));
+        $result = $this->domains->claim(Caller::tenantId($request), $connection, $input['domain'], ClientContext::fromRequest($request), Caller::actor($request));
 
         // The token is shown to the administrator to publish, and never logged
         $record = $result->domain === null ? null : ['name' => $result->domain->recordName, 'value' => $result->domain->verificationToken()];
@@ -73,7 +75,7 @@ final readonly class SsoDomainController
      */
     public function verify(Request $request, string $connection, string $domain): JsonResponse
     {
-        return Answers::of($this->domains->verify(Caller::tenantId($request), $connection, $domain, Caller::actor($request)));
+        return Answers::of($this->domains->verify(Caller::tenantId($request), $connection, $domain, Clients::browser(), Caller::actor($request)));
     }
 
     /**
@@ -88,6 +90,6 @@ final readonly class SsoDomainController
      */
     public function destroy(Request $request, string $connection, string $domain): JsonResponse
     {
-        return Answers::of($this->domains->remove(Caller::tenantId($request), $connection, $domain, Caller::actor($request)));
+        return Answers::of($this->domains->remove(Caller::tenantId($request), $connection, $domain, Clients::browser(), Caller::actor($request)));
     }
 }

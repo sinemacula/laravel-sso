@@ -12,8 +12,10 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 $redemptions = app(HandoffRedemption::class);
 ```
 
-Resolve the helper from the container for each request: it reads the request being served (for its IP address) and
-keeps nothing of one request for the next.
+Resolve the helper from the container for each request: it keeps nothing of one request for the next, and never reads
+the request being served. `admit()` and `redeem()` take the client the code is redeemed for as an `Http\ClientContext`,
+which your endpoint builds with `ClientContext::fromRequest($request)`: the redemption is counted against its IP
+address, and every event the redemption reports carries its IP address and user agent.
 
 ## The route
 
@@ -58,6 +60,7 @@ public function signIn(Request $request): JsonResponse
             $request->string('connection')->value(),  // the connection the client started through
             $request->string('code')->value(),
             $request->string('verifier')->value(),
+            ClientContext::fromRequest($request),     // the client the code is redeemed for
         );
 
         // Sign in the identity the code's link resolved to, never past the
@@ -119,7 +122,7 @@ Both take the caller your application has authenticated as their last argument, 
 
 <!-- snippet: tests/Integration/Examples/RedeemingAHandoff/redemptions/link.php#admit-link -->
 ```php
-$result = $redemptions->admit(Purpose::LINK, 'web', $connectionId, $code, $verifier, $caller);
+$result = $redemptions->admit(Purpose::LINK, 'web', $connectionId, $code, $verifier, $client, $caller);
 ```
 
 Only a `link` reads it: holding a code and its verifier proves which client started the flow, not who is calling now.
@@ -287,7 +290,7 @@ package refuses its own. The redeemer answers `null` once the code is admitted, 
 
 <!-- snippet: tests/Integration/Examples/RedeemingAHandoff/OwnHandoffRedemption.php#own-code-redemption -->
 ```php
-return DB::connection(StorageConnection::name())->transaction(function () use ($code, $purpose, $verifier, $caller): ?FailureReason {
+return DB::connection(StorageConnection::name())->transaction(function () use ($code, $purpose, $verifier, $client, $caller): ?FailureReason {
     $result = $code->result;
 
     // The lock comes first, before your code is locked
@@ -315,7 +318,7 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
         trustVersion: $code->trustVersion,     // the connection's trust version it was issued under
     );
 
-    $admission = $refusal === null ? $recheck->admit($result, $binding, $lock, $caller) : null;
+    $admission = $refusal === null ? $recheck->admit($result, $binding, $lock, $client, $caller) : null;
 
     if ($admission === null || !$admission->isPassed()) {
         $recheck->discardReservation($binding, $result->connectionId);

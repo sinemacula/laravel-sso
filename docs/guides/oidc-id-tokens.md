@@ -16,8 +16,13 @@ provider also signs with `ES256` allows both:
 ```php
 $updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
     'id_token_algorithms' => ['RS256', 'ES256'],
-]]);
+]], $client);
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 Allow only what your provider uses. `RS256` to `RS512`, `PS256` to `PS512` and `ES256` to `ES512` can be listed; `none`
 and every `HS*` cannot. A token signed with an algorithm off the list is refused with nothing fetched, whatever key it
@@ -44,7 +49,7 @@ adds another audience, such as an API, list it:
 ```php
 $updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
     'trusted_audiences' => ['https://api.acme.example'],
-]]);
+]], $client);
 ```
 
 Three rules go with it:
@@ -69,7 +74,7 @@ is held to the request instead. A connection whose sign-ins must follow an authe
 ```php
 $updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
     'max_age' => 3600,
-]]);
+]], $client);
 ```
 
 Some providers only send `auth_time` when asked, and `max_age` asks. A provider that ignores it has its sign-ins refused

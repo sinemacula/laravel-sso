@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
+use SineMacula\Laravel\Sso\Http\ClientContext;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\Caller;
 
@@ -80,6 +82,7 @@ final readonly class SsoConnectionController
             tenantId: Caller::tenantId($request),
             protocol: $input['protocol'],
             displayName: $input['display_name'],
+            client: ClientContext::fromRequest($request),
             settings: $input['settings']                  ?? [],
             attributeMapping: $input['attribute_mapping'] ?? [],
             preset: $input['preset']                      ?? null,
@@ -127,7 +130,7 @@ final readonly class SsoConnectionController
         /** @var array<string, mixed> $changes */
         $changes = $request->only(['display_name', 'settings', 'attribute_mapping']);
 
-        return Answers::of($this->connections->update(Caller::tenantId($request), $connection, $changes, Caller::actor($request)));
+        return Answers::of($this->connections->update(Caller::tenantId($request), $connection, $changes, Clients::browser(), Caller::actor($request)));
     }
 
     /**
@@ -141,7 +144,7 @@ final readonly class SsoConnectionController
      */
     public function enable(Request $request, string $connection): JsonResponse
     {
-        return Answers::of($this->connections->enable(Caller::tenantId($request), $connection, Caller::actor($request)));
+        return Answers::of($this->connections->enable(Caller::tenantId($request), $connection, Clients::browser(), Caller::actor($request)));
     }
 
     /**
@@ -156,7 +159,7 @@ final readonly class SsoConnectionController
      */
     public function disable(Request $request, string $connection): JsonResponse
     {
-        return Answers::of($this->lifecycle->disable(Caller::tenantId($request), $connection, Caller::actor($request)));
+        return Answers::of($this->lifecycle->disable(Caller::tenantId($request), $connection, Clients::browser(), Caller::actor($request)));
     }
 
     /**
@@ -170,6 +173,6 @@ final readonly class SsoConnectionController
      */
     public function destroy(Request $request, string $connection): JsonResponse
     {
-        return Answers::of($this->lifecycle->delete(Caller::tenantId($request), $connection, Caller::actor($request)));
+        return Answers::of($this->lifecycle->delete(Caller::tenantId($request), $connection, Clients::browser(), Caller::actor($request)));
     }
 }

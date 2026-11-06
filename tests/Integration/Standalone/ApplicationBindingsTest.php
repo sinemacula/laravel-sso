@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\Stages\IssueHandoff;
 use SineMacula\Laravel\Sso\Completion\Stages\RecordReplay;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
@@ -59,6 +60,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\SignInBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
 use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
@@ -92,6 +94,7 @@ use SineMacula\Laravel\Sso\Testing\FrozenClock;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use Tests\Concerns\FlowRoutes;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
@@ -282,7 +285,12 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         }
 
         try {
-            app(LinkingPolicyService::class)->change(self::TENANT, $connection->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true]);
+            app(LinkingPolicyService::class)->change(
+                self::TENANT,
+                $connection->id,
+                ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true],
+                Clients::browser(),
+            );
 
             self::fail('Linking went on over a linker that would ignore its rows.');
         } catch (\LogicException $exception) {
@@ -448,7 +456,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         $disabling  = $this->sessionedConnection('idp-revoke-disabling', self::SESSION);
         $satisfying = $this->sessionedConnection('idp-revoke-satisfying', self::OTHER_SESSION);
 
-        $disabled = app(ConnectionLifecycle::class)->disable(self::TENANT, $disabling->id);
+        $disabled = app(ConnectionLifecycle::class)->disable(self::TENANT, $disabling->id, Clients::browser());
 
         self::assertSame(ConnectionStatus::DISABLED, $disabled->status);
         self::assertSame([self::OTHER_SESSION], ApplicationRevocation::sessionIds());
@@ -461,7 +469,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
 
         ApplicationRevocation::establish(self::SESSION, self::TENANT, self::FLOW_APPLICATION, $disabling->id, null, $this->person, CarbonImmutable::parse(self::FLOW_NOW));
 
-        self::assertTrue(app(EnforcementService::class)->update(self::TENANT, true, [$satisfying->id])->isChanged());
+        self::assertTrue(app(EnforcementService::class)->update(self::TENANT, true, [$satisfying->id], Clients::browser())->isChanged());
         self::assertSame([self::OTHER_SESSION], ApplicationRevocation::sessionIds());
         self::assertSame(RevocationScopeKind::TENANT, $revocation->scopes[1]->kind);
         self::assertSame([$satisfying->id], $revocation->scopes[1]->policy?->connectionIds);
@@ -490,8 +498,8 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         $revocation->failure = new \RuntimeException(self::FAILURE);
 
         $changes = [
-            static fn (): mixed => app(ConnectionLifecycle::class)->disable(self::TENANT, $disabling->id),
-            static fn (): mixed => app(EnforcementService::class)->update(self::TENANT, true, [$satisfying->id]),
+            static fn (): mixed => app(ConnectionLifecycle::class)->disable(self::TENANT, $disabling->id, Clients::browser()),
+            static fn (): mixed => app(EnforcementService::class)->update(self::TENANT, true, [$satisfying->id], Clients::browser()),
         ];
 
         foreach ($changes as $change) {
@@ -531,17 +539,17 @@ final class ApplicationBindingsTest extends StandaloneTestCase
 
         $this->app?->instance(Freshness::class, $freshness);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $lifecycle->disable(self::TENANT, $connection->id)->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $lifecycle->disable(self::TENANT, $connection->id, Clients::browser())->reason);
 
         $freshness->authenticatedAt = $now->subSeconds(121);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $lifecycle->disable(self::TENANT, $connection->id)->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $lifecycle->disable(self::TENANT, $connection->id, Clients::browser())->reason);
         self::assertTrue(Connection::query()->whereKey($connection->id)->sole()->enabled);
         $this->assertNoEvents();
 
         $freshness->authenticatedAt = $now->subSeconds(120);
 
-        self::assertSame(ConnectionStatus::DISABLED, $lifecycle->disable(self::TENANT, $connection->id)->status);
+        self::assertSame(ConnectionStatus::DISABLED, $lifecycle->disable(self::TENANT, $connection->id, Clients::browser())->status);
         self::assertSame(array_fill(0, 3, [FreshnessOperation::CONNECTION_DISABLE, 120]), $freshness->asked);
         $this->assertEventSequence([ConnectionDisabled::class]);
         $this->assertOnlyRebound(Freshness::class);
@@ -574,7 +582,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
 
         $database->beginTransaction();
 
-        $admitted = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::FLOW_APPLICATION, $connection->id, $code, $start['verifier']);
+        $admitted = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::FLOW_APPLICATION, $connection->id, $code, $start['verifier'], Clients::browser());
 
         $database->rollBack();
 
@@ -759,7 +767,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         $connection = $this->openIdConnection('op-evidence');
         $subject    = new LinkSubject($this->flowProvider($connection)->issuer, FakeOpenIdProvider::SUBJECT);
 
-        self::assertTrue(app(LinkStore::class)->create($connection, $subject, $this->person, LinkOrigin::LINK_PURPOSE)->isCreated());
+        self::assertTrue(app(LinkStore::class)->create($connection, $subject, $this->person, LinkOrigin::LINK_PURPOSE, Clients::browser())->isCreated());
 
         $other  = static fn (FakeIdToken $token): FakeIdToken => $token->with('sub', 'another-subject');
         $free   = $this->startedFlow($connection);
@@ -1007,10 +1015,20 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         if ($connection->protocol === 'saml2') {
             $response = $this->flowSamlResponse($connection)->inResponseTo(self::samlRequestIdOf($start));
 
-            return $service->assertionConsumerService($connection->id, $response->completionRequest(self::relayStateOf($start)));
+            return $service->complete(
+                CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+                $connection->id,
+                $response->completionRequest(self::relayStateOf($start)),
+                Clients::browser(),
+            );
         }
 
-        return $service->callback($connection->id, new CompletionRequest('GET', $this->flowGrant($connection, $start, $tailor)->query(), []));
+        return $service->complete(
+            CompletionEndpoint::CALLBACK,
+            $connection->id,
+            new CompletionRequest('GET', $this->flowGrant($connection, $start, $tailor)->query(), []),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -1024,7 +1042,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     private function admitSignIn(Connection $connection, string $code, string $verifier): RedemptionResult
     {
         return DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::FLOW_APPLICATION, $connection->id, $code, $verifier),
+            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::FLOW_APPLICATION, $connection->id, $code, $verifier, Clients::browser()),
         );
     }
 
@@ -1081,10 +1099,11 @@ final class ApplicationBindingsTest extends StandaloneTestCase
              * Resolve the result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 

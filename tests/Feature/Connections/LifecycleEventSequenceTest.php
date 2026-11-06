@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -105,7 +106,7 @@ final class LifecycleEventSequenceTest extends TestCase
 
         $this->usePackageTables();
 
-        $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC);
+        $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC);
 
         $this->connection = Connection::query()->whereKey((string) $created->connection?->id)->sole();
         $this->connection->forceFill(['enabled' => true])->save();
@@ -124,7 +125,7 @@ final class LifecycleEventSequenceTest extends TestCase
      */
     public function testADisableReportsConnectionDisabled(): void
     {
-        self::assertTrue($this->lifecycle()->disable(self::TENANT, $this->connection->id)->isChanged());
+        self::assertTrue($this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser())->isChanged());
 
         $this->assertEventSequence([ConnectionDisabled::class]);
     }
@@ -137,7 +138,7 @@ final class LifecycleEventSequenceTest extends TestCase
      */
     public function testADeletionReportsConnectionDeletedAlone(): void
     {
-        self::assertTrue($this->lifecycle()->delete(self::TENANT, $this->connection->id)->isChanged());
+        self::assertTrue($this->lifecycle()->delete(self::TENANT, $this->connection->id, Clients::browser())->isChanged());
 
         self::assertSame(0, Link::query()->count());
         $this->assertEventSequence([ConnectionDeleted::class]);
@@ -226,16 +227,30 @@ final class LifecycleEventSequenceTest extends TestCase
         $collide = [$first => ['x'], $second => ['x']];
 
         return [
-            'stale disable'       => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $id),
-            'stale delete'        => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $id),
-            'stale migration'     => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['settings' => ['client_id' => 'client-456']], [], $all),
-            'missing disable'     => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $unknown),
-            'missing delete'      => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $unknown),
-            'missing migration'   => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $unknown, ['display_name' => 'Renamed'], [], $all),
-            'invalid migration'   => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['display_name' => ''], [], $all),
-            'colliding migration' => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['display_name' => 'Renamed'], $collide, [$this->links[2]->id]),
-            'linked update'       => fn (): ConnectionResult => $this->connections()->update(self::TENANT, $id, ['settings' => ['client_id' => 'client-456']]),
-            'repeated disable'    => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $id),
+            'stale disable'   => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $id, Clients::browser()),
+            'stale delete'    => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $id, Clients::browser()),
+            'stale migration' => fn (): ConnectionResult => $this->migration()->migrate(
+                self::TENANT,
+                $id,
+                ['settings' => ['client_id' => 'client-456']],
+                [],
+                $all,
+                Clients::browser(),
+            ),
+            'missing disable'     => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $unknown, Clients::browser()),
+            'missing delete'      => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $unknown, Clients::browser()),
+            'missing migration'   => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $unknown, ['display_name' => 'Renamed'], [], $all, Clients::browser()),
+            'invalid migration'   => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $id, ['display_name' => ''], [], $all, Clients::browser()),
+            'colliding migration' => fn (): ConnectionResult => $this->migration()->migrate(
+                self::TENANT,
+                $id,
+                ['display_name' => 'Renamed'],
+                $collide,
+                [$this->links[2]->id],
+                Clients::browser(),
+            ),
+            'linked update'    => fn (): ConnectionResult => $this->connections()->update(self::TENANT, $id, ['settings' => ['client_id' => 'client-456']], Clients::browser()),
+            'repeated disable' => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $id, Clients::browser()),
         ];
     }
 
@@ -250,7 +265,7 @@ final class LifecycleEventSequenceTest extends TestCase
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['client_id' => 'client-456']], [
             $this->links[2]->id => ['subject-3-new'],
             $this->links[0]->id => ['subject-1-new'],
-        ], [$this->links[1]->id]);
+        ], [$this->links[1]->id], Clients::browser());
 
         self::assertTrue($result->isChanged());
     }

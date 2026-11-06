@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Linking;
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -21,11 +20,13 @@ use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\LinkCreated;
 use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningResult;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -55,15 +56,14 @@ final class ProvisioningEventSequenceTest extends LinkingTestCase
     /** @var string The time every event is built at. */
     private const string OCCURRED_AT = '2026-11-01T09:30:00.000000Z';
 
-    /** @var string The IP address the completion comes from. */
-    private const string IP = '203.0.113.7';
+    /** @var string The IP address the completion comes from: the client the flow is started and completed for. */
+    private const string IP = Clients::IP;
 
     /** @var string The user agent the completion comes from. */
-    private const string USER_AGENT = 'ExampleBrowser/1.0';
+    private const string USER_AGENT = Clients::USER_AGENT;
 
     /**
-     * Make the result unmatched by any verified domain, and give the request
-     * being served a user agent.
+     * Make the result unmatched by any verified domain.
      *
      * @return void
      */
@@ -73,8 +73,6 @@ final class ProvisioningEventSequenceTest extends LinkingTestCase
         parent::setUp();
 
         $this->matcher->match = LinkEmailMatch::none();
-
-        $this->app?->instance('request', Request::create('/auth/sso', 'POST', server: ['REMOTE_ADDR' => self::IP, 'HTTP_USER_AGENT' => self::USER_AGENT]));
     }
 
     /**
@@ -311,7 +309,7 @@ final class ProvisioningEventSequenceTest extends LinkingTestCase
      */
     private function provision(ResultUnlinked $event): ProvisioningResult
     {
-        return app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person);
+        return app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person, self::client());
     }
 
     /**
@@ -342,5 +340,16 @@ final class ProvisioningEventSequenceTest extends LinkingTestCase
             'session_id'                  => null,
             'method'                      => null,
         ];
+    }
+
+    /**
+     * The client every action of the test is taken for: the browser's IP
+     * address and user agent, which its events carry.
+     *
+     * @return \SineMacula\Laravel\Sso\Http\ClientContext
+     */
+    private static function client(): ClientContext
+    {
+        return new ClientContext(self::IP, self::USER_AGENT);
     }
 }

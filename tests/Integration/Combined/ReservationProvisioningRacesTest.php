@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\ResultUnlinked;
@@ -33,6 +34,7 @@ use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RaceFlows;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 
 /**
  * Races a reservation against the provisioning of the same subject, across
@@ -390,7 +392,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
      */
     private function helped(ResultUnlinked $event): string
     {
-        return app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->provisioned)->status->value;
+        return app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->provisioned, Clients::browser())->status->value;
     }
 
     /**
@@ -448,7 +450,12 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
      */
     private function completion(string $state): CompletionResult
     {
-        return app(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', 'state=' . rawurlencode($state), []));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connection->id,
+            new CompletionRequest('GET', 'state=' . rawurlencode($state), []),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -466,7 +473,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
         self::assertIsString($code);
 
         return self::storageDatabase()->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier, Clients::browser()),
         );
     }
 

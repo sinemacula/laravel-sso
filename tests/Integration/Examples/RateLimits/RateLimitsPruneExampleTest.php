@@ -6,6 +6,7 @@ namespace Tests\Integration\Examples\RateLimits;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\RateLimit;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
@@ -46,7 +47,7 @@ final class RateLimitsPruneExampleTest extends ExampleTestCase
         config()->set('sso.rate_limits.authorization_request.per_ip', ['max' => 1, 'decay_seconds' => 60]);
 
         $limiter = app(AttemptLimiter::class);
-        $start   = static fn (string $ip): bool => $limiter->attempt(AttemptSubject::authorizationRequest($ip))->isAllowed();
+        $start   = static fn (string $ip): bool => $limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext($ip, null)))->isAllowed();
 
         self::assertTrue($start(self::OFFICE));
 

@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -87,12 +88,13 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
  * this one transition, once its token has passed every check under the new keys
  * (`TransitionReceipts`). Every other request and every issued code is voided.
  *
- * Every event is dispatched after the transaction commits (SSO-10.5). It
- * answers how it ended for its caller to log; it logs nothing, and never holds
- * a URL, body or key in what it reports. A database error propagates
- * (SSO-11.4). It holds the limits, the fetcher, the voider, the reporter, the
- * expiry and the clock, none of which keeps anything of one refetch for the
- * next (SSO-11.2).
+ * Every event is dispatched after the transaction commits (SSO-10.5), and
+ * carries the client the refetch is made for (`Http\ClientContext`): the client
+ * of the completion whose token asked. It answers how it ended for its caller
+ * to log; it logs nothing, and never holds a URL, body or key in what it
+ * reports. A database error propagates (SSO-11.4). It holds the limits, the
+ * fetcher, the voider, the reporter, the expiry and the clock, none of which
+ * keeps anything of one refetch for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -164,11 +166,13 @@ final readonly class JwksRefetcher
 
     /**
      * Refetch the JWKS of the connection as read, unless the cooldown holds,
-     * and answer how it ended, with the keys stored at its end. The reference
-     * names the consumed request whose token asked, which a rotation spares.
+     * for the client, and answer how it ended, with the keys stored at its end.
+     * The reference names the consumed request whose token asked, which a
+     * rotation spares.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $read
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $trigger
      * @return JwksRefetch
      *
@@ -177,7 +181,7 @@ final readonly class JwksRefetcher
      * @throws \Random\RandomException
      * @throws \Throwable
      */
-    public function refetch(Connection $read, AlgorithmAllowList $allowed, ?RequestReference $trigger = null): array
+    public function refetch(Connection $read, AlgorithmAllowList $allowed, ClientContext $client, ?RequestReference $trigger = null): array
     {
         StorageConnection::assertNoTransaction(self::IN_TRANSACTION);
 
@@ -194,14 +198,14 @@ final readonly class JwksRefetcher
         // The moment the JWKS was validated, read once the reader is done
         $validatedAt = $this->clock->now();
 
-        $answer = DB::connection(StorageConnection::name())->transaction(function () use ($read, $token, $fetched, $keys, $allowed, $validatedAt, $trigger): array {
+        $answer = DB::connection(StorageConnection::name())->transaction(function () use ($read, $token, $fetched, $keys, $allowed, $validatedAt, $trigger, $client): array {
 
             $locked = Connection::query()->useWritePdo()->whereKey($read->id)->lockForUpdate()->first();
 
             return match (true) {
-                $locked === null, !self::isUnchanged($locked, $read, $token) => $this->conflict($locked, $fetched->status),
-                $keys   === null                                             => $this->failed($locked, $fetched),
-                default                                                      => $this->replaced($locked, $keys, $allowed, $validatedAt, $trigger),
+                $locked === null, !self::isUnchanged($locked, $read, $token) => $this->conflict($locked, $fetched->status, $client),
+                $keys   === null                                             => $this->failed($locked, $fetched, $client),
+                default                                                      => $this->replaced($locked, $keys, $allowed, $validatedAt, $trigger, $client),
             };
         });
 
@@ -242,14 +246,15 @@ final readonly class JwksRefetcher
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus  $status
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return JwksRefetch
      *
      * @throws \InvalidArgumentException
      */
-    private function conflict(?Connection $locked, FetchStatus $status): array
+    private function conflict(?Connection $locked, FetchStatus $status, ClientContext $client): array
     {
         if ($locked !== null) {
-            $this->events->refreshFailed($locked, FailureReason::METADATA_CONFLICT, $locked->jwks_refetch_at);
+            $this->events->refreshFailed($locked, FailureReason::METADATA_CONFLICT, $locked->jwks_refetch_at, $client);
         }
 
         return self::answer(self::CONFLICT, $locked, FailureReason::METADATA_CONFLICT, $status);
@@ -261,15 +266,16 @@ final readonly class JwksRefetcher
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $fetched
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return JwksRefetch
      *
      * @throws \InvalidArgumentException
      */
-    private function failed(Connection $locked, FetchResult $fetched): array
+    private function failed(Connection $locked, FetchResult $fetched, ClientContext $client): array
     {
         $reason = $fetched->isSuccessful() ? FailureReason::JWKS_INVALID : ($fetched->reason ?? FailureReason::FETCH_FAILED);
 
-        return $this->failedFor($locked, $reason, $fetched->status);
+        return $this->failedFor($locked, $reason, $fetched->status, $client);
     }
 
     /**
@@ -278,15 +284,16 @@ final readonly class JwksRefetcher
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus  $status
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return JwksRefetch
      *
      * @throws \InvalidArgumentException
      */
-    private function failedFor(Connection $locked, FailureReason $reason, FetchStatus $status): array
+    private function failedFor(Connection $locked, FailureReason $reason, FetchStatus $status, ClientContext $client): array
     {
         $locked->forceFill(['jwks_claim_token' => null])->save();
 
-        $this->events->refreshFailed($locked, $reason, $locked->jwks_refetch_at);
+        $this->events->refreshFailed($locked, $reason, $locked->jwks_refetch_at, $client);
 
         return self::answer(self::FAILED, $locked, $reason, $status);
     }
@@ -303,15 +310,22 @@ final readonly class JwksRefetcher
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
      * @param  \Carbon\CarbonImmutable  $validatedAt
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $trigger
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return JwksRefetch
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function replaced(Connection $locked, ProviderKeySet $keys, AlgorithmAllowList $allowed, CarbonImmutable $validatedAt, ?RequestReference $trigger): array
-    {
+    private function replaced(
+        Connection $locked,
+        ProviderKeySet $keys,
+        AlgorithmAllowList $allowed,
+        CarbonImmutable $validatedAt,
+        ?RequestReference $trigger,
+        ClientContext $client,
+    ): array {
         if ($this->expiry->hasExpired(null, $validatedAt)) {
-            return $this->failedFor($locked, FailureReason::METADATA_EXPIRED, FetchStatus::FETCHED);
+            return $this->failedFor($locked, FailureReason::METADATA_EXPIRED, FetchStatus::FETCHED, $client);
         }
 
         $changes = $keys->changesFrom(ProviderKeySet::fromStored($locked->jwks, $allowed));
@@ -326,7 +340,7 @@ final readonly class JwksRefetcher
 
         $receipt = $removed ? $this->rotated($locked, $trigger) : null;
 
-        $this->events->refreshed($locked, $changes['added'], $changes['removed'], $removed);
+        $this->events->refreshed($locked, $changes['added'], $changes['removed'], $removed, $client);
 
         return self::answer(self::REFRESHED, $locked, null, FetchStatus::FETCHED, $receipt);
     }

@@ -124,7 +124,7 @@ final readonly class LinkBranch implements PurposeBranch
         }
 
         $held = $this->confirmation->lockedDomainLinks($identity, $context->lock);
-        $now  = $storage->resolve($context->result);
+        $now  = $storage->resolve($context->result, $context->client);
 
         return Judgement::of($this->applicationRefusal($context, $identity, $held) ?? self::continuity($now, $identity, $context->binding));
     }
@@ -149,7 +149,7 @@ final readonly class LinkBranch implements PurposeBranch
             return Admission::refused(RecheckOutcome::INDEPENDENT_AUTHENTICATION_REQUIRED);
         }
 
-        $now     = $storage->resolve($context->result);
+        $now     = $storage->resolve($context->result, $context->client);
         $outcome = self::continuity($now, $identity, $context->binding);
 
         if ($outcome !== RecheckOutcome::PASSED) {
@@ -256,7 +256,7 @@ final readonly class LinkBranch implements PurposeBranch
     {
         $result = $context->result;
 
-        $storage->confirm($context->connection, $linkId, $result->application, $result->requestReference);
+        $storage->confirm($context->connection, $linkId, $context->client, $result->application, $result->requestReference);
 
         return new Admission(RecheckOutcome::PASSED, $identity, $linkId);
     }
@@ -274,7 +274,17 @@ final readonly class LinkBranch implements PurposeBranch
         $result    = $context->result;
         $subject   = LinkSubject::of($result);
         $reference = $result->requestReference;
-        $creation  = $storage->create($context->connection, $subject, $identity, LinkOrigin::LINK_PURPOSE, null, $result->application, $result->purpose, $reference);
+        $creation  = $storage->create(
+            $context->connection,
+            $subject,
+            $identity,
+            LinkOrigin::LINK_PURPOSE,
+            $context->client,
+            null,
+            $result->application,
+            $result->purpose,
+            $reference,
+        );
 
         return match ($creation->status) {
             LinkCreationStatus::CREATED                => new Admission(RecheckOutcome::PASSED, $identity, $creation->linkId()),

@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
+use Tests\Integration\Examples\Clients;
 
 /**
  * The changes an administrator, or the metadata refresh, makes to a SAML
@@ -104,7 +105,7 @@ final readonly class TrustChanges
     {
         $another = new FakeSamlIdentityProvider($idp->entityId);
 
-        Assert::assertTrue(app(KeyService::class)->trustCertificate($this->tenantId, $this->connectionId, $another->certificate())->isSucceeded());
+        Assert::assertTrue(app(KeyService::class)->trustCertificate($this->tenantId, $this->connectionId, $another->certificate(), Clients::browser())->isSucceeded());
 
         return $another;
     }
@@ -124,7 +125,7 @@ final readonly class TrustChanges
 
         $this->fetcher->respond(self::METADATA_URL, FetchResult::fetched(200, [], $rotated->metadata()->toXml()));
 
-        $refreshed = app(MetadataRefresher::class)->refreshNow($this->tenantId, $this->connectionId, new ActingIdentity('App\Models\User', 'admin-1'));
+        $refreshed = app(MetadataRefresher::class)->refreshNow($this->tenantId, $this->connectionId, new ActingIdentity('App\Models\User', 'admin-1'), Clients::browser());
 
         Assert::assertSame(RefreshOutcome::REFRESHED, $refreshed->outcome);
 
@@ -151,7 +152,7 @@ final readonly class TrustChanges
         $keyId = array_search(openssl_x509_fingerprint($idp->certificate(), 'sha256'), $prints, true);
 
         Assert::assertIsString($keyId);
-        Assert::assertTrue($keys->distrustCertificate($this->tenantId, $this->connectionId, $keyId)->isSucceeded());
+        Assert::assertTrue($keys->distrustCertificate($this->tenantId, $this->connectionId, $keyId, Clients::browser())->isSucceeded());
 
         return $another;
     }
@@ -166,7 +167,9 @@ final readonly class TrustChanges
     {
         $anchor = FakeSamlIdentityProvider::keyPair('metadata.example.com')[1];
 
-        Assert::assertTrue(app(KeyService::class)->trustCertificate($this->tenantId, $this->connectionId, $anchor, use: KeyUse::METADATA_SIGNING)->isSucceeded());
+        Assert::assertTrue(
+            app(KeyService::class)->trustCertificate($this->tenantId, $this->connectionId, $anchor, Clients::browser(), use: KeyUse::METADATA_SIGNING)->isSucceeded(),
+        );
 
         return $idp;
     }
@@ -179,8 +182,8 @@ final readonly class TrustChanges
      */
     private function reenabled(FakeSamlIdentityProvider $idp): FakeSamlIdentityProvider
     {
-        Assert::assertTrue(app(ConnectionLifecycle::class)->disable($this->tenantId, $this->connectionId)->isSucceeded());
-        Assert::assertTrue(app(ConnectionService::class)->enable($this->tenantId, $this->connectionId)->isSucceeded());
+        Assert::assertTrue(app(ConnectionLifecycle::class)->disable($this->tenantId, $this->connectionId, Clients::browser())->isSucceeded());
+        Assert::assertTrue(app(ConnectionService::class)->enable($this->tenantId, $this->connectionId, Clients::browser())->isSucceeded());
 
         return $idp;
     }

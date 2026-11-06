@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 
 /**
  * Query budgets for the public JWKS, a body an unauthenticated route serves for
@@ -162,7 +163,7 @@ final class ServiceProviderDescriptionQueryBudgetTest extends PerformanceContrac
      */
     private function addKey(Connection $connection): void
     {
-        self::assertTrue(app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, KeyType::EC)->isSucceeded());
+        self::assertTrue(app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC)->isSucceeded());
     }
 
     /**

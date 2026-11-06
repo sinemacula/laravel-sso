@@ -18,6 +18,8 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\SamlMetadata;
 
+use Tests\Integration\Examples\Clients;
+
 /**
  * @var array{
  *     tenant: \Tests\Integration\Examples\SamlMetadata\Tenant,
@@ -31,6 +33,7 @@ $connection = $input['connection'];
 $anchor     = $input['anchor'];
 $actor      = $input['actor'];
 
+$client = Clients::browser();
 // @snippet-start saml-metadata-follow
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -38,10 +41,10 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 
 $updated = app(ConnectionService::class)->update($tenant->id, $connection->id, ['settings' => [
     'metadata_url' => 'https://idp.example.com/metadata.xml',
-]], $actor);
+]], $client, $actor);
 
 // With the provider's or the federation's signing certificate as an anchor,
 // that is all it takes.
-$anchored = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $actor, KeyUse::METADATA_SIGNING);
+$anchored = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $actor, KeyUse::METADATA_SIGNING);
 // @snippet-end saml-metadata-follow
 return [$updated, $anchored];

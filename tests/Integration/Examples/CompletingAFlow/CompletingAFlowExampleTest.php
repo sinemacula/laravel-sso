@@ -9,6 +9,7 @@ use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
@@ -16,6 +17,7 @@ use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -87,13 +89,18 @@ final class CompletingAFlowExampleTest extends ExampleTestCase
         // @snippet-start completion-service
         $completions = app(CompletionService::class);
         // @snippet-end completion-service
-        $result = $completions->assertionConsumerService($this->connectionId, $response->completionRequest($request->relayState));
+        $result = $completions->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $this->connectionId,
+            $response->completionRequest($request->relayState),
+            Clients::browser(),
+        );
 
         self::assertTrue($result->isCompleted());
         self::assertSame($start->reference?->value, $result->reference?->value);
 
         $next     = app(CompletionService::class);
-        $replayed = $next->assertionConsumerService($this->connectionId, $response->completionRequest($request->relayState));
+        $replayed = $next->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connectionId, $response->completionRequest($request->relayState), Clients::browser());
 
         self::assertNotSame($completions, $next);
         self::assertTrue($replayed->isRejected());

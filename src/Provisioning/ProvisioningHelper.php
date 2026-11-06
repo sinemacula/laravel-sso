@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
@@ -122,18 +123,20 @@ final readonly class ProvisioningHelper
     ) {}
 
     /**
-     * Link the exact result the grant is bound to, to the new identity.
+     * Link the exact result the grant is bound to, to the new identity, for the
+     * client, whose IP address and user agent `LinkCreated` carries.
      *
      * @param  \SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant  $grant
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Provisioning\ProvisioningResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function link(ProvisioningGrant $grant, #[\SensitiveParameter] VerifiedResult $result, IdentityReference $identity): ProvisioningResult
+    public function link(ProvisioningGrant $grant, #[\SensitiveParameter] VerifiedResult $result, IdentityReference $identity, ClientContext $client): ProvisioningResult
     {
         $this->storage->require('The provisioning helper');
 
@@ -144,7 +147,7 @@ final readonly class ProvisioningHelper
             return $mismatched ? ProvisioningResult::grantWrongResult() : ProvisioningResult::grantInvalid();
         }
 
-        return DB::connection(StorageConnection::name())->transaction(fn (): ProvisioningResult => $this->underLocks($grant, $requestId, $result, $identity));
+        return DB::connection(StorageConnection::name())->transaction(fn (): ProvisioningResult => $this->underLocks($grant, $requestId, $result, $identity, $client));
     }
 
     /**
@@ -180,14 +183,20 @@ final readonly class ProvisioningHelper
      * @param  string  $requestId
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Provisioning\ProvisioningResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    private function underLocks(ProvisioningGrant $grant, string $requestId, #[\SensitiveParameter] VerifiedResult $result, IdentityReference $identity): ProvisioningResult
-    {
+    private function underLocks(
+        ProvisioningGrant $grant,
+        string $requestId,
+        #[\SensitiveParameter] VerifiedResult $result,
+        IdentityReference $identity,
+        ClientContext $client,
+    ): ProvisioningResult {
         $lock       = $this->locks->lock($result->tenantId, $result->connectionId, $result->application);
         $connection = $lock->connection;
         $request    = AuthorizationRequest::query()->useWritePdo()->lockForUpdate()->whereKey($requestId)->first();
@@ -200,7 +209,7 @@ final readonly class ProvisioningHelper
             return ProvisioningResult::expired();
         }
 
-        return $this->linked($connection, $result, $identity);
+        return $this->linked($connection, $result, $identity, $client);
     }
 
     /**
@@ -244,13 +253,14 @@ final readonly class ProvisioningHelper
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Provisioning\ProvisioningResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    private function linked(Connection $connection, #[\SensitiveParameter] VerifiedResult $result, IdentityReference $identity): ProvisioningResult
+    private function linked(Connection $connection, #[\SensitiveParameter] VerifiedResult $result, IdentityReference $identity, ClientContext $client): ProvisioningResult
     {
         $subject = LinkSubject::of($result);
 
@@ -263,6 +273,7 @@ final readonly class ProvisioningHelper
             $subject,
             $identity,
             LinkOrigin::PROVISIONING,
+            $client,
             application: $result->application,
             purpose: $result->purpose,
             reference: $result->requestReference,

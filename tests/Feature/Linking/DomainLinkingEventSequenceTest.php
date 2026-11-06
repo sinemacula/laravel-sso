@@ -31,6 +31,7 @@ use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -185,7 +186,7 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
 
         $this->startRecordingEvents();
 
-        app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['acknowledged' => true]);
+        app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['acknowledged' => true], Clients::browser());
 
         $this->assertEventSequence([ConnectionUpdated::class]);
 
@@ -211,7 +212,7 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
 
         try {
             $this->connection->getConnection()->transaction(static function (): void {
-                app(ScopeWidening::class)->widened(new IdentityReference('App\Models\User', '7'), 'tenant-2');
+                app(ScopeWidening::class)->widened(new IdentityReference('App\Models\User', '7'), 'tenant-2', Clients::browser());
 
                 throw new \RuntimeException('The principal could not be written.');
             });
@@ -222,7 +223,7 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
         $this->assertNoEvents();
         self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
 
-        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2'));
+        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
 
         $this->assertEventSequence([LinkSuspended::class]);
     }
@@ -246,7 +247,7 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
         try {
             $this->connection->getConnection()->transaction(function () use ($code, $verifier): void {
 
-                self::assertTrue(app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier)->isRedeemed());
+                self::assertTrue(app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier, Clients::browser())->isRedeemed());
 
                 throw new \RuntimeException('The session could not be written.');
             });

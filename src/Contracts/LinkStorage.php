@@ -7,6 +7,7 @@ namespace SineMacula\Laravel\Sso\Contracts;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkCreation;
@@ -66,6 +67,7 @@ interface LinkStorage extends Linker
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -79,6 +81,7 @@ interface LinkStorage extends Linker
         LinkSubject $subject,
         IdentityReference $identity,
         LinkOrigin $origin,
+        ClientContext $client,
         ?ActingIdentity $actor = null,
         ?string $application = null,
         ?Purpose $purpose = null,
@@ -91,11 +94,12 @@ interface LinkStorage extends Linker
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $locked
      * @param  string  $linkId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
      * @return void
      */
-    public function confirm(SsoConnection $locked, string $linkId, ?string $application = null, ?RequestReference $reference = null): void;
+    public function confirm(SsoConnection $locked, string $linkId, ClientContext $client, ?string $application = null, ?RequestReference $reference = null): void;
 
     /**
      * Store the locked link's suspension, latched, raise the connection's links
@@ -106,9 +110,10 @@ interface LinkStorage extends Linker
      * @param  string  $connectionId
      * @param  string  $tenantId
      * @param  string  $protocol
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
-    public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol): void;
+    public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol, ClientContext $client): void;
 
     /**
      * Revoke the sessions established through the locked link, in the caller's

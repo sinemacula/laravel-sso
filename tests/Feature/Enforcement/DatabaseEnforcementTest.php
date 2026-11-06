@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Enforcement\EnforcementService;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\ParentInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
@@ -230,7 +231,7 @@ final class DatabaseEnforcementTest extends TestCase
 
         foreach ([[true, [$connection->id]], [true, [$connection->id, $other->id]], [false, [$connection->id]], [true, [$other->id]]] as [$enabled, $ids]) {
 
-            $result = $service->update(self::TENANT, $enabled, $ids);
+            $result = $service->update(self::TENANT, $enabled, $ids, Clients::browser());
             $policy = $this->enforcement()->policy(self::TENANT, self::APPLICATION);
 
             self::assertTrue($result->isChanged(), (string) json_encode($result));

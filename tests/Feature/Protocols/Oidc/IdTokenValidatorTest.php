@@ -32,6 +32,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -873,6 +874,7 @@ final class IdTokenValidatorTest extends TestCase
             OidcOptions::of($this->connection),
             new TokenResponse((string) $token, self::ACCESS_TOKEN),
             $consumed ?? $this->consumed(),
+            Clients::browser(),
         );
     }
 

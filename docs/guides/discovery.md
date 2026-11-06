@@ -11,8 +11,10 @@ give it away either, as long as the match finishes within that duration. The hel
 $discovery = app(DiscoveryService::class);
 ```
 
-Resolve the service from the container for each request: it reads the request being served (for its IP address) and
-keeps nothing of one request for the next.
+Resolve the service from the container for each request: it keeps nothing of one request for the next, and never reads
+the request being served. `start()` takes the client the flow is started for as an `Http\ClientContext`, which your
+route builds with `ClientContext::fromRequest($request)`: the start is counted against its IP address, and every event
+the start reports carries its IP address and user agent.
 
 ## Turning it on
 
@@ -61,12 +63,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Discovery\DiscoveryService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 Route::post('/auth/sso/discovery', static function (Request $request, DiscoveryService $discovery): JsonResponse {
     $result = $discovery->start(
         application: $request->string('application')->toString(),
         purpose: Purpose::SIGN_IN,
         email: $request->string('email')->toString(),
+        client: ClientContext::fromRequest($request),
         codeChallenge: $request->has('code_challenge') ? $request->string('code_challenge')->toString() : null,
     );
 
@@ -148,11 +152,12 @@ disabled or changed while its driver started leads to the fallback, as a miss do
 
 ## Rate limits
 
-Starts are counted per IP address (`sso.rate_limits.authorization_request.per_ip`, 30 a minute by default) and per
-email domain (`sso.rate_limits.authorization_request.per_email_domain`, 300 a minute by default), successful or not.
-The domain is counted in its normalised form, so `Jane@EXAMPLE.com.` and `jane@example.com` share one counter; the
-address itself is never counted or stored. An address whose domain does not normalise is counted against the IP address
-alone. With no request being served (a console command) no address is counted. See [Rate Limits](rate-limits.md).
+Starts are counted per IP address (`sso.rate_limits.authorization_request.per_ip`, 30 a minute by default) and per email
+domain (`sso.rate_limits.authorization_request.per_email_domain`, 300 a minute by default), successful or not. The
+domain is counted in its normalised form, so `Jane@EXAMPLE.com.` and `jane@example.com` share one counter; the address
+itself is never counted or stored. An address whose domain does not normalise is counted against the IP address alone. A
+start made for no client (`new ClientContext(null, null)`, from a console command) counts against no address. See [Rate
+Limits](rate-limits.md).
 
 ## Events
 

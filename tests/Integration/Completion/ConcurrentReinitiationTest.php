@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\UnsolicitedReinitiation;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
@@ -31,6 +32,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Keys\Certificates;
@@ -448,7 +450,7 @@ final class ConcurrentReinitiationTest extends TestCase
      */
     private function hasDistrustedTheSigningCertificate(): bool
     {
-        return app(KeyService::class)->distrustCertificate('tenant-1', $this->connection->id, $this->signingKeyId)->isSucceeded();
+        return app(KeyService::class)->distrustCertificate('tenant-1', $this->connection->id, $this->signingKeyId, Clients::browser())->isSucceeded();
     }
 
     /**
@@ -459,7 +461,7 @@ final class ConcurrentReinitiationTest extends TestCase
      */
     private function hasTurnedIdpInitiatedOff(): bool
     {
-        return app(ConnectionService::class)->update('tenant-1', $this->connection->id, ['settings' => ['idp_initiated' => false]])->isSucceeded();
+        return app(ConnectionService::class)->update('tenant-1', $this->connection->id, ['settings' => ['idp_initiated' => false]], Clients::browser())->isSucceeded();
     }
 
     /**
@@ -471,7 +473,7 @@ final class ConcurrentReinitiationTest extends TestCase
      */
     private function trust(string $certificate, KeyUse $use = KeyUse::IDP_SIGNING): string
     {
-        return app(KeyService::class)->trustCertificate('tenant-1', $this->connection->id, $certificate, null, $use)->key->id ?? '';
+        return app(KeyService::class)->trustCertificate('tenant-1', $this->connection->id, $certificate, Clients::browser(), null, $use)->key->id ?? '';
     }
 
     /**
@@ -501,7 +503,7 @@ final class ConcurrentReinitiationTest extends TestCase
      */
     private function complete(): CompletionResult
     {
-        return app(CompletionService::class)->assertionConsumerService($this->connection->id, $this->post);
+        return app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connection->id, $this->post, Clients::browser());
     }
 
     /**

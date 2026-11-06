@@ -32,6 +32,7 @@ use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\FailsDatabaseStatements;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Domains\RecordingWithdrawal;
 
 /**
@@ -725,7 +726,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
             /** @var \Illuminate\Foundation\Application $app */
             $app = $this->app;
 
-            self::assertSame(RecheckOutcome::SUSPENDED, $app->make(DomainRechecker::class)->recheck(self::reload($claim))->outcome);
+            self::assertSame(RecheckOutcome::SUSPENDED, $app->make(DomainRechecker::class)->recheck(self::reload($claim), Clients::browser())->outcome);
 
             return DnsLookup::found([self::TOKEN]);
         });
@@ -919,7 +920,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(DomainRechecker::class)->recheckAll();
+        return $app->make(DomainRechecker::class)->recheckAll(Clients::browser());
     }
 
     /**

@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -89,7 +90,7 @@ final class ConnectionDeletionTest extends TestCase
         $before  = $this->populated('before');
         $after   = $this->populated('after');
 
-        $result = $this->lifecycle()->delete(self::TENANT, $deleted->id);
+        $result = $this->lifecycle()->delete(self::TENANT, $deleted->id, Clients::browser());
 
         self::assertSame(ConnectionStatus::DELETED, $result->status);
         self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
@@ -109,7 +110,7 @@ final class ConnectionDeletionTest extends TestCase
     {
         $connection = $this->populated('only');
 
-        self::assertTrue($this->lifecycle()->delete(self::TENANT, $connection->id)->isChanged());
+        self::assertTrue($this->lifecycle()->delete(self::TENANT, $connection->id, Clients::browser())->isChanged());
 
         foreach (self::TABLES as $key) {
             self::assertSame(0, DB::connection(StorageConnection::name())->table(StorageConnection::table($key))->count(), $key);

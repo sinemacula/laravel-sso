@@ -46,8 +46,8 @@ completion is in `completion.md`.
 string $verifier)` (`@api`, resolved per request) answers a `Handoffs\RedemptionResult`. The steps run in this fixed
 order, and the first that refuses ends the redemption:
 
-1. The attempt is counted with `AttemptSubject::redemption()` against the IP address of the request being served
-   (none in a console) (SSO-11.8): a full limit is `rate_limited`, with its wait.
+1. The attempt is counted with `AttemptSubject::redemption()` against the IP address of the `Http\ClientContext` the
+   redemption is given (none for a client with none) (SSO-11.8): a full limit is `rate_limited`, with its wait.
 2. A code that is not `HandoffCode::isWellFormed()` is `handoff_unknown`.
 3. The row is read by `code_digest` on the write connection and matched again in constant time
    (`HandoffCode::matches()`, SSO-11.9); none is `handoff_unknown`.

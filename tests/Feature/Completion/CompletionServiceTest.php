@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
@@ -22,7 +23,9 @@ use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -35,6 +38,7 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\FixedClock;
@@ -67,7 +71,7 @@ use Tests\TestCase;
 #[CoversClass(CompletionPipeline::class)]
 final class CompletionServiceTest extends TestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The protocol state the request was started with. */
     private const string STATE = 'the-protocol-state-of-the-completed-request-01';
@@ -108,10 +112,13 @@ final class CompletionServiceTest extends TestCase
     /** @var int How many times the deadline contract was asked. */
     private int $deadlineAsked = 0;
 
+    /** @var \SineMacula\Laravel\Sso\Http\ClientContext The client every completion arrives from. */
+    private ClientContext $client;
+
     /**
-     * Bind a fixed clock, the recording issuer, a linker and a request from an
-     * IP address, register the applications and the driver, create the tables
-     * and a usable connection.
+     * Bind a fixed clock, the recording issuer and a linker, take the client
+     * every completion arrives from, register the applications and the driver,
+     * create the tables and a usable connection.
      *
      * @return void
      */
@@ -129,7 +136,7 @@ final class CompletionServiceTest extends TestCase
         $this->app?->instance(Linker::class, self::linker(fn (VerifiedResult $result): ?IdentityReference => $this->linked));
 
         $this->linked = new IdentityReference('App\Models\User', '42');
-        $this->app?->instance('request', Request::create('/auth/sso/connections/x/callback', 'GET', server: ['REMOTE_ADDR' => '203.0.113.7']));
+        $this->client = new ClientContext('203.0.113.7', 'Example/1.0');
 
         config()->set('sso.features.oidc', true);
         config()->set('sso.applications', [
@@ -728,6 +735,109 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
+     * Both endpoints share one count, of the completion flow, the client's IP
+     * address and the connection, and it is taken before the method is looked
+     * at: a response with the wrong method at the callback still spends the
+     * address's one attempt, and the assertion consumer service then answers
+     * `rate_limited` for it.
+     *
+     * @return void
+     */
+    public function testBothEndpointsShareOneCountTakenBeforeTheMethod(): void
+    {
+        config()->set('sso.rate_limits.completion.per_ip', ['max' => 1, 'decay_seconds' => 60]);
+
+        self::assertResult(self::rejectedResult(FailureReason::REQUEST_UNKNOWN), $this->completeAtCallback(method: 'POST'));
+        self::assertResult(self::rateLimitedResult(60), $this->completeAtAssertionConsumerService());
+
+        $this->client = new ClientContext('198.51.100.9', 'Example/1.0');
+
+        self::assertResult(self::rejectedResult(FailureReason::REQUEST_UNKNOWN), $this->completeAtAssertionConsumerService(method: 'GET'));
+    }
+
+    /**
+     * Rows of `[endpoint, method, connection, reason]`: each refusal before the
+     * steps at each endpoint, `null` naming the usable connection and `oidc`
+     * another protocol's.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint, 1: string, 2: ?string, 3: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideRefusalsBeforeTheSteps(): iterable
+    {
+        $acs      = CompletionEndpoint::ASSERTION_CONSUMER_SERVICE;
+        $callback = CompletionEndpoint::CALLBACK;
+
+        yield 'rate limited at the assertion consumer service' => [$acs, 'POST', null, FailureReason::RATE_LIMITED];
+        yield 'rate limited at the callback' => [$callback, 'GET', null, FailureReason::RATE_LIMITED];
+        yield 'another method at the assertion consumer service' => [$acs, 'GET', null, FailureReason::REQUEST_UNKNOWN];
+        yield 'another method at the callback' => [$callback, 'POST', null, FailureReason::REQUEST_UNKNOWN];
+        yield 'an unknown connection at the assertion consumer service' => [$acs, 'POST', self::UNKNOWN_ID, FailureReason::CONNECTION_UNAVAILABLE];
+        yield 'an unknown connection at the callback' => [$callback, 'GET', self::UNKNOWN_ID, FailureReason::CONNECTION_UNAVAILABLE];
+        yield 'an OIDC connection at the assertion consumer service' => [$acs, 'POST', 'oidc', FailureReason::CONNECTION_UNAVAILABLE];
+    }
+
+    /**
+     * Each refusal before the steps reports exactly one `FlowFailed`, under the
+     * endpoint's flow (`assertion` at the assertion consumer service,
+     * `callback` at the callback), carrying the IP address and user agent of
+     * the client the completion was given, never the request's being served.
+     *
+     * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
+     * @param  string  $method
+     * @param  ?string  $connection
+     * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('provideRefusalsBeforeTheSteps')]
+    public function testEachRefusalBeforeTheStepsReportsTheEndpointsFlowAndTheClient(CompletionEndpoint $endpoint, string $method, ?string $connection, FailureReason $reason): void
+    {
+        if ($reason === FailureReason::RATE_LIMITED) {
+            config()->set('sso.rate_limits.completion.per_ip', ['max' => 1, 'decay_seconds' => 60]);
+            $this->service()->complete($endpoint, self::UNKNOWN_ID, new CompletionRequest($method, '', []), $this->client);
+        }
+
+        $connectionId = match ($connection) {
+            null    => $this->connection->id,
+            'oidc'  => $this->makeConnection(['protocol' => 'oidc', 'enabled' => true])->id,
+            default => $connection,
+        };
+
+        $this->app?->instance('request', Request::create('/', 'POST', server: ['REMOTE_ADDR' => '198.51.100.9', 'HTTP_USER_AGENT' => 'Served/1.0']));
+        $this->startRecordingEvents();
+
+        $this->service()->complete($endpoint, $connectionId, new CompletionRequest($method, 'state=' . self::STATE, ['state' => self::STATE]), $this->client);
+
+        $failure = $this->assertExactlyOneFailure($endpoint === CompletionEndpoint::CALLBACK ? Flow::CALLBACK : Flow::ASSERTION, $reason);
+
+        self::assertSame(['203.0.113.7', 'Example/1.0'], [$failure->context()->ip, $failure->context()->userAgent]);
+        self::assertSame(0, $this->driver->correlations());
+    }
+
+    /**
+     * A client with no IP address, as a console caller passes, counts against
+     * the connection alone: no per-address limit refuses it, and its refusal
+     * carries no address or user agent.
+     *
+     * @return void
+     */
+    public function testAClientWithNoAddressCountsAgainstTheConnectionAlone(): void
+    {
+        config()->set('sso.rate_limits.completion.per_ip', ['max' => 1, 'decay_seconds' => 60]);
+
+        $this->client = new ClientContext(null, null);
+
+        self::assertResult(self::rejectedResult(FailureReason::CONNECTION_UNAVAILABLE), $this->completeAtCallback(connectionId: self::UNKNOWN_ID));
+
+        $this->startRecordingEvents();
+
+        self::assertResult(self::rejectedResult(FailureReason::CONNECTION_UNAVAILABLE), $this->completeAtCallback(connectionId: self::UNKNOWN_ID));
+
+        $failure = $this->assertExactlyOneFailure(Flow::CALLBACK, FailureReason::CONNECTION_UNAVAILABLE);
+
+        self::assertSame([null, null], [$failure->context()->ip, $failure->context()->userAgent]);
+    }
+
+    /**
      * A database error propagates as a server error, never as a failure or a
      * rejection.
      *
@@ -869,7 +979,7 @@ final class CompletionServiceTest extends TestCase
     {
         $request = new CompletionRequest($method, $state === null ? '' : 'state=' . $state, []);
 
-        return $this->service()->callback($connectionId ?? $this->connection->id, $request);
+        return $this->service()->complete(CompletionEndpoint::CALLBACK, $connectionId ?? $this->connection->id, $request, $this->client);
     }
 
     /**
@@ -883,7 +993,7 @@ final class CompletionServiceTest extends TestCase
     {
         $request = new CompletionRequest($method, '', ['state' => self::STATE]);
 
-        return $this->service()->assertionConsumerService($connectionId ?? $this->connection->id, $request);
+        return $this->service()->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $connectionId ?? $this->connection->id, $request, $this->client);
     }
 
     /**
@@ -1057,10 +1167,11 @@ final class CompletionServiceTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 return ExampleLinks::resolution(($this->resolve)($result));
             }

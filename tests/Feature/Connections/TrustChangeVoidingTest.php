@@ -25,6 +25,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
@@ -130,7 +131,7 @@ final class TrustChangeVoidingTest extends TestCase
 
         $this->clock->advance(60);
 
-        $result = $this->connections()->update(self::TENANT, $connection->id, ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth2/token']]);
+        $result = $this->connections()->update(self::TENANT, $connection->id, ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth2/token']], Clients::browser());
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame([
@@ -188,7 +189,7 @@ final class TrustChangeVoidingTest extends TestCase
 
         $this->clock->advance(60);
 
-        self::assertSame(ConnectionStatus::UPDATED, $this->connections()->update(self::TENANT, $connection->id, $changes)->status);
+        self::assertSame(ConnectionStatus::UPDATED, $this->connections()->update(self::TENANT, $connection->id, $changes, Clients::browser())->status);
 
         $this->assertVoided($rows);
     }
@@ -227,7 +228,7 @@ final class TrustChangeVoidingTest extends TestCase
 
         $this->clock->advance(60);
 
-        self::assertSame(ConnectionStatus::UPDATED, $this->connections()->update(self::TENANT, $connection->id, $changes)->status);
+        self::assertSame(ConnectionStatus::UPDATED, $this->connections()->update(self::TENANT, $connection->id, $changes, Clients::browser())->status);
 
         $this->assertNotVoided($rows);
     }
@@ -244,12 +245,21 @@ final class TrustChangeVoidingTest extends TestCase
 
         $endpoint = static fn (string $url): array => ['settings' => ['token_endpoint' => $url]];
 
-        self::assertSame(ConnectionStatus::INVALID, $this->connections()->update(self::TENANT, $connection->id, $endpoint('http://idp.example.com/token'))->status);
-        self::assertSame(ConnectionStatus::UNCHANGED, $this->connections()->update(self::TENANT, $connection->id, $endpoint(self::OIDC['token_endpoint']))->status);
+        self::assertSame(
+            ConnectionStatus::INVALID,
+            $this->connections()->update(self::TENANT, $connection->id, $endpoint('http://idp.example.com/token'), Clients::browser())->status,
+        );
+        self::assertSame(
+            ConnectionStatus::UNCHANGED,
+            $this->connections()->update(self::TENANT, $connection->id, $endpoint(self::OIDC['token_endpoint']), Clients::browser())->status,
+        );
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        self::assertSame(ConnectionStatus::REFUSED, $this->connections()->update(self::TENANT, $connection->id, $endpoint('https://idp.example.com/oauth2/token'))->status);
+        self::assertSame(
+            ConnectionStatus::REFUSED,
+            $this->connections()->update(self::TENANT, $connection->id, $endpoint('https://idp.example.com/oauth2/token'), Clients::browser())->status,
+        );
 
         $this->assertNotVoided($rows);
     }
@@ -267,11 +277,11 @@ final class TrustChangeVoidingTest extends TestCase
 
         $this->clock->advance(60);
 
-        $current = self::keyOf($this->keys()->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING, KeyType::RSA));
-        $next    = self::keyOf($this->keys()->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING, KeyType::RSA));
+        $current = self::keyOf($this->keys()->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA));
+        $next    = self::keyOf($this->keys()->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA));
 
-        self::assertTrue($this->keys()->makeCurrent(self::TENANT, $connection->id, $next)->isSucceeded());
-        self::assertTrue($this->keys()->retire(self::TENANT, $connection->id, $current)->isSucceeded());
+        self::assertTrue($this->keys()->makeCurrent(self::TENANT, $connection->id, $next, Clients::browser())->isSucceeded());
+        self::assertTrue($this->keys()->retire(self::TENANT, $connection->id, $current, Clients::browser())->isSucceeded());
 
         $this->assertNotVoided($rows);
     }
@@ -290,11 +300,13 @@ final class TrustChangeVoidingTest extends TestCase
 
         $this->clock->advance(60);
 
-        $certificate = self::keyOf($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::distinct(0)));
+        $certificate = self::keyOf($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::distinct(0), Clients::browser()));
 
         $this->assertNotVoided($rows);
 
-        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::distinct(1), null, KeyUse::METADATA_SIGNING)->isSucceeded());
+        self::assertTrue(
+            $this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::distinct(1), Clients::browser(), null, KeyUse::METADATA_SIGNING)->isSucceeded(),
+        );
 
         $this->assertVoided($rows);
 
@@ -302,7 +314,7 @@ final class TrustChangeVoidingTest extends TestCase
 
         $this->clock->advance(60);
 
-        self::assertTrue($this->keys()->distrustCertificate(self::TENANT, $connection->id, $certificate)->isSucceeded());
+        self::assertTrue($this->keys()->distrustCertificate(self::TENANT, $connection->id, $certificate, Clients::browser())->isSucceeded());
 
         self::assertSame('2026-11-01T09:32:00+00:00', AuthorizationRequest::query()->findOrFail($later['pending'])->voided_at?->toIso8601String());
         self::assertSame('2026-11-01T09:32:00+00:00', HandoffCode::query()->findOrFail($later['unredeemed'])->voided_at?->toIso8601String());
@@ -327,18 +339,21 @@ final class TrustChangeVoidingTest extends TestCase
         $this->makeLink($oidc);
         $this->makeLink($saml, 'subject-2');
 
-        self::assertSame(ConnectionStatus::UPDATED, $this->connections()->update(self::TENANT, $oidc->id, ['settings' => ['client_secret' => 'a-rotated-client-secret']])->status);
-        $issuer = $this->connections()->update(self::TENANT, $oidc->id, ['settings' => ['issuer' => 'https://login.example.com']]);
+        self::assertSame(
+            ConnectionStatus::UPDATED,
+            $this->connections()->update(self::TENANT, $oidc->id, ['settings' => ['client_secret' => 'a-rotated-client-secret']], Clients::browser())->status,
+        );
+        $issuer = $this->connections()->update(self::TENANT, $oidc->id, ['settings' => ['issuer' => 'https://login.example.com']], Clients::browser());
 
         self::assertSame(FailureReason::CONNECTION_HAS_LINKS, $issuer->reason);
 
-        $certificate = self::keyOf($keys->trustCertificate(self::TENANT, $saml->id, Certificates::distinct(0)));
-        $current     = self::keyOf($keys->addNext(self::TENANT, $saml->id, KeyUse::SP_SIGNING, KeyType::RSA));
-        $next        = self::keyOf($keys->addNext(self::TENANT, $saml->id, KeyUse::SP_SIGNING, KeyType::RSA));
+        $certificate = self::keyOf($keys->trustCertificate(self::TENANT, $saml->id, Certificates::distinct(0), Clients::browser()));
+        $current     = self::keyOf($keys->addNext(self::TENANT, $saml->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA));
+        $next        = self::keyOf($keys->addNext(self::TENANT, $saml->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA));
 
-        self::assertTrue($keys->makeCurrent(self::TENANT, $saml->id, $next)->isSucceeded());
-        self::assertTrue($keys->retire(self::TENANT, $saml->id, $current)->isSucceeded());
-        self::assertTrue($keys->distrustCertificate(self::TENANT, $saml->id, $certificate)->isSucceeded());
+        self::assertTrue($keys->makeCurrent(self::TENANT, $saml->id, $next, Clients::browser())->isSucceeded());
+        self::assertTrue($keys->retire(self::TENANT, $saml->id, $current, Clients::browser())->isSucceeded());
+        self::assertTrue($keys->distrustCertificate(self::TENANT, $saml->id, $certificate, Clients::browser())->isSucceeded());
         self::assertSame(2, Link::query()->where('state', 'active')->count());
     }
 
@@ -352,11 +367,11 @@ final class TrustChangeVoidingTest extends TestCase
         $connection = $this->saml();
         $rows       = $this->populate($connection);
 
-        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $connection->id, 'not a certificate')->isInvalid());
+        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $connection->id, 'not a certificate', Clients::browser())->isInvalid());
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::distinct(0))->isRefused());
+        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $connection->id, Certificates::distinct(0), Clients::browser())->isRefused());
 
         $this->assertNotVoided($rows);
     }
@@ -415,7 +430,7 @@ final class TrustChangeVoidingTest extends TestCase
 
         $this->populate($connection);
 
-        $this->connections()->update(self::TENANT, $connection->id, ['settings' => ['client_id' => 'client-456']]);
+        $this->connections()->update(self::TENANT, $connection->id, ['settings' => ['client_id' => 'client-456']], Clients::browser());
 
         self::assertSame([[$connection->id, 0, 0, 1]], $seen->getArrayCopy());
     }
@@ -533,7 +548,7 @@ final class TrustChangeVoidingTest extends TestCase
      */
     private function created(string $protocol, array $settings): Connection
     {
-        $result = $this->connections()->create(self::TENANT, $protocol, 'Example', $settings);
+        $result = $this->connections()->create(self::TENANT, $protocol, 'Example', Clients::browser(), $settings);
 
         $this->freshness->reset();
 

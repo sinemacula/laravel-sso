@@ -81,13 +81,15 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   connection's `retry_after` where it sets one, checked at boot, so a refresh still running is never reserved by a
   second worker and recorded as failed) and `.tries` (default 1, failing on a timeout rather than being released past
   its claim); the job calls `refreshQueued()`, which reads the connection again and is `skipped` when it is gone, no
-  longer refreshes or is no longer due. `--sync` refreshes them in the command instead (`refreshDue()`). `refreshNow()`
-  refreshes the tenant's connection whatever its backoff, its `metadata_refresh` setting or
-  `sso.features.metadata_refresh`, and whether it has expired or not, so it recovers a connection the schedule does not:
-  it asks only `MetadataSource::isRefreshable()`, that what it fetches is a URL the package may fetch, and that its
-  protocol is available (`connection_not_found` for another tenant's, `feature_disabled` for a protocol switched off or
-  nothing to fetch, with nothing fetched), for the `ActingIdentity` it requires. Where the schedule would not refresh
-  the connection (its setting or the feature off, or a SAML connection that has not opted in) it first asks
+  longer refreshes or is no longer due. `--sync` refreshes them in the command instead (`refreshDue()`). The job and the
+  command each pass `new ClientContext(null, null)`, built where the work starts, so their events carry no IP address or
+  user agent; `refreshNow()` takes the administrator's client after the acting identity. `refreshNow()` refreshes the
+  tenant's connection whatever its backoff, its `metadata_refresh` setting or `sso.features.metadata_refresh`, and
+  whether it has expired or not, so it recovers a connection the schedule does not: it asks only
+  `MetadataSource::isRefreshable()`, that what it fetches is a URL the package may fetch, and that its protocol is
+  available (`connection_not_found` for another tenant's, `feature_disabled` for a protocol switched off or nothing to
+  fetch, with nothing fetched), for the `ActingIdentity` it requires. Where the schedule would not refresh the
+  connection (its setting or the feature off, or a SAML connection that has not opted in) it first asks
   `sso.connection.trust` freshness, and `stale` is `freshness_required`. It then counts the attempt against
   `AttemptSubject::metadata()` (the import's limit, `sso.rate_limits.metadata`): past it, `rate_limited` with
   `retryAfter`, before anything is claimed or fetched. Every entry refuses to run inside a transaction on the storage

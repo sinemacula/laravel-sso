@@ -13,6 +13,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
@@ -90,14 +91,14 @@ final class RateLimitsExampleTest extends ExampleTestCase
         $limiter = app(AttemptLimiter::class);
 
         for ($attempt = 1; $attempt <= 60; $attempt++) {
-            self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(self::OFFICE))->isAllowed(), "Start {$attempt} was refused.");
+            self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::OFFICE, null)))->isAllowed(), "Start {$attempt} was refused.");
         }
 
-        $refused = $limiter->attempt(AttemptSubject::authorizationRequest(self::OFFICE));
+        $refused = $limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::OFFICE, null)));
 
         self::assertTrue($refused->isRateLimited());
         self::assertSame(60, $refused->retryAfter);
-        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(self::ELSEWHERE))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::ELSEWHERE, null)))->isAllowed());
     }
 
     /**
@@ -122,12 +123,12 @@ final class RateLimitsExampleTest extends ExampleTestCase
 
         self::assertSame(1, $code);
         self::assertStringContainsString('[rate_limits] ' . self::REDEMPTION_MISSING, $output);
-        self::assertTrue(app(AttemptLimiter::class)->attempt(AttemptSubject::authorizationRequest(self::OFFICE))->isAllowed());
+        self::assertTrue(app(AttemptLimiter::class)->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::OFFICE, null)))->isAllowed());
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage(self::REDEMPTION_MISSING);
 
-        app(AttemptLimiter::class)->attempt(AttemptSubject::redemption(self::OFFICE));
+        app(AttemptLimiter::class)->attempt(AttemptSubject::redemption(new ClientContext(self::OFFICE, null)));
     }
 
     /**
@@ -147,7 +148,7 @@ final class RateLimitsExampleTest extends ExampleTestCase
 
         self::assertSame(1, $code);
         self::assertStringContainsString('[rate_limits] Remove `sso.rate_limits.redemption.per_connection`: the package counts no such limit, so it limits nothing.', $output);
-        self::assertTrue(app(AttemptLimiter::class)->attempt(AttemptSubject::redemption(self::OFFICE))->isAllowed());
+        self::assertTrue(app(AttemptLimiter::class)->attempt(AttemptSubject::redemption(new ClientContext(self::OFFICE, null)))->isAllowed());
     }
 
     /**

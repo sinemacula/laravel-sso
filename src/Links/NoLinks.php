@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Links;
 
 use SineMacula\Laravel\Sso\Contracts\Linker;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
@@ -24,12 +25,13 @@ final readonly class NoLinks implements Linker
      * Resolve nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResolution
      */
     #[\Override]
-    public function resolve(VerifiedResult $result): LinkResolution
+    public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
     {
-        unset($result);
+        unset($result, $client);
 
         return LinkResolution::absent();
     }

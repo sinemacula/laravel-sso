@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\CompletionState;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\ResultBuilder;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
 use SineMacula\Laravel\Sso\Completion\Stages\ValidateResponse;
@@ -37,6 +38,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Keys\Certificates;
@@ -367,7 +369,7 @@ final class SamlTrustChangeRaceTest extends TestCase
      */
     private function hasDistrustedTheSigningCertificate(): bool
     {
-        return app(KeyService::class)->distrustCertificate('tenant-1', $this->connection->id, $this->signingKeyId)->isSucceeded();
+        return app(KeyService::class)->distrustCertificate('tenant-1', $this->connection->id, $this->signingKeyId, Clients::browser())->isSucceeded();
     }
 
     /**
@@ -378,7 +380,7 @@ final class SamlTrustChangeRaceTest extends TestCase
      */
     private function trust(string $certificate): string
     {
-        return app(KeyService::class)->trustCertificate('tenant-1', $this->connection->id, $certificate)->key->id ?? '';
+        return app(KeyService::class)->trustCertificate('tenant-1', $this->connection->id, $certificate, Clients::browser())->key->id ?? '';
     }
 
     /**
@@ -388,7 +390,7 @@ final class SamlTrustChangeRaceTest extends TestCase
      */
     private function complete(): CompletionResult
     {
-        return app(CompletionService::class)->assertionConsumerService($this->connection->id, $this->post);
+        return app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connection->id, $this->post, Clients::browser());
     }
 
     /**

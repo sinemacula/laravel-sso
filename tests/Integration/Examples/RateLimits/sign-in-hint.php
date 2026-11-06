@@ -22,10 +22,11 @@ $emailDomain = $input['domain'];
 
 // @snippet-start attempt-limiter
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 $result = app(AttemptLimiter::class)->attempt(
-    AttemptSubject::authorizationRequest($request->ip(), $emailDomain),
+    AttemptSubject::authorizationRequest(ClientContext::fromRequest($request), $emailDomain),
 );
 // @snippet-end attempt-limiter
 return $result;

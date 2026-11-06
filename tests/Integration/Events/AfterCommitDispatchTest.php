@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\TransactionGenerations;
 use Tests\Concerns\FailsDatabaseStatements;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -380,6 +381,7 @@ final class AfterCommitDispatchTest extends TestCase
         $app = $this->app;
 
         $context = $app->make(EventContexts::class)->make(
+            Clients::browser(),
             connectionId: 'conn_1',
             connectionTenantId: 'tenant_1',
             protocol: 'saml2',

@@ -34,6 +34,7 @@ use SineMacula\Laravel\Sso\Secrets\MaskedSecret;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\ExampleDriver;
@@ -135,6 +136,7 @@ final class ConnectionServiceTest extends TestCase
             self::TENANT,
             'oidc',
             '  Acme  ',
+            Clients::browser(),
             self::OIDC + ['client_secret' => self::SECRET],
             ['department' => 'dept'],
             actor: new ActingIdentity('user', '42'),
@@ -201,7 +203,7 @@ final class ConnectionServiceTest extends TestCase
      */
     public function testCreatesAnIncompleteConnection(): void
     {
-        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', ['sso_url' => null, 'client_secret' => null], ['groups' => null]);
+        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), ['sso_url' => null, 'client_secret' => null], ['groups' => null]);
 
         $connection = $result->connection;
 
@@ -222,7 +224,15 @@ final class ConnectionServiceTest extends TestCase
      */
     public function testFillsInAPresetAndLetsWhatIsGivenReplaceIt(): void
     {
-        $result = $this->service()->create(self::TENANT, 'oidc', 'Google', ['client_id' => 'client-123', 'scopes' => ['openid', 'email']], ['email' => 'mail'], 'google');
+        $result = $this->service()->create(
+            self::TENANT,
+            'oidc',
+            'Google',
+            Clients::browser(),
+            ['client_id' => 'client-123', 'scopes' => ['openid', 'email']],
+            ['email' => 'mail'],
+            'google',
+        );
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
 
@@ -237,10 +247,10 @@ final class ConnectionServiceTest extends TestCase
             $result->connection?->attributeMapping,
         );
 
-        $saml = $this->service()->create(self::TENANT, 'saml2', 'Entra', self::SAML, preset: 'microsoft_entra_saml');
+        $saml = $this->service()->create(self::TENANT, 'saml2', 'Entra', Clients::browser(), self::SAML, preset: 'microsoft_entra_saml');
 
         self::assertSame('http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress', $saml->connection?->attributeMapping['email']);
-        self::assertSame('urn:oid:2.5.4.42', $this->service()->create(self::TENANT, 'saml2', 'Plain', self::SAML)->connection?->attributeMapping['given_name']);
+        self::assertSame('urn:oid:2.5.4.42', $this->service()->create(self::TENANT, 'saml2', 'Plain', Clients::browser(), self::SAML)->connection?->attributeMapping['given_name']);
     }
 
     /**
@@ -251,8 +261,8 @@ final class ConnectionServiceTest extends TestCase
      */
     public function testRefusesAnUnknownPresetOrOneOfAnotherProtocol(): void
     {
-        $unknown = $this->service()->create(self::TENANT, 'oidc', 'Acme', preset: 'nobody');
-        $other   = $this->service()->create(self::TENANT, 'oidc', 'Acme', preset: 'microsoft_entra_saml');
+        $unknown = $this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), preset: 'nobody');
+        $other   = $this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), preset: 'microsoft_entra_saml');
 
         self::assertSame([['preset', 'unknown']], self::violationsOf($unknown));
         self::assertSame([['preset', 'not_allowed']], self::violationsOf($other));
@@ -269,7 +279,7 @@ final class ConnectionServiceTest extends TestCase
     public function testCollectsEveryViolationInOrder(): void
     {
         $settings = ['issuer' => 'http://idp.example.com', 'client_secret' => "leaked-secret-value\x01", 'color' => 'red'];
-        $result   = $this->service()->create(self::TENANT, 'oidc', ' ', $settings, ['subject' => 'sub']);
+        $result   = $this->service()->create(self::TENANT, 'oidc', ' ', Clients::browser(), $settings, ['subject' => 'sub']);
 
         self::assertTrue($result->isInvalid());
         self::assertSame([
@@ -293,10 +303,10 @@ final class ConnectionServiceTest extends TestCase
     public function testValidatesTheDisplayName(): void
     {
         foreach (['' => 'required', "Acme\x07" => 'invalid_format', str_repeat('n', 256) => 'too_long', "Acme\u{85}" => 'invalid_format'] as $name => $code) {
-            self::assertSame([['display_name', $code]], self::violationsOf($this->service()->create(self::TENANT, 'oidc', $name)), $name);
+            self::assertSame([['display_name', $code]], self::violationsOf($this->service()->create(self::TENANT, 'oidc', $name, Clients::browser())), $name);
         }
 
-        self::assertTrue($this->service()->create(self::TENANT, 'oidc', str_repeat('é', 255))->isSucceeded());
+        self::assertTrue($this->service()->create(self::TENANT, 'oidc', str_repeat('é', 255), Clients::browser())->isSucceeded());
         $this->assertEventSequence([ConnectionCreated::class]);
     }
 
@@ -320,7 +330,7 @@ final class ConnectionServiceTest extends TestCase
         $codes = [];
 
         foreach ($cases as $settings) {
-            $codes[] = self::violationsOf($this->service()->create(self::TENANT, 'oidc', 'Acme', $settings));
+            $codes[] = self::violationsOf($this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), $settings));
         }
 
         self::assertSame([
@@ -331,8 +341,8 @@ final class ConnectionServiceTest extends TestCase
             [['client_secret', 'unsupported']],
         ], $codes);
 
-        self::assertTrue($this->service()->create(self::TENANT, 'oidc', 'Acme', ['client_secret' => str_repeat('s', 1024)])->isSucceeded());
-        self::assertTrue($this->service()->create(self::TENANT, 'oidc', 'Acme', ['client_authentication' => 'private_key_jwt'])->isSucceeded());
+        self::assertTrue($this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), ['client_secret' => str_repeat('s', 1024)])->isSucceeded());
+        self::assertTrue($this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), ['client_authentication' => 'private_key_jwt'])->isSucceeded());
     }
 
     /**
@@ -349,6 +359,7 @@ final class ConnectionServiceTest extends TestCase
             self::TENANT,
             'saml2',
             'Acme',
+            Clients::browser(),
             self::SAML + ['idp_initiated' => true, 'idp_initiated_start_url' => 'https://app.example.com/start', 'force_authn' => true],
         );
 
@@ -369,7 +380,7 @@ final class ConnectionServiceTest extends TestCase
     {
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $result = $this->service()->create(self::TENANT, 'oidc', 'Acme', self::OIDC + ['client_secret' => self::SECRET]);
+        $result = $this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC + ['client_secret' => self::SECRET]);
 
         self::assertTrue($result->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
@@ -388,7 +399,7 @@ final class ConnectionServiceTest extends TestCase
         config()->set('sso.features.saml2', false);
 
         foreach (['saml2', 'cas', '', 'OIDC'] as $protocol) {
-            $result = $this->service()->create(self::TENANT, $protocol, 'Acme');
+            $result = $this->service()->create(self::TENANT, $protocol, 'Acme', Clients::browser());
 
             self::assertTrue($result->isRefused(), $protocol);
             self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $result->reason);
@@ -407,7 +418,13 @@ final class ConnectionServiceTest extends TestCase
     {
         $this->protocols()->extend('example', fn (): ExampleDriver => new ExampleDriver);
 
-        $result = $this->service()->create(self::TENANT, 'example', 'Acme', ['issuer' => 'https://idp.example.com', 'api_secret' => self::SECRET, 'region' => 'eu']);
+        $result = $this->service()->create(
+            self::TENANT,
+            'example',
+            'Acme',
+            Clients::browser(),
+            ['issuer' => 'https://idp.example.com', 'api_secret' => self::SECRET, 'region' => 'eu'],
+        );
 
         self::assertTrue($result->isSucceeded());
         self::assertSame(['issuer' => 'https://idp.example.com', 'region' => 'eu'], $result->connection?->settings);
@@ -415,7 +432,7 @@ final class ConnectionServiceTest extends TestCase
         self::assertSame([], $result->connection->attributeMapping);
         self::assertSame([[FreshnessOperation::CONNECTION_TRUST, self::TRUST_MAX_AGE]], $this->freshness->asked());
 
-        self::assertSame([['issuer', 'required']], self::violationsOf($this->service()->create(self::TENANT, 'example', 'Acme')));
+        self::assertSame([['issuer', 'required']], self::violationsOf($this->service()->create(self::TENANT, 'example', 'Acme', Clients::browser())));
     }
 
     /**
@@ -429,11 +446,11 @@ final class ConnectionServiceTest extends TestCase
     public function testRefusesATenantIdTheTableCannotHold(): void
     {
         $calls = [
-            fn (string $tenant): mixed => $this->service()->create($tenant, 'oidc', 'Acme'),
-            fn (string $tenant): mixed => $this->service()->update($tenant, 'x', []),
+            fn (string $tenant): mixed => $this->service()->create($tenant, 'oidc', 'Acme', Clients::browser()),
+            fn (string $tenant): mixed => $this->service()->update($tenant, 'x', [], Clients::browser()),
             fn (string $tenant): mixed => $this->service()->get($tenant, 'x'),
             fn (string $tenant): mixed => $this->service()->list($tenant),
-            fn (string $tenant): mixed => $this->service()->enable($tenant, 'x'),
+            fn (string $tenant): mixed => $this->service()->enable($tenant, 'x', Clients::browser()),
         ];
 
         foreach ($calls as $call) {
@@ -461,15 +478,15 @@ final class ConnectionServiceTest extends TestCase
     {
         $tenant = str_repeat('t', ConnectionFinder::MAX_TENANT_ID_LENGTH);
 
-        $created = $this->service()->create($tenant, 'oidc', 'Acme', self::OIDC);
+        $created = $this->service()->create($tenant, 'oidc', 'Acme', Clients::browser(), self::OIDC);
         $id      = (string) $created->connection?->id;
 
         self::assertSame(ConnectionStatus::CREATED, $created->status);
         self::assertSame($tenant, $this->stored($id)->tenant_id);
         self::assertSame($id, $this->service()->get($tenant, $id)?->id);
         self::assertSame([$id], array_map(static fn (ConnectionSummary $summary): string => $summary->id, $this->service()->list($tenant)));
-        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update($tenant, $id, ['display_name' => 'Renamed'])->status);
-        self::assertSame(ConnectionStatus::ENABLED, $this->service()->enable($tenant, $id)->status);
+        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update($tenant, $id, ['display_name' => 'Renamed'], Clients::browser())->status);
+        self::assertSame(ConnectionStatus::ENABLED, $this->service()->enable($tenant, $id, Clients::browser())->status);
         self::assertNull($this->service()->get(self::TENANT, $id));
     }
 
@@ -485,7 +502,7 @@ final class ConnectionServiceTest extends TestCase
 
         $this->clock->advance(60);
 
-        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']], new ActingIdentity('user', '7'));
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']], Clients::browser(), new ActingIdentity('user', '7'));
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame(['issuer'], $result->changedSettings);
@@ -513,7 +530,7 @@ final class ConnectionServiceTest extends TestCase
         $id     = $this->createOidc();
         $before = $this->stored($id)->secrets;
 
-        $result = $this->service()->update(self::TENANT, $id, ['display_name' => 'Acme SSO', 'settings' => ['scopes' => ['openid', 'email']]]);
+        $result = $this->service()->update(self::TENANT, $id, ['display_name' => 'Acme SSO', 'settings' => ['scopes' => ['openid', 'email']]], Clients::browser());
 
         self::assertSame(['scopes', 'display_name'], $result->changedSettings);
         self::assertEquals(['client_secret' => MaskedSecret::set()], $result->connection?->secrets);
@@ -532,13 +549,13 @@ final class ConnectionServiceTest extends TestCase
     {
         $id = $this->createOidc();
 
-        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => 'a-new-client-secret']]);
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => 'a-new-client-secret']], Clients::browser());
 
         self::assertSame(['client_secret'], $result->changedSettings);
         self::assertTrue($this->secrets()->reveal($this->stored($id), 'client_secret')?->equals('a-new-client-secret'));
         self::assertSame([[FreshnessOperation::CONNECTION_TRUST, self::TRUST_MAX_AGE]], $this->freshness->asked());
 
-        $same = $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => 'a-new-client-secret']]);
+        $same = $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => 'a-new-client-secret']], Clients::browser());
 
         self::assertSame(ConnectionStatus::UPDATED, $same->status);
         self::assertSame(['client_secret'], $same->changedSettings);
@@ -554,13 +571,13 @@ final class ConnectionServiceTest extends TestCase
     {
         $id = $this->createOidc();
 
-        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => null]]);
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => null]], Clients::browser());
 
         self::assertSame(['client_secret'], $result->changedSettings);
         self::assertEquals(['client_secret' => MaskedSecret::unset()], $result->connection?->secrets);
         self::assertNull($this->stored($id)->secrets);
 
-        $again = $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => null]]);
+        $again = $this->service()->update(self::TENANT, $id, ['settings' => ['client_secret' => null]], Clients::browser());
 
         self::assertSame(ConnectionStatus::UNCHANGED, $again->status);
         self::assertEventSequence([ConnectionUpdated::class]);
@@ -576,13 +593,13 @@ final class ConnectionServiceTest extends TestCase
     {
         $id = $this->createOidc(['userinfo_endpoint' => 'https://idp.example.com/userinfo', 'client_authentication' => 'client_secret_post']);
 
-        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['userinfo_endpoint' => null, 'client_authentication' => null]]);
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['userinfo_endpoint' => null, 'client_authentication' => null]], Clients::browser());
 
         self::assertSame(['userinfo_endpoint', 'client_authentication'], $result->changedSettings);
         self::assertArrayNotHasKey('userinfo_endpoint', $this->stored($id)->settings);
         self::assertSame('client_secret_basic', $this->stored($id)->settings['client_authentication']);
 
-        $default = $this->service()->update(self::TENANT, $id, ['settings' => ['client_authentication' => null, 'returns_iss' => false]]);
+        $default = $this->service()->update(self::TENANT, $id, ['settings' => ['client_authentication' => null, 'returns_iss' => false]], Clients::browser());
 
         self::assertSame(ConnectionStatus::UNCHANGED, $default->status);
     }
@@ -597,7 +614,7 @@ final class ConnectionServiceTest extends TestCase
     {
         $id = $this->createOidc();
 
-        $result = $this->service()->update(self::TENANT, $id, ['attribute_mapping' => ['department' => 'dept', 'groups' => null, 'email' => 'mail']]);
+        $result = $this->service()->update(self::TENANT, $id, ['attribute_mapping' => ['department' => 'dept', 'groups' => null, 'email' => 'mail']], Clients::browser());
 
         self::assertSame(['attribute_mapping'], $result->changedSettings);
         self::assertSame(
@@ -608,7 +625,7 @@ final class ConnectionServiceTest extends TestCase
 
         self::assertSame(
             [['attribute_mapping.tenant_id', 'reserved']],
-            self::violationsOf($this->service()->update(self::TENANT, $id, ['attribute_mapping' => ['tenant_id' => 'tid']])),
+            self::violationsOf($this->service()->update(self::TENANT, $id, ['attribute_mapping' => ['tenant_id' => 'tid']], Clients::browser())),
         );
     }
 
@@ -625,16 +642,16 @@ final class ConnectionServiceTest extends TestCase
         $id      = $this->createOidc();
         $mapping = ['attribute_mapping' => ['badge_number' => 'badge']];
 
-        self::assertSame([['attribute_mapping.badge_number', 'not_allowed']], self::violationsOf($this->service()->update(self::TENANT, $id, $mapping)));
+        self::assertSame([['attribute_mapping.badge_number', 'not_allowed']], self::violationsOf($this->service()->update(self::TENANT, $id, $mapping, Clients::browser())));
         self::assertArrayNotHasKey('badge_number', $this->stored($id)->attribute_mapping);
 
-        $created = $this->service()->create(self::TENANT, 'oidc', 'Badges', [], ['badge_number' => 'badge']);
+        $created = $this->service()->create(self::TENANT, 'oidc', 'Badges', Clients::browser(), [], ['badge_number' => 'badge']);
 
         self::assertSame([['attribute_mapping.badge_number', 'not_allowed']], self::violationsOf($created));
 
         config()->set('sso.mapping.custom_attributes', ['department', 'badge_number']);
 
-        self::assertSame(['attribute_mapping'], $this->service()->update(self::TENANT, $id, $mapping)->changedSettings);
+        self::assertSame(['attribute_mapping'], $this->service()->update(self::TENANT, $id, $mapping, Clients::browser())->changedSettings);
         self::assertSame('badge', $this->stored($id)->attribute_mapping['badge_number'] ?? null);
     }
 
@@ -652,7 +669,7 @@ final class ConnectionServiceTest extends TestCase
             'attribute_mapping' => ['department' => 'dept'],
             'display_name'      => 'Renamed',
             'settings'          => ['scopes' => ['openid'], 'client_secret' => 'rotated-secret', 'issuer' => 'https://login.example.com'],
-        ]);
+        ], Clients::browser());
 
         self::assertSame(['issuer', 'scopes', 'client_secret', 'display_name', 'attribute_mapping'], $result->changedSettings);
         self::assertSame([[FreshnessOperation::CONNECTION_TRUST, self::TRUST_MAX_AGE]], $this->freshness->asked());
@@ -669,11 +686,11 @@ final class ConnectionServiceTest extends TestCase
     {
         config()->set('sso.features.idp_initiated', true);
 
-        $id = (string) $this->service()->create(self::TENANT, 'saml2', 'Acme', self::SAML)->connection?->id;
+        $id = (string) $this->service()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML)->connection?->id;
 
         $this->freshness->reset();
 
-        $this->service()->update(self::TENANT, $id, ['settings' => ['idp_initiated' => true, 'idp_initiated_start_url' => 'https://app.example.com/start']]);
+        $this->service()->update(self::TENANT, $id, ['settings' => ['idp_initiated' => true, 'idp_initiated_start_url' => 'https://app.example.com/start']], Clients::browser());
 
         self::assertSame([FreshnessOperation::CONNECTION_IDP_INITIATED], $this->freshness->operations());
 
@@ -683,25 +700,26 @@ final class ConnectionServiceTest extends TestCase
             self::TENANT,
             $id,
             ['settings' => ['idp_initiated_start_url' => 'https://app.example.com/begin', 'sso_url' => 'https://idp.example.com/login', 'force_authn' => true]],
+            Clients::browser(),
         );
 
         self::assertSame([FreshnessOperation::CONNECTION_TRUST, FreshnessOperation::CONNECTION_IDP_INITIATED], $this->freshness->operations());
 
         $this->freshness->reset();
 
-        $this->service()->update(self::TENANT, $id, ['settings' => ['force_authn' => false]]);
+        $this->service()->update(self::TENANT, $id, ['settings' => ['force_authn' => false]], Clients::browser());
 
         self::assertSame([], $this->freshness->operations());
 
         $this->freshness->reset();
 
-        $this->service()->update(self::TENANT, $id, ['settings' => ['requested_authn_context' => ['urn:x:y']]]);
+        $this->service()->update(self::TENANT, $id, ['settings' => ['requested_authn_context' => ['urn:x:y']]], Clients::browser());
 
         self::assertSame([FreshnessOperation::CONNECTION_TRUST], $this->freshness->operations());
 
         $this->freshness->reset();
 
-        $off = $this->service()->update(self::TENANT, $id, ['settings' => ['idp_initiated' => false, 'idp_initiated_start_url' => null]]);
+        $off = $this->service()->update(self::TENANT, $id, ['settings' => ['idp_initiated' => false, 'idp_initiated_start_url' => null]], Clients::browser());
 
         self::assertSame(['idp_initiated', 'idp_initiated_start_url'], $off->changedSettings);
         self::assertSame([FreshnessOperation::CONNECTION_IDP_INITIATED], $this->freshness->operations());
@@ -724,7 +742,7 @@ final class ConnectionServiceTest extends TestCase
             'display_name'      => ' Acme ',
             'settings'          => self::OIDC + ['scopes' => ['openid', 'email', 'profile']],
             'attribute_mapping' => ['email' => 'email'],
-        ]);
+        ], Clients::browser());
 
         self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
         self::assertTrue($result->isSucceeded());
@@ -734,7 +752,7 @@ final class ConnectionServiceTest extends TestCase
         self::assertSame($rows, $this->rows());
         $this->assertNothingHappened();
 
-        self::assertSame(ConnectionStatus::UNCHANGED, $this->service()->update(self::TENANT, $id, [])->status);
+        self::assertSame(ConnectionStatus::UNCHANGED, $this->service()->update(self::TENANT, $id, [], Clients::browser())->status);
     }
 
     /**
@@ -753,7 +771,7 @@ final class ConnectionServiceTest extends TestCase
         $result = $this->service()->update(self::TENANT, $id, [
             'settings'          => ['extra_parameters' => ['prompt' => 'login', 'login_hint' => 'x']],
             'attribute_mapping' => ['groups' => 'groups', 'email' => 'email'],
-        ]);
+        ], Clients::browser());
 
         self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
         self::assertSame([], $result->changedSettings);
@@ -766,11 +784,11 @@ final class ConnectionServiceTest extends TestCase
 
         $rows = $this->rows();
 
-        self::assertSame(ConnectionStatus::UNCHANGED, $this->service()->update(self::TENANT, $id, ['attribute_mapping' => ['email' => 'email']])->status);
+        self::assertSame(ConnectionStatus::UNCHANGED, $this->service()->update(self::TENANT, $id, ['attribute_mapping' => ['email' => 'email']], Clients::browser())->status);
         self::assertSame($rows, $this->rows());
         $this->assertNothingHappened();
 
-        $reordered = $this->service()->update(self::TENANT, $id, ['settings' => ['scopes' => ['profile', 'email', 'openid']]]);
+        $reordered = $this->service()->update(self::TENANT, $id, ['settings' => ['scopes' => ['profile', 'email', 'openid']]], Clients::browser());
 
         self::assertSame(['scopes'], $reordered->changedSettings);
     }
@@ -790,6 +808,7 @@ final class ConnectionServiceTest extends TestCase
             self::TENANT,
             $id,
             ['tenant_id' => self::OTHER_TENANT, 'protocol' => 'saml2', 'enabled' => true, 'display_name' => 5, 'settings' => 'x', 'attribute_mapping' => null],
+            Clients::browser(),
         );
 
         self::assertSame([
@@ -818,6 +837,7 @@ final class ConnectionServiceTest extends TestCase
             self::TENANT,
             $id,
             ['display_name' => '', 'settings' => ['client_authentication' => 'private_key_jwt', 'client_secret' => 'another-secret', 'scopes' => ['email']]],
+            Clients::browser(),
         );
 
         self::assertSame([
@@ -840,7 +860,7 @@ final class ConnectionServiceTest extends TestCase
         $id = $this->createOidc();
 
         foreach ([[self::OTHER_TENANT, $id], [self::TENANT, '01jbunknownconnection00000'], [self::TENANT, '']] as [$tenant, $connection]) {
-            $result = $this->service()->update($tenant, $connection, ['display_name' => 'Taken']);
+            $result = $this->service()->update($tenant, $connection, ['display_name' => 'Taken'], Clients::browser());
 
             self::assertTrue($result->isRefused());
             self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $result->reason);
@@ -861,7 +881,7 @@ final class ConnectionServiceTest extends TestCase
 
         config()->set('sso.features.oidc', false);
 
-        $result = $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed']);
+        $result = $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed'], Clients::browser());
 
         self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $result->reason);
         self::assertSame('Acme', $this->stored($id)->display_name);
@@ -881,7 +901,7 @@ final class ConnectionServiceTest extends TestCase
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['client_id' => 'another-client', 'client_secret' => 'another-secret']]);
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['client_id' => 'another-client', 'client_secret' => 'another-secret']], Clients::browser());
 
         self::assertTrue($result->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
@@ -923,8 +943,8 @@ final class ConnectionServiceTest extends TestCase
 
         $this->clock->advance(60);
 
-        $this->service()->create(self::OTHER_TENANT, 'oidc', 'Theirs');
-        $second = (string) $this->service()->create(self::TENANT, 'saml2', 'Second', self::SAML)->connection?->id;
+        $this->service()->create(self::OTHER_TENANT, 'oidc', 'Theirs', Clients::browser());
+        $second = (string) $this->service()->create(self::TENANT, 'saml2', 'Second', Clients::browser(), self::SAML)->connection?->id;
 
         self::assertSame([$first, $second], array_map(static fn (ConnectionSummary $summary): string => $summary->id, $this->service()->list(self::TENANT)));
         self::assertSame([], $this->service()->list('tenant-3'));
@@ -938,12 +958,12 @@ final class ConnectionServiceTest extends TestCase
      */
     public function testEnablesAConnection(): void
     {
-        $id = (string) $this->service()->create(self::TENANT, 'oidc', 'Acme')->connection?->id;
+        $id = (string) $this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser())->connection?->id;
 
         $this->freshness->reset();
         $this->startRecordingEvents();
 
-        $result = $this->service()->enable(self::TENANT, $id, new ActingIdentity('user', '42'));
+        $result = $this->service()->enable(self::TENANT, $id, Clients::browser(), new ActingIdentity('user', '42'));
 
         self::assertSame(ConnectionStatus::ENABLED, $result->status);
         self::assertTrue($result->isChanged());
@@ -971,7 +991,7 @@ final class ConnectionServiceTest extends TestCase
         $connection = $this->makeConnection(['enabled' => true]);
         $rows       = $this->rows();
 
-        $result = $this->service()->enable(self::TENANT, $connection->id);
+        $result = $this->service()->enable(self::TENANT, $connection->id, Clients::browser());
 
         self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
         self::assertSame($rows, $this->rows());
@@ -980,7 +1000,7 @@ final class ConnectionServiceTest extends TestCase
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $this->service()->enable(self::TENANT, $connection->id)->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $this->service()->enable(self::TENANT, $connection->id, Clients::browser())->reason);
     }
 
     /**
@@ -994,7 +1014,7 @@ final class ConnectionServiceTest extends TestCase
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $result = $this->service()->enable(self::TENANT, $connection->id);
+        $result = $this->service()->enable(self::TENANT, $connection->id, Clients::browser());
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
         self::assertFalse($this->stored($connection->id)->enabled);
@@ -1012,9 +1032,9 @@ final class ConnectionServiceTest extends TestCase
         $connection = $this->makeConnection();
         $retired    = $this->makeConnection(['protocol' => 'retired']);
 
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->service()->enable(self::OTHER_TENANT, $connection->id)->reason);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->service()->enable(self::TENANT, '01jbunknownconnection00000')->reason);
-        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $this->service()->enable(self::TENANT, $retired->id)->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->service()->enable(self::OTHER_TENANT, $connection->id, Clients::browser())->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->service()->enable(self::TENANT, '01jbunknownconnection00000', Clients::browser())->reason);
+        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $this->service()->enable(self::TENANT, $retired->id, Clients::browser())->reason);
         self::assertFalse($this->stored($connection->id)->enabled);
         $this->assertNothingHappened();
     }
@@ -1029,8 +1049,8 @@ final class ConnectionServiceTest extends TestCase
         $completed = $this->makeConnection(['has_completed_sign_in' => true]);
         $fresh     = $this->makeConnection();
 
-        $this->service()->enable(self::TENANT, $completed->id);
-        $this->service()->enable(self::TENANT, $fresh->id);
+        $this->service()->enable(self::TENANT, $completed->id, Clients::browser());
+        $this->service()->enable(self::TENANT, $fresh->id, Clients::browser());
 
         self::assertTrue($this->stored($completed->id)->has_completed_sign_in);
         self::assertFalse($this->stored($fresh->id)->has_completed_sign_in);
@@ -1045,7 +1065,7 @@ final class ConnectionServiceTest extends TestCase
      */
     public function testCreationAsksTrustFreshnessAndSkipsANullSetting(): void
     {
-        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', ['idp_initiated' => null, 'force_authn' => true]);
+        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), ['idp_initiated' => null, 'force_authn' => true]);
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
         self::assertTrue($this->stored((string) $result->connection?->id)->settings['force_authn']);
@@ -1060,10 +1080,10 @@ final class ConnectionServiceTest extends TestCase
      */
     public function testNamesTheSamlSettingsRemovedAndAddedInOrder(): void
     {
-        $id = (string) $this->service()->create(self::TENANT, 'saml2', 'Acme', self::SAML)->connection?->id;
+        $id = (string) $this->service()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML)->connection?->id;
 
-        $removed = $this->service()->update(self::TENANT, $id, ['settings' => ['idp_entity_id' => null, 'sso_url' => 'https://idp.example.com/login']]);
-        $added   = $this->service()->update(self::TENANT, $id, ['settings' => ['idp_entity_id' => self::SAML['idp_entity_id']]]);
+        $removed = $this->service()->update(self::TENANT, $id, ['settings' => ['idp_entity_id' => null, 'sso_url' => 'https://idp.example.com/login']], Clients::browser());
+        $added   = $this->service()->update(self::TENANT, $id, ['settings' => ['idp_entity_id' => self::SAML['idp_entity_id']]], Clients::browser());
 
         self::assertSame(['idp_entity_id', 'sso_url'], $removed->changedSettings);
         self::assertSame(['idp_entity_id'], $added->changedSettings);
@@ -1080,8 +1100,14 @@ final class ConnectionServiceTest extends TestCase
     {
         $this->protocols()->extend('example', fn (): ExampleDriver => new ExampleDriver);
 
-        $id     = (string) $this->service()->create(self::TENANT, 'example', 'Acme', ['issuer' => 'https://idp.example.com', 'region' => 'eu'])->connection?->id;
-        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['region' => 'us']]);
+        $id = (string) $this->service()->create(
+            self::TENANT,
+            'example',
+            'Acme',
+            Clients::browser(),
+            ['issuer' => 'https://idp.example.com', 'region' => 'eu'],
+        )->connection?->id;
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['region' => 'us']], Clients::browser());
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame(['region'], $result->changedSettings);
@@ -1105,8 +1131,8 @@ final class ConnectionServiceTest extends TestCase
         });
 
         $calls = [
-            fn (): mixed => $this->service()->update('', 'x', []),
-            fn (): mixed => $this->service()->enable('', 'x'),
+            fn (): mixed => $this->service()->update('', 'x', [], Clients::browser()),
+            fn (): mixed => $this->service()->enable('', 'x', Clients::browser()),
         ];
 
         foreach ($calls as $call) {
@@ -1158,7 +1184,7 @@ final class ConnectionServiceTest extends TestCase
 
         $request = $this->makeAuthorizationRequest($connection);
         $before  = $this->rows();
-        $result  = $this->service()->update(self::TENANT, $id, ['settings' => $settings]);
+        $result  = $this->service()->update(self::TENANT, $id, ['settings' => $settings], Clients::browser());
 
         self::assertSame(ConnectionStatus::REFUSED, $result->status);
         self::assertSame(FailureReason::CONNECTION_HAS_LINKS, $result->reason);
@@ -1185,11 +1211,14 @@ final class ConnectionServiceTest extends TestCase
         $expiry  = $this->makeLink($connection, 'expiring', $reserved + ['reservation_expires_at' => $now]);
         $open    = $this->makeLink($connection, 'open', $reserved + ['reservation_expires_at' => $now->addSecond()]);
 
-        self::assertSame(FailureReason::CONNECTION_HAS_LINKS, $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']])->reason);
+        self::assertSame(
+            FailureReason::CONNECTION_HAS_LINKS,
+            $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']], Clients::browser())->reason,
+        );
 
         $open->delete();
 
-        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']]);
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']], Clients::browser());
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame(['issuer'], $result->changedSettings);
@@ -1209,7 +1238,7 @@ final class ConnectionServiceTest extends TestCase
 
         $this->makeLink($other);
 
-        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $id, ['settings' => ['client_id' => 'client-456']])->status);
+        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $id, ['settings' => ['client_id' => 'client-456']], Clients::browser())->status);
     }
 
     /**
@@ -1225,7 +1254,10 @@ final class ConnectionServiceTest extends TestCase
         $this->makeLink($this->stored($id));
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']])->reason);
+        self::assertSame(
+            FailureReason::FRESHNESS_REQUIRED,
+            $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']], Clients::browser())->reason,
+        );
         $this->assertNoEvents();
     }
 
@@ -1244,7 +1276,7 @@ final class ConnectionServiceTest extends TestCase
 
         $request = $this->makeAuthorizationRequest($connection);
         $code    = $this->makeHandoffCode($connection);
-        $result  = $this->service()->update(self::TENANT, $id, ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth2/token']]);
+        $result  = $this->service()->update(self::TENANT, $id, ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth2/token']], Clients::browser());
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame(['token_endpoint'], $result->changedSettings);
@@ -1268,7 +1300,10 @@ final class ConnectionServiceTest extends TestCase
 
         $request = $this->makeAuthorizationRequest($connection);
 
-        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed', 'settings' => ['scopes' => ['openid']]])->status);
+        self::assertSame(
+            ConnectionStatus::UPDATED,
+            $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed', 'settings' => ['scopes' => ['openid']]], Clients::browser())->status,
+        );
         self::assertNull(AuthorizationRequest::query()->findOrFail($request->id)->voided_at);
     }
 
@@ -1282,7 +1317,9 @@ final class ConnectionServiceTest extends TestCase
     {
         $id = $this->createOidc();
 
-        $result = DB::transaction(fn (): ConnectionResult => $this->service()->changeLocked(Connection::query()->lockForUpdate()->findOrFail($id), ['display_name' => 'Renamed']));
+        $result = DB::transaction(
+            fn (): ConnectionResult => $this->service()->changeLocked(Connection::query()->lockForUpdate()->findOrFail($id), ['display_name' => 'Renamed'], Clients::browser()),
+        );
 
         self::assertTrue($result->isChanged());
         self::assertSame('Renamed', Connection::query()->findOrFail($id)->display_name);
@@ -1339,7 +1376,7 @@ final class ConnectionServiceTest extends TestCase
      */
     private function createOidc(array $settings = []): string
     {
-        $result = $this->service()->create(self::TENANT, 'oidc', 'Acme', $settings + self::OIDC + ['client_secret' => self::SECRET]);
+        $result = $this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), $settings + self::OIDC + ['client_secret' => self::SECRET]);
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
 
@@ -1357,7 +1394,7 @@ final class ConnectionServiceTest extends TestCase
      */
     private function createSaml(): string
     {
-        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', self::SAML);
+        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML);
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
 

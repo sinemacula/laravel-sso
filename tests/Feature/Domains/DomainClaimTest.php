@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Models\Domain;
+use Tests\Fixtures\Clients;
 
 /**
  * Feature tests for claiming a domain (SSO-3.1, SSO-3.2, SSO-2.12): a claim is
@@ -385,9 +386,9 @@ final class DomainClaimTest extends DomainServiceTestCase
     {
         $domains = $this->domains();
 
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->claim('tenant-2', $this->connection->id, 'example.com')->reason);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->claim('Tenant-1', $this->connection->id, 'example.com')->reason);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->claim(self::TENANT, '01jbunknownconnection00000', 'example.com')->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->claim('tenant-2', $this->connection->id, 'example.com', Clients::browser())->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->claim('Tenant-1', $this->connection->id, 'example.com', Clients::browser())->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->claim(self::TENANT, '01jbunknownconnection00000', 'example.com', Clients::browser())->reason);
         self::assertSame([], $this->freshness->operations());
     }
 
@@ -400,7 +401,7 @@ final class DomainClaimTest extends DomainServiceTestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        $this->domains()->claim('', $this->connection->id, 'example.com');
+        $this->domains()->claim('', $this->connection->id, 'example.com', Clients::browser());
     }
 
     /**
@@ -470,7 +471,7 @@ final class DomainClaimTest extends DomainServiceTestCase
         config()->set('sso.domains.record_name', 'Not A Label');
 
         try {
-            $this->domains()->claim(self::TENANT, $this->connection->id, 'example.com');
+            $this->domains()->claim(self::TENANT, $this->connection->id, 'example.com', Clients::browser());
             self::fail('A malformed record name was used.');
         } catch (\InvalidArgumentException $exception) {
             self::assertStringContainsString('sso.domains.record_name', $exception->getMessage());
@@ -537,9 +538,9 @@ final class DomainClaimTest extends DomainServiceTestCase
         });
 
         try {
-            $claimed     = $domains->claim(self::TENANT, $id, 'example.com');
-            $duplicate   = $domains->claim(self::TENANT, $id, 'example.com');
-            $unavailable = $domains->claim(self::TENANT, $id, 'taken.example.com');
+            $claimed     = $domains->claim(self::TENANT, $id, 'example.com', Clients::browser());
+            $duplicate   = $domains->claim(self::TENANT, $id, 'example.com', Clients::browser());
+            $unavailable = $domains->claim(self::TENANT, $id, 'taken.example.com', Clients::browser());
             $read        = $domains->get(self::TENANT, $id, 'example.com');
             $listed      = $domains->list(self::TENANT, $id);
         } finally {

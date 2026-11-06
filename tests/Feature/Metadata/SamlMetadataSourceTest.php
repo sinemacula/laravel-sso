@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -330,7 +331,7 @@ final class SamlMetadataSourceTest extends TestCase
 
         $failing = $this->saml();
         $claim   = $this->claimOf($failing);
-        $failed  = $this->source()->write($claim, $this->source()->fetch($claim), null);
+        $failed  = $this->source()->write($claim, $this->source()->fetch($claim), null, Clients::browser());
 
         self::assertSame([RefreshOutcome::FAILED, FailureReason::FETCH_FAILED, 1], [$failed->outcome, $failed->reason, $failed->failures]);
 
@@ -341,7 +342,7 @@ final class SamlMetadataSourceTest extends TestCase
         $this->trust($applying, self::idp()->certificate(), KeyUse::IDP_SIGNING);
 
         $claim   = $this->claimOf($applying);
-        $applied = $this->source()->write($claim, $this->source()->fetch($claim), null);
+        $applied = $this->source()->write($claim, $this->source()->fetch($claim), null, Clients::browser());
 
         self::assertSame([RefreshOutcome::REFRESHED, 1], [$applied->outcome, $applied->metadataVersion]);
         self::assertSame(self::NOW, $this->row($applying)->metadata_fetched_at?->toIso8601String());
@@ -359,7 +360,7 @@ final class SamlMetadataSourceTest extends TestCase
     public function testAWriteOfAnotherDocumentRecordsAFailure(): void
     {
         $claim  = $this->claimOf($this->saml());
-        $result = $this->source()->write($claim, FetchedMetadata::read(new \stdClass, $this->clock->now()), null);
+        $result = $this->source()->write($claim, FetchedMetadata::read(new \stdClass, $this->clock->now()), null, Clients::browser());
 
         self::assertSame([RefreshOutcome::FAILED, FailureReason::METADATA_INVALID], [$result->outcome, $result->reason]);
     }

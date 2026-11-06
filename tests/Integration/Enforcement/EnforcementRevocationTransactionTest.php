@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -162,7 +163,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
         $this->startRecordingEvents();
 
         try {
-            $this->service()->update(self::TENANT, true, [$this->connection->id, $second->id]);
+            $this->service()->update(self::TENANT, true, [$this->connection->id, $second->id], Clients::browser());
             self::fail('The change succeeded.');
         } catch (\RuntimeException $exception) {
             self::assertSame('The sessions could not be revoked.', $exception->getMessage());
@@ -294,7 +295,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
      */
     private function turnOn(): EnforcementResult
     {
-        return $this->service()->update(self::TENANT, true, [$this->connection->id]);
+        return $this->service()->update(self::TENANT, true, [$this->connection->id], Clients::browser());
     }
 
     /**

@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
+use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
@@ -59,6 +60,6 @@ final class SignInRulesTest extends TestCase
      */
     private static function state(): CompletionState
     {
-        return CompletionState::arrived('01jbexampleconnection00000', new CompletionRequest('GET', '', []));
+        return CompletionState::arrived('01jbexampleconnection00000', new CompletionRequest('GET', '', []), Clients::browser());
     }
 }

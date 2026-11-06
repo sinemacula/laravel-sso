@@ -6,6 +6,7 @@ namespace Tests\Integration\Examples;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -73,12 +74,13 @@ final class IdpInitiatedExampleTest extends ExampleTestCase
 
         $this->linkThroughFlow($this->idp, $this->connectionId, $person);
 
+        $client = Clients::browser();
         // @snippet-start idp-initiated
         $metadata    = app(ServiceProviderDescriptions::class)->describe(self::TENANT, $this->connectionId);
         $sp          = FakeServiceProvider::fromMetadata((string) $metadata->body);
         $unsolicited = $this->idp->response($sp->entityId, $sp->assertionConsumerService, $this->clock->now());
 
-        $result   = app(CompletionService::class)->assertionConsumerService($this->connectionId, $unsolicited->completionRequest());
+        $result   = app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connectionId, $unsolicited->completionRequest(), $client);
         $location = app(CompletionResponses::class)->from($result, 'POST')->location();
 
         self::assertTrue($result->isReinitiated());
@@ -112,12 +114,13 @@ final class IdpInitiatedExampleTest extends ExampleTestCase
         $sp          = FakeServiceProvider::fromMetadata((string) $metadata->body);
         $unsolicited = $this->idp->response($sp->entityId, $sp->assertionConsumerService, $this->clock->now());
 
+        $client = Clients::browser();
         // @snippet-start idp-initiated-replayed
         $completions = app(CompletionService::class);
 
-        self::assertTrue($completions->assertionConsumerService($this->connectionId, $unsolicited->completionRequest())->isReinitiated());
+        self::assertTrue($completions->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connectionId, $unsolicited->completionRequest(), $client)->isReinitiated());
 
-        $replayed = $completions->assertionConsumerService($this->connectionId, $unsolicited->completionRequest());
+        $replayed = $completions->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connectionId, $unsolicited->completionRequest(), $client);
 
         self::assertTrue($replayed->isRejected());
         self::assertSame(FailureReason::REPLAYED, $replayed->reason);

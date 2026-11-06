@@ -7,6 +7,7 @@ namespace Tests\Integration\Examples;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
@@ -80,6 +81,7 @@ final class OidcExampleTest extends ExampleTestCase
 
         self::assertSame(FailureReason::IDENTITY_MISMATCH, $refused->reason);
         // @snippet-end oidc-link-refused
+        $client = Clients::browser();
         // @snippet-start oidc-link
         $start = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
 
@@ -88,7 +90,7 @@ final class OidcExampleTest extends ExampleTestCase
         $grant = $this->provider->authorize($start);
 
         // The browser arrives at the callback with the grant's query
-        $result   = app(CompletionService::class)->callback($this->connectionId, new CompletionRequest('GET', $grant->query(), []));
+        $result   = app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $this->connectionId, new CompletionRequest('GET', $grant->query(), []), $client);
         $redirect = HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
 
         self::assertSame($start->reference?->value, $redirect->reference);
@@ -156,13 +158,14 @@ final class OidcExampleTest extends ExampleTestCase
 
         self::assertSame(FailureReason::PURPOSE_MISMATCH, $refused->reason);
         // @snippet-end oidc-reauthenticate-refused
+        $client = Clients::browser();
         // @snippet-start oidc-reauthenticate
         $start = $this->startFlow(Purpose::REAUTHENTICATE, $this->connectionId, $this->person, 'session-1');
         $grant = $this->provider->authorize($start);
 
         self::assertSame(['login', '0'], [$grant->parameter('prompt'), $grant->parameter('max_age')]);
 
-        $result   = app(CompletionService::class)->callback($this->connectionId, new CompletionRequest('GET', $grant->query(), []));
+        $result   = app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $this->connectionId, new CompletionRequest('GET', $grant->query(), []), $client);
         $redirect = HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
         $renewed  = $this->admitReauthentication($this->connectionId, $redirect, $start);
 

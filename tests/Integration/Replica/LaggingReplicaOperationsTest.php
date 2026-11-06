@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Domains\RecheckEntry;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\ExpiringKey;
@@ -33,6 +34,7 @@ use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use Tests\Concerns\FlowRoutes;
 use Tests\Concerns\InteractsWithLaggingReplica;
 use Tests\Concerns\MakesPrunableRows;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
@@ -139,7 +141,7 @@ final class LaggingReplicaOperationsTest extends TestCase
         $this->limitStarts(2);
 
         $limiter = app(AttemptLimiter::class);
-        $subject = AttemptSubject::authorizationRequest(self::IP);
+        $subject = AttemptSubject::authorizationRequest(new ClientContext(self::IP, null));
 
         self::assertTrue($limiter->attempt($subject)->isAllowed());
 
@@ -160,7 +162,7 @@ final class LaggingReplicaOperationsTest extends TestCase
         $this->limitStarts(1);
 
         $limiter = app(AttemptLimiter::class);
-        $subject = AttemptSubject::authorizationRequest(self::IP);
+        $subject = AttemptSubject::authorizationRequest(new ClientContext(self::IP, null));
 
         self::assertTrue($limiter->attempt($subject)->isAllowed());
         self::assertTrue($limiter->attempt($subject)->isRateLimited());
@@ -550,7 +552,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     {
         $listed = [];
 
-        app(ExpiryReport::class)->report(null, static function (ExpiringKey $entry) use (&$listed): void {
+        app(ExpiryReport::class)->report(Clients::browser(), null, static function (ExpiringKey $entry) use (&$listed): void {
             $listed[] = $entry->key->id;
         });
 
@@ -564,7 +566,7 @@ final class LaggingReplicaOperationsTest extends TestCase
      */
     private function recheckedDomains(): array
     {
-        return array_map(static fn (RecheckEntry $entry): string => $entry->domain, app(DomainRechecker::class)->recheckAll()->entries);
+        return array_map(static fn (RecheckEntry $entry): string => $entry->domain, app(DomainRechecker::class)->recheckAll(Clients::browser())->entries);
     }
 
     /**

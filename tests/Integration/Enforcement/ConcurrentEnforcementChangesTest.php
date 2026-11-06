@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -167,7 +168,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     #[DataProvider('provideModes')]
     public function testRacingChangesAreSerialized(bool $inTransaction): void
     {
-        $initial = $this->service()->update(self::TENANT, false, [$this->connections[0]->id]);
+        $initial = $this->service()->update(self::TENANT, false, [$this->connections[0]->id], Clients::browser());
 
         self::assertTrue($initial->isChanged());
 
@@ -319,7 +320,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
             usleep((int) ($wait * 1000000));
         }
 
-        $result = $service->update(self::TENANT, true, $ids);
+        $result = $service->update(self::TENANT, true, $ids, Clients::browser());
 
         if ($inTransaction) {
             $database->commit();
@@ -428,7 +429,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
         }
 
         $began  = microtime(true);
-        $result = $service->update(self::TENANT, true, [$connection->id]);
+        $result = $service->update(self::TENANT, true, [$connection->id], Clients::browser());
         $waited = microtime(true) - $began;
 
         if ($inTransaction) {

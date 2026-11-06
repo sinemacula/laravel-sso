@@ -114,7 +114,7 @@ final readonly class ReservationActivation
 
         $this->identities->recordDomainLink($identity);
 
-        $this->events->activated($context->connection, $identity, $link->id, $result->application, $result->requestReference);
+        $this->events->activated($context->connection, $identity, $link->id, $result->application, $result->requestReference, $context->client);
 
         return [$identity, $link->id, $link->provenance];
     }

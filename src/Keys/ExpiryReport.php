@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\ExpiryNotice;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
@@ -48,8 +49,10 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
  * would hold back until its commit. A database error propagates (SSO-11.4); a
  * dispatch that throws ends that key with `failed` and the run goes on.
  *
- * It holds the notifier, the key settings and the clock, none of which keeps
- * anything of one call for the next (SSO-11.2).
+ * It takes the client each warning's `Events\KeyNearingExpiry` carries as an
+ * `Http\ClientContext` and reads no request: `sso:keys:expiring` passes
+ * `new ClientContext(null, null)`. It holds the notifier, the key settings and
+ * the clock, none of which keeps anything of one call for the next (SSO-11.2).
  *
  * @api
  *
@@ -93,15 +96,16 @@ final readonly class ExpiryReport
      * Warn of every key that has reached a threshold, and list those whose
      * validity ends within the days given, or the largest threshold when none
      * are, or has already ended, handing each to the callback, ordered by the
-     * end of validity and then by id.
+     * end of validity and then by id; each warning's event carries the client.
      *
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?int  $withinDays
      * @param  ?\Closure(\SineMacula\Laravel\Sso\Keys\ExpiringKey): void  $each
      * @return \SineMacula\Laravel\Sso\Keys\ExpiryRun
      *
      * @throws \InvalidArgumentException
      */
-    public function report(?int $withinDays = null, ?\Closure $each = null): ExpiryRun
+    public function report(ClientContext $client, ?int $withinDays = null, ?\Closure $each = null): ExpiryRun
     {
         if ($withinDays !== null && ($withinDays < self::MIN_DAYS || $withinDays > self::MAX_DAYS)) {
             throw new \InvalidArgumentException(sprintf('An expiry report looks %d to %d days ahead.', self::MIN_DAYS, self::MAX_DAYS));
@@ -122,7 +126,7 @@ final readonly class ExpiryReport
             $page = self::pageAfter($after, $until, $now);
 
             foreach (self::withConnections($page) as $key) {
-                $run = $this->reportKey($run, $key, $thresholds, $now, $listed, $each);
+                $run = $this->reportKey($run, $key, $thresholds, $now, $listed, $client, $each);
             }
 
             $after = $page === [] ? null : $page[count($page) - 1];
@@ -203,16 +207,24 @@ final readonly class ExpiryReport
      * @param  \SineMacula\Laravel\Sso\Keys\ExpiryThresholds  $thresholds
      * @param  \Carbon\CarbonImmutable  $now
      * @param  \Carbon\CarbonImmutable  $listed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\Closure(\SineMacula\Laravel\Sso\Keys\ExpiringKey): void  $each
      * @return \SineMacula\Laravel\Sso\Keys\ExpiryRun
      *
      * @throws \Throwable
      */
-    private function reportKey(ExpiryRun $run, ConnectionKey $key, ExpiryThresholds $thresholds, CarbonImmutable $now, CarbonImmutable $listed, ?\Closure $each): ExpiryRun
-    {
+    private function reportKey(
+        ExpiryRun $run,
+        ConnectionKey $key,
+        ExpiryThresholds $thresholds,
+        CarbonImmutable $now,
+        CarbonImmutable $listed,
+        ClientContext $client,
+        ?\Closure $each,
+    ): ExpiryRun {
         $notAfter  = $key->not_after ?? $now;
         $threshold = $thresholds->reachedBy($notAfter, $now);
-        $notice    = $this->noticeFor($key, $threshold);
+        $notice    = $this->noticeFor($key, $threshold, $client);
 
         if ($notice === null) {
             return $run;
@@ -237,11 +249,12 @@ final readonly class ExpiryReport
      *
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  ?int  $threshold
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return ?\SineMacula\Laravel\Sso\Keys\Enums\ExpiryNotice
      *
      * @throws \Throwable
      */
-    private function noticeFor(ConnectionKey $key, ?int $threshold): ?ExpiryNotice
+    private function noticeFor(ConnectionKey $key, ?int $threshold, ClientContext $client): ?ExpiryNotice
     {
         if ($threshold === null) {
             return ExpiryNotice::NOT_DUE;
@@ -251,6 +264,6 @@ final readonly class ExpiryReport
             return ExpiryNotice::ALREADY_NOTIFIED;
         }
 
-        return $this->notifier->notify($key);
+        return $this->notifier->notify($key, $client);
     }
 }

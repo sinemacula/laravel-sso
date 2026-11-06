@@ -6,7 +6,6 @@ namespace Tests\Feature\Handoffs;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -32,6 +31,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffEvents;
 use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -134,20 +134,17 @@ final class RedemptionEventSequenceTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 
                 return ExampleLinks::resolution(($this->resolve)());
             }
         });
-        $this->app?->instance('request', Request::create('/auth/sso/handoffs', 'POST', server: [
-            'REMOTE_ADDR'     => self::IP,
-            'HTTP_USER_AGENT' => self::USER_AGENT,
-        ]));
 
         $driver = new VerifyingDriver;
 
@@ -547,7 +544,7 @@ final class RedemptionEventSequenceTest extends TestCase
         $connection = $connectionId ?? $this->connection->id;
 
         return DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => $redemption->redeem($purpose, $application, $connection, $code, $verifier, $caller),
+            static fn (): RedemptionResult => $redemption->redeem($purpose, $application, $connection, $code, $verifier, self::client(), $caller),
         );
     }
 
@@ -631,5 +628,16 @@ final class RedemptionEventSequenceTest extends TestCase
         $storage->answering = fn (): LinkResolution => ExampleLinks::resolution($this->linked);
 
         $this->app?->instance(Linker::class, $storage);
+    }
+
+    /**
+     * The client every action of the test is taken for: the browser's IP
+     * address and user agent, which its events carry.
+     *
+     * @return \SineMacula\Laravel\Sso\Http\ClientContext
+     */
+    private static function client(): ClientContext
+    {
+        return new ClientContext(self::IP, self::USER_AGENT);
     }
 }

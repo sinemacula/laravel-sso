@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Metadata;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 /**
  * The queued refresh of one SAML connection's metadata (SSO-2.8, SSO-11.12),
@@ -75,6 +76,6 @@ final class RefreshConnectionMetadata implements ShouldQueue
      */
     public function handle(MetadataRefresher $refresher): void
     {
-        $refresher->refreshQueued($this->connectionId);
+        $refresher->refreshQueued($this->connectionId, new ClientContext(null, null));
     }
 }

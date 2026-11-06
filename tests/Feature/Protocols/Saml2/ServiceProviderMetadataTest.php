@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options;
 use SineMacula\Laravel\Sso\Protocols\Saml2\ServiceProviderMetadata;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
@@ -167,15 +168,15 @@ final class ServiceProviderMetadataTest extends TestCase
         self::assertSame(self::expected($connection, $duringSigning, $duringEncryption), $during->body);
         self::assertSame(['signing', 'signing', 'encryption', 'encryption'], self::keyUses(self::parsed($during)));
 
-        $this->keyService()->makeCurrent('tenant-1', $connection->id, $nextSigning->id);
-        $this->keyService()->makeCurrent('tenant-1', $connection->id, $nextEncryption->id);
+        $this->keyService()->makeCurrent('tenant-1', $connection->id, $nextSigning->id, Clients::browser());
+        $this->keyService()->makeCurrent('tenant-1', $connection->id, $nextEncryption->id, Clients::browser());
 
         $after = self::expected($connection, [self::certificateOf($nextSigning)], [self::certificateOf($nextEncryption)]);
 
         self::assertSame($after, $this->describe($connection)->body);
 
-        $this->keyService()->retire('tenant-1', $connection->id, $signing->id);
-        $this->keyService()->retire('tenant-1', $connection->id, $encryption->id);
+        $this->keyService()->retire('tenant-1', $connection->id, $signing->id, Clients::browser());
+        $this->keyService()->retire('tenant-1', $connection->id, $encryption->id, Clients::browser());
 
         $retired = $this->describe($connection);
 
@@ -437,7 +438,7 @@ final class ServiceProviderMetadataTest extends TestCase
      */
     private function addKey(Connection $connection, KeyUse $use): KeySummary
     {
-        $key = $this->keyService()->addNext('tenant-1', $connection->id, $use, KeyType::RSA)->key;
+        $key = $this->keyService()->addNext('tenant-1', $connection->id, $use, Clients::browser(), KeyType::RSA)->key;
 
         self::assertNotNull($key);
 

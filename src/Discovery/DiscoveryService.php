@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Discovery;
 
-use Illuminate\Contracts\Container\Container;
 use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Applications\ApplicationGate;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
@@ -14,6 +13,7 @@ use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestEvents;
 use SineMacula\Laravel\Sso\Flows\StartResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
@@ -68,10 +68,11 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * is the only flow identifier either carries (SSO-9.8). A database error, a
  * misconfiguration and a driver's exception propagate (SSO-11.4).
  *
- * It holds the limiter, the gate, the router, the start helper, the reporter
- * and the pacer, none of which keeps anything of one request for the next, and
- * reads the request being served from the container on each call (SSO-11.2).
- * Resolve it from the container per request.
+ * It takes the client the start is made for as an `Http\ClientContext`, which
+ * the application builds where it reads the request, and never reads the
+ * request being served itself. It holds the limiter, the gate, the router, the
+ * start helper, the reporter and the pacer, none of which keeps anything of one
+ * request for the next (SSO-11.2). Resolve it from the container per request.
  *
  * @api
  *
@@ -86,7 +87,6 @@ final readonly class DiscoveryService
     /**
      * Constructor.
      *
-     * @param  \Illuminate\Contracts\Container\Container  $container
      * @param  \SineMacula\Laravel\Sso\Contracts\AttemptLimiter  $limiter
      * @param  \SineMacula\Laravel\Sso\Applications\ApplicationGate  $gate
      * @param  \SineMacula\Laravel\Sso\Discovery\DomainRouter  $router
@@ -95,9 +95,6 @@ final readonly class DiscoveryService
      * @param  \SineMacula\Laravel\Sso\Discovery\Pacer  $pacer
      */
     public function __construct(
-
-        /** The container the request being served is resolved from on each call. */
-        private Container $container,
 
         /** Counts each start against the client's IP address and the email's domain. */
         private AttemptLimiter $limiter,
@@ -120,14 +117,15 @@ final readonly class DiscoveryService
 
     /**
      * Start a flow for the application and the purpose through the connection
-     * the email's domain routes to, or lead to the application's fallback, with
-     * the client's S256 challenge, or with a verifier the package generates
-     * when none is given; for the identity a `link` or a `reauthenticate` is
-     * started for, on the session a `reauthenticate` is.
+     * the email's domain routes to, or lead to the application's fallback, for
+     * the client, with the client's S256 challenge, or with a verifier the
+     * package generates when none is given; for the identity a `link` or a
+     * `reauthenticate` is started for, on the session a `reauthenticate` is.
      *
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $email
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $codeChallenge
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $sessionId
@@ -141,6 +139,7 @@ final readonly class DiscoveryService
         string $application,
         Purpose $purpose,
         #[\SensitiveParameter] string $email,
+        ClientContext $client,
         ?string $codeChallenge = null,
         ?IdentityReference $identity = null,
         ?string $sessionId = null,
@@ -149,7 +148,7 @@ final readonly class DiscoveryService
         AuthorizationRequestService::assertBinding($purpose, $identity, $sessionId);
 
         $startedAt = $this->pacer->start();
-        $result    = $this->count($application, $purpose, $email, $codeChallenge, $identity, $sessionId);
+        $result    = $this->count($application, $purpose, $email, $codeChallenge, $identity, $sessionId, $client);
 
         $this->pacer->finish($startedAt);
 
@@ -166,6 +165,7 @@ final readonly class DiscoveryService
      * @param  ?string  $codeChallenge
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $sessionId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \Throwable
@@ -177,20 +177,19 @@ final readonly class DiscoveryService
         ?string $codeChallenge,
         ?IdentityReference $identity,
         ?string $sessionId,
+        ClientContext $client,
     ): StartResult {
-        // A console caller has no client, and counts against no IP address.
-        /** @var ?\Illuminate\Http\Request $request */
-        $request = $this->container->bound('request') ? $this->container->make('request') : null;
-        $attempt = $this->limiter->attempt(AttemptSubject::authorizationRequest($request?->ip(), DomainRouter::domainOf($email)));
+        // A client with no IP address counts against none.
+        $attempt = $this->limiter->attempt(AttemptSubject::authorizationRequest($client, DomainRouter::domainOf($email)));
 
         if ($attempt->retryAfter !== null) {
 
-            $this->events->failed(FailureReason::RATE_LIMITED, $purpose, $identity, $sessionId);
+            $this->events->failed(FailureReason::RATE_LIMITED, $purpose, $identity, $sessionId, $client);
 
             return StartResult::rateLimited($attempt->retryAfter);
         }
 
-        return $this->admit($name, $purpose, $email, $codeChallenge, $identity, $sessionId);
+        return $this->admit($name, $purpose, $email, $codeChallenge, $identity, $sessionId, $client);
     }
 
     /**
@@ -203,6 +202,7 @@ final readonly class DiscoveryService
      * @param  ?string  $codeChallenge
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $sessionId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \Throwable
@@ -214,20 +214,21 @@ final readonly class DiscoveryService
         ?string $codeChallenge,
         ?IdentityReference $identity,
         ?string $sessionId,
+        ClientContext $client,
     ): StartResult {
         $application = $this->gate->admit($name)->application;
 
         if ($application === null) {
-            return $this->refuse(FailureReason::APPLICATION_NOT_ALLOWED, $purpose, $identity, $sessionId);
+            return $this->refuse(FailureReason::APPLICATION_NOT_ALLOWED, $purpose, $identity, $sessionId, $client);
         }
 
         $reason = self::refusalOf($application, $codeChallenge);
 
         if ($reason !== null) {
-            return $this->refuse($reason, $purpose, $identity, $sessionId, $application);
+            return $this->refuse($reason, $purpose, $identity, $sessionId, $client, $application);
         }
 
-        return $this->route($application, $purpose, $email, $codeChallenge, $identity, $sessionId);
+        return $this->route($application, $purpose, $email, $codeChallenge, $identity, $sessionId, $client);
     }
 
     /**
@@ -240,6 +241,7 @@ final readonly class DiscoveryService
      * @param  ?string  $codeChallenge
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $sessionId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \Throwable
@@ -251,17 +253,18 @@ final readonly class DiscoveryService
         ?string $codeChallenge,
         ?IdentityReference $identity,
         ?string $sessionId,
+        ClientContext $client,
     ): StartResult {
         $connection = $this->router->connectionFor($email);
 
         if ($connection === null) {
 
-            $this->events->failed(FailureReason::DISCOVERY_NO_MATCH, $purpose, $identity, $sessionId, $application);
+            $this->events->failed(FailureReason::DISCOVERY_NO_MATCH, $purpose, $identity, $sessionId, $client, $application);
 
             return $this->requests->fallback($application, $codeChallenge !== null);
         }
 
-        return $this->requests->begin($application, $purpose, $connection, $codeChallenge, $identity, $sessionId);
+        return $this->requests->begin($application, $purpose, $connection, $codeChallenge, $identity, $sessionId, $client);
     }
 
     /**
@@ -272,16 +275,23 @@ final readonly class DiscoveryService
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $sessionId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Applications\Application  $application
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \InvalidArgumentException
      */
-    private function refuse(FailureReason $reason, Purpose $purpose, ?IdentityReference $identity, ?string $sessionId, ?Application $application = null): StartResult
-    {
+    private function refuse(
+        FailureReason $reason,
+        Purpose $purpose,
+        ?IdentityReference $identity,
+        ?string $sessionId,
+        ClientContext $client,
+        ?Application $application = null,
+    ): StartResult {
         $result = StartResult::refused($reason);
 
-        $this->events->failed($reason, $purpose, $identity, $sessionId, $application);
+        $this->events->failed($reason, $purpose, $identity, $sessionId, $client, $application);
 
         return $result;
     }

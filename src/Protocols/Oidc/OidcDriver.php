@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Contracts\ProtocolDriver;
 use SineMacula\Laravel\Sso\Contracts\ProtocolSettings;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyRing;
 use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
@@ -176,18 +177,19 @@ final readonly class OidcDriver implements ProtocolDriver
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      *
      * @throws \InvalidArgumentException
      */
     #[\Override]
-    public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed): Completion
+    public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed, ClientContext $client): Completion
     {
         if ($this->metadata->isExpired($connection)) {
             return Completion::refused(FailureReason::METADATA_EXPIRED);
         }
 
-        return $this->callbacks->complete($connection, OidcOptions::of($connection), $request, $consumed);
+        return $this->callbacks->complete($connection, OidcOptions::of($connection), $request, $consumed, $client);
     }
 
     /**

@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkService;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -176,11 +177,13 @@ final class EnforcementExampleTest extends ExampleTestCase
         // @snippet-start enforcement-service
         $enforcement = app(EnforcementService::class);
         // @snippet-end enforcement-service
+        $client = Clients::browser();
         // @snippet-start enforcement-update
         $result = $enforcement->update(
             $tenant->id,
             true,
             [$connectionId],
+            $client,
             new ActingIdentity($user->getMorphClass(), (string) $user->getKey()),
         );
 
@@ -211,7 +214,7 @@ final class EnforcementExampleTest extends ExampleTestCase
         self::assertSame($version, $summary->version); // null while the tenant never had a rule
         self::assertSame('2026-11-01T09:30:00Z', $summary->changedAt?->toIso8601ZuluString()); // CarbonImmutable in UTC, or null
         // @snippet-end enforcement-get
-        $again = app(EnforcementService::class)->update(self::TENANT, true, [$connectionId, $connectionId]);
+        $again = app(EnforcementService::class)->update(self::TENANT, true, [$connectionId, $connectionId], Clients::browser());
 
         self::assertSame(EnforcementStatus::UNCHANGED, $again->status);
         self::assertSame($version, $again->enforcement?->version);
@@ -235,7 +238,7 @@ final class EnforcementExampleTest extends ExampleTestCase
 
         $this->recordSession('session-password', 'person-2', self::TENANT);
 
-        $off = app(EnforcementService::class)->update(self::TENANT, false, []);
+        $off = app(EnforcementService::class)->update(self::TENANT, false, [], Clients::browser());
 
         self::assertSame(EnforcementStatus::UPDATED, $off->status);
         self::assertNotSame($on, $off->enforcement?->version);
@@ -261,15 +264,15 @@ final class EnforcementExampleTest extends ExampleTestCase
 
         config()->set('sso.features.enforcement', false);
 
-        self::assertSame(FailureReason::FEATURE_DISABLED, app(EnforcementService::class)->update(self::TENANT, true, [$this->connectionId])->reason);
+        self::assertSame(FailureReason::FEATURE_DISABLED, app(EnforcementService::class)->update(self::TENANT, true, [$this->connectionId], Clients::browser())->reason);
 
         config()->set('sso.features.enforcement', true);
 
         $enforcement = app(EnforcementService::class);
 
-        self::assertSame(FailureReason::COMPLETED_SIGN_IN_REQUIRED, $enforcement->update(self::TENANT, true, [$this->connectionId])->reason);
+        self::assertSame(FailureReason::COMPLETED_SIGN_IN_REQUIRED, $enforcement->update(self::TENANT, true, [$this->connectionId], Clients::browser())->reason);
 
-        $unknown = $enforcement->update(self::TENANT, true, [$this->connectionId, 'another-tenants']);
+        $unknown = $enforcement->update(self::TENANT, true, [$this->connectionId, 'another-tenants'], Clients::browser());
 
         self::assertSame(EnforcementStatus::INVALID, $unknown->status);
         self::assertSame('connection_ids.1', $unknown->violations[0]->setting);
@@ -278,7 +281,7 @@ final class EnforcementExampleTest extends ExampleTestCase
         $this->signIn('session-sso', self::TENANT);
         $this->freshness->staleFor(FreshnessOperation::ENFORCEMENT_UPDATE);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(EnforcementService::class)->update(self::TENANT, true, [$this->connectionId])->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(EnforcementService::class)->update(self::TENANT, true, [$this->connectionId], Clients::browser())->reason);
 
         self::assertNull(app(EnforcementService::class)->get(self::TENANT)->version);
         self::assertSame(['session-password' => null, 'session-sso' => null], $this->revocations());
@@ -349,14 +352,14 @@ final class EnforcementExampleTest extends ExampleTestCase
         $version = $this->turnOn();
         $policy  = new TenantAuthenticationPolicy;
 
-        self::assertTrue($policy->admits($this->recordSession('session-child', 'person-1', self::CHILD, $this->connectionId)));
-        self::assertTrue($policy->admits($this->recordSession('session-other', 'person-4', self::OTHER)));
-        self::assertTrue($policy->admits(UserSession::query()->findOrFail('session-sso')));
+        self::assertTrue($policy->admits($this->recordSession('session-child', 'person-1', self::CHILD, $this->connectionId), Clients::browser()));
+        self::assertTrue($policy->admits($this->recordSession('session-other', 'person-4', self::OTHER), Clients::browser()));
+        self::assertTrue($policy->admits(UserSession::query()->findOrFail('session-sso'), Clients::browser()));
         self::assertSame($version, UserSession::query()->findOrFail('session-sso')->enforcement_version);
         self::assertNull(UserSession::query()->findOrFail('session-other')->enforcement_version);
 
-        self::assertTrue($policy->admits($this->recordSession('session-break-glass', BreakGlassExemption::ADMINISTRATOR, self::CHILD)));
-        self::assertFalse($policy->admits($this->recordSession('session-password', 'person-2', self::TENANT)));
+        self::assertTrue($policy->admits($this->recordSession('session-break-glass', BreakGlassExemption::ADMINISTRATOR, self::CHILD), Clients::browser()));
+        self::assertFalse($policy->admits($this->recordSession('session-password', 'person-2', self::TENANT), Clients::browser()));
 
         // The break-glass session's alone: the refused one reported nothing
         self::assertCount(1, $this->exemptions);
@@ -380,7 +383,7 @@ final class EnforcementExampleTest extends ExampleTestCase
         $this->recordSession('session-child', 'person-1', self::CHILD, $this->connectionId);
         $this->recordSession('session-password', 'person-2', self::TENANT);
 
-        self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $this->connectionId)->isSucceeded());
+        self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $this->connectionId, Clients::browser())->isSucceeded());
 
         self::assertSame([
             'session-child'    => RevocationReason::CONNECTION_DISABLED->value,
@@ -403,7 +406,7 @@ final class EnforcementExampleTest extends ExampleTestCase
 
         $this->recordSession('session-password', 'person-1', self::TENANT);
 
-        self::assertTrue(app(LinkService::class)->remove($this->person, (string) $session->sso_link_id)->isRemoved());
+        self::assertTrue(app(LinkService::class)->remove($this->person, (string) $session->sso_link_id, Clients::browser())->isRemoved());
 
         self::assertSame([
             'session-password' => null,
@@ -461,7 +464,7 @@ final class EnforcementExampleTest extends ExampleTestCase
      */
     private function turnOn(): string
     {
-        $result = app(EnforcementService::class)->update(self::TENANT, true, [$this->connectionId]);
+        $result = app(EnforcementService::class)->update(self::TENANT, true, [$this->connectionId], Clients::browser());
 
         self::assertSame(EnforcementStatus::UPDATED, $result->status);
 

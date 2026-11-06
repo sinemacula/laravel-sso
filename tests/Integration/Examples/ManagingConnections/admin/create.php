@@ -35,11 +35,13 @@ $request     = $input['request'];
 // @snippet-start connections-create
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 $result = $connections->create(
     tenantId: $tenant->id,
     protocol: 'oidc',
     displayName: 'Acme Google Workspace',
+    client: ClientContext::fromRequest($request),
     settings: [
         'client_id'     => '1234.apps.googleusercontent.com',
         'client_secret' => $request->input('client_secret'),

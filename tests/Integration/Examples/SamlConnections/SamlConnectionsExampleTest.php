@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -147,10 +148,10 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
         $keys         = app(KeyService::class);
 
         foreach ([KeyUse::SP_SIGNING, KeyUse::SP_ENCRYPTION] as $use) {
-            self::assertSame([['key_type', 'not_allowed']], self::violationsOf($keys->addNext(self::TENANT, $connectionId, $use, KeyType::EC, $this->actor)));
+            self::assertSame([['key_type', 'not_allowed']], self::violationsOf($keys->addNext(self::TENANT, $connectionId, $use, Clients::browser(), KeyType::EC, $this->actor)));
         }
 
-        $trusted = $keys->trustCertificate(self::TENANT, $connectionId, self::ellipticCurveCertificate(), $this->actor);
+        $trusted = $keys->trustCertificate(self::TENANT, $connectionId, self::ellipticCurveCertificate(), Clients::browser(), $this->actor);
 
         self::assertSame([['certificate', 'unsupported']], self::violationsOf($trusted));
         self::assertSame([], $keys->keys(self::TENANT, $connectionId));

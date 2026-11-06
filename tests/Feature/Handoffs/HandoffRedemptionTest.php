@@ -24,6 +24,8 @@ use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Events\Enums\Flow;
+use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Flows\S256Challenge;
@@ -33,6 +35,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffGrant;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -44,9 +47,11 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\ListedExemption;
 use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
@@ -85,7 +90,7 @@ use Tests\TestCase;
 #[CoversClass(HandoffRecheck::class)]
 final class HandoffRedemptionTest extends TestCase
 {
-    use RecordsLockOrder, UsesConnections, UsesEnforcement;
+    use RecordsEventSequences, RecordsLockOrder, UsesConnections, UsesEnforcement;
 
     /** @var string The client's verifier (RFC 7636, appendix B). */
     private const string VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
@@ -114,10 +119,13 @@ final class HandoffRedemptionTest extends TestCase
     /** @var list<\SineMacula\Laravel\Sso\Results\VerifiedResult> Every result the linker was asked about. */
     private array $linkerAsked = [];
 
+    /** @var \SineMacula\Laravel\Sso\Http\ClientContext The client every redemption is made for. */
+    private ClientContext $client;
+
     /**
-     * Bind a fixed clock, a linker answering the linked identity and a request
-     * from an IP address, register the driver, and create the tables and two
-     * usable connections.
+     * Bind a fixed clock and a linker answering the linked identity, take the
+     * client every redemption is made for, register the driver, and create the
+     * tables and two usable connections.
      *
      * @return void
      */
@@ -130,7 +138,7 @@ final class HandoffRedemptionTest extends TestCase
         $this->linked = new IdentityReference('App\Models\User', '42');
 
         $this->app?->instance(Clock::class, $this->clock);
-        $this->app?->instance('request', Request::create('/auth/sso/handoffs', 'POST', server: ['REMOTE_ADDR' => '203.0.113.7']));
+        $this->client = new ClientContext('203.0.113.7', 'Example/1.0');
         $this->app?->instance(Linker::class, self::linker(function (VerifiedResult $result): ?IdentityReference {
             $this->linkerAsked[] = $result;
 
@@ -922,6 +930,78 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
+     * Rows of `[code, limited, verifier, reason]`: each way a redemption
+     * reports, `issued` naming the code issued and `null` reason for a code
+     * redeemed.
+     *
+     * @return iterable<string, array{0: string, 1: bool, 2: string, 3: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideReports(): iterable
+    {
+        yield 'redeemed' => ['issued', false, self::VERIFIER, null];
+        yield 'rate limited' => ['issued', true, self::VERIFIER, FailureReason::RATE_LIMITED];
+        yield 'not a code' => ['not-a-code', false, self::VERIFIER, FailureReason::HANDOFF_UNKNOWN];
+        yield 'another verifier' => ['issued', false, str_repeat('v', 43), FailureReason::VERIFIER_MISMATCH];
+    }
+
+    /**
+     * What a redemption reports carries the IP address and user agent of the
+     * client it was given, never the request's being served: `HandoffRedeemed`
+     * for a code redeemed, and exactly one `FlowFailed` for a refusal, before a
+     * code is found or after.
+     *
+     * @param  string  $code
+     * @param  bool  $limited
+     * @param  string  $verifier
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    #[DataProvider('provideReports')]
+    public function testWhatARedemptionReportsCarriesTheClientItWasGiven(string $code, bool $limited, string $verifier, ?FailureReason $reason): void
+    {
+        $issued = $this->issue(expiresAt: $this->clock->now()->addMinutes(5));
+
+        if ($limited) {
+            config()->set('sso.rate_limits.redemption.per_ip', ['max' => 1, 'decay_seconds' => 60]);
+            $this->redeem('not-a-code');
+        }
+
+        $this->app?->instance('request', Request::create('/', 'POST', server: ['REMOTE_ADDR' => '198.51.100.9', 'HTTP_USER_AGENT' => 'Served/1.0']));
+        $this->startRecordingEvents();
+
+        $this->redeem($code === 'issued' ? $issued : $code, $verifier);
+
+        $event = $reason === null ? $this->recordedEvents()[0] ?? null : $this->assertExactlyOneFailure(Flow::REDEMPTION, $reason);
+
+        if ($reason === null) {
+            self::assertInstanceOf(HandoffRedeemed::class, $event);
+        }
+
+        self::assertNotNull($event);
+        self::assertSame(['203.0.113.7', 'Example/1.0'], [$event->context()->ip, $event->context()->userAgent]);
+    }
+
+    /**
+     * A redemption for a client with no IP address, as a console caller makes
+     * it, counts against no address: no per-address limit refuses it.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testARedemptionForNoClientCountsNoAddress(): void
+    {
+        config()->set('sso.rate_limits.redemption.per_ip', ['max' => 1, 'decay_seconds' => 60]);
+
+        $this->client = new ClientContext(null, null);
+
+        self::assertSame(FailureReason::HANDOFF_UNKNOWN, $this->redeem('not-a-code')->reason);
+        self::assertSame(FailureReason::HANDOFF_UNKNOWN, $this->redeem('not-a-code')->reason);
+    }
+
+    /**
      * Stored results the package did not write.
      *
      * @return iterable<string, array{0: string}>
@@ -1075,7 +1155,7 @@ final class HandoffRedemptionTest extends TestCase
         $code = $this->issue();
 
         try {
-            app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, self::VERIFIER);
+            app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser());
             self::fail('A sign-in was redeemed with no transaction open.');
         } catch (\LogicException $exception) {
             self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).', $exception->getMessage());
@@ -1155,7 +1235,7 @@ final class HandoffRedemptionTest extends TestCase
         $code = $this->issue($purpose);
 
         try {
-            app(HandoffRedemption::class)->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER);
+            app(HandoffRedemption::class)->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser());
             self::fail('A session purpose was redeemed with no transaction open.');
         } catch (\LogicException $exception) {
             self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).', $exception->getMessage());
@@ -1206,7 +1286,15 @@ final class HandoffRedemptionTest extends TestCase
         }
 
         $code    = $this->issue($purpose);
-        $refused = app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, self::VERIFIER, new IdentityReference('App\Models\User', '7'));
+        $refused = app(HandoffRedemption::class)->redeem(
+            Purpose::LINK,
+            'web',
+            $this->connection->id,
+            $code,
+            self::VERIFIER,
+            Clients::browser(),
+            new IdentityReference('App\Models\User', '7'),
+        );
 
         self::assertTrue($refused->isRefused());
         self::assertSame(FailureReason::PURPOSE_MISMATCH, $refused->reason);
@@ -1279,9 +1367,10 @@ final class HandoffRedemptionTest extends TestCase
 
         $redemption = $app->make(HandoffRedemption::class);
         $connection = $connectionId ?? $this->connection->id;
+        $client     = $this->client;
 
         return DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => $redemption->redeem($purpose, $application, $connection, $code, $verifier, $caller),
+            static fn (): RedemptionResult => $redemption->redeem($purpose, $application, $connection, $code, $verifier, $client, $caller),
         );
     }
 
@@ -1417,10 +1506,11 @@ final class HandoffRedemptionTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 return ExampleLinks::resolution(($this->resolve)($result));
             }

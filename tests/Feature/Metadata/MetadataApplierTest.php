@@ -5,12 +5,16 @@ declare(strict_types = 1);
 namespace Tests\Feature\Metadata;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Events\MetadataRefreshed;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyRing;
@@ -27,6 +31,7 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -228,6 +233,37 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
+     * A changed endpoint reports the connection updated, naming it, then the
+     * refresh, each carrying the client the refresh was made for and the acting
+     * identity, never the request's being served.
+     *
+     * @return void
+     */
+    public function testAnEndpointChangeReportsTheUpdateAndTheRefreshForTheClient(): void
+    {
+        $this->app?->instance('request', Request::create('/', 'POST', server: ['REMOTE_ADDR' => '198.51.100.9', 'HTTP_USER_AGENT' => 'Served/1.0']));
+        $this->startRecordingEvents();
+
+        $actor = new ActingIdentity('App\Models\Admin', '9');
+
+        $this->applier()->apply($this->claim(), self::metadata([0], ['sso_url' => self::MOVED_URL]), $this->clock->now(), new ClientContext('203.0.113.7', 'Example/1.0'), $actor);
+
+        $this->assertEventSequence([ConnectionUpdated::class, MetadataRefreshed::class]);
+
+        $updated = $this->recordedEvents()[0];
+
+        self::assertInstanceOf(ConnectionUpdated::class, $updated);
+        self::assertSame(['sso_url'], $updated->changedSettings);
+
+        foreach ($this->recordedEvents() as $event) {
+            self::assertSame(
+                ['203.0.113.7', 'Example/1.0', 'App\Models\Admin', '9'],
+                [$event->context()->ip, $event->context()->userAgent, $event->context()->actingIdentityMorphClass, $event->context()->actingIdentityId],
+            );
+        }
+    }
+
+    /**
      * Metadata that changes nothing writes only the refresh: no setting, no
      * certificate, no void.
      *
@@ -399,7 +435,7 @@ final class MetadataApplierTest extends TestCase
     {
         $validated = CarbonImmutable::parse('2026-11-01T09:20:00Z');
 
-        self::assertTrue($this->applier()->apply($this->claim(), self::metadata([0]), $validated)->isRefreshed());
+        self::assertTrue($this->applier()->apply($this->claim(), self::metadata([0]), $validated, Clients::browser())->isRefreshed());
         self::assertSame(['2026-11-01T09:20:00+00:00', '2026-12-01T09:20:00+00:00'], [
             $this->row()->metadata_fetched_at?->toIso8601String(),
             app(MetadataExpiry::class)->expiresAt($this->row())?->toIso8601String(),
@@ -437,7 +473,7 @@ final class MetadataApplierTest extends TestCase
     {
         config()->set('sso.metadata.stale_limit_seconds', $limit);
 
-        $result = $this->applier()->apply($this->claim(), self::metadata([0]), CarbonImmutable::parse($validated));
+        $result = $this->applier()->apply($this->claim(), self::metadata([0]), CarbonImmutable::parse($validated), Clients::browser());
 
         self::assertSame([$outcome, $outcome === RefreshOutcome::FAILED ? FailureReason::METADATA_EXPIRED : null], [$result->outcome, $result->reason]);
         self::assertSame($outcome === RefreshOutcome::FAILED ? 0 : 1, $this->row()->metadata_version);
@@ -457,11 +493,16 @@ final class MetadataApplierTest extends TestCase
 
         self::assertSame(
             RefreshOutcome::FAILED,
-            $this->applier()->apply($this->claim(), self::metadata([0], $farOff), CarbonImmutable::parse('2026-10-02T09:30:00Z'))->outcome,
+            $this->applier()->apply($this->claim(), self::metadata([0], $farOff), CarbonImmutable::parse('2026-10-02T09:30:00Z'), Clients::browser())->outcome,
         );
         self::assertSame(
             RefreshOutcome::REFRESHED,
-            $this->applier()->apply($this->claim(), self::metadata([0], ['valid_until' => CarbonImmutable::parse('2026-11-01T09:30:01Z')]), $this->clock->now())->outcome,
+            $this->applier()->apply(
+                $this->claim(),
+                self::metadata([0], ['valid_until' => CarbonImmutable::parse('2026-11-01T09:30:01Z')]),
+                $this->clock->now(),
+                Clients::browser(),
+            )->outcome,
         );
     }
 
@@ -510,8 +551,8 @@ final class MetadataApplierTest extends TestCase
         $before   = $this->row()->getAttributes();
         $trusted  = $this->trusted();
         $attempts = [
-            fn (): RefreshResult => $this->applier()->apply($claim, self::metadata([1], ['sso_url' => self::MOVED_URL]), $this->clock->now()),
-            fn (): RefreshResult => $this->applier()->fail($claim, FailureReason::FETCH_FAILED),
+            fn (): RefreshResult => $this->applier()->apply($claim, self::metadata([1], ['sso_url' => self::MOVED_URL]), $this->clock->now(), Clients::browser()),
+            fn (): RefreshResult => $this->applier()->fail($claim, FailureReason::FETCH_FAILED, Clients::browser()),
         ];
 
         foreach ($attempts as $attempt) {
@@ -545,7 +586,7 @@ final class MetadataApplierTest extends TestCase
 
         $this->trust(Certificates::distinct(9));
 
-        $result = $this->applier()->apply($claim, self::metadata([0, 1]), $this->clock->now());
+        $result = $this->applier()->apply($claim, self::metadata([0, 1]), $this->clock->now(), Clients::browser());
 
         self::assertSame(RefreshOutcome::CONFLICT, $result->outcome);
         self::assertSame(self::sortedFingerprints([0, 9]), $this->trusted());
@@ -565,8 +606,8 @@ final class MetadataApplierTest extends TestCase
         ConnectionKey::query()->delete();
         Connection::query()->delete();
 
-        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->apply($claim, self::metadata([0]), $this->clock->now())->outcome);
-        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->fail($claim, FailureReason::FETCH_FAILED)->outcome);
+        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->apply($claim, self::metadata([0]), $this->clock->now(), Clients::browser())->outcome);
+        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->fail($claim, FailureReason::FETCH_FAILED, Clients::browser())->outcome);
 
         $this->assertNoEvents();
     }
@@ -583,7 +624,7 @@ final class MetadataApplierTest extends TestCase
 
         foreach (range(1, 9) as $failure) {
 
-            $result  = $this->applier()->fail($this->claim(), FailureReason::FETCH_FAILED);
+            $result  = $this->applier()->fail($this->claim(), FailureReason::FETCH_FAILED, Clients::browser());
             $waits[] = [$result->failures, (int) $this->clock->now()->diffInSeconds($result->nextAttemptAt)];
 
             self::assertSame(
@@ -609,7 +650,7 @@ final class MetadataApplierTest extends TestCase
 
         $this->connection->forceFill(['metadata_version' => 1])->save();
 
-        $result = $this->applier()->fail($claim, FailureReason::FETCH_FAILED, new ActingIdentity('App\Models\User', '42'));
+        $result = $this->applier()->fail($claim, FailureReason::FETCH_FAILED, Clients::browser(), new ActingIdentity('App\Models\User', '42'));
 
         self::assertSame([RefreshOutcome::CONFLICT, FailureReason::METADATA_CONFLICT], [$result->outcome, $result->reason]);
         self::assertSame([0, null], [$this->row()->metadata_refresh_failures, $this->row()->metadata_refresh_at]);
@@ -627,10 +668,10 @@ final class MetadataApplierTest extends TestCase
         $stale = $this->claim();
         $owner = $this->claim();
 
-        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->fail($stale, FailureReason::FETCH_FAILED)->outcome);
-        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->apply($stale, self::metadata([1]), $this->clock->now())->outcome);
+        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->fail($stale, FailureReason::FETCH_FAILED, Clients::browser())->outcome);
+        self::assertSame(RefreshOutcome::CONFLICT, $this->applier()->apply($stale, self::metadata([1]), $this->clock->now(), Clients::browser())->outcome);
         self::assertSame([$owner->token, 0, 0], [$this->row()->metadata_claim_token, $this->row()->metadata_version, $this->row()->metadata_refresh_failures]);
-        self::assertTrue($this->applier()->apply($owner, self::metadata([1]), $this->clock->now())->isRefreshed());
+        self::assertTrue($this->applier()->apply($owner, self::metadata([1]), $this->clock->now(), Clients::browser())->isRefreshed());
         self::assertSame([null, 1], [$this->row()->metadata_claim_token, $this->row()->metadata_version]);
     }
 
@@ -731,7 +772,7 @@ final class MetadataApplierTest extends TestCase
      */
     private function apply(IdpMetadata $metadata): RefreshResult
     {
-        return $this->applier()->apply($this->claim(), $metadata, $this->clock->now());
+        return $this->applier()->apply($this->claim(), $metadata, $this->clock->now(), Clients::browser());
     }
 
     /**

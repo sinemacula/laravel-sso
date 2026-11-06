@@ -18,7 +18,9 @@ use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Events\AuthorizationRequestStarted;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Evidence\AcceptedEvidence;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -30,11 +32,14 @@ use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Flows\Verifier;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
+use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\StartingDriver;
@@ -58,7 +63,7 @@ use Tests\TestCase;
 #[CoversClass(ProtocolState::class)]
 final class AuthorizationRequestServiceTest extends TestCase
 {
-    use UsesConnections;
+    use RecordsEventSequences, UsesConnections;
 
     /** @var string The IP address every start comes from. */
     private const string IP = '203.0.113.7';
@@ -71,6 +76,9 @@ final class AuthorizationRequestServiceTest extends TestCase
 
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     private FixedClock $clock;
+
+    /** @var \SineMacula\Laravel\Sso\Http\ClientContext The client every start is made for. */
+    private ClientContext $client;
 
     /** @var \Tests\Fixtures\Freshness\RecordingFreshness The freshness contract a `link` asks. */
     private RecordingFreshness $freshness;
@@ -99,7 +107,7 @@ final class AuthorizationRequestServiceTest extends TestCase
 
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(Freshness::class, $this->freshness);
-        $this->app?->instance('request', Request::create('/auth/sso/authorization-requests', 'POST', server: ['REMOTE_ADDR' => self::IP]));
+        $this->client = new ClientContext(self::IP, null);
 
         config()->set('sso.features.oidc', true);
         config()->set('sso.applications', [
@@ -402,22 +410,72 @@ final class AuthorizationRequestServiceTest extends TestCase
         self::assertCount(1, $this->driver->starts());
         self::assertSame(1, AuthorizationRequest::query()->count());
 
-        $this->app?->instance('request', Request::create('/', 'POST', server: ['REMOTE_ADDR' => '198.51.100.9']));
+        $this->client = new ClientContext('198.51.100.9', null);
 
         self::assertTrue($this->startFlow()->isStarted());
     }
 
     /**
-     * With no request being served there is no client, so no IP address is
-     * counted and no limit refuses.
+     * Rows of `[application, connection, limited, reason]`: each way a start
+     * reports, `null` reason for a start that stores its request.
+     *
+     * @return iterable<string, array{0: string, 1: ?string, 2: bool, 3: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideReports(): iterable
+    {
+        yield 'started' => ['web', null, false, null];
+        yield 'rate limited' => ['web', null, true, FailureReason::RATE_LIMITED];
+        yield 'an application not allowed' => ['missing', null, false, FailureReason::APPLICATION_NOT_ALLOWED];
+        yield 'an unknown connection' => ['web', self::UNKNOWN_ID, false, FailureReason::CONNECTION_UNAVAILABLE];
+    }
+
+    /**
+     * What a start reports carries the IP address and user agent of the client
+     * it was given, never the request's being served:
+     * `AuthorizationRequestStarted` for a stored request, and exactly one
+     * `FlowFailed` for a refusal.
+     *
+     * @param  string  $application
+     * @param  ?string  $connectionId
+     * @param  bool  $limited
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('provideReports')]
+    public function testWhatAStartReportsCarriesTheClientItWasGiven(string $application, ?string $connectionId, bool $limited, ?FailureReason $reason): void
+    {
+        $this->client = new ClientContext('203.0.113.7', 'Example/1.0');
+
+        if ($limited) {
+            config()->set('sso.rate_limits.authorization_request.per_ip', ['max' => 1, 'decay_seconds' => 60]);
+            $this->startFlow();
+        }
+
+        $this->app?->instance('request', Request::create('/', 'POST', server: ['REMOTE_ADDR' => '198.51.100.9', 'HTTP_USER_AGENT' => 'Served/1.0']));
+        $this->startRecordingEvents();
+
+        $this->startFlow(application: $application, connectionId: $connectionId);
+
+        $event = $reason === null ? $this->recordedEvents()[0] ?? null : $this->assertExactlyOneFailure(Flow::AUTHORIZATION_REQUEST, $reason);
+
+        if ($reason === null) {
+            self::assertInstanceOf(AuthorizationRequestStarted::class, $event);
+        }
+
+        self::assertNotNull($event);
+        self::assertSame(['203.0.113.7', 'Example/1.0'], [$event->context()->ip, $event->context()->userAgent]);
+    }
+
+    /**
+     * A start made for no client counts no IP address, and no limit refuses it.
      *
      * @return void
      */
-    public function testAStartWithNoRequestCountsNoAddress(): void
+    public function testAStartForNoClientCountsNoAddress(): void
     {
         config()->set('sso.rate_limits.authorization_request.per_ip', ['max' => 1, 'decay_seconds' => 60]);
 
-        $this->app?->offsetUnset('request');
+        $this->client = new ClientContext(null, null);
 
         self::assertTrue($this->startFlow()->isStarted());
         self::assertTrue($this->startFlow()->isStarted());
@@ -836,11 +894,11 @@ final class AuthorizationRequestServiceTest extends TestCase
 
         $connection->setAttribute('settings', ['claims' => ['a' => ['x' => 2, 'y' => 1], 'b' => 1], 'scopes' => ['email', 'openid'], 'issuer' => 'https://idp.example.com']);
 
-        $this->assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->service()->begin($application, Purpose::SIGN_IN, $connection, null, null, null));
+        $this->assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->service()->begin($application, Purpose::SIGN_IN, $connection, null, null, null, Clients::browser()));
 
         $connection->setAttribute('settings', ['claims' => ['a' => ['x' => 2, 'y' => 1], 'b' => 1], 'scopes' => ['openid', 'email'], 'issuer' => 'https://idp.example.com']);
 
-        self::assertTrue($this->service()->begin($application, Purpose::SIGN_IN, $connection, null, null, null)->isStarted());
+        self::assertTrue($this->service()->begin($application, Purpose::SIGN_IN, $connection, null, null, null, Clients::browser())->isStarted());
         self::assertSame(1, AuthorizationRequest::query()->count());
     }
 
@@ -878,15 +936,18 @@ final class AuthorizationRequestServiceTest extends TestCase
         $application = self::application('web');
 
         try {
-            $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, null, self::identity(), null);
+            $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, null, self::identity(), null, Clients::browser());
             self::fail('A misbound begin was accepted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('A `sign_in` flow is started with no identity and no session.', $exception->getMessage());
         }
 
-        $this->assertRefused(FailureReason::CHALLENGE_INVALID, $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, 'not-a-challenge', null, null));
+        $this->assertRefused(
+            FailureReason::CHALLENGE_INVALID,
+            $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, 'not-a-challenge', null, null, Clients::browser()),
+        );
 
-        $started = $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, null, null, null);
+        $started = $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, null, null, null, Clients::browser());
 
         self::assertTrue($started->isStarted());
         self::assertSame($started->reference?->value, self::onlyRequest()->reference);
@@ -974,7 +1035,7 @@ final class AuthorizationRequestServiceTest extends TestCase
         ?IdentityReference $identity = null,
         ?string $sessionId = null,
     ): StartResult {
-        return $this->service()->start($application, $purpose, $connectionId ?? $this->connection->id, $codeChallenge, $identity, $sessionId);
+        return $this->service()->start($application, $purpose, $connectionId ?? $this->connection->id, $this->client, $codeChallenge, $identity, $sessionId);
     }
 
     /**

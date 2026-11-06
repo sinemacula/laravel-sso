@@ -82,7 +82,7 @@ final readonly class SignInBranch implements PurposeBranch
             return Judgement::of($this->activation->judge($context));
         }
 
-        $now = $this->linker->resolve($context->result);
+        $now = $this->linker->resolve($context->result, $context->client);
 
         return match (true) {
             self::isContinuous($now, $context->binding) => new Judgement(RecheckOutcome::PASSED, $now->origin),

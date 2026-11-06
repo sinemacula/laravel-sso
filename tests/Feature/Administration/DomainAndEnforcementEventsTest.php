@@ -24,6 +24,7 @@ use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesEnforcement;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -76,9 +77,9 @@ final class DomainAndEnforcementEventsTest extends TestCase
         $domain     = $this->makeDomain($connection, 'example.com', ['state' => DomainState::VERIFIED, 'lapses_at' => CarbonImmutable::parse('2026-11-04T09:30:00Z')]);
         $events     = $this->reporter(DomainEvents::class);
 
-        $events->recheckFailed($connection, $domain, RecheckFailure::RECORD_ABSENT);
-        $events->restored($connection, $domain);
-        $events->lapsed($connection, $domain);
+        $events->recheckFailed($connection, $domain, RecheckFailure::RECORD_ABSENT, Clients::browser());
+        $events->restored($connection, $domain, Clients::browser());
+        $events->lapsed($connection, $domain, Clients::browser());
 
         $this->assertEventSequence([DomainRecheckFailed::class, DomainRestored::class, DomainLapsed::class]);
 
@@ -110,7 +111,7 @@ final class DomainAndEnforcementEventsTest extends TestCase
     {
         $row = $this->makeEnforcement(['enabled' => true, 'connection_ids' => ['c-2', 'c-1', 'c-2'], 'version' => '01jbversion000000000000002']);
 
-        $this->reporter(EnforcementEvents::class)->changed($row, '01jbversion000000000000001', new ActingIdentity('App\Models\User', '42'));
+        $this->reporter(EnforcementEvents::class)->changed($row, '01jbversion000000000000001', new ActingIdentity('App\Models\User', '42'), Clients::browser());
 
         $this->assertEventSequence([EnforcementChanged::class]);
 
@@ -136,7 +137,7 @@ final class DomainAndEnforcementEventsTest extends TestCase
     {
         $policy = EnforcementPolicy::required('child-1', 'parent-1', ['c-1'], '01jbversion000000000000003');
 
-        $this->reporter(EnforcementEvents::class)->exemptionUsed($policy, 'web', new IdentityReference('App\Models\User', '7'), 'session-9');
+        $this->reporter(EnforcementEvents::class)->exemptionUsed($policy, 'web', new IdentityReference('App\Models\User', '7'), Clients::browser(), 'session-9');
 
         $event = $this->recordedEvents()[0] ?? null;
 
@@ -164,13 +165,13 @@ final class DomainAndEnforcementEventsTest extends TestCase
         $database   = DB::connection();
 
         $database->beginTransaction();
-        $events->lapsed($connection, $domain);
+        $events->lapsed($connection, $domain, Clients::browser());
         $database->rollBack();
 
         $this->assertNoEvents();
 
         $database->transaction(function () use ($events, $connection, $domain): void {
-            $events->lapsed($connection, $domain);
+            $events->lapsed($connection, $domain, Clients::browser());
 
             $this->assertNoEvents();
         });

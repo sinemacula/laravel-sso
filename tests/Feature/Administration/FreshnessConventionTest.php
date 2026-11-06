@@ -27,6 +27,7 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -247,7 +248,7 @@ final class FreshnessConventionTest extends TestCase
     public function testAChangeThatWidensNothingAsksNothing(array $changes, string $changed): void
     {
         $freshness = $this->freshness();
-        $result    = $this->connections()->update(self::TENANT, $this->oidc, $changes, $this->actor);
+        $result    = $this->connections()->update(self::TENANT, $this->oidc, $changes, Clients::browser(), $this->actor);
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame([$changed], $result->changedSettings);
@@ -263,11 +264,11 @@ final class FreshnessConventionTest extends TestCase
      */
     public function testEnablingAsksEvenWhenAlreadyEnabled(): void
     {
-        self::assertSame(ConnectionStatus::ENABLED, $this->connections()->enable(self::TENANT, $this->oidc, $this->actor)->status);
+        self::assertSame(ConnectionStatus::ENABLED, $this->connections()->enable(self::TENANT, $this->oidc, Clients::browser(), $this->actor)->status);
 
         $freshness = $this->freshness();
 
-        self::assertSame(ConnectionStatus::UNCHANGED, $this->connections()->enable(self::TENANT, $this->oidc, $this->actor)->status);
+        self::assertSame(ConnectionStatus::UNCHANGED, $this->connections()->enable(self::TENANT, $this->oidc, Clients::browser(), $this->actor)->status);
 
         $freshness->assertAskedExactly([FreshnessOperation::CONNECTION_ENABLE]);
         $freshness->assertAsked(FreshnessOperation::CONNECTION_ENABLE, self::MAX_AGES['connection_enable']);
@@ -301,40 +302,45 @@ final class FreshnessConventionTest extends TestCase
     private function connectionMutations(): array
     {
         return [
-            'create'               => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', 'Second', self::OIDC, actor: $this->actor),
+            'create'               => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, actor: $this->actor),
             'update trust setting' => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $this->oidc,
                 ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth/token']],
+                Clients::browser(),
                 $this->actor,
             ),
             'update client secret' => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $this->oidc,
                 ['settings' => ['client_secret' => 'the-rotated-client-secret']],
+                Clients::browser(),
                 $this->actor,
             ),
             'update idp initiated' => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $this->saml,
                 ['settings' => ['idp_initiated' => true, 'idp_initiated_start_url' => 'https://app.example.com/start']],
+                Clients::browser(),
                 $this->actor,
             ),
             'update idp initiated off' => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $this->samlIdpInitiated,
                 ['settings' => ['idp_initiated' => false, 'idp_initiated_start_url' => null]],
+                Clients::browser(),
                 $this->actor,
             ),
-            'enable'  => fn (): ConnectionResult => $this->connections()->enable(self::TENANT, $this->oidc, $this->actor),
-            'disable' => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->oidc, $this->actor),
-            'delete'  => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->oidc, $this->actor),
+            'enable'  => fn (): ConnectionResult => $this->connections()->enable(self::TENANT, $this->oidc, Clients::browser(), $this->actor),
+            'disable' => fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->oidc, Clients::browser(), $this->actor),
+            'delete'  => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->oidc, Clients::browser(), $this->actor),
             'migrate' => fn (): ConnectionResult => $this->migration()->migrate(
                 self::TENANT,
                 $this->oidc,
                 ['settings' => ['issuer' => 'https://login.example.com']],
                 [],
                 [],
+                Clients::browser(),
                 $this->actor,
             ),
         ];
@@ -349,11 +355,24 @@ final class FreshnessConventionTest extends TestCase
     private function keyMutations(): array
     {
         return [
-            'add next'             => fn (): KeyResult => $this->keys()->addNext(self::TENANT, $this->oidc, KeyUse::CLIENT_ASSERTION, KeyType::EC, $this->actor),
-            'make current'         => fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $this->saml, $this->nextKey, $this->actor),
-            'retire'               => fn (): KeyResult => $this->keys()->retire(self::TENANT, $this->saml, $this->nextKey, $this->actor),
-            'trust certificate'    => fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->saml, Certificates::distinct(41), $this->actor),
-            'distrust certificate' => fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $this->saml, $this->trustedCertificate, $this->actor),
+            'add next' => fn (): KeyResult => $this->keys()->addNext(
+                self::TENANT,
+                $this->oidc,
+                KeyUse::CLIENT_ASSERTION,
+                Clients::browser(),
+                KeyType::EC,
+                $this->actor,
+            ),
+            'make current'         => fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $this->saml, $this->nextKey, Clients::browser(), $this->actor),
+            'retire'               => fn (): KeyResult => $this->keys()->retire(self::TENANT, $this->saml, $this->nextKey, Clients::browser(), $this->actor),
+            'trust certificate'    => fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->saml, Certificates::distinct(41), Clients::browser(), $this->actor),
+            'distrust certificate' => fn (): KeyResult => $this->keys()->distrustCertificate(
+                self::TENANT,
+                $this->saml,
+                $this->trustedCertificate,
+                Clients::browser(),
+                $this->actor,
+            ),
         ];
     }
 
@@ -368,12 +387,13 @@ final class FreshnessConventionTest extends TestCase
     {
         $this->freshness();
 
-        $oidc = $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC, actor: $this->actor);
-        $saml = $this->connections()->create(self::TENANT, 'saml2', 'Acme', self::SAML, actor: $this->actor);
+        $oidc = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC, actor: $this->actor);
+        $saml = $this->connections()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML, actor: $this->actor);
         $on   = $this->connections()->create(
             self::TENANT,
             'saml2',
             'Started by the IdP',
+            Clients::browser(),
             self::SAML + ['idp_initiated' => true, 'idp_initiated_start_url' => 'https://app.example.com/start'],
             actor: $this->actor,
         );
@@ -382,9 +402,9 @@ final class FreshnessConventionTest extends TestCase
         $this->saml             = (string) $saml->connection?->id;
         $this->samlIdpInitiated = (string) $on->connection?->id;
 
-        $this->currentKey         = $this->summary($this->keys()->addNext(self::TENANT, $this->saml, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor))->id;
-        $this->nextKey            = $this->summary($this->keys()->addNext(self::TENANT, $this->saml, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor))->id;
-        $this->trustedCertificate = $this->summary($this->keys()->trustCertificate(self::TENANT, $this->saml, Certificates::distinct(40), $this->actor))->id;
+        $this->currentKey         = $this->summary($this->keys()->addNext(self::TENANT, $this->saml, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor))->id;
+        $this->nextKey            = $this->summary($this->keys()->addNext(self::TENANT, $this->saml, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor))->id;
+        $this->trustedCertificate = $this->summary($this->keys()->trustCertificate(self::TENANT, $this->saml, Certificates::distinct(40), Clients::browser(), $this->actor))->id;
 
         self::assertNotSame($this->currentKey, $this->nextKey);
     }

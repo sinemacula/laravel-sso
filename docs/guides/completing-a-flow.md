@@ -15,8 +15,10 @@ The helper is `Completion\CompletionService`:
 $completions = app(CompletionService::class);
 ```
 
-Resolve the service from the container for each request: it reads the request being served (for its IP address) and
-keeps nothing of one request for the next.
+Resolve the service from the container for each request: it keeps nothing of one request for the next, and never reads
+the request being served. Its one method, `complete()`, takes the endpoint the response arrived at
+(`Completion\Enums\CompletionEndpoint`), the connection's id, what arrived and the client it came from, each a plain
+value your controller builds from the request.
 
 ## The routes
 
@@ -50,34 +52,47 @@ Route::get('/auth/sso/connections/{connection}/callback', [SsoCompletionControll
 The controller, say `App\Http\Controllers\SsoCompletionController`, takes the `CompletionService` and the
 `Responses\CompletionResponses` through its constructor, as `$this->completions` and `$this->responses`. Each action
 takes the `Illuminate\Http\Request` and the route's `$connection`, and answers a `Responses\CompletionResponse`. Its
-`assertion()` action receives the SAML response the browser posts:
+`assertion()` action receives the SAML response the browser posts, at the assertion consumer service:
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoCompletionController.php#route-assertion -->
 ```php
-$result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
+$result = $this->completions->complete(
+    CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+    $connection,
+    CompletionRequest::fromRequest($request),
+    ClientContext::fromRequest($request),
+);
 
 return $this->responses->from($result, $request->getMethod());
 ```
 
-Its `callback()` action receives the OIDC authorisation response:
+Its `callback()` action receives the OIDC authorisation response, at the callback:
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoCompletionController.php#route-callback -->
 ```php
-$result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
+$result = $this->completions->complete(
+    CompletionEndpoint::CALLBACK,
+    $connection,
+    CompletionRequest::fromRequest($request),
+    ClientContext::fromRequest($request),
+);
 
 return $this->responses->from($result, $request->getMethod());
 ```
 
 `CompletionRequest::fromRequest()` keeps the method, the raw query string and the posted fields, and nothing else: it
-never reaches a log, an event or a queue. [Completion responses](completion-responses.md) explains the statuses, the
-redirect and the headers each result answers with.
+never reaches a log, an event or a queue. `Http\ClientContext::fromRequest()` keeps the client's IP address, only when
+it is a valid IPv4 or IPv6 address, and its user agent, without control or bidirectional characters or invalid UTF-8
+and then cut to 512 characters: the completion is counted against that address, and every event it reports carries
+both. [Completion responses](completion-responses.md) explains the statuses, the redirect and the headers each result
+answers with.
 
 ## What a completion does
 
 Each call runs in a fixed order, and stops at the first step that refuses:
 
 1. The completion is counted against the client's IP address and the connection (`sso.rate_limits.completion`); a full
-   limit answers `rate_limited`.
+   limit answers `rate_limited`. Both endpoints share the count, which is taken before the method is looked at.
 2. The method must be the endpoint's: `POST` at the assertion consumer service, `GET` at the callback.
 3. The connection is read by its id, and its protocol must complete at this endpoint: `saml2` at the assertion consumer
    service, `oidc` at the callback. A protocol you registered with `ProtocolManager::extend()` completes at either.

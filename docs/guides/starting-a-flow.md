@@ -13,8 +13,10 @@ use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 $requests = app(AuthorizationRequestService::class);
 ```
 
-Resolve the service from the container for each request: it reads the request being served (for its IP address) and
-keeps nothing of one request for the next.
+Resolve the service from the container for each request: it keeps nothing of one request for the next, and never reads
+the request being served. `start()` takes the client the flow is started for as an `Http\ClientContext`, which your
+route builds with `ClientContext::fromRequest($request)`: the start is counted against its IP address, and every event
+the start reports carries its IP address and user agent.
 
 ## An example route
 
@@ -33,12 +35,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 Route::post('/auth/sso/authorization-requests', static function (Request $request, AuthorizationRequestService $requests): JsonResponse {
     $result = $requests->start(
         application: $request->string('application')->toString(),
         purpose: Purpose::SIGN_IN,
         connectionId: $request->string('connection')->toString(),
+        client: ClientContext::fromRequest($request),
         codeChallenge: $request->has('code_challenge') ? $request->string('code_challenge')->toString() : null,
     );
 
@@ -139,8 +143,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-$linking          = $requests->start('web', Purpose::LINK, $connectionId, $challenge, $identity);
-$reauthenticating = $requests->start('web', Purpose::REAUTHENTICATE, $connectionId, $challenge, $identity, $sessionId);
+$linking          = $requests->start('web', Purpose::LINK, $connectionId, $client, $challenge, $identity);
+$reauthenticating = $requests->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $challenge, $identity, $sessionId);
 ```
 
 Any other combination, or a session id that is empty or longer than 255 bytes, is an `InvalidArgumentException`: a
@@ -158,7 +162,8 @@ mistake in your code, not a refusal.
   by the first response that names it, whether that response then passes or fails. A second response for it is
   refused.
 - Starts are counted per IP address under `sso.rate_limits.authorization_request.per_ip` (30 a minute by default),
-  successful or not. With no request being served (a console command) no address is counted.
+  successful or not. A start made for no client (`new ClientContext(null, null)`, from a console command) counts against
+  no address.
 
 ## Events
 

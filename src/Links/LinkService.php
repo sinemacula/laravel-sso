@@ -12,6 +12,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
@@ -120,6 +121,7 @@ final readonly class LinkService
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference|string  $identity
      * @param  string  $linkId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Links\LinkResult
@@ -127,7 +129,7 @@ final readonly class LinkService
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function remove(IdentityReference|string $identity, string $linkId, ?IdentityReference $caller = null, ?ActingIdentity $actor = null): LinkResult
+    public function remove(IdentityReference|string $identity, string $linkId, ClientContext $client, ?IdentityReference $caller = null, ?ActingIdentity $actor = null): LinkResult
     {
         $reference = self::identity($identity, $caller);
         $link      = self::owned($linkId, $reference, false);
@@ -140,7 +142,7 @@ final readonly class LinkService
             return LinkResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
-        return DB::connection(StorageConnection::name())->transaction(fn (): LinkResult => $this->delete($link, $reference, $actor));
+        return DB::connection(StorageConnection::name())->transaction(fn (): LinkResult => $this->delete($link, $reference, $actor, $client));
     }
 
     /**
@@ -151,12 +153,13 @@ final readonly class LinkService
      * @param  \SineMacula\Laravel\Sso\Models\Link  $found
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResult
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    private function delete(Link $found, IdentityReference $identity, ?ActingIdentity $actor): LinkResult
+    private function delete(Link $found, IdentityReference $identity, ?ActingIdentity $actor, ClientContext $client): LinkResult
     {
         $connection = Connection::query()->useWritePdo()->whereKey($found->connection_id)->lockForUpdate()->first();
 
@@ -176,7 +179,7 @@ final readonly class LinkService
 
         $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($connection->tenant_id, $connection->id, $identity, $locked->id));
 
-        $this->events->removed($connection, $identity, $actor);
+        $this->events->removed($connection, $identity, $client, $actor);
 
         return LinkResult::removed(LinkSummary::of($locked, $connection));
     }

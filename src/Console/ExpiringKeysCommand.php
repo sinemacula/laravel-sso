@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Console;
 
 use Illuminate\Console\Command;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\ExpiryNotice;
 use SineMacula\Laravel\Sso\Keys\ExpiringKey;
 use SineMacula\Laravel\Sso\Keys\ExpiryReport;
@@ -49,7 +50,7 @@ final class ExpiringKeysCommand extends Command
     public function handle(ExpiryReport $report): int
     {
         try {
-            $run = $report->report($this->days(), $this->printEntry(...));
+            $run = $report->report(new ClientContext(null, null), $this->days(), $this->printEntry(...));
         } catch (\Throwable $exception) {
             $this->error(sprintf('The expiry report stopped on %s.', $exception::class));
 

@@ -42,6 +42,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Concerns\FlowRoutes;
 use Tests\Concerns\InteractsWithLaggingReplica;
+use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
@@ -470,7 +471,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     public function testThePublicKeysServedAreThePrimarys(): void
     {
         $connection = $this->flowOidcConnection(self::TENANT, 'op-replica-keys', settings: ['client_authentication' => 'private_key_jwt']);
-        $key        = app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, KeyType::EC)->key;
+        $key        = app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC)->key;
 
         self::assertNotNull($key);
         self::assertCount(1, (array) $this->sendFlowRequest('GET', "/sso/jwks/{$connection->id}")->assertOk()->json('keys'));

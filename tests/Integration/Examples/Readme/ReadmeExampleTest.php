@@ -13,6 +13,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Applications\ApplicationGate;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -21,6 +22,7 @@ use SineMacula\Laravel\Sso\Operations\OperationsSchedule;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -66,7 +68,12 @@ final class ReadmeExampleTest extends ExampleTestCase
         $start    = $this->startFlow(Purpose::SIGN_IN, $connectionId);
         $request  = $idp->receive($start);
         $response = $idp->respondTo($request, $this->clock->now());
-        $result   = app(CompletionService::class)->assertionConsumerService($connectionId, $response->completionRequest($request->relayState));
+        $result   = app(CompletionService::class)->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $connectionId,
+            $response->completionRequest($request->relayState),
+            Clients::browser(),
+        );
         $location = app(CompletionResponses::class)->from($result, 'POST')->location();
 
         self::assertNotNull($location);
@@ -98,7 +105,7 @@ final class ReadmeExampleTest extends ExampleTestCase
 
         foreach (['mobile', 'admin'] as $application) {
 
-            $refused = app(AuthorizationRequestService::class)->start($application, Purpose::SIGN_IN, $connectionId);
+            $refused = app(AuthorizationRequestService::class)->start($application, Purpose::SIGN_IN, $connectionId, Clients::browser());
 
             self::assertTrue($refused->isRefused(), $application);
             self::assertSame(FailureReason::APPLICATION_NOT_ALLOWED, $refused->reason, $application);

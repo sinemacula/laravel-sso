@@ -25,6 +25,7 @@ use SineMacula\Laravel\Sso\Metadata\ProposedSettings;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
+use Tests\Integration\Examples\Clients;
 
 /**
  * The import, save and anchor examples of `docs/guides/saml-metadata.md`
@@ -250,7 +251,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     #[\Override]
     protected function makeConnection(): ConnectionSummary
     {
-        $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Acme SAML');
+        $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Acme SAML', Clients::browser());
 
         self::assertNotNull($created->connection);
 
@@ -269,7 +270,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
 
         self::assertSame([self::ENTITY_ID, self::SSO_URL, 'http_redirect'], [$settings['idp_entity_id'] ?? null, $settings['sso_url'] ?? null, $settings['sso_binding'] ?? null]);
         self::assertSame([openssl_x509_fingerprint($this->idp->certificate(), 'sha256')], $this->trustedFingerprints(KeyUse::IDP_SIGNING));
-        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $this->connection->id)->isSucceeded());
+        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $this->connection->id, Clients::browser())->isSucceeded());
         self::assertTrue($this->stored()->usable);
     }
 

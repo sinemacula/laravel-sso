@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -80,11 +81,11 @@ final class DomainEventsAfterCommitTest extends TestCase
 
         $database->beginTransaction();
 
-        $claimed = $domains->claim('tenant-1', $connection->id, 'example.com');
+        $claimed = $domains->claim('tenant-1', $connection->id, 'example.com', Clients::browser());
 
         $this->dns->publishes($claimed->domain ?? self::fail('Nothing was claimed.'));
 
-        $verified = $domains->verify('tenant-1', $connection->id, 'example.com');
+        $verified = $domains->verify('tenant-1', $connection->id, 'example.com', Clients::browser());
 
         $database->rollBack();
 
@@ -107,12 +108,12 @@ final class DomainEventsAfterCommitTest extends TestCase
 
         DB::connection(StorageConnection::name())->transaction(function () use ($domains, $connection): void {
 
-            $claimed = $domains->claim('tenant-1', $connection->id, 'example.com');
+            $claimed = $domains->claim('tenant-1', $connection->id, 'example.com', Clients::browser());
 
             $this->dns->publishes($claimed->domain ?? self::fail('Nothing was claimed.'));
 
-            $domains->verify('tenant-1', $connection->id, 'example.com');
-            $domains->remove('tenant-1', $connection->id, 'example.com');
+            $domains->verify('tenant-1', $connection->id, 'example.com', Clients::browser());
+            $domains->remove('tenant-1', $connection->id, 'example.com', Clients::browser());
 
             $this->assertNoEvents();
         });

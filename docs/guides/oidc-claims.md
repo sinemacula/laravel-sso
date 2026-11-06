@@ -21,8 +21,13 @@ connection turns it on with its endpoint:
 $updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
     'userinfo_endpoint' => 'https://idp.acme.example/userinfo',
     'fetch_userinfo'    => true,
-]]);
+]], $client);
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 ## UserInfo fails closed
 

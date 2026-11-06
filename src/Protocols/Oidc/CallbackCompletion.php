@@ -8,6 +8,7 @@ use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Protocols\Completion;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
@@ -108,12 +109,13 @@ final readonly class CallbackCompletion
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    public function complete(SsoConnection $connection, OidcOptions $options, CompletionRequest $request, ConsumedRequest $consumed): Completion
+    public function complete(SsoConnection $connection, OidcOptions $options, CompletionRequest $request, ConsumedRequest $consumed, ClientContext $client): Completion
     {
         $parameters = CallbackParameters::parse($request->query(), $this->limits);
 
@@ -123,7 +125,7 @@ final readonly class CallbackCompletion
 
         $reason = self::issuerRefusal($parameters, $consumed) ?? $this->responseRefusal($connection, $parameters, $consumed);
 
-        return $reason === null ? $this->exchanged($connection, $options, (string) $parameters->code(), $consumed) : Completion::refused($reason);
+        return $reason === null ? $this->exchanged($connection, $options, (string) $parameters->code(), $consumed, $client) : Completion::refused($reason);
     }
 
     /**
@@ -175,12 +177,13 @@ final readonly class CallbackCompletion
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
      * @param  string  $code
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function exchanged(SsoConnection $connection, OidcOptions $options, #[\SensitiveParameter] string $code, ConsumedRequest $consumed): Completion
+    private function exchanged(SsoConnection $connection, OidcOptions $options, #[\SensitiveParameter] string $code, ConsumedRequest $consumed, ClientContext $client): Completion
     {
         $credentials = $this->exchange->credentials($connection, $options);
 
@@ -195,7 +198,7 @@ final readonly class CallbackCompletion
             return $this->refusedAnswer($connection, $consumed, $fetched, $reason);
         }
 
-        return $this->verified($connection, $options, $this->reader->tokens($fetched), $consumed);
+        return $this->verified($connection, $options, $this->reader->tokens($fetched), $consumed, $client);
     }
 
     /**
@@ -226,11 +229,12 @@ final readonly class CallbackCompletion
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse  $tokens
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      */
-    private function verified(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed): Completion
+    private function verified(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed, ClientContext $client): Completion
     {
-        $validation = $this->validator->validate($connection, $options, $tokens, $consumed);
+        $validation = $this->validator->validate($connection, $options, $tokens, $consumed, $client);
 
         if (!$validation->isValidated()) {
             return Completion::refused($validation->reason);

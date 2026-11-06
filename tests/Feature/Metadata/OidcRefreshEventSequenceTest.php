@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Metadata;
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -40,6 +39,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -117,7 +117,6 @@ final class OidcRefreshEventSequenceTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Fetcher::class, $this->fetcher);
-        $this->app?->instance('request', Request::create('/sso', 'POST', server: ['REMOTE_ADDR' => '203.0.113.7', 'HTTP_USER_AGENT' => 'a-browser']));
 
         config()->set('sso.features.oidc', true);
         config()->set('sso.features.metadata_refresh', true);
@@ -165,7 +164,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
     {
         $this->provider->publish(self::next());
 
-        $this->refresher()->refreshDue();
+        $this->refresher()->refreshDue(Clients::browser());
 
         $this->assertEventSequence([MetadataRefreshed::class]);
 
@@ -189,7 +188,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
 
         $this->provider->withDiscovery(['token_endpoint' => self::MOVED]);
 
-        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
+        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
 
         $this->assertEventSequence([ConnectionUpdated::class, MetadataRefreshed::class]);
 
@@ -215,7 +214,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
 
         $this->provider->respond('discovery', FetchResult::failed());
 
-        $this->refresher()->refreshDue();
+        $this->refresher()->refreshDue(Clients::browser());
 
         $this->assertEventSequence([MetadataRefreshFailed::class]);
 
@@ -247,7 +246,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
             return FakeTokenEndpoint::json(200, $this->provider->jwks());
         });
 
-        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
+        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
 
         $this->assertEventSequence([MetadataRefreshFailed::class]);
 
@@ -268,7 +267,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
     {
         $this->provider->publish(self::next());
 
-        app(ProviderKeys::class)->select($this->connection, self::token('rsa-2'), self::rs256());
+        app(ProviderKeys::class)->select($this->connection, self::token('rsa-2'), self::rs256(), Clients::browser());
 
         $this->assertEventSequence([JwksRefreshed::class]);
 
@@ -288,7 +287,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
     {
         Connection::query()->whereKey($this->connection->id)->update(['jwks' => self::stored([self::key(), self::next()])]);
 
-        app(ProviderKeys::class)->select($this->connection, self::token('rsa-3'), self::rs256());
+        app(ProviderKeys::class)->select($this->connection, self::token('rsa-3'), self::rs256(), Clients::browser());
 
         $this->assertEventSequence([JwksRefreshed::class]);
 
@@ -307,7 +306,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
     {
         $this->provider->respond('jwks', FetchResult::failed());
 
-        app(ProviderKeys::class)->select($this->connection, self::token('rsa-2'), self::rs256());
+        app(ProviderKeys::class)->select($this->connection, self::token('rsa-2'), self::rs256(), Clients::browser());
 
         $this->assertEventSequence([JwksRefreshFailed::class]);
 
@@ -334,7 +333,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
             return FakeTokenEndpoint::json(200, $this->provider->jwks());
         });
 
-        app(ProviderKeys::class)->select($this->connection, self::token('rsa-2'), self::rs256());
+        app(ProviderKeys::class)->select($this->connection, self::token('rsa-2'), self::rs256(), Clients::browser());
 
         $this->assertEventSequence([JwksRefreshFailed::class]);
 
@@ -354,11 +353,11 @@ final class OidcRefreshEventSequenceTest extends TestCase
     {
         $keys = app(ProviderKeys::class);
 
-        $keys->select($this->connection, self::token('rsa-1'), self::rs256());
+        $keys->select($this->connection, self::token('rsa-1'), self::rs256(), Clients::browser());
 
         Connection::query()->whereKey($this->connection->id)->update(['jwks_refetch_at' => '2026-11-01 11:00:00']);
 
-        $keys->select($this->connection, self::token('rsa-2'), self::rs256());
+        $keys->select($this->connection, self::token('rsa-2'), self::rs256(), Clients::browser());
 
         $this->assertNoEvents();
     }
@@ -381,17 +380,17 @@ final class OidcRefreshEventSequenceTest extends TestCase
 
         $this->provider->withDiscovery(['token_endpoint' => self::MOVED]);
 
-        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
+        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
 
         Connection::query()->whereKey($this->connection->id)->update(['jwks' => self::stored([self::key(), self::next()]), 'jwks_refetch_at' => null]);
 
-        app(ProviderKeys::class)->select($this->connection, self::token('rsa-3'), self::rs256());
+        app(ProviderKeys::class)->select($this->connection, self::token('rsa-3'), self::rs256(), Clients::browser());
 
         Connection::query()->whereKey($this->connection->id)->update(['jwks_refetch_at' => null]);
 
         $this->provider->respond('jwks', FetchResult::failed());
 
-        app(ProviderKeys::class)->select($this->connection, self::token('rsa-3'), self::rs256());
+        app(ProviderKeys::class)->select($this->connection, self::token('rsa-3'), self::rs256(), Clients::browser());
 
         $this->assertEventSequence([ConnectionUpdated::class, MetadataRefreshed::class, JwksRefreshed::class, JwksRefreshFailed::class]);
 
@@ -418,7 +417,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
 
         try {
             DB::connection(StorageConnection::name())->transaction(function () use ($source, $claim, $fetched): void {
-                self::assertTrue($source->write($claim, $fetched, null)->isRefreshed());
+                self::assertTrue($source->write($claim, $fetched, null, Clients::browser())->isRefreshed());
 
                 throw new \RuntimeException('Rolled back.');
             });
@@ -463,7 +462,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
         });
 
         try {
-            app(ProviderKeys::class)->select($this->connection, self::token('rsa-3'), self::rs256());
+            app(ProviderKeys::class)->select($this->connection, self::token('rsa-3'), self::rs256(), Clients::browser());
 
             self::fail('The write did not fail.');
         } catch (\RuntimeException $exception) {
@@ -504,21 +503,21 @@ final class OidcRefreshEventSequenceTest extends TestCase
             return FakeTokenEndpoint::json(200, $this->provider->jwks());
         });
 
-        $results[] = $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
+        $results[] = $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
 
         Connection::query()->whereKey($this->connection->id)->update(['jwks' => self::stored([self::key()]), 'jwks_refetch_at' => null]);
 
-        app(ProviderKeys::class)->select($this->connection, $token, self::rs256());
+        app(ProviderKeys::class)->select($this->connection, $token, self::rs256(), Clients::browser());
 
         $this->provider->respond('discovery', FetchResult::fetched(500, [], 'provider-detail'));
 
-        $results[] = $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
+        $results[] = $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
 
         Connection::query()->whereKey($this->connection->id)->update(['jwks' => self::stored([self::key()]), 'jwks_refetch_at' => null]);
 
         $this->provider->respond('jwks', FetchResult::fetched(500, [], 'provider-detail'));
 
-        app(ProviderKeys::class)->select($this->connection, $token, self::rs256());
+        app(ProviderKeys::class)->select($this->connection, $token, self::rs256(), Clients::browser());
 
         self::assertCount(5, $this->recordedEvents());
         self::assertCount(2, $seen);
@@ -549,7 +548,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
         return [
             'occurred_at'                 => '2026-11-01T09:30:00.000000Z',
             'ip'                          => '203.0.113.7',
-            'user_agent'                  => 'a-browser',
+            'user_agent'                  => Clients::USER_AGENT,
             'connection_id'               => $this->connection->id,
             'connection_tenant_id'        => self::TENANT,
             'protocol'                    => 'oidc',

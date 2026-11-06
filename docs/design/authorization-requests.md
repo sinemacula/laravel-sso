@@ -13,19 +13,20 @@ the race. The tables, the value types and the completion they feed are in `flows
 
 ### Starting a flow
 
-- `Flows\AuthorizationRequestService::start($application, $purpose, $connectionId, $codeChallenge, $identity,
-  $sessionId)` answers a `Flows\StartResult`: `started` (reference, navigation, the generated verifier or none),
-  `refused` (reason) or `rate_limited` (`retryAfter`). Called inside a transaction open on the storage connection, it
-  is a `LogicException` before anything else (`StorageConnection::assertNoTransaction()`): the driver it calls may
-  reach the identity provider, and the caller's transaction would keep the connection's lock all the while
-  (SSO-11.5). Its steps run in this order, and each refusal reports exactly one
-  `FlowFailed(Flow::AUTHORIZATION_REQUEST, reason)` and writes nothing:
+- `Flows\AuthorizationRequestService::start($application, $purpose, $connectionId, $client, $codeChallenge, $identity, $sessionId)`,
+  the client an `Http\ClientContext` the application builds from the request, answers a `Flows\StartResult`: `started`
+  (reference, navigation, the generated verifier or none), `refused` (reason) or `rate_limited` (`retryAfter`). Called
+  inside a transaction open on the storage connection, it is a `LogicException` before anything else
+  (`StorageConnection::assertNoTransaction()`): the driver it calls may reach the identity provider, and the caller's
+  transaction would keep the connection's lock all the while (SSO-11.5). Its steps run in this order, and each refusal
+  reports exactly one `FlowFailed(Flow::AUTHORIZATION_REQUEST, reason)` and writes nothing:
   1. the purpose's binding: `sign_in` with no identity and no session, `link` for an identity with no session,
      `reauthenticate` for an identity on a session of 1 to 255 bytes (`MAX_SESSION_ID_LENGTH`). Anything else is
      application code's mistake, an `InvalidArgumentException` naming the purpose's binding, before anything is counted
      or reported;
-  2. the attempt, counted with `AttemptSubject::authorizationRequest()` against the IP address of the request being
-     served (none when no request is bound, as in a console command): a full limit is `rate_limited` with its wait;
+  2. the attempt, counted with `AttemptSubject::authorizationRequest()` against the IP address of the
+     `Http\ClientContext` the start is given (none for a client with none, as a console command passes): a full limit is
+     `rate_limited` with its wait;
   3. `Applications\ApplicationGate::admit()`: `application_not_allowed` for an unknown application and for one the
      policy does not allow, alike;
   4. the client's challenge, when given, must have an S256 challenge's form (`S256Challenge::isWellFormed()`), else
@@ -36,7 +37,8 @@ the race. The tables, the value types and the completion they feed are in `flows
      reported, but the answer is `fallback()`: `started`, in a start's shape, leading to the application's fallback;
   6. a `link` asks `Freshness\FreshnessGate` with `sso.link.create` (SSO-2.12), else `freshness_required`;
   7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing($identity, $sessionId, $connection)`, else
-     `session_ineligible` for anything but `signed_in` (SSO-5.10); the default answers `not_signed_in`;
+     `session_ineligible` for anything but `signed_in` (SSO-5.10); the default answers `not_signed_in` (steps 6 and 7
+     are `Flows\StartEligibility::refusal()`);
   8. the connection's `trust_version`, as step 5 read it, is captured; `Flows\ProtocolState::generate()`, then the
      driver's `start()` with a `Protocols\StartRequest` (purpose, application, reference, state, nonce, PKCE verifier),
      outside any transaction the start opens; a refused `Start` is refused with the driver's reason;

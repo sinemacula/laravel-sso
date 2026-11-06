@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
@@ -21,6 +22,7 @@ use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -227,7 +229,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
      */
     private function completeAt(FakeAuthorization $grant): HandoffRedirect
     {
-        $result = app(CompletionService::class)->callback($this->connectionId, new CompletionRequest('GET', $grant->query(), []));
+        $result = app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $this->connectionId, new CompletionRequest('GET', $grant->query(), []), Clients::browser());
 
         return HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
     }
@@ -246,7 +248,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
         $connectionId = $this->connectionId;
 
         return DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit($purpose, self::APPLICATION, $connectionId, $code, self::VERIFIER),
+            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit($purpose, self::APPLICATION, $connectionId, $code, self::VERIFIER, Clients::browser()),
         );
     }
 
@@ -259,6 +261,8 @@ final class OidcSignInExampleTest extends ExampleTestCase
      */
     private static function startSigningIn(array $input): JsonResponse
     {
+        $input['client'] = Clients::browser();
+
         $response = require __DIR__ . '/start/sign-in.php';
 
         self::assertInstanceOf(JsonResponse::class, $response);
@@ -275,6 +279,8 @@ final class OidcSignInExampleTest extends ExampleTestCase
      */
     private static function startReauthenticating(array $input): StartResult
     {
+        $input['client'] = Clients::browser();
+
         $result = require __DIR__ . '/start/reauthenticate.php';
 
         self::assertInstanceOf(StartResult::class, $result);

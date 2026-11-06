@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\Stages\CorrelateResponse;
 use SineMacula\Laravel\Sso\Completion\UnsolicitedReinitiation;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -34,6 +35,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use SineMacula\Laravel\Sso\Testing\Saml\SignatureWrapping;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
@@ -580,7 +582,12 @@ final class SamlReinitiationTest extends TestCase
      */
     private function complete(FakeSamlResponse $response, ?string $relayState = null): CompletionResult
     {
-        return app(CompletionService::class)->assertionConsumerService($this->connection->id, $response->completionRequest($relayState));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $this->connection->id,
+            $response->completionRequest($relayState),
+            Clients::browser(),
+        );
     }
 
     /**

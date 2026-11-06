@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Events\JwksRefreshed;
 use SineMacula\Laravel\Sso\Events\JwksRefreshFailed;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -62,8 +63,8 @@ final class JwksEventsTest extends TestCase
         $connection = $this->makeConnection(['protocol' => 'oidc', 'jwks' => '[{"kty":"RSA","kid":"secret-kid"}]', 'jwks_version' => 3]);
         $events     = app(JwksEvents::class);
 
-        $events->refreshed($connection, 2, 1, true);
-        $events->refreshFailed($connection, FailureReason::JWKS_INVALID, CarbonImmutable::parse('2026-11-01T11:35:00+02:00'));
+        $events->refreshed($connection, 2, 1, true, Clients::browser());
+        $events->refreshFailed($connection, FailureReason::JWKS_INVALID, CarbonImmutable::parse('2026-11-01T11:35:00+02:00'), Clients::browser());
 
         $this->assertEventSequence([JwksRefreshed::class, JwksRefreshFailed::class]);
 
@@ -90,7 +91,7 @@ final class JwksEventsTest extends TestCase
      */
     public function testReportsAFailureWithNoNextRefetch(): void
     {
-        app(JwksEvents::class)->refreshFailed($this->makeConnection(['protocol' => 'oidc']), FailureReason::FETCH_FAILED, null);
+        app(JwksEvents::class)->refreshFailed($this->makeConnection(['protocol' => 'oidc']), FailureReason::FETCH_FAILED, null, Clients::browser());
 
         $event = $this->recordedEvents()[0] ?? null;
 
@@ -111,13 +112,13 @@ final class JwksEventsTest extends TestCase
         $database   = DB::connection();
 
         $database->beginTransaction();
-        $events->refreshed($connection, 1, 0, false);
+        $events->refreshed($connection, 1, 0, false, Clients::browser());
         $database->rollBack();
 
         $this->assertNoEvents();
 
         $database->transaction(function () use ($events, $connection): void {
-            $events->refreshed($connection, 1, 0, false);
+            $events->refreshed($connection, 1, 0, false, Clients::browser());
 
             $this->assertNoEvents();
         });

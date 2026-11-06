@@ -42,11 +42,13 @@ that fills in what is the same for every organisation using the provider:
 ```php
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 $result = $connections->create(
     tenantId: $tenant->id,
     protocol: 'oidc',
     displayName: 'Acme Google Workspace',
+    client: ClientContext::fromRequest($request),
     settings: [
         'client_id'     => '1234.apps.googleusercontent.com',
         'client_secret' => $request->input('client_secret'),
@@ -79,8 +81,13 @@ $result = $connections->update($tenant->id, $connectionId, [
     'display_name'      => 'Acme SSO',
     'settings'          => ['token_endpoint' => 'https://idp.acme.example/oauth2/token', 'userinfo_endpoint' => null],
     'attribute_mapping' => ['department' => 'dept', 'groups' => null],
-], $actor);
+], $client, $actor);
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 - `settings`: a setting given replaces the stored one, and `null` removes it (a setting with a default returns to its
   default).
@@ -164,7 +171,7 @@ and `createdAt` and `updatedAt` in UTC. A secret is never returned: `secrets` sa
 <!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-enable -->
 
 ```php
-$result = $connections->enable($tenant->id, $connectionId, $actor);
+$result = $connections->enable($tenant->id, $connectionId, $client, $actor);
 ```
 
 Enabling asks the freshness contract with `sso.connection.enable`, every time, then enables the connection and reports
@@ -176,7 +183,7 @@ complete; it is used only once they are.
 <!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-disable -->
 
 ```php
-$result = $lifecycle->disable($tenant->id, $connectionId, $actor);
+$result = $lifecycle->disable($tenant->id, $connectionId, $client, $actor);
 ```
 
 Disabling asks the freshness contract with `sso.connection.disable`, every time, then, in one transaction: turns the
@@ -190,7 +197,7 @@ domains, links and keys are kept, so enabling it again restores it. Disabling a 
 <!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-delete -->
 
 ```php
-$result = $lifecycle->delete($tenant->id, $connectionId, $actor);
+$result = $lifecycle->delete($tenant->id, $connectionId, $client, $actor);
 ```
 
 Deleting asks the freshness contract with `sso.connection.delete`, then, in one transaction: withdraws what depends on
@@ -215,7 +222,7 @@ $issuer = 'https://login.acme.example';
 $result = $migration->migrate($tenant->id, $connectionId, ['settings' => ['issuer' => $issuer]], [
     $linkId      => ['00u1a2b3c4', null, $issuer], // the new subject, no NameID format, the new issuer
     $otherLinkId => ['E-1042', null, $issuer],
-], [$leaverLinkId, $formerContractorLinkId], $actor); // the links to remove
+], [$leaverLinkId, $formerContractorLinkId], $client, $actor); // the links to remove
 ```
 
 Each relink is a list: the subject, then optionally the SAML NameID format and the issuer. A format left out or `null`

@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\Enums\CompletionStatus;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
@@ -49,6 +50,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -244,24 +246,30 @@ final class OidcKeyRotationCompletionTest extends TestCase
     public static function provideInterveningChanges(): iterable
     {
         yield 'a second trust change' => [static function (self $test, Connection $connection): void {
-            self::assertTrue(app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['client_secret' => 'the-rotated-secret']])->isChanged());
+            self::assertTrue(
+                app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['client_secret' => 'the-rotated-secret']], Clients::browser())->isChanged(),
+            );
         }];
 
         yield 'a distrust' => [static function (self $test, Connection $connection): void {
-            self::assertTrue(app(KeyService::class)->distrustCertificate(self::TENANT, $connection->id, $test->trustedCertificate($connection)->id)->isSucceeded());
+            self::assertTrue(
+                app(KeyService::class)->distrustCertificate(self::TENANT, $connection->id, $test->trustedCertificate($connection)->id, Clients::browser())->isSucceeded(),
+            );
         }];
 
         yield 'a disable' => [static function (self $test, Connection $connection): void {
-            self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id)->isChanged());
+            self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id, Clients::browser())->isChanged());
         }];
 
         yield 'a disable, then an enable' => [static function (self $test, Connection $connection): void {
-            self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id)->isChanged());
-            self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connection->id)->isChanged());
+            self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id, Clients::browser())->isChanged());
+            self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connection->id, Clients::browser())->isChanged());
         }];
 
         yield 'the allow-list changed' => [static function (self $test, Connection $connection): void {
-            self::assertTrue(app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['id_token_algorithms' => ['PS256']]])->isChanged());
+            self::assertTrue(
+                app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['id_token_algorithms' => ['PS256']]], Clients::browser())->isChanged(),
+            );
         }];
     }
 
@@ -314,7 +322,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
         [, $grant] = $this->started($connection);
 
         $this->atUserInfo(static function () use ($connection): void {
-            self::assertTrue(app(ConnectionLifecycle::class)->delete(self::TENANT, $connection->id)->isSucceeded());
+            self::assertTrue(app(ConnectionLifecycle::class)->delete(self::TENANT, $connection->id, Clients::browser())->isSucceeded());
         });
 
         self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $this->complete($connection, $grant)->reason);
@@ -389,7 +397,9 @@ final class OidcKeyRotationCompletionTest extends TestCase
         [$trigger, $grant] = $this->started($connection);
 
         $this->atToken($grant, static function () use ($connection): void {
-            self::assertTrue(app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['client_secret' => 'the-rotated-secret']])->isChanged());
+            self::assertTrue(
+                app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['client_secret' => 'the-rotated-secret']], Clients::browser())->isChanged(),
+            );
         });
 
         $result = $this->complete($connection, $grant);
@@ -610,7 +620,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
      */
     private function started(Connection $connection): array
     {
-        $started = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connection->id);
+        $started = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connection->id, Clients::browser());
 
         self::assertTrue($started->isStarted());
 
@@ -629,7 +639,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
      */
     private function complete(Connection $connection, FakeAuthorization $grant): CompletionResult
     {
-        return app(CompletionService::class)->callback($connection->id, new CompletionRequest('GET', $grant->query(), []));
+        return app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connection->id, new CompletionRequest('GET', $grant->query(), []), Clients::browser());
     }
 
     /**

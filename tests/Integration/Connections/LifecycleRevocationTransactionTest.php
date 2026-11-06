@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -102,7 +103,7 @@ final class LifecycleRevocationTransactionTest extends TestCase
             $table->string('connection_id', 26);
         });
 
-        $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC);
+        $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC);
 
         $this->connection = Connection::query()->whereKey((string) $created->connection?->id)->sole();
         $this->connection->forceFill(['enabled' => true])->save();
@@ -245,8 +246,8 @@ final class LifecycleRevocationTransactionTest extends TestCase
 
         return [
             'disable' => fn (): ConnectionResult => $this->disable(),
-            'delete'  => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->connection->id),
-            'migrate' => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $this->connection->id, $change, [], [$this->rows['link']]),
+            'delete'  => fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->connection->id, Clients::browser()),
+            'migrate' => fn (): ConnectionResult => $this->migration()->migrate(self::TENANT, $this->connection->id, $change, [], [$this->rows['link']], Clients::browser()),
         ];
     }
 
@@ -257,7 +258,7 @@ final class LifecycleRevocationTransactionTest extends TestCase
      */
     private function disable(): ConnectionResult
     {
-        return $this->lifecycle()->disable(self::TENANT, $this->connection->id);
+        return $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser());
     }
 
     /**

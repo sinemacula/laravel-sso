@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -90,9 +91,10 @@ final class DomainsExampleTest extends ExampleTestCase
         // @snippet-start domain-service
         $domains = app(DomainService::class);
         // @snippet-end domain-service
+        $client = Clients::browser();
         // @snippet-start domain-claim
         $actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
-        $result = $domains->claim($tenantId, $connectionId, 'Example.COM', $actor);
+        $result = $domains->claim($tenantId, $connectionId, 'Example.COM', $client, $actor);
 
         // A successful claim carries the domain; a refusal carries none
         $record = $result->domain?->recordName;          // _sso-verification.example.com
@@ -126,7 +128,7 @@ final class DomainsExampleTest extends ExampleTestCase
         $domains = app(DomainService::class);
 
         self::assertSame('xn--bcher-kva.example.com', $this->claimed($domains, 'Bücher.Example.COM.')->domain);
-        self::assertSame(DomainStatus::CLAIMED, $domains->claim(self::TENANT, $this->connectionId, 'example.com')->status);
+        self::assertSame(DomainStatus::CLAIMED, $domains->claim(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->status);
     }
 
     /**
@@ -141,16 +143,16 @@ final class DomainsExampleTest extends ExampleTestCase
     {
         $domains = app(DomainService::class);
 
-        self::assertSame(ViolationCode::INVALID_FORMAT, self::violationOf($domains->claim(self::TENANT, $this->connectionId, '192.0.2.1')));
-        self::assertSame(ViolationCode::INVALID_FORMAT, self::violationOf($domains->claim(self::TENANT, $this->connectionId, '*.example.com')));
-        self::assertSame(ViolationCode::REQUIRED, self::violationOf($domains->claim(self::TENANT, $this->connectionId, ' ')));
-        self::assertSame(ViolationCode::NOT_ALLOWED, self::violationOf($domains->claim(self::TENANT, $this->connectionId, 'mail.gmail.com')));
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->claim('tenant-2', $this->connectionId, 'example.com')->reason);
+        self::assertSame(ViolationCode::INVALID_FORMAT, self::violationOf($domains->claim(self::TENANT, $this->connectionId, '192.0.2.1', Clients::browser())));
+        self::assertSame(ViolationCode::INVALID_FORMAT, self::violationOf($domains->claim(self::TENANT, $this->connectionId, '*.example.com', Clients::browser())));
+        self::assertSame(ViolationCode::REQUIRED, self::violationOf($domains->claim(self::TENANT, $this->connectionId, ' ', Clients::browser())));
+        self::assertSame(ViolationCode::NOT_ALLOWED, self::violationOf($domains->claim(self::TENANT, $this->connectionId, 'mail.gmail.com', Clients::browser())));
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $domains->claim('tenant-2', $this->connectionId, 'example.com', Clients::browser())->reason);
         self::assertSame([], $domains->list(self::TENANT, $this->connectionId));
 
         $this->claimed($domains, 'example.com');
 
-        self::assertSame(ViolationCode::DUPLICATE, self::violationOf($domains->claim(self::TENANT, $this->connectionId, 'example.com')));
+        self::assertSame(ViolationCode::DUPLICATE, self::violationOf($domains->claim(self::TENANT, $this->connectionId, 'example.com', Clients::browser())));
         self::assertCount(1, $domains->list(self::TENANT, $this->connectionId) ?? []);
     }
 
@@ -163,7 +165,7 @@ final class DomainsExampleTest extends ExampleTestCase
     {
         $this->instance(Freshness::class, FakeFreshness::stale());
 
-        $result = app(DomainService::class)->claim(self::TENANT, $this->connectionId, 'example.com', $this->actor());
+        $result = app(DomainService::class)->claim(self::TENANT, $this->connectionId, 'example.com', Clients::browser(), $this->actor());
 
         self::assertSame(DomainStatus::REFUSED, $result->status);
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
@@ -187,24 +189,25 @@ final class DomainsExampleTest extends ExampleTestCase
 
         $this->dns->absent($claimed->recordName);
 
-        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify($tenantId, $connectionId, 'example.com', $actor)->reason);
+        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $actor)->reason);
 
         $this->dns->found($claimed->recordName, 'not-the-token');
 
-        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify($tenantId, $connectionId, 'example.com', $actor)->reason);
+        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $actor)->reason);
 
         $this->dns->failing($claimed->recordName);
 
-        self::assertSame(FailureReason::DOMAIN_LOOKUP_FAILED, $domains->verify($tenantId, $connectionId, 'example.com', $actor)->reason);
+        self::assertSame(FailureReason::DOMAIN_LOOKUP_FAILED, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $actor)->reason);
 
         $this->dns->found($claimed->recordName, 'v=spf1 -all', $claimed->verificationToken());
 
+        $client = Clients::browser();
         // @snippet-start domain-verify
-        $result = $domains->verify($tenantId, $connectionId, 'example.com', $actor);
+        $result = $domains->verify($tenantId, $connectionId, 'example.com', $client, $actor);
         // @snippet-end domain-verify
         self::assertSame(DomainStatus::VERIFIED, $result->status);
         self::assertTrue($result->domain?->isVerified());
-        self::assertSame(DomainStatus::UNCHANGED, $domains->verify($tenantId, $connectionId, 'example.com', $actor)->status);
+        self::assertSame(DomainStatus::UNCHANGED, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $actor)->status);
 
         $this->dns->assertLookedUp($claimed->recordName, 4);
     }
@@ -220,14 +223,14 @@ final class DomainsExampleTest extends ExampleTestCase
     {
         $domains = app(DomainService::class);
 
-        self::assertSame(FailureReason::DOMAIN_NOT_FOUND, $domains->verify(self::TENANT, $this->connectionId, 'example.com')->reason);
+        self::assertSame(FailureReason::DOMAIN_NOT_FOUND, $domains->verify(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->reason);
 
         $claimed = $this->claimed($domains, 'example.com');
 
         $this->dns->publishes($claimed);
         $this->clock->advance(604801);
 
-        self::assertSame(FailureReason::DOMAIN_CLAIM_EXPIRED, $domains->verify(self::TENANT, $this->connectionId, 'example.com')->reason);
+        self::assertSame(FailureReason::DOMAIN_CLAIM_EXPIRED, $domains->verify(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->reason);
         self::assertNotSame($claimed->verificationToken(), $this->claimed($domains, 'example.com')->verificationToken());
 
         $this->dns->assertNothingLookedUp();
@@ -250,23 +253,24 @@ final class DomainsExampleTest extends ExampleTestCase
 
         $this->dns->publishes($this->claimed($domains, 'example.com'));
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify($tenantId, $connectionId, 'example.com')->status);
-        self::assertSame(FailureReason::DOMAIN_UNAVAILABLE, $domains->claim($tenantId, $other, 'example.com')->reason);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser())->status);
+        self::assertSame(FailureReason::DOMAIN_UNAVAILABLE, $domains->claim($tenantId, $other, 'example.com', Clients::browser())->reason);
 
         $this->clock->advance(1);
         $this->claimed($domains, 'example.org');
 
+        $client = Clients::browser();
         // @snippet-start domain-read-remove
         $domain  = $domains->get($tenantId, $connectionId, 'example.com');            // ?DomainSummary
         $listed  = $domains->list($tenantId, $connectionId);                          // ?list<DomainSummary>, oldest first
-        $removed = $domains->remove($tenantId, $connectionId, 'example.com', $actor); // in any state
+        $removed = $domains->remove($tenantId, $connectionId, 'example.com', $client, $actor); // in any state
         // @snippet-end domain-read-remove
         self::assertTrue($domain?->isVerified());
         self::assertSame(['example.com', 'example.org'], self::namesOf($listed));
         self::assertSame(DomainStatus::REMOVED, $removed->status);
         self::assertNull($domains->get($tenantId, $connectionId, 'example.com'));
         self::assertSame(['example.org'], self::namesOf($domains->list($tenantId, $connectionId)));
-        self::assertSame(DomainStatus::CLAIMED, $domains->claim($tenantId, $other, 'example.com')->status);
+        self::assertSame(DomainStatus::CLAIMED, $domains->claim($tenantId, $other, 'example.com', Clients::browser())->status);
         self::assertNull($domains->get('tenant-2', $connectionId, 'example.org'));
         self::assertNull($domains->list('tenant-2', $connectionId));
     }
@@ -304,10 +308,10 @@ final class DomainsExampleTest extends ExampleTestCase
             ]]),
         ]);
 
-        $reasons = array_map(fn (): ?FailureReason => $domains->verify(self::TENANT, $this->connectionId, 'example.com')->reason, range(1, 4));
+        $reasons = array_map(fn (): ?FailureReason => $domains->verify(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->reason, range(1, 4));
 
         self::assertSame([FailureReason::DOMAIN_RECORD_NOT_FOUND, ...array_fill(0, 3, FailureReason::DOMAIN_LOOKUP_FAILED)], $reasons);
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, 'example.com')->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->status);
 
         Http::assertSequencesAreEmpty();
         Http::assertSent(static fn (Request $request): bool => $request->url() === DohResolver::ENDPOINT . '?name=_sso-verification.example.com.&type=TXT');
@@ -324,17 +328,18 @@ final class DomainsExampleTest extends ExampleTestCase
         $tenantId     = self::TENANT;
         $connectionId = $this->connectionId;
 
+        $client = Clients::browser();
         // @snippet-start fake-dns-resolver
         $this->instance(DnsResolver::class, $dns = new FakeDnsResolver);
 
         $domains = app(DomainService::class);
-        $claimed = $domains->claim($tenantId, $connectionId, 'example.com')->domain;
+        $claimed = $domains->claim($tenantId, $connectionId, 'example.com', $client)->domain;
 
         self::assertNotNull($claimed);
 
         $dns->publishes($claimed); // or absent(), failing() or found() with records of your own
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify($tenantId, $connectionId, 'example.com')->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify($tenantId, $connectionId, 'example.com', $client)->status);
 
         $dns->assertLookedUp('_sso-verification.example.com', 1);
         // @snippet-end fake-dns-resolver
@@ -354,7 +359,7 @@ final class DomainsExampleTest extends ExampleTestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('The fake DNS resolver has no answer for [_sso-verification.example.com].');
 
-        $domains->verify(self::TENANT, $this->connectionId, 'example.com');
+        $domains->verify(self::TENANT, $this->connectionId, 'example.com', Clients::browser());
     }
 
     /**
@@ -376,7 +381,7 @@ final class DomainsExampleTest extends ExampleTestCase
      */
     private function claimed(DomainService $domains, string $domain): DomainSummary
     {
-        $result = $domains->claim(self::TENANT, $this->connectionId, $domain);
+        $result = $domains->claim(self::TENANT, $this->connectionId, $domain, Clients::browser());
 
         self::assertSame(DomainStatus::CLAIMED, $result->status);
 

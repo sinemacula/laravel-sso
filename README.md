@@ -146,15 +146,20 @@ $challenge = $input['code_challenge'] ?? null;
 
 // The purpose is this endpoint's: a `purpose` in the body is never read
 $result = isset($input['email'])
-    ? $this->discovery->start($input['application'], Purpose::SIGN_IN, $input['email'], $challenge)
-    : $this->requests->start($input['application'], Purpose::SIGN_IN, $input['connection'] ?? '', $challenge);
+    ? $this->discovery->start($input['application'], Purpose::SIGN_IN, $input['email'], ClientContext::fromRequest($request), $challenge)
+    : $this->requests->start($input['application'], Purpose::SIGN_IN, $input['connection'] ?? '', ClientContext::fromRequest($request), $challenge);
 ```
 
 Complete it where the identity provider sends the browser back:
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoCompletionController.php#route-assertion -->
 ```php
-$result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
+$result = $this->completions->complete(
+    CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+    $connection,
+    CompletionRequest::fromRequest($request),
+    ClientContext::fromRequest($request),
+);
 
 return $this->responses->from($result, $request->getMethod());
 ```
@@ -171,10 +176,12 @@ $input = Validator::validate($request->all(), [
     'verifier'    => ['required', 'string'],
 ]);
 
+$client = ClientContext::fromRequest($request);
+
 // The code is consumed and the session written in one transaction, on
 // the package's storage connection
-[$result, $sessionId] = DB::connection(StorageConnection::name())->transaction(function () use ($input): array {
-    $result = $this->redemptions->admit(Purpose::SIGN_IN, $input['application'], $input['connection'], $input['code'], $input['verifier']);
+[$result, $sessionId] = DB::connection(StorageConnection::name())->transaction(function () use ($input, $client): array {
+    $result = $this->redemptions->admit(Purpose::SIGN_IN, $input['application'], $input['connection'], $input['code'], $input['verifier'], $client);
 
     // Active, or pending your own further factor; an unlinked handoff
     // signs nobody in

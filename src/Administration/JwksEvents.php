@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\JwksRefreshed;
 use SineMacula\Laravel\Sso\Events\JwksRefreshFailed;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
@@ -26,9 +27,11 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * failure, after the write. No event it builds holds a key, a URL or any value
  * of the JWKS.
  *
- * It holds the projection and the dispatcher, both of which read the clock, the
- * request and the transaction from the container on each call, so nothing of
- * one refetch is kept for the next (SSO-11.2).
+ * Every method takes the client the action is taken for (`Http\ClientContext`),
+ * whose IP address and user agent the event's context carries; nothing reads
+ * the request being served. It holds the projection and the dispatcher, which
+ * read the clock and the transaction from the container on each call, so
+ * nothing of one refetch is kept for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,13 +63,14 @@ final readonly class JwksEvents
      * @param  int  $keysAdded
      * @param  int  $keysRemoved
      * @param  bool  $trustChanged
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function refreshed(Connection $connection, int $keysAdded, int $keysRemoved, bool $trustChanged): void
+    public function refreshed(Connection $connection, int $keysAdded, int $keysRemoved, bool $trustChanged, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new JwksRefreshed($this->context($connection), $connection->jwks_version, $keysAdded, $keysRemoved, $trustChanged));
+        $this->dispatcher->dispatch(new JwksRefreshed($this->context($connection, $client), $connection->jwks_version, $keysAdded, $keysRemoved, $trustChanged));
     }
 
     /**
@@ -76,23 +80,25 @@ final readonly class JwksEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  ?\Carbon\CarbonImmutable  $nextRefetchAt
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function refreshFailed(Connection $connection, FailureReason $reason, ?CarbonImmutable $nextRefetchAt): void
+    public function refreshFailed(Connection $connection, FailureReason $reason, ?CarbonImmutable $nextRefetchAt, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new JwksRefreshFailed($this->context($connection), $reason, $nextRefetchAt?->utc()));
+        $this->dispatcher->dispatch(new JwksRefreshFailed($this->context($connection, $client), $reason, $nextRefetchAt?->utc()));
     }
 
     /**
      * The context of a refetch of the connection's keys.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Events\EventContext
      */
-    private function context(Connection $connection): EventContext
+    private function context(Connection $connection, ClientContext $client): EventContext
     {
-        return $this->contexts->make(connectionId: $connection->id, connectionTenantId: $connection->tenant_id, protocol: $connection->protocol);
+        return $this->contexts->make($client, connectionId: $connection->id, connectionTenantId: $connection->tenant_id, protocol: $connection->protocol);
     }
 }

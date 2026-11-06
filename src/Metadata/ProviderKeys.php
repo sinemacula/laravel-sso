@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Metadata;
 
 use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
@@ -129,12 +130,14 @@ readonly class ProviderKeys
     /**
      * The key for the token among the connection's stored keys, the JWKS
      * refetched once when none is the token's, unless the closure given says
-     * the token is already disqualified. The consumed request, when given, is
-     * the one a key rotation the refetch makes spares.
+     * the token is already disqualified; a refetch's events carry the client.
+     * The consumed request, when given, is the one a key rotation the refetch
+     * makes spares.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
      * @param  ?\Closure(): bool  $disqualified
      * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\KeySelection
@@ -148,6 +151,7 @@ readonly class ProviderKeys
         SsoConnection $connection,
         CompactToken $token,
         AlgorithmAllowList $allowed,
+        ClientContext $client,
         ?ConsumedRequest $consumed = null,
         ?\Closure $disqualified = null,
     ): KeySelection {
@@ -163,7 +167,7 @@ readonly class ProviderKeys
             return $selection;
         }
 
-        return $this->refetched($row, $token, $allowed, $consumed);
+        return $this->refetched($row, $token, $allowed, $consumed, $client);
     }
 
     /**
@@ -173,6 +177,7 @@ readonly class ProviderKeys
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
      * @param  ?\SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\KeySelection
      *
      * @throws \InvalidArgumentException
@@ -180,9 +185,9 @@ readonly class ProviderKeys
      * @throws \Random\RandomException
      * @throws \Throwable
      */
-    private function refetched(Connection $row, CompactToken $token, AlgorithmAllowList $allowed, ?ConsumedRequest $consumed): KeySelection
+    private function refetched(Connection $row, CompactToken $token, AlgorithmAllowList $allowed, ?ConsumedRequest $consumed, ClientContext $client): KeySelection
     {
-        $refetch = $this->refetcher->refetch($row, $allowed, $consumed?->reference);
+        $refetch = $this->refetcher->refetch($row, $allowed, $client, $consumed?->reference);
 
         $this->logged($refetch);
 

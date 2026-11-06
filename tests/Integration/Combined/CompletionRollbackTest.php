@@ -34,6 +34,7 @@ use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RaceFlows;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -561,7 +562,7 @@ final class CompletionRollbackTest extends LinkingTestCase
 
             self::storageDatabase()->table(self::IDENTITIES)->insert(['kind' => 'identity']);
 
-            self::assertTrue(app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->provisioned)->isCreated());
+            self::assertTrue(app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->provisioned, Clients::browser())->isCreated());
 
             self::storageDatabase()->table(self::IDENTITIES)->insert(['kind' => 'membership']);
         });
@@ -650,7 +651,15 @@ final class CompletionRollbackTest extends LinkingTestCase
      */
     private function hold(IdentityReference $identity, LinkOrigin $origin = LinkOrigin::PROVISIONING): void
     {
-        self::assertTrue(app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $identity, $origin)->isCreated());
+        self::assertTrue(
+            app(LinkStore::class)->create(
+                $this->connection,
+                new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+                $identity,
+                $origin,
+                Clients::browser(),
+            )->isCreated(),
+        );
     }
 
     /**

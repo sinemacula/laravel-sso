@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -103,26 +104,34 @@ final class NoSecretInAdministrationEventsTest extends TestCase
     public function testNoEventHoldsASecretOrASettingValue(): void
     {
         $actor = new ActingIdentity('App\Models\User', '42');
-        $oidc  = (string) $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC + ['client_secret' => self::SECRET], actor: $actor)->connection?->id;
+        $oidc  = (string) $this->connections()->create(
+            self::TENANT,
+            'oidc',
+            'Acme',
+            Clients::browser(),
+            self::OIDC + ['client_secret' => self::SECRET],
+            actor: $actor,
+        )->connection?->id;
 
         $secretCiphertexts = $this->secretCiphertexts($oidc);
 
-        $this->connections()->update(self::TENANT, $oidc, ['settings' => ['client_secret' => self::ROTATED_SECRET]], $actor);
-        $this->connections()->update(self::TENANT, $oidc, ['settings' => ['token_endpoint' => self::CHANGED_TOKEN_ENDPOINT]], $actor);
+        $this->connections()->update(self::TENANT, $oidc, ['settings' => ['client_secret' => self::ROTATED_SECRET]], Clients::browser(), $actor);
+        $this->connections()->update(self::TENANT, $oidc, ['settings' => ['token_endpoint' => self::CHANGED_TOKEN_ENDPOINT]], Clients::browser(), $actor);
 
         $secretCiphertexts = [...$secretCiphertexts, ...$this->secretCiphertexts($oidc)];
 
-        self::assertTrue($this->keys()->addNext(self::TENANT, $oidc, KeyUse::CLIENT_ASSERTION, KeyType::EC, $actor)->isSucceeded());
+        self::assertTrue($this->keys()->addNext(self::TENANT, $oidc, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC, $actor)->isSucceeded());
 
         $saml = (string) $this->connections()->create(
             self::TENANT,
             'saml2',
             'Acme SAML',
+            Clients::browser(),
             ['idp_entity_id' => 'https://idp.example.com/entity', 'sso_url' => 'https://idp.example.com/sso'],
             actor: $actor,
         )->connection?->id;
 
-        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $saml, Certificates::distinct(60), $actor)->isSucceeded());
+        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $saml, Certificates::distinct(60), Clients::browser(), $actor)->isSucceeded());
 
         $this->assertEventSequence([
             ConnectionCreated::class,

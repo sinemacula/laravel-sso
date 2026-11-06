@@ -56,10 +56,15 @@ class and key, which the key events carry; the use and the type are the enums
 <!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-add-first -->
 ```php
 $actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
-$result = $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, KeyType::RSA, $actor);
+$result = $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, $client, KeyType::RSA, $actor);
 
 $state = $result->key?->state; // KeyState::CURRENT
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 The type defaults to RSA; pass `KeyType::EC` for a P-256 key where the use allows it.
 
@@ -76,7 +81,7 @@ Once the identity provider has the new key:
 
 <!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-make-current -->
 ```php
-$result = $keys->makeCurrent($tenantId, $connectionId, $nextKeyId, $actor);
+$result = $keys->makeCurrent($tenantId, $connectionId, $nextKeyId, $client, $actor);
 
 $current  = $result->key;      // the new current key
 $previous = $result->previous; // the old one, now retiring, with retiringUntil set
@@ -92,7 +97,7 @@ Once the overlap has ended:
 
 <!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-retire -->
 ```php
-$result = $keys->retire($tenantId, $connectionId, $oldKeyId, $actor);
+$result = $keys->retire($tenantId, $connectionId, $oldKeyId, $client, $actor);
 ```
 
 A `next` key you no longer want can be retired the same way. The current key is never retired (`key_state_conflict`):
@@ -109,10 +114,10 @@ remove the old one:
 
 <!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-trust-certificate -->
 ```php
-$result = $keys->trustCertificate($tenantId, $connectionId, $certificatePem, $actor);
+$result = $keys->trustCertificate($tenantId, $connectionId, $certificatePem, $client, $actor);
 
 // Later, once the identity provider signs with the new certificate
-$removed = $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, $actor);
+$removed = $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, $client, $actor);
 ```
 
 A certificate is refused with `settings_invalid` and one violation at `certificate`:

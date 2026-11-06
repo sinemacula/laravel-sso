@@ -12,15 +12,22 @@ consuming a request is in `authorization-requests.md`; the response values are i
 
 ### The helpers
 
-- `Completion\CompletionService` (`@api`, resolved per request) has one call per endpoint, each answering a
-  `Completion\CompletionResult`:
-  - `assertionConsumerService($connectionId, CompletionRequest $request)`: `Flow::ASSERTION`, `POST` only;
-  - `callback($connectionId, CompletionRequest $request)`: `Flow::CALLBACK`, `GET` only.
+- `Completion\CompletionService` (`@api`, resolved per request) has one call for both endpoints,
+  `complete(CompletionEndpoint $endpoint, string $connectionId, CompletionRequest $request, ClientContext $client)`,
+  answering a `Completion\CompletionResult`. `Completion\Enums\CompletionEndpoint` has two cases, each with the flow its
+  refusals report and the method it takes:
+  - `ASSERTION_CONSUMER_SERVICE`: `Flow::ASSERTION`, `POST` only;
+  - `CALLBACK`: `Flow::CALLBACK`, `GET` only.
+  The wider `Events\Enums\Flow` is not taken, so no endpoint but these two can be named. What arrived is a
+  `Protocols\CompletionRequest` and the client it came from an `Http\ClientContext`, each built from the request by the
+  application's controller: the service never reads the request being served, and the client rides on the
+  `CompletionState` to every stage, the driver and each event.
 - The connection id is the one the application's route names; the route's URL is the endpoint resolver's, built from
   configuration and never from the request (SSO-5.5). Before the steps run, in this order, each refusal reporting
   exactly one `FlowFailed` and writing nothing:
-  1. the completion is counted with `AttemptSubject::completion()` against the IP address of the request being served
-     (none in a console) and the connection id (SSO-11.8); a full limit is `rate_limited` with its wait;
+  1. the completion is counted with `AttemptSubject::completion()` against the client's IP address (none for a client
+     with none) and the connection id (SSO-11.8), one count for both endpoints taken before the method is looked at; a
+     full limit is `rate_limited` with its wait;
   2. the method must be the endpoint's, compared exactly (`POST`, `GET`); anything else is `rejected(request_unknown)`;
   3. the connection is read by exactly its id, of any tenant, from the write connection (SSO-11.3); an empty id or one
      longer than a ULID is not looked up, and a row the collation merely counts as equal is not found; an unknown one is
@@ -204,8 +211,9 @@ no target is dispatched at once.
 
 ## Success Path
 
-1. The application's route calls `callback()` (or `assertionConsumerService()`) with the connection id and
-   `CompletionRequest::fromRequest($request)`.
+1. The application's route calls `complete()` with `CompletionEndpoint::CALLBACK` (or
+   `CompletionEndpoint::ASSERTION_CONSUMER_SERVICE`), the connection id, `CompletionRequest::fromRequest($request)` and
+   `ClientContext::fromRequest($request)`.
 2. The attempt is counted, the method and the connection checked, and the driver correlates the response.
 3. The request is consumed under the connection's lock, then the driver validates the response, and the result is
    built.

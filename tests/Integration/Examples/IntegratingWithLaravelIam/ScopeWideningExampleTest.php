@@ -28,6 +28,7 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use Tests\Integration\Examples\Application\ExampleDirectory;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -177,7 +178,7 @@ final class ScopeWideningExampleTest extends ExampleTestCase
     public function testAWideningOutsideATransactionIsRefused(): void
     {
         try {
-            app(ScopeWidening::class)->widened($this->person, self::OTHER_TENANT);
+            app(ScopeWidening::class)->widened($this->person, self::OTHER_TENANT, Clients::browser());
             self::fail('The widening was reported outside a transaction.');
         } catch (\LogicException $refused) {
             self::assertStringContainsString('inside the transaction', $refused->getMessage());
@@ -238,18 +239,18 @@ final class ScopeWideningExampleTest extends ExampleTestCase
         $provider     = new FakeOpenIdProvider(clock: $this->clock);
         $connectionId = $this->makeOidcConnection($provider);
         $domains      = app(DomainService::class);
-        $claimed      = $domains->claim(self::TENANT, $connectionId, 'example.com')->domain;
+        $claimed      = $domains->claim(self::TENANT, $connectionId, 'example.com', Clients::browser())->domain;
 
         self::assertNotNull($claimed);
 
         $this->dns->publishes($claimed);
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $connectionId, 'example.com')->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $connectionId, 'example.com', Clients::browser())->status);
         self::assertTrue(app(LinkingPolicyService::class)->change(self::TENANT, $connectionId, [
             'enabled'      => true,
             'issuer_class' => 'single_organization',
             'acknowledged' => true,
-        ])->isChanged());
+        ], Clients::browser())->isChanged());
 
         $withEmail = static fn (FakeIdToken $token): FakeIdToken => $token->with('email', self::EMAIL)->with('email_verified', true);
         $start     = $this->startFlow(Purpose::SIGN_IN, $connectionId);

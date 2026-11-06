@@ -17,6 +17,8 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\SamlMetadata;
 
+use Tests\Integration\Examples\Clients;
+
 /**
  * @var array{
  *     tenant: \Tests\Integration\Examples\SamlMetadata\Tenant,
@@ -30,10 +32,11 @@ $connection = $input['connection'];
 $anchor     = $input['anchor'];
 $actor      = $input['actor'];
 
+$client = Clients::browser();
 // @snippet-start saml-metadata-anchor
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 
-$trusted = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $actor, KeyUse::METADATA_SIGNING);
+$trusted = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $actor, KeyUse::METADATA_SIGNING);
 // @snippet-end saml-metadata-anchor
 return $trusted;

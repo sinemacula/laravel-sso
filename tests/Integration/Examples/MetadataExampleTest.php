@@ -45,6 +45,7 @@ final class MetadataExampleTest extends ExampleTestCase
      */
     public function testImportingSamlMetadata(): void
     {
+        $client = Clients::browser();
         // @snippet-start saml-metadata
         $idp = new FakeSamlIdentityProvider;
 
@@ -62,10 +63,10 @@ final class MetadataExampleTest extends ExampleTestCase
         // The administrator accepts the proposal, having compared the
         // fingerprint
         $connections  = app(ConnectionService::class);
-        $connectionId = (string) $connections->create(self::TENANT, 'saml2', 'Imported SAML', $proposed->settings())->connection?->id;
+        $connectionId = (string) $connections->create(self::TENANT, 'saml2', 'Imported SAML', $client, $proposed->settings())->connection?->id;
 
-        app(KeyService::class)->trustCertificate(self::TENANT, $connectionId, $proposed->signingCertificates()[0]['certificate']);
-        $connections->enable(self::TENANT, $connectionId);
+        app(KeyService::class)->trustCertificate(self::TENANT, $connectionId, $proposed->signingCertificates()[0]['certificate'], $client);
+        $connections->enable(self::TENANT, $connectionId, $client);
 
         self::assertTrue($connections->get(self::TENANT, $connectionId)?->usable);
         // @snippet-end saml-metadata
@@ -98,11 +99,12 @@ final class MetadataExampleTest extends ExampleTestCase
      */
     public function testImportingAnOpenIdProvidersDiscoveryDocument(): void
     {
+        $client = Clients::browser();
         // @snippet-start oidc-discovery
         $provider = (new FakeOpenIdProvider(clock: $this->clock))->serve($this->fetcher);
 
         $connections  = app(ConnectionService::class);
-        $connectionId = (string) $connections->create(self::TENANT, 'oidc', 'Discovered OIDC', [
+        $connectionId = (string) $connections->create(self::TENANT, 'oidc', 'Discovered OIDC', $client, [
             'client_id'     => FakeOpenIdProvider::CLIENT_ID,
             'client_secret' => FakeOpenIdProvider::CLIENT_SECRET,
         ])->connection?->id;
@@ -116,8 +118,8 @@ final class MetadataExampleTest extends ExampleTestCase
         $this->fetcher->assertFetched($provider->discoveryUrl(), FetchPurpose::DISCOVERY);
         $this->fetcher->assertFetched($provider->endpoint('jwks'), FetchPurpose::JWKS);
 
-        app(ImportSaver::class)->save(self::TENANT, $connectionId, ['settings' => $proposed->settings()], $proposed->fetch());
-        $connections->enable(self::TENANT, $connectionId);
+        app(ImportSaver::class)->save(self::TENANT, $connectionId, ['settings' => $proposed->settings()], $proposed->fetch(), $client);
+        $connections->enable(self::TENANT, $connectionId, $client);
 
         self::assertTrue($connections->get(self::TENANT, $connectionId)?->usable);
         // @snippet-end oidc-discovery

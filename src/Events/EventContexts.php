@@ -4,33 +4,37 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Events;
 
-use Illuminate\Contracts\Container\Container;
-use Illuminate\Http\Request;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 /**
  * The one projection that builds an event's context (SSO-10.4, SSO-9.6):
  * nothing else in the package constructs an `EventContext`.
  *
- * Its parameter list is the admission control. It takes the fields a context
- * holds, each a string or `null`, and nothing else: no array and no object, so
- * a verified result, a request, a payload or a set of mapped attributes can
- * never be passed to an event whole, and a field the context does not name
- * cannot reach one. The flow's public reference is the only flow identifier it
- * takes (SSO-9.8). A later part of the package adds typed convenience methods
- * here (from a verified result, from an authorisation request) that pick the
- * fields they may and pass them on to `make()`.
+ * Its parameter list is the admission control. It takes the client context and
+ * the fields a context holds, each a string or `null`, and nothing else: no
+ * array and no other object, so a verified result, a request, a payload or a
+ * set of mapped attributes can never be passed to an event whole, and a field
+ * the context does not name cannot reach one. The flow's public reference is
+ * the only flow identifier it takes (SSO-9.8). A later part of the package adds
+ * typed convenience methods here (from a verified result, from an authorisation
+ * request) that pick the fields they may and pass them on to `make()`.
  *
- * It reads the time from the package's clock and the client from the request
- * being served, resolved from the container on each call and never held, so a
- * long-lived worker (Octane, a queue) never attributes one request's event to
- * another's client (SSO-11.2). Every value is cleaned before it is kept: the IP
- * address is kept only when it is a valid IPv4 or IPv6 address; the user agent
- * and every named field have their control characters (C0, DEL, C1) and Unicode
- * bidirectional controls removed and invalid UTF-8 replaced, and are cut to
- * `USER_AGENT_MAX_LENGTH` and `FIELD_MAX_LENGTH` characters, so no value can
- * smuggle a payload, forge a log line or reorder text in an audit view; a value
- * that is empty once cleaned is `null`.
+ * It reads the time from the package's clock, and takes the client from the
+ * `Http\ClientContext` the action was given, never from the request being
+ * served, so a long-lived worker (Octane, a queue) never attributes one
+ * request's event to another's client (SSO-11.2), and work with no client
+ * records neither its IP address nor its user agent. Every value is cleaned
+ * before it is kept, on top of what the client context already made safe: the
+ * IP address is kept only when it is a valid IPv4 or IPv6 address; the user
+ * agent and every named field have their control characters (C0, DEL, C1) and
+ * Unicode bidirectional controls removed and invalid UTF-8 replaced, and are
+ * cut to `USER_AGENT_MAX_LENGTH` and `FIELD_MAX_LENGTH` characters, so no value
+ * can smuggle a payload, forge a log line or override the direction of the text
+ * around it; a value that is empty once cleaned is `null`. The bidirectional
+ * marks (U+061C, U+200E, U+200F) are kept in a named field, where right-to-left
+ * text uses them; an audit view still isolates and escapes each value it shows,
+ * since right-to-left text reorders without any control.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,22 +56,19 @@ final readonly class EventContexts
      * Constructor.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
-     * @param  \Illuminate\Contracts\Container\Container  $container
      */
     public function __construct(
 
         /** The clock the time of each event is read from. */
         private Clock $clock,
-
-        /** The container the request being served is resolved from on each call. */
-        private Container $container,
     ) {}
 
     /**
-     * Build the context of an event: the time from the clock, the client from
-     * the request being served (none when no request is bound), and the fields
-     * given, each cleaned and capped.
+     * Build the context of an event: the time from the clock, the IP address
+     * and user agent of the client given, and the fields given, each cleaned
+     * and capped.
      *
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $connectionId
      * @param  ?string  $connectionTenantId
      * @param  ?string  $protocol
@@ -88,6 +89,7 @@ final readonly class EventContexts
      * @SuppressWarnings("php:S107")
      */
     public function make(
+        ClientContext $client,
         ?string $connectionId = null,
         ?string $connectionTenantId = null,
         ?string $protocol = null,
@@ -104,12 +106,10 @@ final readonly class EventContexts
         ?string $sessionId = null,
         ?string $method = null,
     ): EventContext {
-        $request = $this->request();
-
         return new EventContext(
             occurredAt: $this->clock->now(),
-            ip: self::ip($request?->ip()),
-            userAgent: self::clean($request?->userAgent(), self::USER_AGENT_MAX_LENGTH),
+            ip: self::ip($client->ip),
+            userAgent: self::clean($client->userAgent, self::USER_AGENT_MAX_LENGTH),
             connectionId: self::field($connectionId),
             connectionTenantId: self::field($connectionTenantId),
             protocol: self::field($protocol),
@@ -126,20 +126,6 @@ final readonly class EventContexts
             sessionId: self::field($sessionId),
             method: self::field($method),
         );
-    }
-
-    /**
-     * The request being served, resolved now, or `null` when none is bound.
-     *
-     * @return ?\Illuminate\Http\Request
-     */
-    private function request(): ?Request
-    {
-        if (!$this->container->bound('request')) {
-            return null;
-        }
-
-        return $this->container->make('request');
     }
 
     /**

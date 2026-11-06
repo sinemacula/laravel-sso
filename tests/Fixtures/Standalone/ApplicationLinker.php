@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Contracts\LinkStorage;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkCreation;
@@ -52,14 +53,15 @@ final class ApplicationLinker implements LinkStorage
      * What the store resolves the result to.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResolution
      */
     #[\Override]
-    public function resolve(VerifiedResult $result): LinkResolution
+    public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
     {
         $this->resolutions++;
 
-        return $this->store->resolve($result);
+        return $this->store->resolve($result, $client);
     }
 
     /**
@@ -82,6 +84,7 @@ final class ApplicationLinker implements LinkStorage
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -94,6 +97,7 @@ final class ApplicationLinker implements LinkStorage
         LinkSubject $subject,
         IdentityReference $identity,
         LinkOrigin $origin,
+        ClientContext $client,
         ?ActingIdentity $actor = null,
         ?string $application = null,
         ?Purpose $purpose = null,
@@ -101,7 +105,7 @@ final class ApplicationLinker implements LinkStorage
     ): LinkCreation {
         $this->created[] = $origin;
 
-        return $this->store->create($connection, $subject, $identity, $origin, $actor, $application, $purpose, $reference);
+        return $this->store->create($connection, $subject, $identity, $origin, $client, $actor, $application, $purpose, $reference);
     }
 
     /**
@@ -109,14 +113,15 @@ final class ApplicationLinker implements LinkStorage
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $locked
      * @param  string  $linkId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
      * @return void
      */
     #[\Override]
-    public function confirm(SsoConnection $locked, string $linkId, ?string $application = null, ?RequestReference $reference = null): void
+    public function confirm(SsoConnection $locked, string $linkId, ClientContext $client, ?string $application = null, ?RequestReference $reference = null): void
     {
-        $this->store->confirm($locked, $linkId, $application, $reference);
+        $this->store->confirm($locked, $linkId, $client, $application, $reference);
     }
 
     /**
@@ -127,12 +132,13 @@ final class ApplicationLinker implements LinkStorage
      * @param  string  $connectionId
      * @param  string  $tenantId
      * @param  string  $protocol
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
     #[\Override]
-    public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol): void
+    public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol, ClientContext $client): void
     {
-        $this->store->suspend($linkId, $identity, $connectionId, $tenantId, $protocol);
+        $this->store->suspend($linkId, $identity, $connectionId, $tenantId, $protocol, $client);
     }
 
     /**

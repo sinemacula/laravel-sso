@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Contracts\ProtocolSettings;
 use SineMacula\Laravel\Sso\Contracts\ReinitiatingDriver;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyRing;
 use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
@@ -171,18 +172,22 @@ final readonly class Saml2Driver implements ProtocolDriver, ReinitiatingDriver
 
     /**
      * Validate the response against the consumed request, unless the
-     * connection's metadata expired.
+     * connection's metadata expired. A SAML validation reports nothing, so the
+     * client is not read.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      *
      * @throws \InvalidArgumentException
      */
     #[\Override]
-    public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed): Completion
+    public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed, ClientContext $client): Completion
     {
+        unset($client);
+
         if ($this->metadata->isExpired($connection)) {
             return Completion::refused(FailureReason::METADATA_EXPIRED);
         }

@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -128,7 +129,7 @@ final class RefreshAcrossServersTest extends TestCase
         $outcomes = [];
 
         foreach ($jobs as $id) {
-            $outcomes[$id][] = $this->refresher()->refreshQueued($id)->outcome;
+            $outcomes[$id][] = $this->refresher()->refreshQueued($id, Clients::browser())->outcome;
         }
 
         foreach ([$saml, $oidc] as $connection) {
@@ -192,19 +193,19 @@ final class RefreshAcrossServersTest extends TestCase
         self::assertNotNull($dead);
 
         self::assertSame([], $this->refresher()->dueConnectionIds());
-        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id)->outcome);
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
 
         $this->clock->advance(299);
 
         self::assertSame([], $this->refresher()->dueConnectionIds());
-        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id)->outcome);
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
 
         $this->fetcher->assertNothingFetched();
 
         $this->clock->advance(1);
 
         self::assertSame([$connection->id], $this->refresher()->dueConnectionIds());
-        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshQueued($connection->id)->outcome);
+        self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
 
         $row = Connection::query()->findOrFail($connection->id);
 

@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Metadata\DiscoveryImporter;
 use SineMacula\Laravel\Sso\Metadata\ProposedOidcSettings;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -101,7 +102,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
             ])
             ->serve($this->fetcher);
 
-        $created = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Acme login', ['id_token_algorithms' => ['RS256', 'ES256']]);
+        $created = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Acme login', Clients::browser(), ['id_token_algorithms' => ['RS256', 'ES256']]);
 
         self::assertNotNull($created->connection);
 
@@ -200,7 +201,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
         $stored = $this->stored();
 
         self::assertSame([self::ISSUER, self::ISSUER . '/jwks', self::CLIENT_ID], [$stored->settings['issuer'], $stored->settings['jwks_uri'], $stored->settings['client_id']]);
-        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $this->connection->id)->isChanged());
+        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $this->connection->id, Clients::browser())->isChanged());
         self::assertTrue($this->stored()->usable);
     }
 
@@ -217,7 +218,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
 
         $reported = $this->recordUpdates();
         $proposed = $this->proposed();
-        $renewed  = app(ImportSaver::class)->save(self::TENANT, $this->connection->id, ['settings' => $proposed->settings()], $proposed->fetch());
+        $renewed  = app(ImportSaver::class)->save(self::TENANT, $this->connection->id, ['settings' => $proposed->settings()], $proposed->fetch(), Clients::browser());
 
         self::assertSame(ConnectionStatus::UNCHANGED, $renewed->status);
         self::assertSame([['metadata_fetched_at']], array_map(static fn (ConnectionUpdated $event): array => $event->changedSettings, $reported->getArrayCopy()));

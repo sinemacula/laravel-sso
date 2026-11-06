@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 use Tests\Concerns\FlowRoutes;
+use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
@@ -174,7 +175,7 @@ final class SessionlessFlowsTest extends TestCase
         $saml = $this->flowSamlConnection('tenant-saml', 'idp-metadata');
         $oidc = $this->flowOidcConnection('tenant-oidc', 'op-metadata', settings: ['client_authentication' => 'private_key_jwt']);
 
-        app(KeyService::class)->addNext('tenant-oidc', $oidc->id, KeyUse::CLIENT_ASSERTION, KeyType::EC);
+        app(KeyService::class)->addNext('tenant-oidc', $oidc->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC);
 
         $samlMetadata = $this->sendFlowRequest('GET', "/sso/metadata/tenant-saml/{$saml->id}")->assertOk();
         $oidcMetadata = $this->sendFlowRequest('GET', "/sso/metadata/tenant-oidc/{$oidc->id}")->assertOk();

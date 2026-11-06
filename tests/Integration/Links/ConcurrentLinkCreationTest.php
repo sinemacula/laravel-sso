@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -209,7 +210,7 @@ final class ConcurrentLinkCreationTest extends TestCase
             usleep((int) ($wait * 1000000));
         }
 
-        $creation = $store->create($through, new LinkSubject(self::ISSUER, $subject), new IdentityReference('user', $identity), LinkOrigin::LINK_PURPOSE);
+        $creation = $store->create($through, new LinkSubject(self::ISSUER, $subject), new IdentityReference('user', $identity), LinkOrigin::LINK_PURPOSE, Clients::browser());
 
         if ($inTransaction) {
             $database->commit();

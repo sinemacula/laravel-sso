@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Metadata\ValidatedFetch;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -134,7 +135,7 @@ final class IssuerChangeTest extends LinkingTestCase
         self::assertSame(0, Link::query()->count());
         self::assertSame(
             ['issuer_class' => 'required'],
-            self::codes(app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['enabled' => true])),
+            self::codes(app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['enabled' => true], Clients::browser())),
         );
     }
 
@@ -253,7 +254,14 @@ final class IssuerChangeTest extends LinkingTestCase
     {
         $link = $this->makeLink($this->connection, 'old-subject', ['issuer' => VerifyingDriver::ISSUER]);
 
-        $result = app(SubjectMigration::class)->migrate('tenant-1', $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [$link->id => ['new-subject']], []);
+        $result = app(SubjectMigration::class)->migrate(
+            'tenant-1',
+            $this->connection->id,
+            ['settings' => ['issuer' => self::NEW_ISSUER]],
+            [$link->id => ['new-subject']],
+            [],
+            Clients::browser(),
+        );
 
         self::assertTrue($result->isChanged());
         self::assertSame(['issuer', 'linking.enabled', 'linking.issuer_class', 'linking.acknowledged'], $result->changedSettings);
@@ -271,7 +279,14 @@ final class IssuerChangeTest extends LinkingTestCase
         $link = $this->makeLink($this->connection, 'old-subject', ['issuer' => VerifyingDriver::ISSUER]);
 
         $before = $this->reread()->getLinkingSettings();
-        $result = app(SubjectMigration::class)->migrate('tenant-1', $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [$link->id => [123]], []);
+        $result = app(SubjectMigration::class)->migrate(
+            'tenant-1',
+            $this->connection->id,
+            ['settings' => ['issuer' => self::NEW_ISSUER]],
+            [$link->id => [123]],
+            [],
+            Clients::browser(),
+        );
 
         self::assertFalse($result->isChanged());
         self::assertSame($before, $this->reread()->getLinkingSettings());
@@ -287,7 +302,7 @@ final class IssuerChangeTest extends LinkingTestCase
         $this->connection = $this->openIdConnection();
 
         $fetch  = new ValidatedFetch($this->clock->now());
-        $result = app(ImportSaver::class)->save('tenant-1', $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $fetch);
+        $result = app(ImportSaver::class)->save('tenant-1', $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $fetch, Clients::browser());
 
         self::assertTrue($result->isChanged());
         self::assertContains('linking.enabled', $result->changedSettings);
@@ -305,7 +320,7 @@ final class IssuerChangeTest extends LinkingTestCase
      */
     private function update(array $changes): ConnectionResult
     {
-        return app(ConnectionService::class)->update('tenant-1', $this->connection->id, $changes);
+        return app(ConnectionService::class)->update('tenant-1', $this->connection->id, $changes, Clients::browser());
     }
 
     /**
@@ -379,7 +394,7 @@ final class IssuerChangeTest extends LinkingTestCase
      */
     private function stored(string $protocol, array $settings, array $linking = []): Connection
     {
-        $created = app(ConnectionService::class)->create('tenant-1', $protocol, 'Acme', $settings);
+        $created = app(ConnectionService::class)->create('tenant-1', $protocol, 'Acme', Clients::browser(), $settings);
 
         self::assertTrue($created->isChanged(), (string) json_encode($created->violations));
 

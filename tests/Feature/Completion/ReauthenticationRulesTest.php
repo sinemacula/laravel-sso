@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\Rules\LinkRules;
 use SineMacula\Laravel\Sso\Completion\Rules\ReauthenticationRules;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
@@ -50,6 +51,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -455,7 +457,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
      */
     private function hold(LinkSubject $subject): void
     {
-        $creation = app(LinkStore::class)->create($this->connection, $subject, $this->person, LinkOrigin::PROVISIONING);
+        $creation = app(LinkStore::class)->create($this->connection, $subject, $this->person, LinkOrigin::PROVISIONING, Clients::browser());
 
         self::assertTrue($creation->isCreated());
 
@@ -600,7 +602,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
      */
     private function answerCallback(string $query): CompletionResult
     {
-        return app(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', $query, []));
+        return app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $this->connection->id, new CompletionRequest('GET', $query, []), Clients::browser());
     }
 
     /**
@@ -624,7 +626,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
         /** @var array{RelayState?: string} $query */
         $posted = new CompletionRequest('POST', '', ['SAMLResponse' => $response->encoded(), 'RelayState' => $query['RelayState'] ?? '']);
 
-        return app(CompletionService::class)->assertionConsumerService($this->connection->id, $posted);
+        return app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connection->id, $posted, Clients::browser());
     }
 
     /**

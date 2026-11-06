@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -31,6 +32,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\ScriptedInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
@@ -119,10 +121,11 @@ final class HandoffRecheckTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 
@@ -199,7 +202,7 @@ final class HandoffRecheckTest extends TestCase
         $identity = new IdentityReference('App\Models\User', '42');
         $result   = $this->verifiedResult();
         $recheck  = fn (?int $version): RecheckOutcome => $this->withinTransaction(
-            fn (): RecheckOutcome => $this->rechecker()->recheck($result, $this->boundUnder($identity, $version), $this->lockFor($result)),
+            fn (): RecheckOutcome => $this->rechecker()->recheck($result, $this->boundUnder($identity, $version), $this->lockFor($result), Clients::browser()),
         );
 
         self::assertSame(RecheckOutcome::CONNECTION_UNAVAILABLE, $recheck($named));
@@ -325,6 +328,7 @@ final class HandoffRecheckTest extends TestCase
                 $this->verifiedResult(),
                 $this->bound(null),
                 $this->withinTransaction(fn (): RecheckLock => $this->lockFor($this->verifiedResult())),
+                Clients::browser(),
             ),
         ];
 
@@ -378,7 +382,7 @@ final class HandoffRecheckTest extends TestCase
                     $lock = $recheck->lock($tenantId, $connectionId ?? $this->connection->id, $application);
 
                     $call === 'recheck'
-                        ? $recheck->recheck($this->verifiedResult(), $this->bound(null), $lock)
+                        ? $recheck->recheck($this->verifiedResult(), $this->bound(null), $lock, Clients::browser())
                         : $recheck->acknowledgeSignIn($this->verifiedResult(), $lock);
                 });
 
@@ -698,7 +702,7 @@ final class HandoffRecheckTest extends TestCase
      */
     private function recheck(VerifiedResult $result, ?IdentityReference $linkedIdentity): RecheckOutcome
     {
-        return $this->withinTransaction(fn (): RecheckOutcome => $this->rechecker()->recheck($result, $this->bound($linkedIdentity), $this->lockFor($result)));
+        return $this->withinTransaction(fn (): RecheckOutcome => $this->rechecker()->recheck($result, $this->bound($linkedIdentity), $this->lockFor($result), Clients::browser()));
     }
 
     /**

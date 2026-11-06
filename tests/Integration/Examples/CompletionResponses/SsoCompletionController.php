@@ -6,6 +6,8 @@ namespace Tests\Integration\Examples\CompletionResponses;
 
 use Illuminate\Http\Request;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Responses\CompletionResponse;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
@@ -49,7 +51,12 @@ final readonly class SsoCompletionController
      */
     public function assertion(Request $request, string $connection): CompletionResponse
     {
-        $result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
+        $result = $this->completions->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $connection,
+            CompletionRequest::fromRequest($request),
+            ClientContext::fromRequest($request),
+        );
 
         return $this->responses->from($result, $request->getMethod());
     }
@@ -63,7 +70,12 @@ final readonly class SsoCompletionController
      */
     public function callback(Request $request, string $connection): CompletionResponse
     {
-        $result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
+        $result = $this->completions->complete(
+            CompletionEndpoint::CALLBACK,
+            $connection,
+            CompletionRequest::fromRequest($request),
+            ClientContext::fromRequest($request),
+        );
 
         return $this->responses->from($result, $request->getMethod());
     }

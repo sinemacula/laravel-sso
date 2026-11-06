@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
@@ -56,6 +57,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\HostileIdTokens;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\FixedLinker;
 use Tests\TestCase;
@@ -545,7 +547,7 @@ final class OidcAdversarialCallbackTest extends TestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        $refreshed = app(MetadataRefresher::class)->refreshNow($connection->tenant_id, $connection->id, new ActingIdentity('App\Models\User', '42'));
+        $refreshed = app(MetadataRefresher::class)->refreshNow($connection->tenant_id, $connection->id, new ActingIdentity('App\Models\User', '42'), Clients::browser());
 
         self::assertTrue($refreshed->isRefreshed());
         self::assertTrue($this->receiveCallback($connection, $this->granted($connection))->isCompleted());
@@ -581,7 +583,7 @@ final class OidcAdversarialCallbackTest extends TestCase
         $this->assertRefused($this->receiveCallback($connection, $grant), FailureReason::METADATA_EXPIRED, $request);
         self::assertSame([], $this->fetchPurposes());
 
-        $refreshed = app(MetadataRefresher::class)->refreshQueued($connection->id);
+        $refreshed = app(MetadataRefresher::class)->refreshQueued($connection->id, Clients::browser());
 
         self::assertTrue($refreshed->isRefreshed());
         self::assertTrue($this->receiveCallback($connection, $this->granted($connection))->isCompleted());
@@ -990,7 +992,7 @@ final class OidcAdversarialCallbackTest extends TestCase
      */
     private function receiveCallback(Connection $connection, FakeAuthorization $grant): CompletionResult
     {
-        return app(CompletionService::class)->callback($connection->id, new CompletionRequest('GET', $grant->query(), []));
+        return app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connection->id, new CompletionRequest('GET', $grant->query(), []), Clients::browser());
     }
 
     /**
@@ -1018,7 +1020,7 @@ final class OidcAdversarialCallbackTest extends TestCase
      */
     private function startUrl(Connection $connection, Purpose $purpose = Purpose::SIGN_IN, ?IdentityReference $identity = null, ?string $session = null): string
     {
-        $started = app(AuthorizationRequestService::class)->start('web', $purpose, $connection->id, null, $identity, $session);
+        $started = app(AuthorizationRequestService::class)->start('web', $purpose, $connection->id, Clients::browser(), null, $identity, $session);
 
         self::assertTrue($started->isStarted());
 

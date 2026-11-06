@@ -65,7 +65,7 @@ $result = app(LinkingPolicyService::class)->change($tenantId, $connectionId, [
     'issuer_class'       => 'shared', // or single_organization, acknowledged
     'organization_claim' => 'hd',
     'organization_value' => $organization,
-], $actor);
+], $client, $actor);
 
 if ($result->isInvalid()) {
     // Each violation names a setting and a code, never the value given
@@ -78,6 +78,11 @@ if ($result->isInvalid()) {
     throw ValidationException::withMessages($messages);
 }
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 The result is a `ConnectionResult`: `updated`, naming each `linking.*` that changed; `unchanged`; `refused` with
 `connection_not_found`, `freshness_required` or `protocol_unavailable`; or `invalid` with every violation. With no
@@ -172,12 +177,12 @@ first, then take your own guard and write the principal:
 
 <!-- snippet: tests/Integration/Examples/LinkingByDomain/GrantPrincipal.php#scope-widening -->
 ```php
-DB::connection(StorageConnection::name())->transaction(function () use ($identity, $tenantId): void {
+DB::connection(StorageConnection::name())->transaction(function () use ($identity, $tenantId, $client): void {
     $widening = app(ScopeWidening::class);
 
     // First the identity's guard, held until this commits; the tenant
     // is `null` for a platform principal
-    $widening->widened($identity, $tenantId);
+    $widening->widened($identity, $tenantId, $client);
 
     // Then your principal guard, then the write
     $this->lockPrincipals($identity);

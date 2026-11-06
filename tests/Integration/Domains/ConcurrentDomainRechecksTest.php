@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -153,7 +154,7 @@ final class ConcurrentDomainRechecksTest extends TestCase
      */
     public function testRacingRunsCheckEachClaimExactlyOnce(): void
     {
-        $results = $this->race(static fn (DomainRechecker $rechecker): array => $rechecker->recheckAll()->jsonSerialize()['entries']);
+        $results = $this->race(static fn (DomainRechecker $rechecker): array => $rechecker->recheckAll(Clients::browser())->jsonSerialize()['entries']);
 
         $this->assertEachClaimCheckedOnce($results);
     }
@@ -166,7 +167,7 @@ final class ConcurrentDomainRechecksTest extends TestCase
      */
     public function testRacingRunsInsideACallersTransactionCheckEachClaimExactlyOnce(): void
     {
-        $results = $this->race(static fn (DomainRechecker $rechecker): array => $rechecker->recheckAll()->jsonSerialize()['entries'], true);
+        $results = $this->race(static fn (DomainRechecker $rechecker): array => $rechecker->recheckAll(Clients::browser())->jsonSerialize()['entries'], true);
 
         $this->assertEachClaimCheckedOnce($results);
     }
@@ -208,13 +209,13 @@ final class ConcurrentDomainRechecksTest extends TestCase
     private function runOrRemove(DomainRechecker $rechecker, DomainService $domains, int $process): array
     {
         if ($process < self::PROCESSES / 2) {
-            return $rechecker->recheckAll()->jsonSerialize()['entries'];
+            return $rechecker->recheckAll(Clients::browser())->jsonSerialize()['entries'];
         }
 
         $index      = self::REMOVED[$process - self::PROCESSES / 2];
         $claim      = $this->claims[$index];
         $connection = $this->connections[$index % 2];
-        $result     = $domains->remove($connection->tenant_id, $connection->id, $claim->domain);
+        $result     = $domains->remove($connection->tenant_id, $connection->id, $claim->domain, Clients::browser());
 
         return [['removed' => $claim->id, 'status' => $result->status->value]];
     }

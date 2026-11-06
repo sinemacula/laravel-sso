@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
 
@@ -105,7 +106,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
         $this->add();
 
         $next   = self::summaryOf($this->add());
-        $result = $this->assertQueryBudget(5, 2, fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id));
+        $result = $this->assertQueryBudget(5, 2, fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser()));
 
         self::assertTrue($result->isSucceeded());
     }
@@ -120,7 +121,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
         $this->add();
 
         $next   = self::summaryOf($this->add());
-        $result = $this->assertQueryBudget(4, 1, fn (): KeyResult => $this->keys()->retire(self::TENANT, $this->connection->id, $next->id));
+        $result = $this->assertQueryBudget(4, 1, fn (): KeyResult => $this->keys()->retire(self::TENANT, $this->connection->id, $next->id, Clients::browser()));
 
         self::assertTrue($result->isSucceeded());
     }
@@ -132,7 +133,11 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
      */
     public function testTrustingASigningCertificateIsFourReadsAndOneWrite(): void
     {
-        $result = $this->assertQueryBudget(4, 1, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0)));
+        $result = $this->assertQueryBudget(
+            4,
+            1,
+            fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser()),
+        );
 
         self::assertTrue($result->isSucceeded());
     }
@@ -146,7 +151,11 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     public function testTrustingAnAnchorIsFourReadsAndFiveWrites(): void
     {
         $anchor = Certificates::distinct(0);
-        $result = $this->assertQueryBudget(4, 5, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $anchor, null, KeyUse::METADATA_SIGNING));
+        $result = $this->assertQueryBudget(
+            4,
+            5,
+            fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $anchor, Clients::browser(), null, KeyUse::METADATA_SIGNING),
+        );
 
         self::assertTrue($result->isSucceeded());
     }
@@ -159,8 +168,12 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
      */
     public function testDistrustingACertificateIsFourReadsAndFiveWrites(): void
     {
-        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0)));
-        $result      = $this->assertQueryBudget(4, 5, fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id));
+        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser()));
+        $result      = $this->assertQueryBudget(
+            4,
+            5,
+            fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id, Clients::browser()),
+        );
 
         self::assertTrue($result->isSucceeded());
     }
@@ -174,7 +187,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     {
         $this->add();
         $this->add();
-        $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0));
+        $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser());
 
         $keys = $this->assertQueryBudget(2, 0, fn (): ?array => $this->keys()->keys(self::TENANT, $this->connection->id));
 
@@ -196,9 +209,9 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
         $this->freshness->answer(FreshnessOutcome::STALE);
 
         $refusals = [
-            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id)),
-            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_ENCRYPTION)),
-            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0))),
+            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser())),
+            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_ENCRYPTION, Clients::browser())),
+            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser())),
         ];
 
         foreach ($refusals as $refusal) {
@@ -213,7 +226,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
      */
     private function add(): KeyResult
     {
-        return $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
+        return $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA);
     }
 
     /**

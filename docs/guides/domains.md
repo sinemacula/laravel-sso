@@ -24,12 +24,17 @@ and key, which the `DomainClaimed` event carries:
 <!-- snippet: tests/Integration/Examples/Domains/DomainsExampleTest.php#domain-claim -->
 ```php
 $actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
-$result = $domains->claim($tenantId, $connectionId, 'Example.COM', $actor);
+$result = $domains->claim($tenantId, $connectionId, 'Example.COM', $client, $actor);
 
 // A successful claim carries the domain; a refusal carries none
 $record = $result->domain?->recordName;          // _sso-verification.example.com
 $value  = $result->domain?->verificationToken(); // 64 lower-case hex characters
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 Show the administrator the record name and the token: they publish a TXT record at that name whose value is exactly the
 token. The domain is stored normalised (lower case, IDNA ASCII, no trailing dot), so `Bücher.Example.COM.` is
@@ -56,7 +61,7 @@ afterwards gives it a new token.
 
 <!-- snippet: tests/Integration/Examples/Domains/DomainsExampleTest.php#domain-verify -->
 ```php
-$result = $domains->verify($tenantId, $connectionId, 'example.com', $actor);
+$result = $domains->verify($tenantId, $connectionId, 'example.com', $client, $actor);
 ```
 
 The package looks the TXT record up and verifies the domain only when one of the records at the name is exactly the
@@ -80,7 +85,7 @@ and counts from its new verification time.
 ```php
 $domain  = $domains->get($tenantId, $connectionId, 'example.com');            // ?DomainSummary
 $listed  = $domains->list($tenantId, $connectionId);                          // ?list<DomainSummary>, oldest first
-$removed = $domains->remove($tenantId, $connectionId, 'example.com', $actor); // in any state
+$removed = $domains->remove($tenantId, $connectionId, 'example.com', $client, $actor); // in any state
 ```
 
 Removing a verified domain stops it routing discovery and allowing linking at once, and frees it for another
@@ -115,13 +120,13 @@ name it has no answer for; `SineMacula\Laravel\Sso\Domains\Enums\DomainStatus` n
 $this->instance(DnsResolver::class, $dns = new FakeDnsResolver);
 
 $domains = app(DomainService::class);
-$claimed = $domains->claim($tenantId, $connectionId, 'example.com')->domain;
+$claimed = $domains->claim($tenantId, $connectionId, 'example.com', $client)->domain;
 
 self::assertNotNull($claimed);
 
 $dns->publishes($claimed); // or absent(), failing() or found() with records of your own
 
-self::assertSame(DomainStatus::VERIFIED, $domains->verify($tenantId, $connectionId, 'example.com')->status);
+self::assertSame(DomainStatus::VERIFIED, $domains->verify($tenantId, $connectionId, 'example.com', $client)->status);
 
 $dns->assertLookedUp('_sso-verification.example.com', 1);
 ```

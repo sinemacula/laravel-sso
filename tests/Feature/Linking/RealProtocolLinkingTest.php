@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\Stages\DomainReservation;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
@@ -36,6 +37,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
+use Tests\Fixtures\Clients;
 
 /**
  * Linking by a verified domain through the real drivers (SSO-8.8, SSO-7.7): a
@@ -322,7 +324,7 @@ final class RealProtocolLinkingTest extends LinkingTestCase
             return $organization === null ? $token : $token->with('hd', $organization);
         });
 
-        return app(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', $grant->query(), []));
+        return app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $this->connection->id, new CompletionRequest('GET', $grant->query(), []), Clients::browser());
     }
 
     /**
@@ -411,7 +413,7 @@ final class RealProtocolLinkingTest extends LinkingTestCase
         /** @var array{RelayState?: string} $query */
         $posted = new CompletionRequest('POST', '', ['SAMLResponse' => $response->encoded(), 'RelayState' => $query['RelayState'] ?? '']);
 
-        return app(CompletionService::class)->assertionConsumerService($this->connection->id, $posted);
+        return app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connection->id, $posted, Clients::browser());
     }
 
     /**

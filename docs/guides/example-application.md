@@ -16,8 +16,8 @@ tenancy.
 | Method   | Path                                                                    | Access          | Calls                                                    |
 |----------|-------------------------------------------------------------------------|-----------------|----------------------------------------------------------|
 | `POST`   | `/api/auth/sso/authorization-requests`                                  | public          | `AuthorizationRequestService::start()`, or discovery     |
-| `POST`   | `/api/auth/sso/connections/{connection}/assertions`                     | public, no CSRF | `CompletionService::assertionConsumerService()`          |
-| `GET`    | `/api/auth/sso/connections/{connection}/callback`                       | public          | `CompletionService::callback()`                          |
+| `POST`   | `/api/auth/sso/connections/{connection}/assertions`                     | public, no CSRF | `CompletionService::complete()`, the ACS                 |
+| `GET`    | `/api/auth/sso/connections/{connection}/callback`                       | public          | `CompletionService::complete()`, the callback            |
 | `GET`    | `/api/auth/sso/connections/{connection}/metadata`                       | public          | `ServiceProviderDescriptions::describe()`                |
 | `GET`    | `/api/auth/sso/connections/{connection}/jwks`                           | public          | `ServiceProviderDescriptions::publicKeys()`              |
 | `POST`   | `/api/auth/sessions`                                                    | public          | `HandoffRedemption::admit()`, `sign_in` only             |
@@ -143,8 +143,8 @@ $challenge = $input['code_challenge'] ?? null;
 
 // The purpose is this endpoint's: a `purpose` in the body is never read
 $result = isset($input['email'])
-    ? $this->discovery->start($input['application'], Purpose::SIGN_IN, $input['email'], $challenge)
-    : $this->requests->start($input['application'], Purpose::SIGN_IN, $input['connection'] ?? '', $challenge);
+    ? $this->discovery->start($input['application'], Purpose::SIGN_IN, $input['email'], ClientContext::fromRequest($request), $challenge)
+    : $this->requests->start($input['application'], Purpose::SIGN_IN, $input['connection'] ?? '', ClientContext::fromRequest($request), $challenge);
 ```
 
 A link and a re-authentication take the caller's identity, and a re-authentication the caller's session, from the
@@ -154,7 +154,14 @@ authentication:
 ```php
 $input = self::input($request);
 
-$result = $this->requests->start($input['application'], Purpose::LINK, $input['connection'], $input['code_challenge'] ?? null, Caller::identity($request));
+$result = $this->requests->start(
+    $input['application'],
+    Purpose::LINK,
+    $input['connection'],
+    ClientContext::fromRequest($request),
+    $input['code_challenge'] ?? null,
+    Caller::identity($request),
+);
 ```
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoStartController.php#route-start-reauthenticate -->
@@ -165,6 +172,7 @@ $result = $this->requests->start(
     $input['application'],
     Purpose::REAUTHENTICATE,
     $input['connection'],
+    ClientContext::fromRequest($request),
     $input['code_challenge'] ?? null,
     Caller::identity($request),
     Caller::sessionId($request),
@@ -193,14 +201,24 @@ chooses anything. The package's default contracts refuse a `link` (freshness and
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoCompletionController.php#route-assertion -->
 ```php
-$result = $this->completions->assertionConsumerService($connection, CompletionRequest::fromRequest($request));
+$result = $this->completions->complete(
+    CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+    $connection,
+    CompletionRequest::fromRequest($request),
+    ClientContext::fromRequest($request),
+);
 
 return $this->responses->from($result, $request->getMethod());
 ```
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoCompletionController.php#route-callback -->
 ```php
-$result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
+$result = $this->completions->complete(
+    CompletionEndpoint::CALLBACK,
+    $connection,
+    CompletionRequest::fromRequest($request),
+    ClientContext::fromRequest($request),
+);
 
 return $this->responses->from($result, $request->getMethod());
 ```
@@ -225,10 +243,12 @@ $input = Validator::validate($request->all(), [
     'verifier'    => ['required', 'string'],
 ]);
 
+$client = ClientContext::fromRequest($request);
+
 // The code is consumed and the session written in one transaction, on
 // the package's storage connection
-[$result, $sessionId] = DB::connection(StorageConnection::name())->transaction(function () use ($input): array {
-    $result = $this->redemptions->admit(Purpose::SIGN_IN, $input['application'], $input['connection'], $input['code'], $input['verifier']);
+[$result, $sessionId] = DB::connection(StorageConnection::name())->transaction(function () use ($input, $client): array {
+    $result = $this->redemptions->admit(Purpose::SIGN_IN, $input['application'], $input['connection'], $input['code'], $input['verifier'], $client);
 
     // Active, or pending your own further factor; an unlinked handoff
     // signs nobody in
@@ -319,7 +339,15 @@ $input = Validator::validate($request->all(), [
 
 // A `link` writes no session, so it is redeemed alone, for the caller
 // the application authenticated
-$result = $this->redemptions->redeem(Purpose::LINK, $input['application'], $input['connection'], $input['code'], $input['verifier'], Caller::identity($request));
+$result = $this->redemptions->redeem(
+    Purpose::LINK,
+    $input['application'],
+    $input['connection'],
+    $input['code'],
+    $input['verifier'],
+    ClientContext::fromRequest($request),
+    Caller::identity($request),
+);
 
 return match (true) {
     $result->isRedeemed()    => response()->json(['link' => $result->linkId], 201, Answers::NO_STORE),
@@ -339,7 +367,7 @@ return response()->json($this->links->list('me', Caller::identity($request)), 20
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoLinkController.php#route-link-remove -->
 ```php
-$result = $this->links->remove('me', $link, Caller::identity($request), Caller::actor($request));
+$result = $this->links->remove('me', $link, ClientContext::fromRequest($request), Caller::identity($request), Caller::actor($request));
 
 return Answers::of($result, 200);
 ```
@@ -362,7 +390,14 @@ $input = Validator::validate($request->all(), [
 
 // The package renews the code's session inside this transaction, once; nothing renews it again
 $result = DB::connection(StorageConnection::name())->transaction(
-    fn (): RedemptionResult => $this->redemptions->admit(Purpose::REAUTHENTICATE, $input['application'], $input['connection'], $input['code'], $input['verifier']),
+    fn (): RedemptionResult => $this->redemptions->admit(
+        Purpose::REAUTHENTICATE,
+        $input['application'],
+        $input['connection'],
+        $input['code'],
+        $input['verifier'],
+        ClientContext::fromRequest($request),
+    ),
 );
 
 // The code renewed the session it was started on: only when that is the
@@ -446,6 +481,7 @@ $result = $this->connections->create(
     tenantId: Caller::tenantId($request),
     protocol: $input['protocol'],
     displayName: $input['display_name'],
+    client: ClientContext::fromRequest($request),
     settings: $input['settings']                  ?? [],
     attributeMapping: $input['attribute_mapping'] ?? [],
     preset: $input['preset']                      ?? null,
@@ -470,7 +506,7 @@ return response()->json($summary, 200, Answers::NO_STORE);
 ```php
 /** @var array{domain: string} $input */
 $input  = Validator::validate($request->all(), ['domain' => ['required', 'string', 'max:253']]);
-$result = $this->domains->claim(Caller::tenantId($request), $connection, $input['domain'], Caller::actor($request));
+$result = $this->domains->claim(Caller::tenantId($request), $connection, $input['domain'], ClientContext::fromRequest($request), Caller::actor($request));
 
 // The token is shown to the administrator to publish, and never logged
 $record = $result->domain === null ? null : ['name' => $result->domain->recordName, 'value' => $result->domain->verificationToken()];
