@@ -25,6 +25,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -73,11 +74,11 @@ final class AdministrationEventsTest extends TestCase
         $connection = $this->makeConnection(['tenant_id' => 'tenant-7', 'protocol' => 'saml2']);
         $actor      = new ActingIdentity('App\Models\User', '42');
 
-        $this->events()->connectionCreated($connection, $actor);
-        $this->events()->connectionUpdated($connection, ['sso_url', 'display_name', 'sso_url'], $actor);
-        $this->events()->connectionEnabled($connection, $actor);
-        $this->events()->connectionDisabled($connection, null);
-        $this->events()->connectionDeleted($connection, $actor);
+        $this->events()->connectionCreated($connection, $actor, Clients::browser());
+        $this->events()->connectionUpdated($connection, ['sso_url', 'display_name', 'sso_url'], $actor, Clients::browser());
+        $this->events()->connectionEnabled($connection, $actor, Clients::browser());
+        $this->events()->connectionDisabled($connection, null, Clients::browser());
+        $this->events()->connectionDeleted($connection, $actor, Clients::browser());
 
         $this->assertEventSequence([ConnectionCreated::class, ConnectionUpdated::class, ConnectionEnabled::class, ConnectionDisabled::class, ConnectionDeleted::class]);
 
@@ -107,7 +108,7 @@ final class AdministrationEventsTest extends TestCase
      */
     public function testAnUpdateThatChangedNothingReportsNothing(): void
     {
-        $this->events()->connectionUpdated($this->makeConnection(), [], null);
+        $this->events()->connectionUpdated($this->makeConnection(), [], null, Clients::browser());
 
         $this->assertNoEvents();
     }
@@ -124,11 +125,11 @@ final class AdministrationEventsTest extends TestCase
         $previous   = $this->makeKey($connection, KeyState::RETIRING, str_repeat('a', 64));
         $key        = $this->makeKey($connection, KeyState::CURRENT, str_repeat('b', 64));
 
-        $this->events()->keyAdded($connection, $key, null);
-        $this->events()->keyMadeCurrent($connection, $key, $previous, null);
-        $this->events()->keyMadeCurrent($connection, $key, null, null);
-        $this->events()->keyRetired($connection, $previous, null);
-        $this->events()->keyNearingExpiry($connection, $key, 14);
+        $this->events()->keyAdded($connection, $key, null, Clients::browser());
+        $this->events()->keyMadeCurrent($connection, $key, $previous, null, Clients::browser());
+        $this->events()->keyMadeCurrent($connection, $key, null, null, Clients::browser());
+        $this->events()->keyRetired($connection, $previous, null, Clients::browser());
+        $this->events()->keyNearingExpiry($connection, $key, 14, Clients::browser());
 
         $this->assertEventSequence([KeyAdded::class, KeyMadeCurrent::class, KeyMadeCurrent::class, KeyRetired::class, KeyNearingExpiry::class]);
 
@@ -162,7 +163,7 @@ final class AdministrationEventsTest extends TestCase
         $connection = $this->makeConnection();
         $key        = $this->makeKey($connection, KeyState::CURRENT, str_repeat('c', 64), false);
 
-        $this->events()->keyNearingExpiry($connection, $key, 30);
+        $this->events()->keyNearingExpiry($connection, $key, 30, Clients::browser());
 
         $this->assertNoEvents();
     }
@@ -180,7 +181,7 @@ final class AdministrationEventsTest extends TestCase
         $connection = $this->makeConnection();
 
         DB::transaction(function () use ($connection): void {
-            $this->events()->connectionEnabled($connection, null);
+            $this->events()->connectionEnabled($connection, null, Clients::browser());
 
             $this->assertNoEvents();
         });
@@ -191,7 +192,7 @@ final class AdministrationEventsTest extends TestCase
 
         try {
             DB::transaction(function () use ($connection): void {
-                $this->events()->connectionDisabled($connection, null);
+                $this->events()->connectionDisabled($connection, null, Clients::browser());
 
                 throw new \RuntimeException('rolled back');
             });

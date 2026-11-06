@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\RateLimiting\CounterKeys;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
@@ -100,7 +101,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
             $this->app?->forgetScopedInstances();
             $this->limit('redemption.per_ip', 3, 3600);
 
-            $subject = AttemptSubject::redemption(self::IP);
+            $subject = AttemptSubject::redemption(new ClientContext(self::IP, null));
 
             foreach (range(1, 3) as $attempt) {
                 self::assertTrue($this->limiter()->attempt($subject)->isAllowed(), "Attempt {$attempt} should be allowed.");
@@ -136,7 +137,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     {
         $this->limit('redemption.per_ip', 3, 60);
 
-        $subject = AttemptSubject::redemption(self::IP);
+        $subject = AttemptSubject::redemption(new ClientContext(self::IP, null));
 
         foreach (range(1, 3) as $attempt) {
             self::assertTrue($this->limiter()->attempt($subject)->isAllowed(), "Attempt {$attempt} should be allowed.");
@@ -162,7 +163,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     {
         $this->limit('redemption.per_ip', 1, 60);
 
-        $subject = AttemptSubject::redemption(self::IP);
+        $subject = AttemptSubject::redemption(new ClientContext(self::IP, null));
 
         self::assertTrue($this->limiter()->attempt($subject)->isAllowed());
 
@@ -188,9 +189,9 @@ final class DatabaseAttemptLimiterTest extends TestCase
     {
         $this->limit('authorization_request.per_ip', 1, 60);
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(self::IP, self::DOMAIN))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::IP, null), self::DOMAIN))->isAllowed());
 
-        $refused = $this->limiter()->attempt(AttemptSubject::authorizationRequest(self::IP, 'example.org'));
+        $refused = $this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::IP, null), 'example.org'));
 
         self::assertSame(45, $refused->retryAfter);
         self::assertSame(1, $this->hits(AttemptFlow::AUTHORIZATION_REQUEST, AttemptScope::PER_IP, self::IP));
@@ -209,9 +210,9 @@ final class DatabaseAttemptLimiterTest extends TestCase
     {
         $this->limit('authorization_request.per_email_domain', 1, 3600);
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(self::IP, self::DOMAIN))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::IP, null), self::DOMAIN))->isAllowed());
 
-        $refused = $this->limiter()->attempt(AttemptSubject::authorizationRequest(self::OTHER_IP, self::DOMAIN));
+        $refused = $this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::OTHER_IP, null), self::DOMAIN));
 
         self::assertSame(3585, $refused->retryAfter);
         self::assertSame(0, $this->hits(AttemptFlow::AUTHORIZATION_REQUEST, AttemptScope::PER_IP, self::OTHER_IP));
@@ -229,10 +230,10 @@ final class DatabaseAttemptLimiterTest extends TestCase
     {
         $this->limit('completion.per_connection', 2, 60);
 
-        $this->limiter()->attempt(AttemptSubject::completion(self::IP, self::CONNECTION));
-        $this->limiter()->attempt(AttemptSubject::completion(null, self::CONNECTION));
+        $this->limiter()->attempt(AttemptSubject::completion(new ClientContext(self::IP, null), self::CONNECTION));
+        $this->limiter()->attempt(AttemptSubject::completion(new ClientContext(null, null), self::CONNECTION));
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::completion(self::OTHER_IP, self::CONNECTION))->isRateLimited());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::completion(new ClientContext(self::OTHER_IP, null), self::CONNECTION))->isRateLimited());
         self::assertSame(0, $this->hits(AttemptFlow::COMPLETION, AttemptScope::PER_IP, self::OTHER_IP));
         self::assertSame(1, $this->hits(AttemptFlow::COMPLETION, AttemptScope::PER_IP, self::IP));
         self::assertSame(2, $this->hits(AttemptFlow::COMPLETION, AttemptScope::PER_CONNECTION, self::CONNECTION));
@@ -251,17 +252,17 @@ final class DatabaseAttemptLimiterTest extends TestCase
 
         $limiter = $this->limiter();
 
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption(self::IP))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption(self::IP))->isRateLimited());
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption(self::OTHER_IP))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::completion(self::IP, self::CONNECTION))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(self::IP, self::DOMAIN))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isRateLimited());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext(self::OTHER_IP, null)))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::completion(new ClientContext(self::IP, null), self::CONNECTION))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::IP, null), self::DOMAIN))->isAllowed());
 
         self::assertTrue($limiter->attempt(AttemptSubject::metadata(self::CONNECTION))->isAllowed());
         self::assertTrue($limiter->attempt(AttemptSubject::metadata(self::CONNECTION))->isRateLimited());
         self::assertTrue($limiter->attempt(AttemptSubject::metadata('connection-2'))->isAllowed());
         self::assertTrue($limiter->attempt(AttemptSubject::domainCheck(self::CONNECTION))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::completion(self::OTHER_IP, self::CONNECTION))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::completion(new ClientContext(self::OTHER_IP, null), self::CONNECTION))->isAllowed());
 
         self::assertSame(2, $this->hits(AttemptFlow::COMPLETION, AttemptScope::PER_CONNECTION, self::CONNECTION));
         self::assertSame(1, $this->hits(AttemptFlow::DOMAIN_CHECK, AttemptScope::PER_CONNECTION, self::CONNECTION));
@@ -280,14 +281,14 @@ final class DatabaseAttemptLimiterTest extends TestCase
         $this->limit('redemption.per_ip', 1, 60);
 
         foreach (range(1, 3) as $attempt) {
-            self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(null))->isAllowed(), "Attempt {$attempt} should be allowed.");
+            self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(null, null)))->isAllowed(), "Attempt {$attempt} should be allowed.");
         }
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(null))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(null, null)))->isAllowed());
         self::assertSame(0, DB::table(self::TABLE)->count());
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::completion(null, self::CONNECTION))->isAllowed());
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(null, self::DOMAIN))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::completion(new ClientContext(null, null), self::CONNECTION))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(null, null), self::DOMAIN))->isAllowed());
 
         self::assertSame(2, DB::table(self::TABLE)->count());
         self::assertSame(1, $this->hits(AttemptFlow::COMPLETION, AttemptScope::PER_CONNECTION, self::CONNECTION));
@@ -306,14 +307,14 @@ final class DatabaseAttemptLimiterTest extends TestCase
 
         $limiter = $this->limiter();
 
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption(self::IP))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption('::ffff:' . self::IP))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption('64:ff9b::' . self::IP))->isRateLimited());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext('::ffff:' . self::IP, null)))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext('64:ff9b::' . self::IP, null)))->isRateLimited());
 
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption('2001:db8:1:2::1'))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption('2001:db8:1:2:abcd::9'))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption('2001:DB8:1:2::FFFF'))->isRateLimited());
-        self::assertTrue($limiter->attempt(AttemptSubject::redemption('2001:db8:1:3::1'))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext('2001:db8:1:2::1', null)))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext('2001:db8:1:2:abcd::9', null)))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext('2001:DB8:1:2::FFFF', null)))->isRateLimited());
+        self::assertTrue($limiter->attempt(AttemptSubject::redemption(new ClientContext('2001:db8:1:3::1', null)))->isAllowed());
     }
 
     /**
@@ -328,10 +329,10 @@ final class DatabaseAttemptLimiterTest extends TestCase
 
         $limiter = $this->limiter();
 
-        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(null, 'Bücher.example'))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(null, 'xn--bcher-kva.example'))->isAllowed());
-        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(null, 'BÜCHER.EXAMPLE.'))->isRateLimited());
-        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(null, 'Example.COM.'))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext(null, null), 'Bücher.example'))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext(null, null), 'xn--bcher-kva.example'))->isAllowed());
+        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext(null, null), 'BÜCHER.EXAMPLE.'))->isRateLimited());
+        self::assertTrue($limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext(null, null), 'Example.COM.'))->isAllowed());
         self::assertSame(1, $this->hits(AttemptFlow::AUTHORIZATION_REQUEST, AttemptScope::PER_EMAIL_DOMAIN, self::DOMAIN));
     }
 
@@ -345,9 +346,9 @@ final class DatabaseAttemptLimiterTest extends TestCase
     {
         $limiter = $this->limiter();
 
-        $limiter->attempt(AttemptSubject::authorizationRequest('2001:db8:1:2::1', 'Bücher.example'));
-        $limiter->attempt(AttemptSubject::completion('::ffff:' . self::IP, 'tenant-connection'));
-        $limiter->attempt(AttemptSubject::redemption(self::OTHER_IP));
+        $limiter->attempt(AttemptSubject::authorizationRequest(new ClientContext('2001:db8:1:2::1', null), 'Bücher.example'));
+        $limiter->attempt(AttemptSubject::completion(new ClientContext('::ffff:' . self::IP, null), 'tenant-connection'));
+        $limiter->attempt(AttemptSubject::redemption(new ClientContext(self::OTHER_IP, null)));
         $limiter->attempt(AttemptSubject::metadata('tenant-connection'));
         $limiter->attempt(AttemptSubject::domainCheck('tenant-connection'));
 
@@ -380,7 +381,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
         config()->set('sso.rate_limits.completion.per_ip', null);
 
         try {
-            $this->limiter()->attempt(AttemptSubject::completion(null, self::CONNECTION));
+            $this->limiter()->attempt(AttemptSubject::completion(new ClientContext(null, null), self::CONNECTION));
 
             self::fail('Expected the malformed limit to be refused.');
         } catch (\InvalidArgumentException $exception) {
@@ -402,7 +403,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
 
         $this->expectException(QueryException::class);
 
-        $this->limiter()->attempt(AttemptSubject::redemption(self::IP));
+        $this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)));
     }
 
     /**
@@ -416,7 +417,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     {
         $this->limit('redemption.per_ip', 2, 3600);
 
-        $subject = AttemptSubject::redemption(self::IP);
+        $subject = AttemptSubject::redemption(new ClientContext(self::IP, null));
 
         $this->limiter()->attempt($subject);
         $this->limiter()->attempt($subject);
@@ -443,14 +444,14 @@ final class DatabaseAttemptLimiterTest extends TestCase
     {
         $this->limit('authorization_request.per_ip', 5, 3600);
 
-        $this->limiter()->attempt(AttemptSubject::authorizationRequest(self::IP));
+        $this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::IP, null)));
 
         $this->limit('authorization_request.per_ip', 5, 60);
         $this->limit('authorization_request.per_email_domain', 1, 60);
 
-        $this->limiter()->attempt(AttemptSubject::authorizationRequest(self::OTHER_IP, self::DOMAIN));
+        $this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::OTHER_IP, null), self::DOMAIN));
 
-        self::assertSame(45, $this->limiter()->attempt(AttemptSubject::authorizationRequest(self::IP, self::DOMAIN))->retryAfter);
+        self::assertSame(45, $this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::IP, null), self::DOMAIN))->retryAfter);
         self::assertSame(1, $this->hits(AttemptFlow::AUTHORIZATION_REQUEST, AttemptScope::PER_IP, self::IP));
         self::assertSame('2026-10-31 13:00:00', $this->windowOf(AttemptFlow::AUTHORIZATION_REQUEST, AttemptScope::PER_IP, self::IP));
     }
@@ -465,7 +466,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     {
         $this->limit('authorization_request.per_email_domain', 1, 60);
 
-        $this->limiter()->attempt(AttemptSubject::authorizationRequest(self::OTHER_IP, self::DOMAIN));
+        $this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::OTHER_IP, null), self::DOMAIN));
 
         $key = $this->key(AttemptFlow::AUTHORIZATION_REQUEST, AttemptScope::PER_IP, self::IP);
 
@@ -473,7 +474,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
             DB::table(self::TABLE)->where('key', $key)->update(['hits' => 7, 'window_ends_at' => '2026-10-31 12:02:00']);
         });
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(self::IP, self::DOMAIN))->isRateLimited());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::IP, null), self::DOMAIN))->isRateLimited());
         self::assertSame(7, $this->hits(AttemptFlow::AUTHORIZATION_REQUEST, AttemptScope::PER_IP, self::IP));
     }
 
@@ -491,7 +492,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
             DB::table(self::TABLE)->insert(['key' => $key, 'hits' => 1, 'window_ends_at' => '2026-10-31 12:01:00']);
         });
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(self::IP))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isAllowed());
         self::assertSame(2, $this->hits(AttemptFlow::REDEMPTION, AttemptScope::PER_IP, self::IP));
     }
 
@@ -509,7 +510,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
             DB::table(self::TABLE)->delete();
         });
 
-        self::assertSame(1, $this->limiter()->attempt(AttemptSubject::redemption(self::IP))->retryAfter);
+        self::assertSame(1, $this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->retryAfter);
     }
 
     /**
@@ -526,7 +527,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
             DB::table(self::TABLE)->update(['window_ends_at' => '2026-10-31 12:00:15']);
         });
 
-        self::assertSame(1, $this->limiter()->attempt(AttemptSubject::redemption(self::IP))->retryAfter);
+        self::assertSame(1, $this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->retryAfter);
     }
 
     /**
@@ -543,7 +544,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
             DB::table(self::TABLE)->update(['hits' => 2]);
         });
 
-        self::assertSame(3585, $this->limiter()->attempt(AttemptSubject::redemption(self::IP))->retryAfter);
+        self::assertSame(3585, $this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->retryAfter);
         self::assertSame(2, $this->hits(AttemptFlow::REDEMPTION, AttemptScope::PER_IP, self::IP));
     }
 
@@ -561,7 +562,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
             DB::table(self::TABLE)->update(['hits' => 2]);
         });
 
-        self::assertSame(3585, $this->limiter()->attempt(AttemptSubject::redemption(self::IP))->retryAfter);
+        self::assertSame(3585, $this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->retryAfter);
         self::assertSame(2, $this->hits(AttemptFlow::REDEMPTION, AttemptScope::PER_IP, self::IP));
     }
 
@@ -579,7 +580,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
 
         $this->migration()->up(); // @phpstan-ignore method.notFound
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::completion(self::IP, self::CONNECTION))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::completion(new ClientContext(self::IP, null), self::CONNECTION))->isAllowed());
 
         self::assertSame(2, DB::connection(self::COUNTERS)->table(self::TABLE)->count());
         self::assertFalse(Schema::hasTable(self::TABLE));
@@ -628,7 +629,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
         $this->limit('redemption.per_ip', $max, 3600);
 
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
-            $this->limiter()->attempt(AttemptSubject::redemption(self::IP));
+            $this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)));
         }
 
         $this->limit('redemption.per_ip', $max, 60);

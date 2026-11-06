@@ -27,6 +27,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -184,7 +185,7 @@ final class ConcurrentOidcRefreshTest extends TestCase
                 self::await($fetching);
 
                 try {
-                    return ['status' => app(MetadataRefresher::class)->refreshDue() === [] ? 'nothing_due' : 'refreshed'];
+                    return ['status' => app(MetadataRefresher::class)->refreshDue(Clients::browser()) === [] ? 'nothing_due' : 'refreshed'];
                 } finally {
                     touch($done);
                 }
@@ -216,7 +217,7 @@ final class ConcurrentOidcRefreshTest extends TestCase
         Connection::query()->whereKey($this->connectionId())->get();
 
         try {
-            app(MetadataRefresher::class)->refreshDue();
+            app(MetadataRefresher::class)->refreshDue(Clients::browser());
             self::fail('A refresh ran inside a transaction.');
         } catch (\LogicException $exception) {
             self::assertSame('A metadata refresh runs outside any transaction on the storage connection, since it fetches before it writes.', $exception->getMessage());
@@ -487,7 +488,7 @@ final class ConcurrentOidcRefreshTest extends TestCase
         self::await($fetched);
 
         try {
-            $result = app(ConnectionService::class)->update(self::TENANT, $id, ['settings' => $settings]);
+            $result = app(ConnectionService::class)->update(self::TENANT, $id, ['settings' => $settings], Clients::browser());
 
             if ($inTransaction) {
                 $database->commit();
@@ -519,7 +520,7 @@ final class ConcurrentOidcRefreshTest extends TestCase
      */
     private function refreshDue(): RefreshResult
     {
-        return app(MetadataRefresher::class)->refreshDue()[0] ?? throw new \RuntimeException('No connection was due.');
+        return app(MetadataRefresher::class)->refreshDue(Clients::browser())[0] ?? throw new \RuntimeException('No connection was due.');
     }
 
     /**

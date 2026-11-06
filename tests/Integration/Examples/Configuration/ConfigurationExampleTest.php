@@ -12,6 +12,7 @@ use SineMacula\Laravel\Sso\Applications\ApplicationGate;
 use SineMacula\Laravel\Sso\Applications\ApplicationRegistry;
 use SineMacula\Laravel\Sso\Applications\Enums\HandoffDelivery;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecks;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
@@ -28,6 +29,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -236,7 +238,15 @@ final class ConfigurationExampleTest extends ExampleTestCase
 
         $this->clock->advance(59);
 
-        $redeemed = $redemption->redeem(Purpose::LINK, 'mobile', $connectionId, HandoffRedirect::from($location)->code(), self::verifierOf($start), $this->person);
+        $redeemed = $redemption->redeem(
+            Purpose::LINK,
+            'mobile',
+            $connectionId,
+            HandoffRedirect::from($location)->code(),
+            self::verifierOf($start),
+            Clients::browser(),
+            $this->person,
+        );
 
         self::assertTrue($redeemed->isRedeemed());
 
@@ -245,7 +255,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
 
         $this->clock->advance(60);
 
-        $expired = $redemption->redeem(Purpose::LINK, 'mobile', $connectionId, $redirect->code(), self::verifierOf($start), $this->person);
+        $expired = $redemption->redeem(Purpose::LINK, 'mobile', $connectionId, $redirect->code(), self::verifierOf($start), Clients::browser(), $this->person);
 
         self::assertTrue($expired->isRefused());
         self::assertSame(FailureReason::HANDOFF_EXPIRED, $expired->reason);
@@ -380,7 +390,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
      */
     private function startMobile(Purpose $purpose, string $connectionId, ?IdentityReference $identity = null): StartResult
     {
-        return app(AuthorizationRequestService::class)->start('mobile', $purpose, $connectionId, null, $identity);
+        return app(AuthorizationRequestService::class)->start('mobile', $purpose, $connectionId, Clients::browser(), null, $identity);
     }
 
     /**
@@ -397,7 +407,12 @@ final class ConfigurationExampleTest extends ExampleTestCase
      */
     private function completeAt(FakeOpenIdProvider $provider, string $connectionId, StartResult $start): string
     {
-        $result   = app(CompletionService::class)->callback($connectionId, new CompletionRequest('GET', $provider->authorize($start)->query(), []));
+        $result = app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $connectionId,
+            new CompletionRequest('GET', $provider->authorize($start)->query(), []),
+            Clients::browser(),
+        );
         $location = app(CompletionResponses::class)->from($result, 'GET')->location();
 
         self::assertNotNull($location);
@@ -417,7 +432,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
         $provider->serve($this->fetcher);
 
         $connections = app(ConnectionService::class);
-        $created     = $connections->create(self::OTHER_TENANT, 'oidc', 'Other OIDC', [
+        $created     = $connections->create(self::OTHER_TENANT, 'oidc', 'Other OIDC', Clients::browser(), [
             'issuer'                 => $provider->issuer,
             'authorization_endpoint' => $provider->endpoint('authorization'),
             'token_endpoint'         => $provider->endpoint('token'),
@@ -427,7 +442,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
         ]);
         $connectionId = (string) $created->connection?->id;
 
-        self::assertTrue($connections->enable(self::OTHER_TENANT, $connectionId)->isSucceeded());
+        self::assertTrue($connections->enable(self::OTHER_TENANT, $connectionId, Clients::browser())->isSucceeded());
 
         return $connectionId;
     }

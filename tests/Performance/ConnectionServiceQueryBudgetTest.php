@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Connections\ImportSaver;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Metadata\ValidatedFetch;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 
 /**
@@ -118,7 +119,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
         $result = $this->assertQueryBudget(2, 5, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, [
             'display_name' => 'Renamed',
             'settings'     => ['issuer' => 'https://login.example.com', 'client_secret' => 'a-new-client-secret'],
-        ]));
+        ], Clients::browser()));
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
     }
@@ -134,7 +135,11 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     {
         $id = $this->createdId();
 
-        $result = $this->assertQueryBudget(2, 5, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, ['settings' => ['client_assertion_algorithm' => 'RS256']]));
+        $result = $this->assertQueryBudget(
+            2,
+            5,
+            fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, ['settings' => ['client_assertion_algorithm' => 'RS256']], Clients::browser()),
+        );
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
     }
@@ -194,7 +199,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     {
         $id = $this->createdId();
 
-        $result = $this->assertQueryBudget(1, 0, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, ['display_name' => 'Acme']));
+        $result = $this->assertQueryBudget(1, 0, fn (): ConnectionResult => $this->service()->update(self::TENANT, $id, ['display_name' => 'Acme'], Clients::browser()));
 
         self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
     }
@@ -209,8 +214,8 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     {
         $id = $this->createdId();
 
-        $enabled = $this->assertQueryBudget(1, 1, fn (): ConnectionResult => $this->service()->enable(self::TENANT, $id));
-        $again   = $this->assertQueryBudget(1, 0, fn (): ConnectionResult => $this->service()->enable(self::TENANT, $id));
+        $enabled = $this->assertQueryBudget(1, 1, fn (): ConnectionResult => $this->service()->enable(self::TENANT, $id, Clients::browser()));
+        $again   = $this->assertQueryBudget(1, 0, fn (): ConnectionResult => $this->service()->enable(self::TENANT, $id, Clients::browser()));
 
         self::assertSame(ConnectionStatus::ENABLED, $enabled->status);
         self::assertSame(ConnectionStatus::UNCHANGED, $again->status);
@@ -253,7 +258,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
      */
     private function create(): ConnectionResult
     {
-        return $this->service()->create(self::TENANT, 'oidc', 'Acme', self::OIDC);
+        return $this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC);
     }
 
     /**
@@ -279,7 +284,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
      */
     private function saveImport(string $id, string $name): ConnectionResult
     {
-        return app(ImportSaver::class)->save(self::TENANT, $id, ['display_name' => $name], new ValidatedFetch($this->clock->now()));
+        return app(ImportSaver::class)->save(self::TENANT, $id, ['display_name' => $name], new ValidatedFetch($this->clock->now()), Clients::browser());
     }
 
     /**

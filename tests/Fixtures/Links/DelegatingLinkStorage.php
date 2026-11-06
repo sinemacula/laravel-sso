@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Contracts\LinkStorage;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkCreation;
@@ -61,10 +62,11 @@ final class DelegatingLinkStorage implements LinkStorage
      * The next answer given, or what the storage wrapped answers.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResolution
      */
     #[\Override]
-    public function resolve(VerifiedResult $result): LinkResolution
+    public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
     {
         $this->resolutions++;
 
@@ -73,7 +75,7 @@ final class DelegatingLinkStorage implements LinkStorage
         }
 
         if ($this->answers === []) {
-            return $this->inner->resolve($result);
+            return $this->inner->resolve($result, $client);
         }
 
         return count($this->answers) > 1 ? array_shift($this->answers) : $this->answers[0];
@@ -99,6 +101,7 @@ final class DelegatingLinkStorage implements LinkStorage
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -111,12 +114,13 @@ final class DelegatingLinkStorage implements LinkStorage
         LinkSubject $subject,
         IdentityReference $identity,
         LinkOrigin $origin,
+        ClientContext $client,
         ?ActingIdentity $actor = null,
         ?string $application = null,
         ?Purpose $purpose = null,
         ?RequestReference $reference = null,
     ): LinkCreation {
-        return $this->inner->create($connection, $subject, $identity, $origin, $actor, $application, $purpose, $reference);
+        return $this->inner->create($connection, $subject, $identity, $origin, $client, $actor, $application, $purpose, $reference);
     }
 
     /**
@@ -124,14 +128,15 @@ final class DelegatingLinkStorage implements LinkStorage
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $locked
      * @param  string  $linkId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
      * @return void
      */
     #[\Override]
-    public function confirm(SsoConnection $locked, string $linkId, ?string $application = null, ?RequestReference $reference = null): void
+    public function confirm(SsoConnection $locked, string $linkId, ClientContext $client, ?string $application = null, ?RequestReference $reference = null): void
     {
-        $this->inner->confirm($locked, $linkId, $application, $reference);
+        $this->inner->confirm($locked, $linkId, $client, $application, $reference);
     }
 
     /**
@@ -142,12 +147,13 @@ final class DelegatingLinkStorage implements LinkStorage
      * @param  string  $connectionId
      * @param  string  $tenantId
      * @param  string  $protocol
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
     #[\Override]
-    public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol): void
+    public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol, ClientContext $client): void
     {
-        $this->inner->suspend($linkId, $identity, $connectionId, $tenantId, $protocol);
+        $this->inner->suspend($linkId, $identity, $connectionId, $tenantId, $protocol, $client);
     }
 
     /**

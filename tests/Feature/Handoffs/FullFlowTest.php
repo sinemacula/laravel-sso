@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\ProtocolDriver;
@@ -28,6 +29,7 @@ use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\NoLinks;
@@ -43,6 +45,7 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\StartingDriver;
@@ -264,10 +267,11 @@ final class FullFlowTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 return ExampleLinks::resolution(($this->resolve)($result));
             }
@@ -284,7 +288,7 @@ final class FullFlowTest extends TestCase
     {
         /** @var \Illuminate\Foundation\Application $app */
         $app   = $this->app;
-        $start = $app->make(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id);
+        $start = $app->make(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id, Clients::browser());
 
         self::assertTrue($start->isStarted());
         self::assertNotNull($start->verifier);
@@ -304,7 +308,12 @@ final class FullFlowTest extends TestCase
         $app   = $this->app;
         $state = $this->starting->lastStart()->state->reveal();
 
-        return $app->make(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', 'state=' . rawurlencode($state), []));
+        return $app->make(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connection->id,
+            new CompletionRequest('GET', 'state=' . rawurlencode($state), []),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -323,7 +332,7 @@ final class FullFlowTest extends TestCase
         $redemption = $app->make(HandoffRedemption::class);
 
         return DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => $redemption->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier),
+            fn (): RedemptionResult => $redemption->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier, Clients::browser()),
         );
     }
 
@@ -409,12 +418,13 @@ final class FullFlowTest extends TestCase
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
              * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Protocols\Completion
              */
             #[\Override]
-            public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed): Completion
+            public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed, ClientContext $client): Completion
             {
-                return $this->verifying->complete($connection, $request, $consumed);
+                return $this->verifying->complete($connection, $request, $consumed, $client);
             }
 
             /**

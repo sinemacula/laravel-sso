@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 use Tests\Integration\Examples\Routes\Application\SignIns;
 use Tests\Integration\Examples\Routes\Application\User;
@@ -200,7 +201,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
      */
     private function setEvidencePolicy(array $policy): void
     {
-        self::assertTrue(app(EvidenceSettingsService::class)->set(self::TENANT, $this->connectionId, $policy)->isSucceeded());
+        self::assertTrue(app(EvidenceSettingsService::class)->set(self::TENANT, $this->connectionId, $policy, Clients::browser())->isSucceeded());
     }
 
     /**

@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
 use SineMacula\Laravel\Sso\Events\ReauthenticationCompleted;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
@@ -39,9 +40,11 @@ use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
  * redemption's transaction, it reaches listeners once that commits, and never
  * when it, or the caller's transaction around it, rolls back (SSO-10.5).
  *
- * It holds the projection and the dispatcher, both of which read the clock, the
- * request and the transaction from the container on each call, so nothing of
- * one redemption is kept for the next (SSO-11.2).
+ * Every method takes the client the action is taken for (`Http\ClientContext`),
+ * whose IP address and user agent the event's context carries; nothing reads
+ * the request being served. It holds the projection and the dispatcher, which
+ * read the clock and the transaction from the container on each call, so
+ * nothing of one redemption is kept for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,14 +74,15 @@ final readonly class HandoffEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function redeemed(StoredCode $code, Connection $connection, ?IdentityReference $identity = null): void
+    public function redeemed(StoredCode $code, Connection $connection, ClientContext $client, ?IdentityReference $identity = null): void
     {
-        $context = $this->context($code->purpose, $code, $connection, $identity);
+        $context = $this->context($code->purpose, $client, $code, $connection, $identity);
 
         $this->dispatcher->dispatch(new HandoffRedeemed($context));
 
@@ -95,13 +99,14 @@ final readonly class HandoffEvents
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function refused(FailureReason $reason, Purpose $purpose): void
+    public function refused(FailureReason $reason, Purpose $purpose, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new FlowFailed($this->context($purpose), Flow::REDEMPTION, $reason));
+        $this->dispatcher->dispatch(new FlowFailed($this->context($purpose, $client), Flow::REDEMPTION, $reason));
     }
 
     /**
@@ -110,20 +115,22 @@ final readonly class HandoffEvents
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function failed(FailureReason $reason, StoredCode $code, ?Connection $connection = null): void
+    public function failed(FailureReason $reason, StoredCode $code, ClientContext $client, ?Connection $connection = null): void
     {
-        $this->dispatcher->dispatch(new FlowFailed($this->context($code->purpose, $code, $connection), Flow::REDEMPTION, $reason));
+        $this->dispatcher->dispatch(new FlowFailed($this->context($code->purpose, $client, $code, $connection), Flow::REDEMPTION, $reason));
     }
 
     /**
      * The context of the redemption, with what it had established.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Models\HandoffCode  $code
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $established
@@ -131,11 +138,17 @@ final readonly class HandoffEvents
      *
      * @throws \InvalidArgumentException
      */
-    private function context(Purpose $purpose, ?StoredCode $code = null, ?Connection $connection = null, ?IdentityReference $established = null): EventContext
-    {
+    private function context(
+        Purpose $purpose,
+        ClientContext $client,
+        ?StoredCode $code = null,
+        ?Connection $connection = null,
+        ?IdentityReference $established = null,
+    ): EventContext {
         $identity = $established ?? self::identity($code);
 
         return $this->contexts->make(
+            $client,
             connectionId: $code?->connection_id,
             connectionTenantId: $connection?->tenant_id,
             protocol: $connection?->protocol,

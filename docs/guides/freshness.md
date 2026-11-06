@@ -165,12 +165,17 @@ $freshness = FakeFreshness::fresh()->staleFor(FreshnessOperation::CONNECTION_DEL
 
 $this->instance(Freshness::class, $freshness);
 
-self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId)->isSucceeded());
-self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId)->reason);
+self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId, $client)->isSucceeded());
+self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, $client)->reason);
 
 $freshness->assertAsked(FreshnessOperation::CONNECTION_ENABLE, 300);
 $freshness->assertAskedExactly([FreshnessOperation::CONNECTION_ENABLE, FreshnessOperation::CONNECTION_DELETE]);
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 | Method                                                                   | What it does                                                                                    |
 |--------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|

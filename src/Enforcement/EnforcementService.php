@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Enforcement\Enums\EnforcementStatus;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
@@ -158,13 +159,14 @@ final readonly class EnforcementService
      * @param  string  $tenantId
      * @param  bool  $enabled
      * @param  array<array-key, mixed>  $connectionIds
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function update(string $tenantId, bool $enabled, array $connectionIds, ?ActingIdentity $actor = null): EnforcementResult
+    public function update(string $tenantId, bool $enabled, array $connectionIds, ClientContext $client, ?ActingIdentity $actor = null): EnforcementResult
     {
         EnforcementFinder::assertTenant($tenantId);
 
@@ -185,7 +187,7 @@ final readonly class EnforcementService
         $unchanged = $refusal?->status === EnforcementStatus::UNCHANGED;
         $refusal   = $unchanged ? null : ($refusal ?? $this->staleRefusal());
 
-        return $refusal ?? $this->change($tenantId, $stored !== null, $enabled, $ids, $actor, !$unchanged);
+        return $refusal ?? $this->change($tenantId, $stored !== null, $enabled, $ids, $actor, $client, !$unchanged);
     }
 
     /**
@@ -268,15 +270,16 @@ final readonly class EnforcementService
      * @param  bool  $enabled
      * @param  array<int, string>  $ids
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  bool  $freshnessAsked
      * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    private function change(string $tenantId, bool $exists, bool $enabled, array $ids, ?ActingIdentity $actor, bool $freshnessAsked): EnforcementResult
+    private function change(string $tenantId, bool $exists, bool $enabled, array $ids, ?ActingIdentity $actor, ClientContext $client, bool $freshnessAsked): EnforcementResult
     {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $exists, $enabled, $ids, $actor, $freshnessAsked): EnforcementResult {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $exists, $enabled, $ids, $actor, $client, $freshnessAsked): EnforcementResult {
 
             $locked      = $this->locked($tenantId, $exists);
             $stored      = EnforcementLock::isConfigured($locked) ? $locked : null;
@@ -289,7 +292,7 @@ final readonly class EnforcementService
 
             $refusal ??= $freshnessAsked ? null : $this->staleRefusal();
 
-            return $refusal ?? $this->write($locked, $stored?->version, $enabled, $ids, $connections, $actor);
+            return $refusal ?? $this->write($locked, $stored?->version, $enabled, $ids, $connections, $actor, $client);
         }, self::ATTEMPTS);
     }
 
@@ -324,13 +327,21 @@ final readonly class EnforcementService
      * @param  array<int, string>  $ids
      * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $connections
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementResult
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    private function write(TenantEnforcement $locked, ?string $previousVersion, bool $enabled, array $ids, array $connections, ?ActingIdentity $actor): EnforcementResult
-    {
+    private function write(
+        TenantEnforcement $locked,
+        ?string $previousVersion,
+        bool $enabled,
+        array $ids,
+        array $connections,
+        ?ActingIdentity $actor,
+        ClientContext $client,
+    ): EnforcementResult {
         $locked->forceFill([
             'enabled'        => $enabled,
             'connection_ids' => EnforcementSummary::sorted($ids),
@@ -345,7 +356,7 @@ final readonly class EnforcementService
             $this->container->make(SessionRevocation::class)->revoke(RevocationScope::tenant($policy));
         }
 
-        $this->events->changed($locked, $previousVersion, $actor);
+        $this->events->changed($locked, $previousVersion, $actor, $client);
 
         return EnforcementResult::updated(EnforcementSummary::of($locked->tenant_id, $locked));
     }

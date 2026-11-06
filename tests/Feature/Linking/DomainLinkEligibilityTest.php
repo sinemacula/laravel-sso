@@ -72,6 +72,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\RecordsLockOrder;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
@@ -612,7 +613,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     {
         [$start, $completion] = $this->reserved();
 
-        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2'));
+        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
 
         self::assertSame(ScopeVerdict::WITHIN_TENANT, $this->scope->verdict);
 
@@ -1493,7 +1494,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     {
         $subject = new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT);
 
-        app(LinkStore::class)->create($this->connection, $subject, new IdentityReference('App\Models\User', 'owner'), LinkOrigin::PROVISIONING);
+        app(LinkStore::class)->create($this->connection, $subject, new IdentityReference('App\Models\User', 'owner'), LinkOrigin::PROVISIONING, Clients::browser());
 
         $start  = $this->start();
         $answer = $this->admit($this->complete(), $start);
@@ -2288,7 +2289,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     {
         $connection = Connection::query()->whereKey($this->connection->id)->sole();
         $lock       = RecheckLock::held('tenant-1', $connection->id, 'web', $connection, null, $this->domain);
-        $context    = new RedemptionContext($this->resultOf(self::STATE_REFERENCE), new HandoffBinding, $lock, $connection, null);
+        $context    = new RedemptionContext($this->resultOf(self::STATE_REFERENCE), new HandoffBinding, $lock, $connection, Clients::browser(), null);
 
         $this->expectExceptionObject(new \LogicException('A reservation is activated once it is judged.'));
 
@@ -2424,7 +2425,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
      */
     private static function arrivedState(string $connectionId): CompletionState
     {
-        return CompletionState::arrived($connectionId, new CompletionRequest('GET', '', []));
+        return CompletionState::arrived($connectionId, new CompletionRequest('GET', '', []), Clients::browser());
     }
 
     /**
@@ -2552,7 +2553,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
         $lock       = RecheckLock::held('tenant-1', $connection->id, 'web', $connection, null, $this->domain->refresh(), $this->person);
 
         return $connection->getConnection()->transaction(
-            static fn (): RecheckOutcome => app(ReservationActivation::class)->judge(new RedemptionContext($result, $binding, $lock, $connection, null)),
+            static fn (): RecheckOutcome => app(ReservationActivation::class)->judge(new RedemptionContext($result, $binding, $lock, $connection, Clients::browser(), null)),
         );
     }
 

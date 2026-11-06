@@ -5,11 +5,11 @@ declare(strict_types = 1);
 namespace Tests\Feature\Completion;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionEvents;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -117,10 +118,6 @@ final class CompletionEventSequenceTest extends TestCase
         $this->app?->instance(Linker::class, self::linker(fn (): ?IdentityReference => $this->linked));
 
         $this->linked = new IdentityReference('App\Models\User', '42');
-        $this->app?->instance('request', Request::create('/auth/sso/connections/x/callback', 'GET', server: [
-            'REMOTE_ADDR'     => self::IP,
-            'HTTP_USER_AGENT' => self::USER_AGENT,
-        ]));
 
         config()->set('sso.features.oidc', true);
         config()->set('sso.applications', ['web' => ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true]]);
@@ -329,7 +326,12 @@ final class CompletionEventSequenceTest extends TestCase
     {
         $oidc = $this->makeConnection(['protocol' => 'oidc', 'enabled' => true]);
 
-        $result = $this->service()->assertionConsumerService($oidc->id, new CompletionRequest('POST', '', ['state' => self::STATE]));
+        $result = $this->service()->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $oidc->id,
+            new CompletionRequest('POST', '', ['state' => self::STATE]),
+            self::client(),
+        );
 
         self::assertTrue($result->isRejected());
 
@@ -372,7 +374,12 @@ final class CompletionEventSequenceTest extends TestCase
 
         $this->linked = null;
 
-        $result = $this->service()->assertionConsumerService($this->connection->id, new CompletionRequest('POST', '', ['state' => self::STATE]));
+        $result = $this->service()->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $this->connection->id,
+            new CompletionRequest('POST', '', ['state' => self::STATE]),
+            self::client(),
+        );
 
         self::assertTrue($result->isFailed());
 
@@ -531,7 +538,12 @@ final class CompletionEventSequenceTest extends TestCase
      */
     private function completeAtCallback(string $state = self::STATE, ?string $connectionId = null, string $method = 'GET'): CompletionResult
     {
-        return $this->service()->callback($connectionId ?? $this->connection->id, new CompletionRequest($method, 'state=' . $state, []));
+        return $this->service()->complete(
+            CompletionEndpoint::CALLBACK,
+            $connectionId ?? $this->connection->id,
+            new CompletionRequest($method, 'state=' . $state, []),
+            self::client(),
+        );
     }
 
     /**
@@ -589,15 +601,27 @@ final class CompletionEventSequenceTest extends TestCase
              * What the closure answers.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 
                 return ExampleLinks::resolution(($this->resolve)());
             }
         };
+    }
+
+    /**
+     * The client every action of the test is taken for: the browser's IP
+     * address and user agent, which its events carry.
+     *
+     * @return \SineMacula\Laravel\Sso\Http\ClientContext
+     */
+    private static function client(): ClientContext
+    {
+        return new ClientContext(self::IP, self::USER_AGENT);
     }
 }

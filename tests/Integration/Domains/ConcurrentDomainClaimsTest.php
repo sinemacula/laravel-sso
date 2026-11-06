@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -128,7 +129,9 @@ final class ConcurrentDomainClaimsTest extends TestCase
     {
         $this->claimForEveryConnection();
 
-        $outcomes = $this->race(fn (DomainService $domains, Connection $connection): DomainResult => $domains->verify($connection->tenant_id, $connection->id, self::DOMAIN));
+        $outcomes = $this->race(
+            fn (DomainService $domains, Connection $connection): DomainResult => $domains->verify($connection->tenant_id, $connection->id, self::DOMAIN, Clients::browser()),
+        );
 
         $this->assertExactlyOneVerified($outcomes);
     }
@@ -143,7 +146,10 @@ final class ConcurrentDomainClaimsTest extends TestCase
     {
         $this->claimForEveryConnection();
 
-        $outcomes = $this->race(fn (DomainService $domains, Connection $connection): DomainResult => $domains->verify($connection->tenant_id, $connection->id, self::DOMAIN), true);
+        $outcomes = $this->race(
+            fn (DomainService $domains, Connection $connection): DomainResult => $domains->verify($connection->tenant_id, $connection->id, self::DOMAIN, Clients::browser()),
+            true,
+        );
 
         $this->assertExactlyOneVerified($outcomes);
     }
@@ -159,7 +165,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
     {
         $this->claimForOneConnection();
 
-        $outcomes = $this->race(fn (DomainService $domains): DomainResult => $domains->verify('tenant-0', $this->connections[0]->id, self::DOMAIN));
+        $outcomes = $this->race(fn (DomainService $domains): DomainResult => $domains->verify('tenant-0', $this->connections[0]->id, self::DOMAIN, Clients::browser()));
 
         $this->assertVerifiedOnceAndOtherwiseUnchanged($outcomes);
     }
@@ -174,7 +180,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
     {
         $this->claimForOneConnection();
 
-        $outcomes = $this->race(fn (DomainService $domains): DomainResult => $domains->verify('tenant-0', $this->connections[0]->id, self::DOMAIN), true);
+        $outcomes = $this->race(fn (DomainService $domains): DomainResult => $domains->verify('tenant-0', $this->connections[0]->id, self::DOMAIN, Clients::browser()), true);
 
         $this->assertVerifiedOnceAndOtherwiseUnchanged($outcomes);
     }
@@ -187,7 +193,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
      */
     public function testExactlyOneOfTheRacingClaimsByOneConnectionClaimsTheDomain(): void
     {
-        $outcomes = $this->race(fn (DomainService $domains): DomainResult => $domains->claim('tenant-0', $this->connections[0]->id, self::DOMAIN));
+        $outcomes = $this->race(fn (DomainService $domains): DomainResult => $domains->claim('tenant-0', $this->connections[0]->id, self::DOMAIN, Clients::browser()));
 
         $this->assertExactlyOneClaimed($outcomes);
     }
@@ -200,7 +206,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
      */
     public function testExactlyOneOfTheRacingClaimsInsideACallersTransactionClaimsTheDomain(): void
     {
-        $outcomes = $this->race(fn (DomainService $domains): DomainResult => $domains->claim('tenant-0', $this->connections[0]->id, self::DOMAIN), true);
+        $outcomes = $this->race(fn (DomainService $domains): DomainResult => $domains->claim('tenant-0', $this->connections[0]->id, self::DOMAIN, Clients::browser()), true);
 
         $this->assertExactlyOneClaimed($outcomes);
     }
@@ -218,7 +224,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
 
         foreach ($this->connections as $connection) {
 
-            $result = $this->domains()->claim($connection->tenant_id, $connection->id, self::DOMAIN);
+            $result = $this->domains()->claim($connection->tenant_id, $connection->id, self::DOMAIN, Clients::browser());
 
             self::assertSame(DomainStatus::CLAIMED, $result->status);
 
@@ -243,7 +249,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
     private function claimForOneConnection(): void
     {
         $connection = $this->connections[0];
-        $result     = $this->domains()->claim($connection->tenant_id, $connection->id, self::DOMAIN);
+        $result     = $this->domains()->claim($connection->tenant_id, $connection->id, self::DOMAIN, Clients::browser());
 
         self::assertSame(DomainStatus::CLAIMED, $result->status);
 

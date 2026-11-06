@@ -48,6 +48,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
@@ -312,7 +313,7 @@ final class RelyingPartyDescriptionTest extends TestCase
         self::assertNotSame($kid, $secondKid);
         self::assertSame([$kid, $secondKid], self::kidsOf(self::decoded($this->describe($connection))));
 
-        $promoted = app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $second->id);
+        $promoted = app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $second->id, Clients::browser());
 
         self::assertSame(KeyState::RETIRING, $promoted->previous?->state);
 
@@ -320,7 +321,7 @@ final class RelyingPartyDescriptionTest extends TestCase
 
         self::assertSame([$secondKid], self::kidsOf(self::decoded($afterPromotion)));
 
-        self::assertTrue(app(KeyService::class)->retire(self::TENANT, $connection->id, $first->id)->isSucceeded());
+        self::assertTrue(app(KeyService::class)->retire(self::TENANT, $connection->id, $first->id, Clients::browser())->isSucceeded());
 
         self::assertSame($afterPromotion->body, $this->describe($connection)->body);
     }
@@ -767,12 +768,12 @@ final class RelyingPartyDescriptionTest extends TestCase
 
         self::assertSame([self::kidOf($first), self::kidOf($second)], $kids());
 
-        $promoted = app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $second->id);
+        $promoted = app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $second->id, Clients::browser());
 
         self::assertSame(KeyState::RETIRING, $promoted->previous?->state);
         self::assertSame([self::kidOf($second)], $kids());
 
-        self::assertTrue(app(KeyService::class)->retire(self::TENANT, $connection->id, $first->id)->isSucceeded());
+        self::assertTrue(app(KeyService::class)->retire(self::TENANT, $connection->id, $first->id, Clients::browser())->isSucceeded());
 
         self::assertSame([self::kidOf($second)], $kids());
     }
@@ -1032,7 +1033,7 @@ final class RelyingPartyDescriptionTest extends TestCase
 
         self::assertSame(401, $this->exchange($provider, $connection));
 
-        app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $next->id);
+        app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $next->id, Clients::browser());
 
         self::assertSame(200, $this->exchange($provider, $connection));
     }
@@ -1127,7 +1128,7 @@ final class RelyingPartyDescriptionTest extends TestCase
      */
     private function addKey(Connection $connection, KeyType $type): KeySummary
     {
-        $key = app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, $type)->key;
+        $key = app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), $type)->key;
 
         self::assertNotNull($key);
 

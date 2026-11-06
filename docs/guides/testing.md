@@ -87,7 +87,7 @@ certificate trusted for SAML. The test case then enables it with `ConnectionServ
 <!-- snippet: tests/Integration/Examples/ExampleTestCase.php#saml-connection -->
 
 ```php
-$created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example SAML', [
+$created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example SAML', $client, [
     'idp_entity_id' => $idp->entityId,
     'sso_url'       => FakeSamlIdentityProvider::SSO_URL,
     ...$settings,
@@ -95,15 +95,19 @@ $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example
 
 $connectionId = (string) $created->connection?->id;
 
-static::assertTrue(app(KeyService::class)->trustCertificate(self::TENANT, $connectionId, $idp->certificate())->isSucceeded());
+static::assertTrue(app(KeyService::class)->trustCertificate(self::TENANT, $connectionId, $idp->certificate(), $client)->isSucceeded());
 ```
+
+`$client` is the `Http\ClientContext` the test acts for, as a controller builds it from its request:
+`new ClientContext('203.0.113.7', 'Example/1.0')`, say, or `new ClientContext(null, null)` for work with no client.
+Every call that counts an attempt or reports an event takes one, and each event carries its IP address and user agent.
 
 <!-- snippet: tests/Integration/Examples/ExampleTestCase.php#oidc-connection -->
 
 ```php
 $provider->serve($this->fetcher);
 
-$created = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Example OIDC', [
+$created = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Example OIDC', $client, [
     'issuer'                 => $provider->issuer,
     'authorization_endpoint' => $provider->endpoint('authorization'),
     'token_endpoint'         => $provider->endpoint('token'),
@@ -134,7 +138,7 @@ as the caller your application has authenticated:
 <!-- snippet: tests/Integration/Examples/ExampleTestCase.php#redeem-link -->
 
 ```php
-return app(HandoffRedemption::class)->redeem(Purpose::LINK, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start), $caller);
+return app(HandoffRedemption::class)->redeem(Purpose::LINK, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start), $client, $caller);
 ```
 
 A `sign_in` is admitted inside your transaction on the package's storage connection, and the session is written in that
@@ -143,9 +147,9 @@ same transaction (see [Redeeming a handoff](redeeming-a-handoff.md)):
 <!-- snippet: tests/Integration/Examples/ExampleTestCase.php#admit-sign-in -->
 
 ```php
-return DB::connection(StorageConnection::name())->transaction(function () use ($connectionId, $redirect, $start, $sessionId): RedemptionResult {
+return DB::connection(StorageConnection::name())->transaction(function () use ($connectionId, $redirect, $start, $sessionId, $client): RedemptionResult {
 
-    $result = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start));
+    $result = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start), $client);
 
     if ($result->isRedeemed() && $result->linkedIdentity !== null) {
         // As fresh as the provider says, or now when it said nothing
@@ -182,7 +186,12 @@ self::assertSame(FakeSamlIdentityProvider::SSO_URL, $request->destination);
 
 // The browser posts the response, with the RelayState, to the assertion
 // consumer service
-$result   = app(CompletionService::class)->assertionConsumerService($this->connectionId, $response->completionRequest($request->relayState));
+$result = app(CompletionService::class)->complete(
+    CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+    $this->connectionId,
+    $response->completionRequest($request->relayState),
+    $client,
+);
 $redirect = HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'POST'));
 
 // The client redeems only a code whose reference is the one it started
@@ -300,7 +309,7 @@ $metadata    = app(ServiceProviderDescriptions::class)->describe(self::TENANT, $
 $sp          = FakeServiceProvider::fromMetadata((string) $metadata->body);
 $unsolicited = $this->idp->response($sp->entityId, $sp->assertionConsumerService, $this->clock->now());
 
-$result   = app(CompletionService::class)->assertionConsumerService($this->connectionId, $unsolicited->completionRequest());
+$result   = app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connectionId, $unsolicited->completionRequest(), $client);
 $location = app(CompletionResponses::class)->from($result, 'POST')->location();
 
 self::assertTrue($result->isReinitiated());
@@ -328,9 +337,9 @@ The response is recorded once it is re-initiated, so the same response posted ag
 ```php
 $completions = app(CompletionService::class);
 
-self::assertTrue($completions->assertionConsumerService($this->connectionId, $unsolicited->completionRequest())->isReinitiated());
+self::assertTrue($completions->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connectionId, $unsolicited->completionRequest(), $client)->isReinitiated());
 
-$replayed = $completions->assertionConsumerService($this->connectionId, $unsolicited->completionRequest());
+$replayed = $completions->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connectionId, $unsolicited->completionRequest(), $client);
 
 self::assertTrue($replayed->isRejected());
 self::assertSame(FailureReason::REPLAYED, $replayed->reason);
@@ -356,7 +365,7 @@ $start = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
 $grant = $this->provider->authorize($start);
 
 // The browser arrives at the callback with the grant's query
-$result   = app(CompletionService::class)->callback($this->connectionId, new CompletionRequest('GET', $grant->query(), []));
+$result   = app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $this->connectionId, new CompletionRequest('GET', $grant->query(), []), $client);
 $redirect = HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
 
 self::assertSame($start->reference?->value, $redirect->reference);
@@ -421,7 +430,7 @@ $grant = $this->provider->authorize($start);
 
 self::assertSame(['login', '0'], [$grant->parameter('prompt'), $grant->parameter('max_age')]);
 
-$result   = app(CompletionService::class)->callback($this->connectionId, new CompletionRequest('GET', $grant->query(), []));
+$result   = app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $this->connectionId, new CompletionRequest('GET', $grant->query(), []), $client);
 $redirect = HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
 $renewed  = $this->admitReauthentication($this->connectionId, $redirect, $start);
 
@@ -489,7 +498,7 @@ it (`publishes()`), with no record (`absent()`), or with a failed lookup (`faili
 
 ```php
 $domains = app(DomainService::class);
-$claimed = $domains->claim(self::TENANT, $this->connectionId, 'example.com')->domain;
+$claimed = $domains->claim(self::TENANT, $this->connectionId, 'example.com', $client)->domain;
 
 self::assertNotNull($claimed);
 self::assertSame('_sso-verification.example.com', $claimed->recordName);
@@ -497,12 +506,12 @@ self::assertSame('_sso-verification.example.com', $claimed->recordName);
 // The tenant has not published the record yet
 $this->dns->absent($claimed->recordName);
 
-self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify(self::TENANT, $this->connectionId, 'example.com')->reason);
+self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify(self::TENANT, $this->connectionId, 'example.com', $client)->reason);
 
 // Now it has
 $this->dns->publishes($claimed);
 
-self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, 'example.com')->status);
+self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, 'example.com', $client)->status);
 
 $this->dns->assertLookedUp($claimed->recordName, 2);
 ```
@@ -530,7 +539,7 @@ $changed = app(LinkingPolicyService::class)->change(self::TENANT, $this->connect
     'enabled'      => true,
     'issuer_class' => 'single_organization',
     'acknowledged' => true,
-]);
+], $client);
 
 self::assertTrue($changed->isChanged());
 ```
@@ -633,10 +642,10 @@ $this->fetcher->assertFetched('https://idp.example.test/metadata', FetchPurpose:
 // The administrator accepts the proposal, having compared the
 // fingerprint
 $connections  = app(ConnectionService::class);
-$connectionId = (string) $connections->create(self::TENANT, 'saml2', 'Imported SAML', $proposed->settings())->connection?->id;
+$connectionId = (string) $connections->create(self::TENANT, 'saml2', 'Imported SAML', $client, $proposed->settings())->connection?->id;
 
-app(KeyService::class)->trustCertificate(self::TENANT, $connectionId, $proposed->signingCertificates()[0]['certificate']);
-$connections->enable(self::TENANT, $connectionId);
+app(KeyService::class)->trustCertificate(self::TENANT, $connectionId, $proposed->signingCertificates()[0]['certificate'], $client);
+$connections->enable(self::TENANT, $connectionId, $client);
 
 self::assertTrue($connections->get(self::TENANT, $connectionId)?->usable);
 ```
@@ -663,7 +672,7 @@ proposal with the fetch it came from (see [Setting up an OIDC connection](oidc-c
 $provider = (new FakeOpenIdProvider(clock: $this->clock))->serve($this->fetcher);
 
 $connections  = app(ConnectionService::class);
-$connectionId = (string) $connections->create(self::TENANT, 'oidc', 'Discovered OIDC', [
+$connectionId = (string) $connections->create(self::TENANT, 'oidc', 'Discovered OIDC', $client, [
     'client_id'     => FakeOpenIdProvider::CLIENT_ID,
     'client_secret' => FakeOpenIdProvider::CLIENT_SECRET,
 ])->connection?->id;
@@ -677,8 +686,8 @@ self::assertSame($provider->endpoint('jwks'), $proposed->settings()['jwks_uri'])
 $this->fetcher->assertFetched($provider->discoveryUrl(), FetchPurpose::DISCOVERY);
 $this->fetcher->assertFetched($provider->endpoint('jwks'), FetchPurpose::JWKS);
 
-app(ImportSaver::class)->save(self::TENANT, $connectionId, ['settings' => $proposed->settings()], $proposed->fetch());
-$connections->enable(self::TENANT, $connectionId);
+app(ImportSaver::class)->save(self::TENANT, $connectionId, ['settings' => $proposed->settings()], $proposed->fetch(), $client);
+$connections->enable(self::TENANT, $connectionId, $client);
 
 self::assertTrue($connections->get(self::TENANT, $connectionId)?->usable);
 ```
@@ -717,12 +726,12 @@ app(DiscoveryImporter::class)->import(self::TENANT, 'https://unknown.example.tes
 <!-- snippet: tests/Integration/Examples/FakesExampleTest.php#resolver-unexpected -->
 
 ```php
-app(DomainService::class)->claim(self::TENANT, $connectionId, 'example.com');
+app(DomainService::class)->claim(self::TENANT, $connectionId, 'example.com', $client);
 
 $this->expectException(\LogicException::class);
 $this->expectExceptionMessage('The fake DNS resolver has no answer for [_sso-verification.example.com].');
 
-app(DomainService::class)->verify(self::TENANT, $connectionId, 'example.com');
+app(DomainService::class)->verify(self::TENANT, $connectionId, 'example.com', $client);
 ```
 
 ### The fake fetcher proves nothing of the real transport
@@ -792,7 +801,12 @@ $request = $this->idp->receive($start);
 
 // Made at Laravel's time, a day after the package's clock
 $response = $this->idp->respondTo($request);
-$result   = app(CompletionService::class)->assertionConsumerService($this->connectionId, $response->completionRequest($request->relayState));
+$result   = app(CompletionService::class)->complete(
+    CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+    $this->connectionId,
+    $response->completionRequest($request->relayState),
+    $client,
+);
 
 self::assertSame(FailureReason::ASSERTION_EXPIRED, $result->reason);
 

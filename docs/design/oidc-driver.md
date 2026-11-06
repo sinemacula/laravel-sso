@@ -31,8 +31,10 @@ relying party's description in `oidc-relying-party.md`.
   - `correlate()`: `CallbackCorrelator`, which reads the callback's raw query and validates nothing
     (`oidc-callback.md`);
   - `complete()`: `CallbackCompletion`, which checks the callback's `iss` and its code or error, sends the token request
-    and answers a `Protocols\Oidc\Tokens\TokenResponse`, then asks `IdTokenValidator` for an `IdTokenValidation` and
-    `ClaimsAssembler` for the `Protocols\Completion` (`oidc-callback.md`, `oidc-id-tokens.md`, `oidc-claims.md`);
+    (the client the completion was given threaded through to `Metadata\ProviderKeys::select()`, so a JWKS refetch
+    reports with it) and answers a `Protocols\Oidc\Tokens\TokenResponse`, then asks `IdTokenValidator` for an
+    `IdTokenValidation` and `ClaimsAssembler` for the `Protocols\Completion` (`oidc-callback.md`, `oidc-id-tokens.md`,
+    `oidc-claims.md`);
   - `describe()`, `describeWithInlineKeys()` and `publicKeys()`: `RelyingPartyDescription` (`oidc-relying-party.md`).
 - A connection's own key and its `client_assertion_algorithm` always fit: `ConnectionService` refuses a change of the
   setting that its current or next key cannot sign under, and `KeyService` a key that does not fit the setting, each

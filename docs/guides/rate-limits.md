@@ -160,17 +160,20 @@ as a hint that tells a person typing their email address whether their organisat
 <!-- snippet: tests/Integration/Examples/RateLimits/sign-in-hint.php#attempt-limiter -->
 ```php
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 $result = app(AttemptLimiter::class)->attempt(
-    AttemptSubject::authorizationRequest($request->ip(), $emailDomain),
+    AttemptSubject::authorizationRequest(ClientContext::fromRequest($request), $emailDomain),
 );
 ```
 
 Each flow has its own constructor (`authorizationRequest`, `completion`, `redemption`, `metadata`, `domainCheck`),
-naming only what that flow counts. Pass the IP address and the email domain as received; the limiter counts each in
-its canonical form. A `null` IP address (a console command) or email domain (no discovery) is not counted. The result is
-allowed, and counted, or rate limited with `retryAfter`, and counted against nothing; answer it as above.
+naming only what that flow counts. The flows counted per IP address take the client as an `Http\ClientContext`, built
+with `ClientContext::fromRequest($request)`, which keeps the IP address only when it is a valid IPv4 or IPv6 address;
+pass the email domain as received. The limiter counts each in its canonical form. A client with no IP address
+(`new ClientContext(null, null)`, from a console command) or no email domain (no discovery) is not counted for it. The
+result is allowed, and counted, or rate limited with `retryAfter`, and counted against nothing; answer it as above.
 
 ## Binding another limiter
 

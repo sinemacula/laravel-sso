@@ -10,11 +10,12 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 
 ## Invariants
 
-- `sso:domains:recheck` (`Console\RecheckDomainsCommand`) runs `Domains\DomainRechecker::recheckAll()`, which answers a
-  `Domains\RecheckReport`: a `Domains\RecheckEntry` per claim it selected, in the order it checked them (the claim's
-  id, its connection's id, the domain, a `Domains\Enums\RecheckOutcome` and, while a record failure is pending, when the
-  domain lapses), with `count()` per outcome, `hasLookupFailures()` and `hasResolverThrows()`. Neither holds a token or
-  a record's value; both encode with snake_case keys and times in UTC.
+- `sso:domains:recheck` (`Console\RecheckDomainsCommand`) runs `Domains\DomainRechecker::recheckAll()` for no client
+  (`new ClientContext(null, null)`, built by the command, so its events carry no IP address or user agent), which
+  answers a `Domains\RecheckReport`: a `Domains\RecheckEntry` per claim it selected, in the order it checked them (the
+  claim's id, its connection's id, the domain, a `Domains\Enums\RecheckOutcome` and, while a record failure is pending,
+  when the domain lapses), with `count()` per outcome, `hasLookupFailures()` and `hasResolverThrows()`. Neither holds a
+  token or a record's value; both encode with snake_case keys and times in UTC.
 - Only verified claims are rechecked: a pending or lapsed claim is never selected and never leased. The claims are read
   on the write connection in chunks of `CHUNK_SIZE` (100), ordered by `last_successful_check_at` then `id` and paged by
   keyset on that pair (the `recheck_index`), never by offset and never all at once. A run selects only claims whose

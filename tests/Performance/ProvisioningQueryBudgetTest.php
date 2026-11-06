@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
@@ -27,6 +28,7 @@ use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningResult;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -240,7 +242,7 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
         $subject = new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT);
 
         $this->measureOnOffer(3, 0, ProvisioningStatus::SUBJECT_ALREADY_LINKED, function () use ($subject): void {
-            app(LinkStore::class)->create($this->connection, $subject, new IdentityReference('App\Models\User', '43'), LinkOrigin::LINK_PURPOSE);
+            app(LinkStore::class)->create($this->connection, $subject, new IdentityReference('App\Models\User', '43'), LinkOrigin::LINK_PURPOSE, Clients::browser());
         });
 
         $this->completeAtCallback(self::STATE);
@@ -255,7 +257,7 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
      */
     public function testALimitReachedStopsAtTheIdentitysLinks(): void
     {
-        app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, 'another-subject'), $this->person, LinkOrigin::LINK_PURPOSE);
+        app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, 'another-subject'), $this->person, LinkOrigin::LINK_PURPOSE, Clients::browser());
 
         $this->measureOnOffer(5, 0, ProvisioningStatus::LINK_LIMIT_REACHED);
 
@@ -275,9 +277,9 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
 
             $helper = app(ProvisioningHelper::class);
 
-            $helper->link($event->grant, $event->result, $this->person);
+            $helper->link($event->grant, $event->result, $this->person, Clients::browser());
 
-            $answer = $this->assertQueryBudget(0, 0, fn (): ProvisioningResult => $helper->link($event->grant, $event->result, $this->person));
+            $answer = $this->assertQueryBudget(0, 0, fn (): ProvisioningResult => $helper->link($event->grant, $event->result, $this->person, Clients::browser()));
 
             self::assertSame(ProvisioningStatus::GRANT_INVALID, $answer->status);
 
@@ -297,7 +299,7 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
     private function provisionOnOffer(): void
     {
         Event::listen(ResultUnlinked::class, function (ResultUnlinked $event): void {
-            app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person);
+            app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person, Clients::browser());
         });
     }
 
@@ -319,7 +321,11 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
                 $arrange();
             }
 
-            $answer = $this->assertQueryBudget($reads, $writes, fn (): ProvisioningResult => app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person));
+            $answer = $this->assertQueryBudget(
+                $reads,
+                $writes,
+                fn (): ProvisioningResult => app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person, Clients::browser()),
+            );
 
             self::assertSame($status, $answer->status);
 
@@ -338,6 +344,11 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', 'state=' . $state, []));
+        return $app->make(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connection->id,
+            new CompletionRequest('GET', 'state=' . $state, []),
+            Clients::browser(),
+        );
     }
 }

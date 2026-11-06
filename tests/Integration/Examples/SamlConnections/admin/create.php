@@ -16,6 +16,8 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\SamlConnections;
 
+use Tests\Integration\Examples\Clients;
+
 /**
  * @var array{
  *     tenant: \Tests\Integration\Examples\SamlConnections\Tenant,
@@ -25,6 +27,7 @@ namespace Tests\Integration\Examples\SamlConnections;
 $tenant = $input['tenant'];
 $actor  = $input['actor'];
 
+$client = Clients::browser();
 // @snippet-start saml-connections-create
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 
@@ -32,6 +35,7 @@ $result = app(ConnectionService::class)->create(
     tenantId: $tenant->id,
     protocol: 'saml2',
     displayName: 'Acme Entra ID',
+    client: $client,
     settings: [
         'idp_entity_id'  => 'https://sts.windows.net/0000-1111/',
         'sso_url'        => 'https://login.microsoftonline.com/0000-1111/saml2',

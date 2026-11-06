@@ -27,7 +27,12 @@ Route::get('/auth/sso/connections/{connection}/callback', [SsoCompletionControll
  */
 public function callback(Request $request, string $connection): CompletionResponse
 {
-    $result = $this->completions->callback($connection, CompletionRequest::fromRequest($request));
+    $result = $this->completions->complete(
+        CompletionEndpoint::CALLBACK,
+        $connection,
+        CompletionRequest::fromRequest($request),
+        ClientContext::fromRequest($request),
+    );
 
     return $this->responses->from($result, $request->getMethod());
 }
@@ -109,7 +114,7 @@ $connections->update($tenantId, $connectionId, ['settings' => [
     'client_id'             => 'the-client-id',
     'client_authentication' => 'client_secret_post',
     'client_secret'         => $secret,
-]]);
+]], $client);
 ```
 
 The secret is encrypted at rest and never shown again. Rotating it is a trust change: flows in flight through the

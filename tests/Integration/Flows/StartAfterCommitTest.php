@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
@@ -173,6 +174,6 @@ final class StartAfterCommitTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(AuthorizationRequestService::class)->start($application, Purpose::SIGN_IN, $this->connection->id);
+        return $app->make(AuthorizationRequestService::class)->start($application, Purpose::SIGN_IN, $this->connection->id, Clients::browser());
     }
 }

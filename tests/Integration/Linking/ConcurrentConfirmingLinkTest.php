@@ -37,6 +37,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -511,7 +512,7 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
         $this->stopInTheScopeUntil('acquiring');
 
         $activation = fn (): string => self::outcomeOf(DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $reservedIn, $signIn[1], $signIn[2]),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $reservedIn, $signIn[1], $signIn[2], Clients::browser()),
         ));
 
         $redeemer = $this->linkRedeemer($link);
@@ -662,7 +663,7 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
      */
     private function hold(IdentityReference $identity, LinkOrigin $origin): Link
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $identity, $origin);
+        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $identity, $origin, Clients::browser());
 
         self::assertTrue($creation->isCreated());
 
@@ -681,7 +682,9 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     {
         $caller ??= $this->person;
 
-        return fn (): string => self::outcomeOf(app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $flow[1], $flow[2], $caller));
+        return fn (): string => self::outcomeOf(
+            app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $flow[1], $flow[2], Clients::browser(), $caller),
+        );
     }
 
     /**
@@ -694,7 +697,7 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     private function signInRedeemer(array $flow): \Closure
     {
         return fn (): string => self::outcomeOf(DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $flow[1], $flow[2]),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $flow[1], $flow[2], Clients::browser()),
         ));
     }
 
@@ -708,7 +711,7 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     {
         return function () use ($linkId): string {
 
-            $removal = app(LinkService::class)->remove($this->person, $linkId);
+            $removal = app(LinkService::class)->remove($this->person, $linkId, Clients::browser());
 
             return $removal->isRemoved() ? 'removed' : 'refused:' . $removal->reason?->value;
         };
@@ -721,7 +724,7 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
      */
     private function disabler(): \Closure
     {
-        return fn (): string => app(ConnectionLifecycle::class)->disable('tenant-1', $this->connection->id)->status->value;
+        return fn (): string => app(ConnectionLifecycle::class)->disable('tenant-1', $this->connection->id, Clients::browser())->status->value;
     }
 
     /**
@@ -733,7 +736,9 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
      */
     private function widener(): \Closure
     {
-        return fn (): string => 'widened:' . DB::connection(StorageConnection::name())->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2'));
+        return fn (): string => 'widened:' . DB::connection(StorageConnection::name())->transaction(
+            fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()),
+        );
     }
 
     /**

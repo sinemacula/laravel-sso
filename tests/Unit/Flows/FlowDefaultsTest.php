@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\NoLinks;
 use SineMacula\Laravel\Sso\Links\OneLinkPerConnection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\Fixtures\Results\ExampleResults;
 
@@ -62,7 +63,7 @@ final class FlowDefaultsTest extends TestCase
      */
     public function testNothingIsLinkedAndOneLinkIsAllowed(): void
     {
-        self::assertTrue((new NoLinks)->resolve(ExampleResults::full())->isAbsent());
+        self::assertTrue((new NoLinks)->resolve(ExampleResults::full(), Clients::browser())->isAbsent());
         self::assertSame(1, (new OneLinkPerConnection)->maxLinks(new IdentityReference('user', '1'), new ExampleConnection));
         self::assertSame(1, OneLinkPerConnection::MAX_LINKS);
         self::assertSame(['active', 'reserved', 'suspended'], array_column(LinkState::cases(), 'value'));
@@ -77,7 +78,7 @@ final class FlowDefaultsTest extends TestCase
      */
     public function testProvisioningPassesOnAStateNotUnlinked(): void
     {
-        $state = CompletionState::arrived('01jbexampleconnection00000', new CompletionRequest('POST', '', []))->withResult(ExampleResults::full());
+        $state = CompletionState::arrived('01jbexampleconnection00000', new CompletionRequest('POST', '', []), Clients::browser())->withResult(ExampleResults::full());
 
         $outcome = (new Provisioning)->run($state);
 

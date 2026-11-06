@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeServiceProvider;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -103,7 +104,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
      */
     public function testAnOidcConnectionIsDescribedByItsDriver(): void
     {
-        $connectionId = (string) app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Acme OIDC')->connection?->id;
+        $connectionId = (string) app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Acme OIDC', Clients::browser())->connection?->id;
 
         $described = self::described(self::TENANT, $connectionId);
         $metadata  = self::decoded($described['metadata']);
@@ -231,10 +232,10 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
         $connections = app(ConnectionService::class);
 
         $connectionIds = [
-            (string) $connections->create(self::TENANT, 'oidc', 'Client secret OIDC')->connection?->id,
+            (string) $connections->create(self::TENANT, 'oidc', 'Client secret OIDC', Clients::browser())->connection?->id,
             $this->samlConnection(),
             self::UNKNOWN,
-            (string) $connections->create(self::TENANT, 'oidc', 'Keyless OIDC', ['client_authentication' => 'private_key_jwt'])->connection?->id,
+            (string) $connections->create(self::TENANT, 'oidc', 'Keyless OIDC', Clients::browser(), ['client_authentication' => 'private_key_jwt'])->connection?->id,
         ];
 
         foreach ($connectionIds as $connectionId) {
@@ -250,7 +251,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
      */
     private function samlConnection(): string
     {
-        $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Acme SAML');
+        $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Acme SAML', Clients::browser());
 
         self::assertNotNull($created->connection);
 
@@ -265,10 +266,10 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
      */
     private function privateKeyJwtConnection(): string
     {
-        $created = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Acme OIDC', ['client_authentication' => 'private_key_jwt']);
+        $created = app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Acme OIDC', Clients::browser(), ['client_authentication' => 'private_key_jwt']);
 
         self::assertNotNull($created->connection);
-        self::assertTrue(app(KeyService::class)->addNext(self::TENANT, $created->connection->id, KeyUse::CLIENT_ASSERTION, KeyType::EC)->isSucceeded());
+        self::assertTrue(app(KeyService::class)->addNext(self::TENANT, $created->connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC)->isSucceeded());
 
         return $created->connection->id;
     }

@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\ReauthenticationBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\SignInBranch;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\IdentityLock;
 use SineMacula\Laravel\Sso\Linking\LinkConfirmationGate;
@@ -108,7 +109,9 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * checked, since a rule may change between the two. `discardReservation()`
  * removes the reservation of a code refused after it was consumed, by its
  * identity and handoff reference and never merely by the subject, in the same
- * transaction.
+ * transaction. `recheck()` and `admit()` take the client the redemption is made
+ * for (`Http\ClientContext`), which every event of the purpose's writes, and of
+ * a link the judgement suspends, carries.
  *
  * `acknowledgeSignIn()` records, on the locked connection, that a `sign_in`
  * through it has been redeemed (SSO-4.3), which enforcement needs before it can
@@ -213,6 +216,7 @@ final readonly class HandoffRecheck
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
      *
@@ -220,9 +224,9 @@ final readonly class HandoffRecheck
      * @throws \LogicException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    public function recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ?IdentityReference $caller = null): RecheckOutcome
+    public function recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?IdentityReference $caller = null): RecheckOutcome
     {
-        return $this->judged($result, $binding, $lock, $caller)->outcome;
+        return $this->judged($result, $binding, $lock, $client, $caller)->outcome;
     }
 
     /**
@@ -234,6 +238,7 @@ final readonly class HandoffRecheck
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Admission
      *
@@ -241,15 +246,15 @@ final readonly class HandoffRecheck
      * @throws \LogicException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    public function admit(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ?IdentityReference $caller = null): Admission
+    public function admit(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?IdentityReference $caller = null): Admission
     {
-        $judgement = $this->judged($result, $binding, $lock, $caller);
+        $judgement = $this->judged($result, $binding, $lock, $client, $caller);
 
         if ($judgement->outcome !== RecheckOutcome::PASSED || $lock->connection === null) {
             return Admission::refused($judgement->outcome);
         }
 
-        $context = new RedemptionContext($result, $binding, $lock, $lock->connection, $caller, $judgement->linkProvenance);
+        $context = new RedemptionContext($result, $binding, $lock, $lock->connection, $client, $caller, $judgement->linkProvenance);
 
         return $this->branch($result)->admit($context)->under($judgement->enforcementVersion);
     }
@@ -309,6 +314,7 @@ final readonly class HandoffRecheck
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement
      *
@@ -316,7 +322,7 @@ final readonly class HandoffRecheck
      * @throws \LogicException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    private function judged(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ?IdentityReference $caller): Judgement
+    private function judged(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?IdentityReference $caller): Judgement
     {
         self::assertHeldFor($lock, $result);
 
@@ -331,7 +337,7 @@ final readonly class HandoffRecheck
             return Judgement::of(RecheckOutcome::ENFORCEMENT_UNSATISFIED);
         }
 
-        return $this->branch($result)->judge(new RedemptionContext($result, $binding, $lock, $connection, $caller))->under($policy->version);
+        return $this->branch($result)->judge(new RedemptionContext($result, $binding, $lock, $connection, $client, $caller))->under($policy->version);
     }
 
     /**

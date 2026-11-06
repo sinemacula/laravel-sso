@@ -36,6 +36,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\ScriptedPrincipalScope;
 use Tests\Fixtures\Results\ExampleResults;
@@ -117,7 +118,7 @@ final class LinkStoreTest extends TestCase
     {
         $this->linkSubject();
 
-        $resolved = $this->store()->resolve($this->resultFor($this->connection));
+        $resolved = $this->store()->resolve($this->resultFor($this->connection), Clients::browser());
 
         self::assertSame(['user', '1'], [$resolved->identity?->type, $resolved->identity?->id]);
     }
@@ -135,9 +136,9 @@ final class LinkStoreTest extends TestCase
         $sibling = $this->makeConnection(['enabled' => true, 'protocol' => 'saml2']);
         $foreign = $this->makeConnection(['enabled' => true, 'protocol' => 'saml2', 'tenant_id' => 'tenant-2']);
 
-        self::assertTrue($this->store()->resolve($this->resultFor($sibling))->isAbsent());
-        self::assertTrue($this->store()->resolve($this->resultFor($foreign))->isAbsent());
-        self::assertNotNull($this->store()->resolve($this->resultFor($this->connection)));
+        self::assertTrue($this->store()->resolve($this->resultFor($sibling), Clients::browser())->isAbsent());
+        self::assertTrue($this->store()->resolve($this->resultFor($foreign), Clients::browser())->isAbsent());
+        self::assertNotNull($this->store()->resolve($this->resultFor($this->connection), Clients::browser()));
     }
 
     /**
@@ -171,7 +172,7 @@ final class LinkStoreTest extends TestCase
     {
         $this->linkSubject();
 
-        self::assertTrue($this->store()->resolve($this->resultFor($this->connection, $subject, $format, $issuer))->isAbsent());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection, $subject, $format, $issuer), Clients::browser())->isAbsent());
         self::assertNull(Link::query()->sole()->last_used_at);
     }
 
@@ -205,7 +206,7 @@ final class LinkStoreTest extends TestCase
             'subject_key'    => (new LinkSubject(self::ISSUER, self::SUBJECT, self::FORMAT))->key(),
         ]);
 
-        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isAbsent());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection), Clients::browser())->isAbsent());
         self::assertNull(Link::query()->sole()->last_used_at);
     }
 
@@ -225,11 +226,11 @@ final class LinkStoreTest extends TestCase
             'reservation_expires_at' => CarbonImmutable::parse(self::NOW)->addMinutes(5),
         ]);
 
-        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isReserved());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection), Clients::browser())->isReserved());
 
         $this->clock->advance(600);
 
-        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isAbsent());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection), Clients::browser())->isAbsent());
         self::assertNull(Link::query()->sole()->last_used_at);
     }
 
@@ -247,7 +248,7 @@ final class LinkStoreTest extends TestCase
 
         self::assertTrue(Link::query()->sole()->domain_provenance);
 
-        $resolved = $this->store()->resolve($this->resultFor($this->connection));
+        $resolved = $this->store()->resolve($this->resultFor($this->connection), Clients::browser());
 
         self::assertSame(['user', '1'], [$resolved->identity?->type, $resolved->identity?->id]);
     }
@@ -268,7 +269,7 @@ final class LinkStoreTest extends TestCase
             'provenance'     => LinkOrigin::VERIFIED_DOMAIN,
         ]);
 
-        $resolved = $this->store()->resolve($this->resultFor($this->connection));
+        $resolved = $this->store()->resolve($this->resultFor($this->connection), Clients::browser());
 
         self::assertTrue($resolved->isSuspended());
         self::assertSame($link->id, $resolved->linkId);
@@ -292,7 +293,7 @@ final class LinkStoreTest extends TestCase
             'reservation_expires_at' => null,
         ]);
 
-        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isAbsent());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection), Clients::browser())->isAbsent());
     }
 
     /**
@@ -309,7 +310,7 @@ final class LinkStoreTest extends TestCase
 
         $this->linkSubject();
 
-        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isLinked());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection), Clients::browser())->isLinked());
         self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
         self::assertSame([], $scope->asked);
     }
@@ -398,8 +399,8 @@ final class LinkStoreTest extends TestCase
         $linker = $app->make(Linker::class);
 
         self::assertInstanceOf(NoLinks::class, $linker);
-        self::assertTrue($linker->resolve($this->resultFor($this->connection))->isAbsent());
-        self::assertTrue($this->store()->resolve($this->resultFor($this->connection))->isLinked());
+        self::assertTrue($linker->resolve($this->resultFor($this->connection), Clients::browser())->isAbsent());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection), Clients::browser())->isLinked());
     }
 
     /**
@@ -414,7 +415,7 @@ final class LinkStoreTest extends TestCase
 
         $this->clock->advance(3600);
 
-        $this->store()->resolve($this->resultFor($this->connection));
+        $this->store()->resolve($this->resultFor($this->connection), Clients::browser());
 
         $link = Link::query()->sole();
 
@@ -449,13 +450,13 @@ final class LinkStoreTest extends TestCase
 
         $this->clock->advance(3600);
 
-        self::assertTrue($this->store()->resolve($this->resultFor($this->connection, purpose: $purpose))->isLinked());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection, purpose: $purpose), Clients::browser())->isLinked());
 
         $unstamped = Link::query()->sole();
 
         self::assertNull($unstamped->last_used_at);
 
-        $this->store()->resolve($this->resultFor($this->connection));
+        $this->store()->resolve($this->resultFor($this->connection), Clients::browser());
 
         $stamped = Link::query()->sole();
 
@@ -463,7 +464,7 @@ final class LinkStoreTest extends TestCase
 
         $this->clock->advance(3600);
 
-        self::assertTrue($this->store()->resolve($this->resultFor($this->connection, purpose: $purpose))->isLinked());
+        self::assertTrue($this->store()->resolve($this->resultFor($this->connection, purpose: $purpose), Clients::browser())->isLinked());
 
         $kept = Link::query()->sole();
 
@@ -496,11 +497,11 @@ final class LinkStoreTest extends TestCase
     {
         $this->linkSubject();
 
-        $this->store()->resolve($this->resultFor($this->connection));
+        $this->store()->resolve($this->resultFor($this->connection), Clients::browser());
 
         $this->clock->advance($seconds);
 
-        $resolved = $this->store()->resolve($this->resultFor($this->connection));
+        $resolved = $this->store()->resolve($this->resultFor($this->connection), Clients::browser());
 
         $expected = $stamped ? CarbonImmutable::parse(self::NOW)->addSeconds($seconds) : CarbonImmutable::parse(self::NOW);
 
@@ -522,6 +523,7 @@ final class LinkStoreTest extends TestCase
             new LinkSubject(self::ISSUER, self::SUBJECT, self::FORMAT),
             $this->identity,
             LinkOrigin::LINK_PURPOSE,
+            Clients::browser(),
             new ActingIdentity('App\Models\User', '42'),
             'web',
             Purpose::LINK,
@@ -756,7 +758,7 @@ final class LinkStoreTest extends TestCase
         $binding = $app->make(LinkLimit::class);
 
         try {
-            $this->store()->create($this->connection, new LinkSubject(self::ISSUER, self::SUBJECT, self::FORMAT), $this->identity, LinkOrigin::LINK_PURPOSE);
+            $this->store()->create($this->connection, new LinkSubject(self::ISSUER, self::SUBJECT, self::FORMAT), $this->identity, LinkOrigin::LINK_PURPOSE, Clients::browser());
             self::fail('The creation succeeded.');
         } catch (\LogicException $exception) {
             self::assertSame(sprintf('The link limit [%s] answered 0; a link limit is at least one.', $binding::class), $exception->getMessage());
@@ -813,7 +815,7 @@ final class LinkStoreTest extends TestCase
     {
         $foreign = $this->makeConnection(['enabled' => true, 'tenant_id' => 'tenant-2']);
 
-        $this->store()->create($foreign, new LinkSubject(self::ISSUER, 'Elsewhere'), $this->identity, LinkOrigin::LINK_PURPOSE);
+        $this->store()->create($foreign, new LinkSubject(self::ISSUER, 'Elsewhere'), $this->identity, LinkOrigin::LINK_PURPOSE, Clients::browser());
         $this->linkSubject('Another person', identity: new IdentityReference('user', '2'));
         $this->linkSubject('Another type', identity: new IdentityReference('admin', '1'));
 
@@ -835,7 +837,7 @@ final class LinkStoreTest extends TestCase
         $missing->forceFill(['id' => '01jbzzzzzzzzzzzzzzzzzzzzzz', 'tenant_id' => 'tenant-1', 'protocol' => 'saml2']);
 
         try {
-            $this->store()->create($missing, new LinkSubject(self::ISSUER, self::SUBJECT), $this->identity, LinkOrigin::LINK_PURPOSE);
+            $this->store()->create($missing, new LinkSubject(self::ISSUER, self::SUBJECT), $this->identity, LinkOrigin::LINK_PURPOSE, Clients::browser());
             self::fail('The creation succeeded.');
         } catch (\LogicException $exception) {
             self::assertSame('No connection [01jbzzzzzzzzzzzzzzzzzzzzzz] exists to link through.', $exception->getMessage());
@@ -859,7 +861,7 @@ final class LinkStoreTest extends TestCase
 
         $this->expectExceptionObject(new \LogicException(sprintf('No connection [%s] exists to link through.', $this->connection->id)));
 
-        $this->store()->create($claimed, new LinkSubject(self::ISSUER, self::SUBJECT), $this->identity, LinkOrigin::LINK_PURPOSE);
+        $this->store()->create($claimed, new LinkSubject(self::ISSUER, self::SUBJECT), $this->identity, LinkOrigin::LINK_PURPOSE, Clients::browser());
     }
 
     /**
@@ -927,7 +929,7 @@ final class LinkStoreTest extends TestCase
      */
     private function linkSubject(string $subject = self::SUBJECT, ?IdentityReference $identity = null, LinkOrigin $origin = LinkOrigin::LINK_PURPOSE): LinkCreation
     {
-        return $this->store()->create($this->connection, new LinkSubject(self::ISSUER, $subject, self::FORMAT), $identity ?? $this->identity, $origin);
+        return $this->store()->create($this->connection, new LinkSubject(self::ISSUER, $subject, self::FORMAT), $identity ?? $this->identity, $origin, Clients::browser());
     }
 
     /**

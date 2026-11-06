@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Fixtures\Links;
 
 use SineMacula\Laravel\Sso\Contracts\Linker;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
@@ -35,10 +36,11 @@ final readonly class FixedLinker implements Linker
      * Resolve the result to the identity.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResolution
      */
     #[\Override]
-    public function resolve(VerifiedResult $result): LinkResolution
+    public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
     {
         unset($result);
 

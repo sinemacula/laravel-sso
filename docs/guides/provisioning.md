@@ -62,7 +62,9 @@ public function handle(ResultUnlinked $event): void
 
         $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-        $answer = $this->provisioning->link($event->grant, $event->result, $identity);
+        $client = new ClientContext($event->context()->ip, $event->context()->userAgent); // the completion's client
+
+        $answer = $this->provisioning->link($event->grant, $event->result, $identity, $client);
     } catch (\Throwable $exception) {
         $storage->rollBack();
 

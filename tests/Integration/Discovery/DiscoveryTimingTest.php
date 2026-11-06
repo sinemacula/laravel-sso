@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
@@ -192,7 +193,7 @@ final class DiscoveryTimingTest extends TestCase
         $startedAt = (int) hrtime(true);
 
         try {
-            $this->service()->start('discovering', Purpose::LINK, 'someone@example.com');
+            $this->service()->start('discovering', Purpose::LINK, 'someone@example.com', Clients::browser());
             self::fail('A misbound start was accepted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('A `link` flow is started for an identity, with no session.', $exception->getMessage());
@@ -214,7 +215,7 @@ final class DiscoveryTimingTest extends TestCase
         config()->set('sso.discovery.minimum_duration_milliseconds', 49);
 
         try {
-            $this->service()->start('discovering', Purpose::SIGN_IN, 'someone@example.com');
+            $this->service()->start('discovering', Purpose::SIGN_IN, 'someone@example.com', Clients::browser());
             self::fail('A floor below 50 ms was accepted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('sso.discovery.minimum_duration_milliseconds must be an integer from 50 to 2000.', $exception->getMessage());
@@ -293,7 +294,7 @@ final class DiscoveryTimingTest extends TestCase
     private function timed(string $email): array
     {
         $startedAt = (int) hrtime(true);
-        $result    = $this->service()->start('discovering', Purpose::SIGN_IN, $email);
+        $result    = $this->service()->start('discovering', Purpose::SIGN_IN, $email, Clients::browser());
         $took      = (int) hrtime(true) - $startedAt;
 
         self::assertTrue($result->isStarted());

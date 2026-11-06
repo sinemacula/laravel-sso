@@ -36,6 +36,7 @@ use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -124,7 +125,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     {
         $this->failStatement(self::onTable($verb, $table), $occurrence);
 
-        $this->assertServerError(fn (): StartResult => app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id));
+        $this->assertServerError(fn (): StartResult => app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id, Clients::browser()));
 
         self::assertSame(0, AuthorizationRequest::query()->useWritePdo()->count());
 
@@ -140,7 +141,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     {
         $this->failCommit();
 
-        $this->assertServerError(fn (): StartResult => app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id));
+        $this->assertServerError(fn (): StartResult => app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id, Clients::browser()));
 
         self::assertSame(0, AuthorizationRequest::query()->useWritePdo()->count());
 
@@ -315,7 +316,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
 
             $this->failStatement(self::onTable('insert', 'sso_links'));
 
-            app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person);
+            app(ProvisioningHelper::class)->link($event->grant, $event->result, $this->person, Clients::browser());
         });
 
         $this->assertServerError(fn (): mixed => $this->complete());
@@ -404,7 +405,15 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
         $this->startRecordingEvents();
         $this->failStatement(self::onTable($verb, $table), $occurrence);
 
-        $redeem = fn (): RedemptionResult => app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, $this->person);
+        $redeem = fn (): RedemptionResult => app(HandoffRedemption::class)->redeem(
+            Purpose::LINK,
+            'web',
+            $this->connection->id,
+            $code,
+            $verifier,
+            Clients::browser(),
+            $this->person,
+        );
 
         $this->assertServerError($redeem);
         $this->assertCodeUnspent($start);
@@ -473,7 +482,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
 
         $this->failStatement(self::onTable($verb, $table), $occurrence);
 
-        $this->assertServerError(static fn (): StartResult => app(DiscoveryService::class)->start('discovering', Purpose::SIGN_IN, 'person@example.com'));
+        $this->assertServerError(static fn (): StartResult => app(DiscoveryService::class)->start('discovering', Purpose::SIGN_IN, 'person@example.com', Clients::browser()));
 
         self::assertSame(0, AuthorizationRequest::query()->useWritePdo()->count());
 
@@ -606,7 +615,13 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
      */
     private function sessionsOnALink(): RecordingSessions
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, LinkOrigin::PROVISIONING);
+        $creation = app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            LinkOrigin::PROVISIONING,
+            Clients::browser(),
+        );
 
         self::assertTrue($creation->isCreated());
 

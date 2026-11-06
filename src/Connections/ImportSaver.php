@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Metadata\SamlRefreshRule;
 use SineMacula\Laravel\Sso\Metadata\ValidatedFetch;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -100,15 +101,22 @@ final readonly class ImportSaver
      * @param  string  $connectionId
      * @param  array<string, mixed>  $changes
      * @param  \SineMacula\Laravel\Sso\Metadata\ValidatedFetch  $fetch
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function save(string $tenantId, string $connectionId, #[\SensitiveParameter] array $changes, ValidatedFetch $fetch, ?ActingIdentity $actor = null): ConnectionResult
-    {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $connectionId, $changes, $fetch, $actor): ConnectionResult {
+    public function save(
+        string $tenantId,
+        string $connectionId,
+        #[\SensitiveParameter] array $changes,
+        ValidatedFetch $fetch,
+        ClientContext $client,
+        ?ActingIdentity $actor = null,
+    ): ConnectionResult {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $connectionId, $changes, $fetch, $client, $actor): ConnectionResult {
 
             $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -120,10 +128,10 @@ final readonly class ImportSaver
                 return ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
             }
 
-            $result = $this->connections->changeLocked($locked, $changes, $actor);
+            $result = $this->connections->changeLocked($locked, $changes, $client, $actor);
 
             if ($result->isSucceeded()) {
-                $this->stamped($locked, $fetch, $result, $actor);
+                $this->stamped($locked, $fetch, $result, $actor, $client);
             }
 
             return $result;
@@ -138,11 +146,12 @@ final readonly class ImportSaver
      * @param  \SineMacula\Laravel\Sso\Metadata\ValidatedFetch  $fetch
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionResult  $result
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    private function stamped(Connection $locked, ValidatedFetch $fetch, ConnectionResult $result, ?ActingIdentity $actor): void
+    private function stamped(Connection $locked, ValidatedFetch $fetch, ConnectionResult $result, ?ActingIdentity $actor, ClientContext $client): void
     {
         $holds = SamlRefreshRule::holdsDeadline($locked);
 
@@ -152,6 +161,6 @@ final readonly class ImportSaver
 
         $locked->save();
 
-        $this->events->connectionUpdated($locked, $result->isChanged() || !$renewed ? [] : ['metadata_fetched_at'], $actor);
+        $this->events->connectionUpdated($locked, $result->isChanged() || !$renewed ? [] : ['metadata_fetched_at'], $actor, $client);
     }
 }

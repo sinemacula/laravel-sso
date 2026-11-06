@@ -40,6 +40,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -457,7 +458,13 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
      */
     private function hold(LinkOrigin $origin = LinkOrigin::PROVISIONING): Link
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, $origin);
+        $creation = app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            $origin,
+            Clients::browser(),
+        );
 
         self::assertTrue($creation->isCreated());
 
@@ -509,7 +516,7 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     private function redeemer(array $flow): \Closure
     {
         return fn (): string => self::outcomeOf(DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $flow[1], $flow[2]),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $flow[1], $flow[2], Clients::browser()),
         ));
     }
 
@@ -540,7 +547,7 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     {
         return function () use ($linkId): string {
 
-            $removal = app(LinkService::class)->remove($this->person, $linkId);
+            $removal = app(LinkService::class)->remove($this->person, $linkId, Clients::browser());
 
             return $removal->isRemoved() ? 'removed' : 'refused:' . $removal->reason?->value;
         };
@@ -555,7 +562,9 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
      */
     private function widener(): \Closure
     {
-        return fn (): string => 'widened:' . DB::connection(StorageConnection::name())->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2'));
+        return fn (): string => 'widened:' . DB::connection(StorageConnection::name())->transaction(
+            fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()),
+        );
     }
 
     /**

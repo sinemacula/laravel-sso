@@ -37,6 +37,7 @@ use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -426,7 +427,7 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
      */
     private function hold(IdentityReference $identity, LinkOrigin $origin = LinkOrigin::PROVISIONING): void
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $identity, $origin);
+        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $identity, $origin, Clients::browser());
 
         self::assertTrue($creation->isCreated());
     }
@@ -450,7 +451,7 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
         try {
             DB::connection(StorageConnection::name())->transaction(function () use ($code, $verifier, $reason): void {
 
-                $answer = app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, $this->person);
+                $answer = app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person);
 
                 self::assertSame($reason, $answer->reason);
 
@@ -502,7 +503,7 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
         return [
             'occurred_at'                 => self::OCCURRED_AT,
             'ip'                          => '203.0.113.7',
-            'user_agent'                  => 'Symfony',
+            'user_agent'                  => Clients::USER_AGENT,
             'connection_id'               => $this->connection->id,
             'connection_tenant_id'        => 'tenant-1',
             'protocol'                    => VerifyingDriver::NAME,
@@ -533,7 +534,7 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
         return [
             'occurred_at'                 => self::OCCURRED_AT,
             'ip'                          => '203.0.113.7',
-            'user_agent'                  => 'Symfony',
+            'user_agent'                  => Clients::USER_AGENT,
             'connection_id'               => $this->connection->id,
             'connection_tenant_id'        => 'tenant-1',
             'protocol'                    => VerifyingDriver::NAME,

@@ -16,6 +16,8 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\SamlConnections;
 
+use Tests\Integration\Examples\Clients;
+
 /**
  * @var array{
  *     tenant: \Tests\Integration\Examples\SamlConnections\Tenant,
@@ -27,13 +29,14 @@ $tenant       = $input['tenant'];
 $connectionId = $input['connection_id'];
 $actor        = $input['actor'];
 
+$client = Clients::browser();
 // @snippet-start saml-connections-keys
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 
 $keys = app(KeyService::class);
 
-$keys->addNext($tenant->id, $connectionId, KeyUse::SP_SIGNING, actor: $actor);
-$keys->addNext($tenant->id, $connectionId, KeyUse::SP_ENCRYPTION, actor: $actor);
+$keys->addNext($tenant->id, $connectionId, KeyUse::SP_SIGNING, $client, actor: $actor);
+$keys->addNext($tenant->id, $connectionId, KeyUse::SP_ENCRYPTION, $client, actor: $actor);
 // @snippet-end saml-connections-keys
 return $keys->keys($tenant->id, $connectionId);

@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -118,7 +119,7 @@ final class ConcurrentKeyRotationTest extends TestCase
      */
     public function testExactlyOneOfTheRacingAdditionsAddsTheNextKey(): void
     {
-        $outcomes = $this->race(fn (KeyService $keys): KeyResult => $keys->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA));
+        $outcomes = $this->race(fn (KeyService $keys): KeyResult => $keys->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA));
 
         self::assertCount(1, array_keys($outcomes, KeyStatus::ADDED->value, true), implode(', ', $outcomes));
         self::assertCount(self::PROCESSES - 1, array_keys($outcomes, self::conflict(), true), implode(', ', $outcomes));
@@ -137,7 +138,10 @@ final class ConcurrentKeyRotationTest extends TestCase
      */
     public function testExactlyOneOfTheRacingAdditionsInsideACallersTransactionAddsTheNextKey(): void
     {
-        $outcomes = $this->race(fn (KeyService $keys): KeyResult => $keys->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA), true);
+        $outcomes = $this->race(
+            fn (KeyService $keys): KeyResult => $keys->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA),
+            true,
+        );
 
         self::assertCount(1, array_keys($outcomes, KeyStatus::ADDED->value, true), implode(', ', $outcomes));
         self::assertCount(self::PROCESSES - 1, array_keys($outcomes, self::conflict(), true), implode(', ', $outcomes));
@@ -155,7 +159,7 @@ final class ConcurrentKeyRotationTest extends TestCase
     {
         $next = (string) $this->add()->key?->id;
 
-        $outcomes = $this->race(fn (KeyService $keys): KeyResult => $keys->makeCurrent(self::TENANT, $this->connection->id, $next));
+        $outcomes = $this->race(fn (KeyService $keys): KeyResult => $keys->makeCurrent(self::TENANT, $this->connection->id, $next, Clients::browser()));
 
         self::assertCount(1, array_keys($outcomes, KeyStatus::MADE_CURRENT->value, true), implode(', ', $outcomes));
         self::assertCount(self::PROCESSES - 1, array_keys($outcomes, self::conflict(), true), implode(', ', $outcomes));
@@ -170,7 +174,7 @@ final class ConcurrentKeyRotationTest extends TestCase
      */
     private function add(): KeyResult
     {
-        return $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
+        return $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA);
     }
 
     /**

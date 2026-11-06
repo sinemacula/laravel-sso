@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -31,6 +32,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -704,6 +706,7 @@ trait FlowRoutes
             self::FLOW_APPLICATION,
             Purpose::from((string) $request->input('purpose')),
             $connection,
+            ClientContext::fromRequest($request),
             null,
             self::identityOf($request, 'identity_type', 'identity_id'),
             is_string($session) ? $session : null,
@@ -722,7 +725,9 @@ trait FlowRoutes
      */
     private static function discoveryAnswer(Request $request): JsonResponse
     {
-        return self::startedAnswer(app(DiscoveryService::class)->start(self::DISCOVERING_APPLICATION, Purpose::SIGN_IN, (string) $request->input('email')));
+        return self::startedAnswer(
+            app(DiscoveryService::class)->start(self::DISCOVERING_APPLICATION, Purpose::SIGN_IN, (string) $request->input('email'), ClientContext::fromRequest($request)),
+        );
     }
 
     /**
@@ -768,8 +773,8 @@ trait FlowRoutes
     {
         $query      = (string) $request->getQueryString();
         $completion = new CompletionRequest($method, $query, $method === 'POST' ? $request->request->all() : []);
-        $service    = app(CompletionService::class);
-        $result     = $method === 'POST' ? $service->assertionConsumerService($connection, $completion) : $service->callback($connection, $completion);
+        $endpoint   = $method === 'POST' ? CompletionEndpoint::ASSERTION_CONSUMER_SERVICE : CompletionEndpoint::CALLBACK;
+        $result     = app(CompletionService::class)->complete($endpoint, $connection, $completion, ClientContext::fromRequest($request));
 
         return app(CompletionResponses::class)->from($result, $method);
     }
@@ -793,6 +798,7 @@ trait FlowRoutes
             $connection,
             (string) $request->input('code'),
             (string) $request->input('verifier'),
+            ClientContext::fromRequest($request),
             self::identityOf($request, 'caller_type', 'caller_id'),
         );
 

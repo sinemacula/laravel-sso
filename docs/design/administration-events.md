@@ -35,9 +35,10 @@ enforcement events" below; the metadata and link events arrive with their parts 
   projection, `Events\EventContexts::make()` (see `event-model.md`), from four facts only: the connection's id, its
   tenant (`connectionTenantId`), its protocol (`saml2`, `oidc` or a registered driver's name), and the acting identity
   as the application passed it (`actingIdentityMorphClass`, `actingIdentityId`). The time comes from `Contracts\Clock`
-  and the client (`ip`, `userAgent`) from the request being served. Every other field of the context is `null`: an
-  administration change has no flow, so no `requestReference`, `application` or `purpose`, and no identity, principal,
-  session or method.
+  and the client (`ip`, `userAgent`) from the `Http\ClientContext` the helper was given: each change takes one, after
+  its required values, and a console command passes `new ClientContext(null, null)`. Every other field of the context is
+  `null`: an administration change has no flow, so no `requestReference`, `application` or `purpose`, and no identity,
+  principal, session or method.
 - The acting identity is an `Administration\ActingIdentity`: a type and an id, each a non-empty opaque string (under
   `laravel-iam`, the identity's morph class and key, as `laravel-authentication`'s events give them). Each helper takes
   it as an optional last argument; without one, the context's acting identity is `null`. Who may manage a connection is
@@ -93,16 +94,17 @@ enforcement events" below; the metadata and link events arrive with their parts 
   | `trustCertificate()`, `distrustCertificate()`           | `sso.connection.trust`                                                 |
 
   Each is asked with the maximum age configured for it under `sso.freshness.max_age_seconds`.
-- Nearing expiry is reported, never enforced. `Keys\ExpiryReport::report(?int $withinDays = null, ?Closure $each = null)`
-  lists every key and certificate of any connection whose `not_after` is set and at or before the clock's now plus the
-  window, on the write connection, in pages by keyset on `not_after` and then id. The window is the largest of
-  `sso.keys.expiry_thresholds` (30 by default) unless a number of days from 1 to 365 is given, each day 86400 seconds. A
-  row already expired is included; a row with no `not_after` never is; a `retiring` key whose `retiring_until` is at or
-  before now is left out, since decryption no longer accepts it. Each page's connections are loaded on the write
-  connection in one query, and a row whose connection is gone is skipped. Each key that has reached a threshold, and was
-  not warned of it or a more urgent one, is reported with one `KeyNearingExpiry` through `keyNearingExpiry()` with no
-  acting identity, outside any transaction and at least once: see `operations.md`, with the command `sso:keys:expiring`
-  and what the claim and the marker do. An expired certificate is still trusted, and no key is withdrawn.
+- Nearing expiry is reported, never enforced.
+  `Keys\ExpiryReport::report(ClientContext $client, ?int $withinDays = null, ?Closure $each = null)` lists every key and
+  certificate of any connection whose `not_after` is set and at or before the clock's now plus the window, on the write
+  connection, in pages by keyset on `not_after` and then id. The window is the largest of `sso.keys.expiry_thresholds`
+  (30 by default) unless a number of days from 1 to 365 is given, each day 86400 seconds. A row already expired is
+  included; a row with no `not_after` never is; a `retiring` key whose `retiring_until` is at or before now is left out,
+  since decryption no longer accepts it. Each page's connections are loaded on the write connection in one query, and a
+  row whose connection is gone is skipped. Each key that has reached a threshold, and was not warned of it or a more
+  urgent one, is reported with one `KeyNearingExpiry` through `keyNearingExpiry()` with no acting identity, outside any
+  transaction and at least once: see `operations.md`, with the command `sso:keys:expiring` and what the claim and the
+  marker do. An expired certificate is still trusted, and no key is withdrawn.
 
 ### Domain and enforcement events
 

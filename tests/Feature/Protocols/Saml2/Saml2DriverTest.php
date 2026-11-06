@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -217,7 +218,7 @@ final class Saml2DriverTest extends TestCase
         $reference = RequestReference::fromString('Sq8tVv3w0kLmNoPqRsTuVwXyZ0123456');
         $request   = new CompletionRequest('POST', '', []);
         $start     = $driver->start($connection, new StartRequest(Purpose::SIGN_IN, 'web', $reference, new Secret('state')));
-        $complete  = $driver->complete($connection, $request, new ConsumedRequest(Purpose::SIGN_IN, 'web', $reference, CarbonImmutable::now()));
+        $complete  = $driver->complete($connection, $request, new ConsumedRequest(Purpose::SIGN_IN, 'web', $reference, CarbonImmutable::now()), Clients::browser());
         $unsolicit = $driver->reinitiate($connection, $request);
 
         $reasons = [$start->reason, $complete->reason, $unsolicit->reason];

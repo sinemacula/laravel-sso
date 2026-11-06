@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Metadata\RefreshResult;
 use SineMacula\Laravel\Sso\Metadata\SamlMetadataSource;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -98,8 +99,11 @@ final class MetadataSourcesTest extends TestCase
         $actor      = new ActingIdentity('App\Models\User', '1');
 
         self::assertSame([], $refresher->dueConnectionIds());
-        self::assertSame(RefreshOutcome::SKIPPED, $refresher->refreshQueued($connection->id)->outcome);
-        self::assertSame([RefreshOutcome::REFUSED, FailureReason::FEATURE_DISABLED], self::outcome($refresher->refreshNow('tenant-1', $connection->id, $actor)));
+        self::assertSame(RefreshOutcome::SKIPPED, $refresher->refreshQueued($connection->id, Clients::browser())->outcome);
+        self::assertSame(
+            [RefreshOutcome::REFUSED, FailureReason::FEATURE_DISABLED],
+            self::outcome($refresher->refreshNow('tenant-1', $connection->id, $actor, Clients::browser())),
+        );
         self::assertNull($connection->fresh()?->metadata_claim_token);
 
         $this->fetcher->assertNothingFetched();

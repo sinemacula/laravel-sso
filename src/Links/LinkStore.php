@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
@@ -95,8 +96,10 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * good, under the connection's lock, raising its links version and reporting
  * `LinkConfirmed` (SSO-8.8, SSO-5.11).
  *
- * It holds the connection lookup, the clock, the reporter and the container,
- * none of which keeps anything of one request for the next (SSO-11.2).
+ * Every call that can report takes the client it is made for
+ * (`Http\ClientContext`), whose IP address and user agent the event carries. It
+ * holds the connection lookup, the clock, the reporter and the container, none
+ * of which keeps anything of one request for the next (SSO-11.2).
  *
  * @api
  *
@@ -149,6 +152,7 @@ final readonly class LinkStore implements LinkStorage
      * What the result's connection, issuer, format and subject resolve to.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResolution
      *
      * @throws \InvalidArgumentException
@@ -156,7 +160,7 @@ final readonly class LinkStore implements LinkStorage
      * @throws \Throwable
      */
     #[\Override]
-    public function resolve(VerifiedResult $result): LinkResolution
+    public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
     {
         $link = self::rowOf($result->connectionId, LinkSubject::of($result));
 
@@ -167,7 +171,7 @@ final readonly class LinkStore implements LinkStorage
         return match ($link->state) {
             LinkState::RESERVED  => $this->isLiveReservation($link) ? LinkResolution::reserved() : LinkResolution::absent(),
             LinkState::SUSPENDED => LinkResolution::suspended(self::identityOf($link), $link->id),
-            LinkState::ACTIVE    => $this->resolvedActive($link, $result),
+            LinkState::ACTIVE    => $this->resolvedActive($link, $result, $client),
         };
     }
 
@@ -178,6 +182,7 @@ final readonly class LinkStore implements LinkStorage
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $locked
      * @param  string  $linkId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
      * @return void
@@ -185,7 +190,7 @@ final readonly class LinkStore implements LinkStorage
      * @throws \InvalidArgumentException
      */
     #[\Override]
-    public function confirm(SsoConnection $locked, string $linkId, ?string $application = null, ?RequestReference $reference = null): void
+    public function confirm(SsoConnection $locked, string $linkId, ClientContext $client, ?string $application = null, ?RequestReference $reference = null): void
     {
         $link = Link::query()->useWritePdo()->whereKey($linkId)->where('connection_id', $locked->getConnectionId())->lockForUpdate()->first();
 
@@ -197,7 +202,7 @@ final readonly class LinkStore implements LinkStorage
 
         self::raiseLinksVersion($locked->getConnectionId());
 
-        $this->events->confirmed($locked, self::identityOf($link), $application, $reference);
+        $this->events->confirmed($locked, self::identityOf($link), $client, $application, $reference);
     }
 
     /**
@@ -209,12 +214,13 @@ final readonly class LinkStore implements LinkStorage
      * @param  string  $connectionId
      * @param  string  $tenantId
      * @param  string  $protocol
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
     #[\Override]
-    public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol): void
+    public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol, ClientContext $client): void
     {
         $query = Link::query()->useWritePdo();
         $now   = UtcDateTime::format($query->getModel(), $this->clock->now());
@@ -223,7 +229,7 @@ final readonly class LinkStore implements LinkStorage
 
         self::raiseLinksVersion($connectionId);
 
-        $this->events->suspended($connectionId, $tenantId, $protocol, $identity);
+        $this->events->suspended($connectionId, $tenantId, $protocol, $identity, $client);
     }
 
     /**
@@ -267,6 +273,7 @@ final readonly class LinkStore implements LinkStorage
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -285,13 +292,14 @@ final readonly class LinkStore implements LinkStorage
         LinkSubject $subject,
         IdentityReference $identity,
         LinkOrigin $origin,
+        ClientContext $client,
         ?ActingIdentity $actor = null,
         ?string $application = null,
         ?Purpose $purpose = null,
         ?RequestReference $reference = null,
     ): LinkCreation {
-        $report = function (Connection $locked) use ($identity, $origin, $actor, $application, $purpose, $reference): void {
-            $this->events->created($locked, $identity, $origin, $actor, $application, $purpose, $reference);
+        $report = function (Connection $locked) use ($identity, $origin, $client, $actor, $application, $purpose, $reference): void {
+            $this->events->created($locked, $identity, $origin, $client, $actor, $application, $purpose, $reference);
         };
 
         return DB::connection(StorageConnection::name())->transaction(function () use ($connection, $subject, $identity, $origin, $report): LinkCreation {
@@ -390,19 +398,20 @@ final readonly class LinkStore implements LinkStorage
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResolution
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      * @throws \Throwable
      */
-    private function resolvedActive(Link $link, VerifiedResult $result): LinkResolution
+    private function resolvedActive(Link $link, VerifiedResult $result, ClientContext $client): LinkResolution
     {
         $identity = self::identityOf($link);
         $verdict  = $link->domain_provenance ? $this->container->make(PrincipalScope::class)->judge($identity, $result->tenantId) : ScopeVerdict::WITHIN_TENANT;
 
         if ($verdict === ScopeVerdict::OUTSIDE_TENANT) {
-            return $this->latched($link, $result, $identity);
+            return $this->latched($link, $result, $identity, $client);
         }
 
         if ($verdict === ScopeVerdict::UNKNOWN) {
@@ -427,24 +436,25 @@ final readonly class LinkStore implements LinkStorage
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResolution
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    private function latched(Link $link, VerifiedResult $result, IdentityReference $identity): LinkResolution
+    private function latched(Link $link, VerifiedResult $result, IdentityReference $identity, ClientContext $client): LinkResolution
     {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($link, $result, $identity): LinkResolution {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($link, $result, $identity, $client): LinkResolution {
 
             $this->connections->findForUpdate($result->tenantId, $link->connection_id);
 
             $row = Link::query()->useWritePdo()->whereKey($link->id)->lockForUpdate()->first();
 
             if ($row?->state !== LinkState::ACTIVE || !$row->domain_provenance) {
-                return $this->resolve($result);
+                return $this->resolve($result, $client);
             }
 
-            $this->suspend($link->id, $identity, $link->connection_id, $result->tenantId, $result->protocol);
+            $this->suspend($link->id, $identity, $link->connection_id, $result->tenantId, $result->protocol, $client);
             $this->revokeSessions($link->id, $identity, $link->connection_id, $result->tenantId);
 
             return LinkResolution::suspended($identity, $link->id);

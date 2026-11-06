@@ -35,6 +35,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -179,7 +180,7 @@ final class JwksRefetcherTest extends TestCase
         $keys       = app(ProviderKeys::class);
 
         foreach (range(1, 100) as $number) {
-            self::assertSame(KeySelectionOutcome::UNKNOWN, $keys->select($connection, self::token('unknown-' . $number), self::rs256())->outcome);
+            self::assertSame(KeySelectionOutcome::UNKNOWN, $keys->select($connection, self::token('unknown-' . $number), self::rs256(), Clients::browser())->outcome);
         }
 
         self::assertCount(1, $this->fetcher->requests());
@@ -224,11 +225,11 @@ final class JwksRefetcherTest extends TestCase
             $connection = $this->connection(self::stored([self::key()]));
             $keys       = app(ProviderKeys::class);
 
-            $keys->select($connection, self::token('unknown-1'), self::rs256());
+            $keys->select($connection, self::token('unknown-1'), self::rs256(), Clients::browser());
 
             $this->clock->advance($seconds);
 
-            $keys->select($connection, self::token('unknown-2'), self::rs256());
+            $keys->select($connection, self::token('unknown-2'), self::rs256(), Clients::browser());
 
             self::assertCount($fetches, $fetcher->requests());
 
@@ -514,7 +515,7 @@ final class JwksRefetcherTest extends TestCase
 
         self::assertSame(
             self::answerOf('conflict', FailureReason::METADATA_CONFLICT, FetchStatus::FETCHED, null, null),
-            app(JwksRefetcher::class)->refetch($read, self::rs256()),
+            app(JwksRefetcher::class)->refetch($read, self::rs256(), Clients::browser()),
         );
     }
 
@@ -548,7 +549,7 @@ final class JwksRefetcherTest extends TestCase
 
         $row->forceFill($attributes($this))->save();
 
-        $answer = app(JwksRefetcher::class)->refetch($read, self::rs256());
+        $answer = app(JwksRefetcher::class)->refetch($read, self::rs256(), Clients::browser());
 
         self::assertSame(self::answerOf('cooling_down', null, null, $this->row($connection)->jwks), $answer);
         self::assertNull($this->row($connection)->jwks_claim_token);
@@ -951,7 +952,7 @@ final class JwksRefetcherTest extends TestCase
 
         self::assertSame(
             self::answerOf('cooling_down', null, null, null, null),
-            app(JwksRefetcher::class)->refetch($read, self::rs256()),
+            app(JwksRefetcher::class)->refetch($read, self::rs256(), Clients::browser()),
         );
     }
 
@@ -1056,7 +1057,7 @@ final class JwksRefetcherTest extends TestCase
      */
     private function refetchFor(Connection $connection, string $reference): array
     {
-        return app(JwksRefetcher::class)->refetch($this->row($connection), self::rs256(), RequestReference::fromString($reference));
+        return app(JwksRefetcher::class)->refetch($this->row($connection), self::rs256(), Clients::browser(), RequestReference::fromString($reference));
     }
 
     /**
@@ -1067,7 +1068,7 @@ final class JwksRefetcherTest extends TestCase
      */
     private function refetch(Connection $connection): array
     {
-        return app(JwksRefetcher::class)->refetch($this->row($connection), self::rs256());
+        return app(JwksRefetcher::class)->refetch($this->row($connection), self::rs256(), Clients::browser());
     }
 
     /**

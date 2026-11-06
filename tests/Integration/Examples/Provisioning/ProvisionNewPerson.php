@@ -7,6 +7,7 @@ namespace Tests\Integration\Examples\Provisioning;
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\ResultUnlinked;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 
@@ -60,7 +61,9 @@ final readonly class ProvisionNewPerson
 
             $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-            $answer = $this->provisioning->link($event->grant, $event->result, $identity);
+            $client = new ClientContext($event->context()->ip, $event->context()->userAgent); // the completion's client
+
+            $answer = $this->provisioning->link($event->grant, $event->result, $identity, $client);
         } catch (\Throwable $exception) {
             $storage->rollBack();
 

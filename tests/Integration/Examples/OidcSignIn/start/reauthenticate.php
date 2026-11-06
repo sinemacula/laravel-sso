@@ -19,17 +19,19 @@ declare(strict_types = 1);
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 
-/** @var array{connection: string, code_challenge: ?string, identity: \SineMacula\Laravel\Sso\Identities\IdentityReference, session: string} $input */
+/** @var array{connection: string, code_challenge: ?string, identity: \SineMacula\Laravel\Sso\Identities\IdentityReference, session: string, client: \SineMacula\Laravel\Sso\Http\ClientContext} $input */
 $connectionId  = $input['connection'];
 $codeChallenge = $input['code_challenge'];
 $identity      = $input['identity'];
 $sessionId     = $input['session'];
+$client        = $input['client'];
 
 // @snippet-start oidc-start-reauthenticate
 $result = app(AuthorizationRequestService::class)->start(
     application: 'web',
     purpose: Purpose::REAUTHENTICATE,
     connectionId: $connectionId,
+    client: $client,
     codeChallenge: $codeChallenge,
     identity: $identity,
     sessionId: $sessionId,

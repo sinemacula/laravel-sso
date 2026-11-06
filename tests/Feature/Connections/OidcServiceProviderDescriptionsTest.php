@@ -32,6 +32,7 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -295,7 +296,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
         self::assertSame('ES256', $during['token_endpoint_auth_signing_alg']);
         self::assertSame([self::kidOf($current), self::kidOf($next)], self::kidsOf($during));
 
-        app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $next->id);
+        app(KeyService::class)->makeCurrent(self::TENANT, $connection->id, $next->id, Clients::browser());
 
         self::assertSame([self::kidOf($next)], self::kidsOf(self::decoded($this->descriptions()->describeWithInlineKeys(self::TENANT, $connection->id))));
     }
@@ -542,7 +543,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
      */
     private function addKey(Connection $connection): KeySummary
     {
-        $key = app(KeyService::class)->addNext($connection->tenant_id, $connection->id, KeyUse::CLIENT_ASSERTION, KeyType::EC)->key;
+        $key = app(KeyService::class)->addNext($connection->tenant_id, $connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC)->key;
 
         self::assertNotNull($key);
 

@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -85,10 +86,13 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * propagates (SSO-11.4) and stops a scheduled run. A scheduled refresh asks no
  * freshness, being a system job an administrator left on, and neither does an
  * administrator's refresh of a connection the schedule would refresh too, which
- * does no more than the schedule would, but always names the administrator. It
- * holds the lookup, the protocols, the sources, the limiter, the freshness
- * gate, the clock and the logger, none of which keeps anything of one run for
- * the next (SSO-11.2); resolve it per run.
+ * does no more than the schedule would, but always names the administrator.
+ * Every entry takes the client its events carry as an `Http\ClientContext` and
+ * reads no request: the console command and the queued job pass
+ * `new ClientContext(null, null)`, an administrator's refresh the client of
+ * their request. It holds the lookup, the protocols, the sources, the limiter,
+ * the freshness gate, the clock and the logger, none of which keeps anything of
+ * one run for the next (SSO-11.2); resolve it per run.
  *
  * @api
  *
@@ -143,15 +147,16 @@ final readonly class MetadataRefresher
     /**
      * Refresh every connection whose refresh is due, in id order.
      *
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return list<\SineMacula\Laravel\Sso\Metadata\RefreshResult>
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function refreshDue(): array
+    public function refreshDue(ClientContext $client): array
     {
-        return array_map(fn (Connection $connection): RefreshResult => $this->refresh($connection, null, false), $this->due());
+        return array_map(fn (Connection $connection): RefreshResult => $this->refresh($connection, null, $client, false), $this->due());
     }
 
     /**
@@ -173,19 +178,20 @@ final readonly class MetadataRefresher
      * is gone, no longer refreshes or is no longer due.
      *
      * @param  string  $connectionId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function refreshQueued(string $connectionId): RefreshResult
+    public function refreshQueued(string $connectionId, ClientContext $client): RefreshResult
     {
         StorageConnection::assertNoTransaction(self::IN_TRANSACTION);
 
         $connection = Connection::query()->useWritePdo()->whereKey($connectionId)->first();
 
-        return $this->isStillDue($connection, $connectionId) ? $this->refresh($connection, null, false) : RefreshResult::skipped($connectionId);
+        return $this->isStillDue($connection, $connectionId) ? $this->refresh($connection, null, $client, false) : RefreshResult::skipped($connectionId);
     }
 
     /**
@@ -197,6 +203,7 @@ final readonly class MetadataRefresher
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
@@ -204,7 +211,7 @@ final readonly class MetadataRefresher
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      * @throws \Throwable
      */
-    public function refreshNow(string $tenantId, string $connectionId, ActingIdentity $actor): RefreshResult
+    public function refreshNow(string $tenantId, string $connectionId, ActingIdentity $actor, ClientContext $client): RefreshResult
     {
         StorageConnection::assertNoTransaction(self::IN_TRANSACTION);
 
@@ -222,7 +229,7 @@ final readonly class MetadataRefresher
 
         $attempt = $this->limiter->attempt(AttemptSubject::metadata($connection->id));
 
-        return $attempt->retryAfter !== null ? RefreshResult::rateLimited($connection->id, $attempt->retryAfter) : $this->refresh($connection, $actor, true);
+        return $attempt->retryAfter !== null ? RefreshResult::rateLimited($connection->id, $attempt->retryAfter) : $this->refresh($connection, $actor, $client, true);
     }
 
     /**
@@ -256,13 +263,14 @@ final readonly class MetadataRefresher
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  bool  $asked
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    private function refresh(Connection $connection, ?ActingIdentity $actor, bool $asked): RefreshResult
+    private function refresh(Connection $connection, ?ActingIdentity $actor, ClientContext $client, bool $asked): RefreshResult
     {
         $source = $this->sourceOf($connection);
         $claim  = $source->claim($connection);
@@ -272,7 +280,7 @@ final readonly class MetadataRefresher
         }
 
         $fetched = $source->fetch($claim);
-        $result  = $source->write($claim, $fetched, $actor);
+        $result  = $source->write($claim, $fetched, $actor, $client);
 
         if (!$result->isRefreshed()) {
             $this->logger->warning('sso.metadata.refresh_' . $result->outcome->value, ['reason' => $result->reason?->value, 'fetch_status' => $fetched->fetchStatus->value]);

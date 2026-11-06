@@ -6,6 +6,7 @@ namespace Tests\Integration\Examples\OidcIdTokens;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
@@ -20,6 +21,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -96,10 +98,11 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
 
         $inFlight = $this->startFlow(Purpose::LINK, $connectionId, $this->person);
 
+        $client = Clients::browser();
         // @snippet-start oidc-id-token-algorithms
         $updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
             'id_token_algorithms' => ['RS256', 'ES256'],
-        ]]);
+        ]], $client);
         // @snippet-end oidc-id-token-algorithms
         self::assertSame(['id_token_algorithms'], $updated->changedSettings);
         self::assertSame(['RS256', 'ES256'], $updated->connection?->settings['id_token_algorithms']);
@@ -127,7 +130,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
 
         $refused = app(ConnectionService::class)->update(self::TENANT, $connectionId, ['settings' => [
             'id_token_algorithms' => ['RS256', 'none', 'HS256'],
-        ]]);
+        ]], Clients::browser());
 
         $notAllowed = ViolationCode::NOT_ALLOWED->value;
 
@@ -154,16 +157,17 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
     {
         $connectionId = $this->makeOidcConnection($this->provider);
         $tenantId     = self::TENANT;
-        $client       = FakeOpenIdProvider::CLIENT_ID;
-        $withApi      = static fn (FakeIdToken $token): FakeIdToken => $token->with('aud', [$client, self::API])->with('azp', $client);
+        $clientId     = FakeOpenIdProvider::CLIENT_ID;
+        $withApi      = static fn (FakeIdToken $token): FakeIdToken => $token->with('aud', [$clientId, self::API])->with('azp', $clientId);
 
         self::assertTrue($this->complete($connectionId)->hasCode());
         self::assertSame(FailureReason::AUDIENCE_MISMATCH->value, $this->complete($connectionId, $withApi)->error);
 
+        $client = Clients::browser();
         // @snippet-start oidc-trusted-audiences
         $updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
             'trusted_audiences' => ['https://api.acme.example'],
-        ]]);
+        ]], $client);
         // @snippet-end oidc-trusted-audiences
         self::assertSame(['trusted_audiences'], $updated->changedSettings);
         self::assertTrue($this->complete($connectionId, $withApi)->hasCode());
@@ -171,7 +175,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
         $refusals = [
             'no azp'        => static fn (FakeIdToken $token): FakeIdToken => $withApi($token)->without('azp'),
             'another azp'   => static fn (FakeIdToken $token): FakeIdToken => $withApi($token)->with('azp', 'another-client'),
-            'another case'  => static fn (FakeIdToken $token): FakeIdToken => $withApi($token)->with('aud', [$client, strtoupper(self::API)]),
+            'another case'  => static fn (FakeIdToken $token): FakeIdToken => $withApi($token)->with('aud', [$clientId, strtoupper(self::API)]),
             'the API alone' => static fn (FakeIdToken $token): FakeIdToken => $token->with('aud', self::API),
         ];
 
@@ -199,10 +203,11 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
 
         self::assertSame([null, true], $this->completeAsked($connectionId, $noAuthTime));
 
+        $client = Clients::browser();
         // @snippet-start oidc-max-age
         $updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
             'max_age' => 3600,
-        ]]);
+        ]], $client);
         // @snippet-end oidc-max-age
         self::assertSame(['max_age'], $updated->changedSettings);
 
@@ -225,8 +230,8 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
         $connectionId = $this->makeOidcConnection($this->provider);
         $connections  = app(ConnectionService::class);
 
-        $overAWeek = $connections->update(self::TENANT, $connectionId, ['settings' => ['max_age' => 604801]]);
-        $aString   = $connections->update(self::TENANT, $connectionId, ['settings' => ['max_age' => '3600']]);
+        $overAWeek = $connections->update(self::TENANT, $connectionId, ['settings' => ['max_age' => 604801]], Clients::browser());
+        $aString   = $connections->update(self::TENANT, $connectionId, ['settings' => ['max_age' => '3600']], Clients::browser());
 
         self::assertSame([['max_age', ViolationCode::NOT_ALLOWED->value]], self::violationsOf($overAWeek));
         self::assertSame([['max_age', ViolationCode::INVALID_TYPE->value]], self::violationsOf($aString));
@@ -267,7 +272,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
     private function completeAsked(string $connectionId, \Closure $tailor): array
     {
         $grant    = $this->provider->authorize($this->startFlow(Purpose::LINK, $connectionId, $this->person), $tailor);
-        $result   = app(CompletionService::class)->callback($connectionId, new CompletionRequest('GET', $grant->query(), []));
+        $result   = app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connectionId, new CompletionRequest('GET', $grant->query(), []), Clients::browser());
         $redirect = HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
 
         return [$grant->parameter('max_age'), $redirect->hasCode()];

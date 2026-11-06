@@ -6,6 +6,7 @@ namespace Tests\Performance;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
@@ -85,10 +86,10 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
      */
     public function testARefusedAttemptStopsAtTheFullCounter(): void
     {
-        $this->attempt(AttemptSubject::redemption(self::IP));
-        $this->attempt(AttemptSubject::redemption(self::IP));
+        $this->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)));
+        $this->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)));
 
-        $result = $this->assertQueryBudget(1, 3, fn (): AttemptResult => $this->attempt(AttemptSubject::redemption(self::IP)));
+        $result = $this->assertQueryBudget(1, 3, fn (): AttemptResult => $this->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null))));
 
         self::assertTrue($result->isRateLimited());
     }
@@ -102,8 +103,8 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
      */
     public function testARefusalByALaterLimitGivesTheEarlierSlotBack(): void
     {
-        $this->attempt(AttemptSubject::authorizationRequest(null, self::DOMAIN));
-        $this->attempt(AttemptSubject::authorizationRequest(null, self::DOMAIN));
+        $this->attempt(AttemptSubject::authorizationRequest(new ClientContext(null, null), self::DOMAIN));
+        $this->attempt(AttemptSubject::authorizationRequest(new ClientContext(null, null), self::DOMAIN));
 
         $result = $this->assertQueryBudget(1, 6, fn (): AttemptResult => $this->attempt($this->request()));
 
@@ -134,7 +135,7 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
      */
     private function request(): AttemptSubject
     {
-        return AttemptSubject::authorizationRequest(self::IP, self::DOMAIN);
+        return AttemptSubject::authorizationRequest(new ClientContext(self::IP, null), self::DOMAIN);
     }
 
     /**

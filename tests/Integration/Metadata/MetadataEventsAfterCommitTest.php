@@ -27,6 +27,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -112,8 +113,8 @@ final class MetadataEventsAfterCommitTest extends TestCase
 
         try {
             DB::connection(StorageConnection::name())->transaction(function (): void {
-                self::assertTrue($this->applier()->apply($this->claim(), self::replacement(), self::now())->isRefreshed());
-                self::assertSame(1, $this->applier()->fail($this->claim(), FailureReason::FETCH_FAILED)->failures);
+                self::assertTrue($this->applier()->apply($this->claim(), self::replacement(), self::now(), Clients::browser())->isRefreshed());
+                self::assertSame(1, $this->applier()->fail($this->claim(), FailureReason::FETCH_FAILED, Clients::browser())->failures);
 
                 throw new \RuntimeException('Rolled back.');
             });
@@ -137,7 +138,7 @@ final class MetadataEventsAfterCommitTest extends TestCase
     public function testARefreshCommittedReportsOnlyOnceTheTransactionCommits(): void
     {
         DB::connection(StorageConnection::name())->transaction(function (): void {
-            $this->applier()->apply($this->claim(), self::replacement(), self::now(), new ActingIdentity('App\Models\User', '42'));
+            $this->applier()->apply($this->claim(), self::replacement(), self::now(), Clients::browser(), new ActingIdentity('App\Models\User', '42'));
 
             $this->assertNoEvents();
         });
@@ -152,7 +153,7 @@ final class MetadataEventsAfterCommitTest extends TestCase
      */
     public function testEventsOutsideATransactionAreDispatchedAtOnce(): void
     {
-        app(MetadataEvents::class)->refreshFailed($this->row(), FailureReason::FETCH_REFUSED, 3, null, null);
+        app(MetadataEvents::class)->refreshFailed($this->row(), FailureReason::FETCH_REFUSED, 3, null, null, Clients::browser());
 
         $this->assertEventSequence([MetadataRefreshFailed::class]);
     }
@@ -164,8 +165,8 @@ final class MetadataEventsAfterCommitTest extends TestCase
      */
     public function testEachEventCrossesAQueueIntact(): void
     {
-        $this->applier()->apply($this->claim(), self::replacement(), self::now());
-        $this->applier()->fail($this->claim(), FailureReason::METADATA_INVALID);
+        $this->applier()->apply($this->claim(), self::replacement(), self::now(), Clients::browser());
+        $this->applier()->fail($this->claim(), FailureReason::METADATA_INVALID, Clients::browser());
 
         $events = $this->recordedEvents();
 

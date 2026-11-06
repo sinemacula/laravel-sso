@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Fixtures\Clients;
 
 /**
  * Query budgets for the domain recheck (SSO-3.3, SSO-11.12). A run reads the
@@ -166,12 +167,12 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
     {
         $rechecker = $this->rechecker();
 
-        $none = $this->assertQueryBudget(1, 0, static fn (): RecheckReport => $rechecker->recheckAll());
+        $none = $this->assertQueryBudget(1, 0, static fn (): RecheckReport => $rechecker->recheckAll(Clients::browser()));
 
         $this->verifiedClaim();
         $this->dns->found(self::RECORD, self::TOKEN);
 
-        $one = $this->assertQueryBudget(4, 2, static fn (): RecheckReport => $rechecker->recheckAll());
+        $one = $this->assertQueryBudget(4, 2, static fn (): RecheckReport => $rechecker->recheckAll(Clients::browser()));
 
         self::assertSame([], $none->entries);
         self::assertSame(1, $one->count(RecheckOutcome::CONFIRMED));
@@ -190,7 +191,7 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
         $rechecker = $this->rechecker();
         $stored    = Domain::query()->findOrFail($claim->id);
 
-        return $this->assertQueryBudget($reads, $writes, static fn (): RecheckEntry => $rechecker->recheck($stored));
+        return $this->assertQueryBudget($reads, $writes, static fn (): RecheckEntry => $rechecker->recheck($stored, Clients::browser()));
     }
 
     /**

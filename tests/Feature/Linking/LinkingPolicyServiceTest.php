@@ -25,6 +25,7 @@ use SineMacula\Laravel\Sso\Protocols\Preset;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\CapturesLogs;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -190,7 +191,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     public function testTurningLinkingOn(string $protocol, string $issuer, array $given, array $violations): void
     {
         $connection = $this->makeConnection(['protocol' => $protocol, 'settings' => [$protocol === 'saml2' ? 'idp_entity_id' : 'issuer' => $issuer]]);
-        $result     = self::service()->change('tenant-1', $connection->id, ['enabled' => true, ...$given]);
+        $result     = self::service()->change('tenant-1', $connection->id, ['enabled' => true, ...$given], Clients::browser());
 
         self::assertSame($violations, self::violations($result));
         self::assertSame($violations === [], $result->isChanged());
@@ -215,7 +216,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
             'issuer_class'       => 'shared',
             'organization_claim' => 'org',
             'organization_value' => self::ORGANIZATION,
-        ], $actor);
+        ], Clients::browser(), $actor);
 
         $names = ['linking.enabled', 'linking.issuer_class', 'linking.organization_claim', 'linking.organization_value'];
         $row   = Connection::query()->whereKey($connection->id)->sole();
@@ -270,7 +271,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
 
         $this->connection->forceFill(['linking_acknowledged_at' => null])->save();
 
-        $result = self::service()->change('tenant-1', $this->connection->id, ['acknowledged' => true]);
+        $result = self::service()->change('tenant-1', $this->connection->id, ['acknowledged' => true], Clients::browser());
         $after  = Connection::query()->whereKey($this->connection->id)->sole();
 
         self::assertSame(['linking.acknowledged'], $result->changedSettings);
@@ -297,7 +298,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
 
         config()->set('sso.features.domain_linking', false);
 
-        $result = self::service()->change('tenant-1', $this->connection->id, ['enabled' => false]);
+        $result = self::service()->change('tenant-1', $this->connection->id, ['enabled' => false], Clients::browser());
         $row    = Connection::query()->whereKey($this->connection->id)->sole();
 
         self::assertSame(['linking.enabled'], $result->changedSettings);
@@ -315,7 +316,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     {
         $connection = $this->plain();
 
-        $result = self::service()->change('tenant-1', $connection->id, ['issuer_class' => 'shared']);
+        $result = self::service()->change('tenant-1', $connection->id, ['issuer_class' => 'shared'], Clients::browser());
 
         self::assertSame(['linking.issuer_class'], $result->changedSettings);
         self::assertFalse(Connection::query()->whereKey($connection->id)->sole()->linking_enabled);
@@ -332,7 +333,12 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         config()->set('sso.features.domain_linking', false);
 
         $connection = $this->plain();
-        $result     = self::service()->change('tenant-1', $connection->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true]);
+        $result     = self::service()->change(
+            'tenant-1',
+            $connection->id,
+            ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true],
+            Clients::browser(),
+        );
 
         self::assertSame([['enabled', 'unsupported']], self::violations($result));
         self::assertSame(FailureReason::SETTINGS_INVALID, $result->reason);
@@ -350,13 +356,13 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         $connection = $this->plain();
         $given      = ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true];
 
-        self::service()->change('tenant-1', $connection->id, $given);
+        self::service()->change('tenant-1', $connection->id, $given, Clients::browser());
 
         $count = count($this->recordedEvents());
 
         foreach ([$given, []] as $again) {
 
-            $result = self::service()->change('tenant-1', $connection->id, $again);
+            $result = self::service()->change('tenant-1', $connection->id, $again, Clients::browser());
 
             self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
             self::assertSame([], $result->changedSettings);
@@ -379,9 +385,9 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         $given      = ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true];
         $first      = $this->clock->now();
 
-        self::service()->change('tenant-1', $connection->id, $given);
+        self::service()->change('tenant-1', $connection->id, $given, Clients::browser());
         $this->clock->advance(30);
-        self::service()->change('tenant-1', $connection->id, $given);
+        self::service()->change('tenant-1', $connection->id, $given, Clients::browser());
 
         self::assertSame($first->toIso8601String(), self::acknowledgedAt($connection));
     }
@@ -397,11 +403,11 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         $connection = $this->plain();
         $first      = $this->clock->now();
 
-        self::service()->change('tenant-1', $connection->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true]);
+        self::service()->change('tenant-1', $connection->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true], Clients::browser());
 
         $this->clock->advance(30);
 
-        self::assertSame(['linking.enabled'], self::service()->change('tenant-1', $connection->id, ['enabled' => false])->changedSettings);
+        self::assertSame(['linking.enabled'], self::service()->change('tenant-1', $connection->id, ['enabled' => false], Clients::browser())->changedSettings);
         self::assertSame($first->toIso8601String(), self::acknowledgedAt($connection));
     }
 
@@ -414,7 +420,12 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     public function testTheIssuerDecidesOverAnEntityIdAlsoHeld(): void
     {
         $connection = $this->makeConnection(['protocol' => 'oidc', 'settings' => ['issuer' => self::GOOGLE, 'idp_entity_id' => self::PLAIN_ISSUER]]);
-        $result     = self::service()->change('tenant-1', $connection->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true]);
+        $result     = self::service()->change(
+            'tenant-1',
+            $connection->id,
+            ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true],
+            Clients::browser(),
+        );
 
         self::assertSame([['issuer_class', 'not_allowed'], ['organization_claim', 'required'], ['organization_value', 'required']], self::violations($result));
     }
@@ -431,23 +442,23 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         $connection = $this->plain();
         $shared     = ['issuer_class' => 'shared', 'organization_claim' => 'org', 'organization_value' => self::ORGANIZATION];
 
-        self::service()->change('tenant-1', $connection->id, ['issuer_class' => 'single_organization', 'acknowledged' => true]);
+        self::service()->change('tenant-1', $connection->id, ['issuer_class' => 'single_organization', 'acknowledged' => true], Clients::browser());
 
-        $cleared = self::service()->change('tenant-1', $connection->id, $shared);
+        $cleared = self::service()->change('tenant-1', $connection->id, $shared, Clients::browser());
 
         self::assertSame(['linking.issuer_class', 'linking.organization_claim', 'linking.organization_value', 'linking.acknowledged'], $cleared->changedSettings);
         self::assertNull(self::acknowledgedAt($connection));
 
-        self::service()->change('tenant-1', $connection->id, ['acknowledged' => true]);
+        self::service()->change('tenant-1', $connection->id, ['acknowledged' => true], Clients::browser());
 
         $this->clock->advance(30);
 
-        $again = self::service()->change('tenant-1', $connection->id, ['issuer_class' => 'single_organization', 'acknowledged' => true]);
+        $again = self::service()->change('tenant-1', $connection->id, ['issuer_class' => 'single_organization', 'acknowledged' => true], Clients::browser());
 
         self::assertSame(['linking.issuer_class'], $again->changedSettings);
         self::assertSame($this->clock->now()->toIso8601String(), self::acknowledgedAt($connection));
 
-        $taken = self::service()->change('tenant-1', $connection->id, ['acknowledged' => false]);
+        $taken = self::service()->change('tenant-1', $connection->id, ['acknowledged' => false], Clients::browser());
 
         self::assertSame(['linking.acknowledged'], $taken->changedSettings);
         self::assertNull(self::acknowledgedAt($connection));
@@ -482,10 +493,10 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
             'saml_attribute'        => 'mail',
             'saml_attribute_format' => self::URI_FORMAT,
             'acknowledged'          => true,
-        ]);
+        ], Clients::browser());
 
-        self::assertSame([['acknowledged', 'required']], self::violations(self::service()->change('tenant-1', $connection->id, $change)));
-        self::assertTrue(self::service()->change('tenant-1', $connection->id, [...$change, 'acknowledged' => true])->isChanged());
+        self::assertSame([['acknowledged', 'required']], self::violations(self::service()->change('tenant-1', $connection->id, $change, Clients::browser())));
+        self::assertTrue(self::service()->change('tenant-1', $connection->id, [...$change, 'acknowledged' => true], Clients::browser())->isChanged());
     }
 
     /**
@@ -552,7 +563,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     public function testWhatIsGivenIsJudged(string $protocol, array $given, array $violations): void
     {
         $connection = $this->makeConnection(['protocol' => $protocol, 'settings' => [$protocol === 'saml2' ? 'idp_entity_id' : 'issuer' => self::PLAIN_ISSUER]]);
-        $result     = self::service()->change('tenant-1', $connection->id, $given);
+        $result     = self::service()->change('tenant-1', $connection->id, $given, Clients::browser());
 
         self::assertSame($violations, self::violations($result));
         self::assertSame($violations !== [], $result->isInvalid());
@@ -571,7 +582,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
      */
     public function testAViolationNeverEchoesTheValue(): void
     {
-        $result = self::service()->change('tenant-1', $this->plain()->id, ['organization_value' => self::ORGANIZATION . "\x01"]);
+        $result = self::service()->change('tenant-1', $this->plain()->id, ['organization_value' => self::ORGANIZATION . "\x01"], Clients::browser());
 
         self::assertSame([['organization_value', 'invalid_format']], self::violations($result));
         self::assertStringNotContainsString(self::ORGANIZATION, (string) json_encode($result));
@@ -586,9 +597,9 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     {
         $connection = $this->plain();
 
-        self::service()->change('tenant-1', $connection->id, ['organization_claim' => 'org', 'organization_value' => self::ORGANIZATION]);
+        self::service()->change('tenant-1', $connection->id, ['organization_claim' => 'org', 'organization_value' => self::ORGANIZATION], Clients::browser());
 
-        $result = self::service()->change('tenant-1', $connection->id, ['organization_claim' => null, 'organization_value' => null]);
+        $result = self::service()->change('tenant-1', $connection->id, ['organization_claim' => null, 'organization_value' => null], Clients::browser());
 
         self::assertSame(['linking.organization_claim', 'linking.organization_value'], $result->changedSettings);
         self::assertNull(Connection::query()->whereKey($connection->id)->sole()->linking_organization_value);
@@ -605,7 +616,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         $this->app?->instance(Freshness::class, FakeFreshness::stale());
 
         $connection = $this->plain();
-        $result     = self::service()->change('tenant-1', $connection->id, ['enabled' => true, 'issuer_class' => 'not-a-class']);
+        $result     = self::service()->change('tenant-1', $connection->id, ['enabled' => true, 'issuer_class' => 'not-a-class'], Clients::browser());
 
         self::assertSame(ConnectionStatus::REFUSED, $result->status);
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
@@ -623,9 +634,9 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     {
         $connection = $this->plain();
 
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, self::service()->change('tenant-2', $connection->id, ['enabled' => false])->reason);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, self::service()->change('TENANT-1', $connection->id, ['enabled' => false])->reason);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, self::service()->change('tenant-1', '01jbexampleconnection00000', ['enabled' => false])->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, self::service()->change('tenant-2', $connection->id, ['enabled' => false], Clients::browser())->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, self::service()->change('TENANT-1', $connection->id, ['enabled' => false], Clients::browser())->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, self::service()->change('tenant-1', '01jbexampleconnection00000', ['enabled' => false], Clients::browser())->reason);
 
         $this->freshness->assertNotAsked();
     }
@@ -638,7 +649,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     public function testAnUnavailableProtocolIsRefused(): void
     {
         $connection = $this->makeConnection(['protocol' => 'nonesuch']);
-        $result     = self::service()->change('tenant-1', $connection->id, ['enabled' => false]);
+        $result     = self::service()->change('tenant-1', $connection->id, ['enabled' => false], Clients::browser());
 
         self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $result->reason);
     }
@@ -653,7 +664,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('A tenant id is 1 to 255 bytes.');
 
-        self::service()->change('', $this->plain()->id, []);
+        self::service()->change('', $this->plain()->id, [], Clients::browser());
     }
 
     /**
@@ -672,15 +683,17 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
 
         self::assertSame(
             [['issuer_class', 'not_allowed'], ['organization_claim', 'required'], ['organization_value', 'required']],
-            self::violations(self::service()->change('tenant-1', $added->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true])),
+            self::violations(
+                self::service()->change('tenant-1', $added->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true], Clients::browser()),
+            ),
         );
 
         self::assertSame(
             [['organization_claim', 'not_allowed']],
-            self::violations(self::service()->change('tenant-1', $built->id, ['organization_claim' => 'not-hd', ...$sharing])),
+            self::violations(self::service()->change('tenant-1', $built->id, ['organization_claim' => 'not-hd', ...$sharing], Clients::browser())),
         );
 
-        self::assertTrue(self::service()->change('tenant-1', $built->id, ['organization_claim' => 'hd', ...$sharing])->isChanged());
+        self::assertTrue(self::service()->change('tenant-1', $built->id, ['organization_claim' => 'hd', ...$sharing], Clients::browser())->isChanged());
     }
 
     /**
@@ -715,9 +728,9 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
 
         self::assertSame(
             [['organization_claim', 'not_allowed']],
-            self::violations(self::service()->change('tenant-1', $entra->id, ['organization_claim' => 'preferred_username', ...$sharing])),
+            self::violations(self::service()->change('tenant-1', $entra->id, ['organization_claim' => 'preferred_username', ...$sharing], Clients::browser())),
         );
-        self::assertTrue(self::service()->change('tenant-1', $entra->id, ['organization_claim' => 'tid', ...$sharing])->isChanged());
+        self::assertTrue(self::service()->change('tenant-1', $entra->id, ['organization_claim' => 'tid', ...$sharing], Clients::browser())->isChanged());
     }
 
     /**
@@ -738,12 +751,14 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
 
         self::assertSame(
             [['issuer_class', 'not_allowed'], ['organization_claim', 'required'], ['organization_value', 'required']],
-            self::violations(self::service()->change('tenant-1', $connection->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true])),
+            self::violations(
+                self::service()->change('tenant-1', $connection->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true], Clients::browser()),
+            ),
         );
 
         $shared = ['enabled' => true, 'issuer_class' => 'shared', 'organization_claim' => 'org', 'organization_value' => 'x'];
 
-        self::assertTrue(self::service()->change('tenant-1', $connection->id, $shared)->isChanged());
+        self::assertTrue(self::service()->change('tenant-1', $connection->id, $shared, Clients::browser())->isChanged());
     }
 
     /**
@@ -755,7 +770,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     {
         $this->captureLogs();
 
-        self::service()->change('tenant-1', $this->plain()->id, ['organization_value' => self::ORGANIZATION]);
+        self::service()->change('tenant-1', $this->plain()->id, ['organization_value' => self::ORGANIZATION], Clients::browser());
 
         self::assertSame([], $this->capturedLogRecords());
     }

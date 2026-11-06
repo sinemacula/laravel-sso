@@ -27,6 +27,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -94,7 +95,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
 
         $this->usePackageTables();
 
-        $this->connection = (string) $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC, actor: $this->actor)->connection?->id;
+        $this->connection = (string) $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC, actor: $this->actor)->connection?->id;
 
         $this->startRecordingEvents();
     }
@@ -114,15 +115,16 @@ final class AdministrationEventsAfterCommitTest extends TestCase
         try {
             DB::connection(self::STORE)->transaction(function (): void {
 
-                self::assertTrue($this->connections()->create(self::TENANT, 'oidc', 'Second', self::OIDC, actor: $this->actor)->isSucceeded());
+                self::assertTrue($this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, actor: $this->actor)->isSucceeded());
                 self::assertTrue($this->connections()->update(
                     self::TENANT,
                     $this->connection,
                     ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth/token']],
+                    Clients::browser(),
                     $this->actor,
                 )->isSucceeded());
-                self::assertTrue($this->connections()->enable(self::TENANT, $this->connection, $this->actor)->isSucceeded());
-                self::assertTrue($this->keys()->addNext(self::TENANT, $this->connection, KeyUse::CLIENT_ASSERTION, KeyType::EC, $this->actor)->isSucceeded());
+                self::assertTrue($this->connections()->enable(self::TENANT, $this->connection, Clients::browser(), $this->actor)->isSucceeded());
+                self::assertTrue($this->keys()->addNext(self::TENANT, $this->connection, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC, $this->actor)->isSucceeded());
 
                 $this->assertNoEvents();
 
@@ -150,9 +152,15 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     {
         DB::connection(self::STORE)->transaction(function (): void {
 
-            $this->connections()->update(self::TENANT, $this->connection, ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth/token']], $this->actor);
-            $this->connections()->enable(self::TENANT, $this->connection, $this->actor);
-            $this->keys()->addNext(self::TENANT, $this->connection, KeyUse::CLIENT_ASSERTION, KeyType::EC, $this->actor);
+            $this->connections()->update(
+                self::TENANT,
+                $this->connection,
+                ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth/token']],
+                Clients::browser(),
+                $this->actor,
+            );
+            $this->connections()->enable(self::TENANT, $this->connection, Clients::browser(), $this->actor);
+            $this->keys()->addNext(self::TENANT, $this->connection, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC, $this->actor);
 
             $this->assertNoEvents();
         });
@@ -176,7 +184,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     {
         DB::connection()->beginTransaction();
 
-        $this->connections()->create(self::TENANT, 'oidc', 'Second', self::OIDC, actor: $this->actor);
+        $this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, actor: $this->actor);
 
         $this->assertEventSequence([ConnectionCreated::class]);
 
@@ -251,6 +259,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
                 self::TENANT,
                 $this->connection,
                 ['display_name' => 'Renamed', 'settings' => ['client_secret' => 'the-rotated-client-secret']],
+                Clients::browser(),
                 $this->actor,
             );
 

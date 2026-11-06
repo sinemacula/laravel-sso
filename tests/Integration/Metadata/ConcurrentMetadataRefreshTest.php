@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\CompletionState;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\StageOutcome;
 use SineMacula\Laravel\Sso\Completion\Stages\ValidateResponse;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
@@ -26,6 +27,7 @@ use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -50,6 +52,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Links\ExampleLinks;
@@ -170,10 +173,11 @@ final class ConcurrentMetadataRefreshTest extends TestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 
@@ -260,7 +264,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
         });
 
         [$first, $other] = $this->inProcesses([
-            fn (): array => ['status' => $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor())->outcome->value],
+            fn (): array => ['status' => $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor(), Clients::browser())->outcome->value],
             function () use ($second, $fetching, $done): array {
 
                 self::await($fetching);
@@ -333,7 +337,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
 
                 self::await($read);
 
-                $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor());
+                $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor(), Clients::browser());
 
                 return ['status' => $result->outcome->value, 'reason' => $result->reason?->value];
             },
@@ -388,7 +392,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
 
         [$loser, $owner] = $this->inProcesses([
             function (): array {
-                $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor());
+                $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor(), Clients::browser());
 
                 return ['status' => $result->outcome->value, 'reason' => $result->reason?->value];
             },
@@ -400,7 +404,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
                     app()->instance(Clock::class, new FixedClock('2026-11-01T09:35:01Z'));
                     $this->fetcher->respond(self::URL, FetchResult::fetched(200, [], $winner));
 
-                    $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor());
+                    $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor(), Clients::browser());
                 } finally {
                     touch($taken);
                 }
@@ -445,7 +449,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
 
                 $this->pauseAfterValidation($validated, $refreshed);
 
-                $result = app(CompletionService::class)->assertionConsumerService($this->connectionId(), $request);
+                $result = app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connectionId(), $request, Clients::browser());
 
                 return ['status' => $result->status->value, 'reason' => $result->reason?->value];
             },
@@ -454,7 +458,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
                 self::await($validated);
 
                 try {
-                    $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor());
+                    $result = $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor(), Clients::browser());
                 } finally {
                     touch($refreshed);
                 }
@@ -511,10 +515,10 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     private function secondRefresh(string $second): string
     {
         if ($second === 'now') {
-            return $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor())->outcome->value;
+            return $this->refresher()->refreshNow(self::TENANT, $this->connectionId(), self::actor(), Clients::browser())->outcome->value;
         }
 
-        $results = $this->refresher()->refreshDue();
+        $results = $this->refresher()->refreshDue(Clients::browser());
 
         return $results === [] ? 'nothing_due' : implode(',', array_map(static fn (RefreshResult $result): string => $result->outcome->value, $results));
     }
@@ -556,9 +560,9 @@ final class ConcurrentMetadataRefreshTest extends TestCase
 
         try {
             $result = match ($change) {
-                'distrust' => app(KeyService::class)->distrustCertificate(self::TENANT, $id, $second),
-                'add'      => app(KeyService::class)->trustCertificate(self::TENANT, $id, Certificates::distinct(11)),
-                default    => app(KeyService::class)->trustCertificate(self::TENANT, $id, Certificates::distinct(11), use: KeyUse::METADATA_SIGNING),
+                'distrust' => app(KeyService::class)->distrustCertificate(self::TENANT, $id, $second, Clients::browser()),
+                'add'      => app(KeyService::class)->trustCertificate(self::TENANT, $id, Certificates::distinct(11), Clients::browser()),
+                default    => app(KeyService::class)->trustCertificate(self::TENANT, $id, Certificates::distinct(11), Clients::browser(), use: KeyUse::METADATA_SIGNING),
             };
 
             if ($inTransaction) {
@@ -646,7 +650,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     private function solicitedResponse(): CompletionRequest
     {
         $connection = Connection::query()->findOrFail($this->connectionId());
-        $start      = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connection->id);
+        $start      = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connection->id, Clients::browser());
 
         self::assertTrue($start->isStarted());
 

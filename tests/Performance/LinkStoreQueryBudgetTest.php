@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Results\ExampleResults;
 
@@ -92,9 +93,9 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
     {
         $this->createLink('subject-1');
 
-        $first  = $this->assertQueryBudget(1, 1, fn (): LinkResolution => $this->store()->resolve($this->resultFor('subject-1')));
-        $second = $this->assertQueryBudget(1, 1, fn (): LinkResolution => $this->store()->resolve($this->resultFor('subject-1')));
-        $miss   = $this->assertQueryBudget(1, 0, fn (): LinkResolution => $this->store()->resolve($this->resultFor('subject-2')));
+        $first  = $this->assertQueryBudget(1, 1, fn (): LinkResolution => $this->store()->resolve($this->resultFor('subject-1'), Clients::browser()));
+        $second = $this->assertQueryBudget(1, 1, fn (): LinkResolution => $this->store()->resolve($this->resultFor('subject-1'), Clients::browser()));
+        $miss   = $this->assertQueryBudget(1, 0, fn (): LinkResolution => $this->store()->resolve($this->resultFor('subject-2'), Clients::browser()));
 
         self::assertSame('1', $first->identity?->id);
         self::assertSame('1', $second->identity?->id);
@@ -129,15 +130,15 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
     {
         $id = (string) $this->createLink('subject-1')->link?->id;
 
-        $missing = $this->assertQueryBudget(1, 0, fn (): LinkResult => $this->service()->remove(new IdentityReference('user', '2'), $id));
+        $missing = $this->assertQueryBudget(1, 0, fn (): LinkResult => $this->service()->remove(new IdentityReference('user', '2'), $id, Clients::browser()));
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $stale = $this->assertQueryBudget(1, 0, fn (): LinkResult => $this->service()->remove($this->identity, $id));
+        $stale = $this->assertQueryBudget(1, 0, fn (): LinkResult => $this->service()->remove($this->identity, $id, Clients::browser()));
 
         $this->freshness->answer(FreshnessOutcome::FRESH);
 
-        $removed = $this->assertQueryBudget(3, 2, fn (): LinkResult => $this->service()->remove($this->identity, $id));
+        $removed = $this->assertQueryBudget(3, 2, fn (): LinkResult => $this->service()->remove($this->identity, $id, Clients::browser()));
 
         self::assertTrue($missing->isRefused());
         self::assertTrue($stale->isRefused());
@@ -172,7 +173,7 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
      */
     private function createLink(string $subject, ?IdentityReference $identity = null): LinkCreation
     {
-        return $this->store()->create($this->connection, new LinkSubject(self::ISSUER, $subject), $identity ?? $this->identity, LinkOrigin::LINK_PURPOSE);
+        return $this->store()->create($this->connection, new LinkSubject(self::ISSUER, $subject), $identity ?? $this->identity, LinkOrigin::LINK_PURPOSE, Clients::browser());
     }
 
     /**

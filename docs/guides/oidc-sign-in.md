@@ -20,6 +20,7 @@ $result = app(AuthorizationRequestService::class)->start(
     application: 'web',
     purpose: Purpose::SIGN_IN,
     connectionId: $connectionId,
+    client: $client,
     codeChallenge: $codeChallenge,
 );
 
@@ -31,6 +32,11 @@ $status = match (true) {
 
 return response()->json($result->body(), $status, $result->headers());
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 A started answer's `navigation` is a `redirect`: send the top-level window to its `url`. A start makes no call to the
 provider, so it cannot fail because the provider is down.
@@ -106,6 +112,7 @@ $result = app(AuthorizationRequestService::class)->start(
     application: 'web',
     purpose: Purpose::REAUTHENTICATE,
     connectionId: $connectionId,
+    client: $client,
     codeChallenge: $codeChallenge,
     identity: $identity,
     sessionId: $sessionId,

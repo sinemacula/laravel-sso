@@ -14,8 +14,13 @@ bytes, both from your own authentication and never from the request, with the PK
 
 <!-- snippet: tests/Integration/Examples/Reauthenticating/ReauthenticatingExampleTest.php#reauthenticating-start -->
 ```php
-$start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $connectionId, $codeChallenge, $identity, $sessionId);
+$start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $codeChallenge, $identity, $sessionId);
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 1. **Start.** The package asks `standing()` whether the identity is signed in through the connection on the session.
    Anything but `signed_in` is `session_ineligible`, and no request is stored.
@@ -43,6 +48,7 @@ $result = DB::connection(StorageConnection::name())->transaction(
         $connectionId,
         $code,
         $verifier,
+        $client,
     ),
 );
 
@@ -139,9 +145,9 @@ transaction, here under the session's id, `$sessionId`:
 
 <!-- snippet: tests/Integration/Examples/Reauthenticating/ReauthenticatingExampleTest.php#reauthenticating-sign-in -->
 ```php
-$signedIn = DB::connection(StorageConnection::name())->transaction(static function () use ($sessionId, $connectionId, $code, $verifier): RedemptionResult {
+$signedIn = DB::connection(StorageConnection::name())->transaction(static function () use ($sessionId, $connectionId, $code, $verifier, $client): RedemptionResult {
 
-    $result = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $connectionId, $code, $verifier);
+    $result = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $connectionId, $code, $verifier, $client);
 
     if ($result->isAdmitted() && $result->linkedIdentity !== null) {
         Session::on(StorageConnection::name())->create([

@@ -94,7 +94,7 @@ event's flow did not establish, or that does not apply to it, is `null`.
 | Key                                                 | What it holds                                                          |
 |-----------------------------------------------------|------------------------------------------------------------------------|
 | `occurred_at`                                       | When the event was built, ISO 8601 UTC to the microsecond              |
-| `ip`, `user_agent`                                  | The client of the request being served                                 |
+| `ip`, `user_agent`                                  | The client the action was given                                        |
 | `connection_id`                                     | The connection the event concerns                                      |
 | `connection_tenant_id`                              | The tenant that owns the connection, or the enforcement rule           |
 | `protocol`                                          | `saml2`, `oidc`, or a registered driver's name                         |
@@ -123,10 +123,13 @@ a secret, an assertion, a provider token, a verifier, a handoff code, protocol s
 raw payload or a transport header. Mapped attributes appear only on the unlinked-result event, which a provisioning
 listener needs.
 
-The client is read from the request being served, and every value is cleaned before it is kept: the IP address only
-when it is a valid IPv4 or IPv6 address, and the user agent and every id with control characters and Unicode
-bidirectional controls removed and invalid UTF-8 replaced, the user agent cut to 512 characters and every other value to
-255. Your sink can store them without escaping them again, and a crafted header cannot forge a log line.
+The client is the `Http\ClientContext` the action was given, never read from the request being served: your controller
+builds it with `ClientContext::fromRequest($request)`, and work with no client (a console command, a queued job, the
+schedule) passes `new ClientContext(null, null)`, whose events carry neither value. Every value is cleaned before it is
+kept: the IP address only when it is a valid IPv4 or IPv6 address, and the user agent and every id with control
+characters and Unicode bidirectional controls removed and invalid UTF-8 replaced, the user agent cut to 512 characters
+and every other value to 255. Your sink can store them without escaping them again, and a crafted header cannot forge
+a log line.
 
 ## Refused operations: `FlowFailed`
 
@@ -337,8 +340,13 @@ user first, then pass them so the event says who did. Here `$connections` is the
 ```php
 $actor = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
 
-$updated = $connections->update($tenantId, $connectionId, ['settings' => ['token_endpoint' => $url]], $actor);
+$updated = $connections->update($tenantId, $connectionId, ['settings' => ['token_endpoint' => $url]], $client, $actor);
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 The `ConnectionUpdated` it reports names `token_endpoint` in `changedSettings`, and the user as the acting identity. An
 `ActingIdentity` with an empty type or id is an `InvalidArgumentException`, and a change the helper refuses, such as one

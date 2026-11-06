@@ -51,6 +51,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Concerns\FlowRoutes;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Standalone\ApplicationRevocation;
@@ -287,7 +288,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
             }
 
             $answers->append(DB::connection(StorageConnection::name())->transaction(
-                static fn (): ProvisioningResult => app(ProvisioningHelper::class)->link($event->grant, $event->result, $new),
+                static fn (): ProvisioningResult => app(ProvisioningHelper::class)->link($event->grant, $event->result, $new, Clients::browser()),
             ));
         });
 
@@ -344,7 +345,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
 
         $this->startRecordingEvents();
 
-        $result = app(EnforcementService::class)->update(self::TENANT, true, [$satisfying->id], $actor);
+        $result = app(EnforcementService::class)->update(self::TENANT, true, [$satisfying->id], Clients::browser(), $actor);
 
         self::assertTrue($result->isChanged());
         self::assertSame(['session-satisfying'], ApplicationRevocation::sessionIds());
@@ -577,7 +578,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     {
         return DB::connection(StorageConnection::name())->transaction(static function () use ($connection, $code, $verifier, $session): RedemptionResult {
 
-            $answer = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::FLOW_APPLICATION, $connection->id, $code, $verifier);
+            $answer = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::FLOW_APPLICATION, $connection->id, $code, $verifier, Clients::browser());
 
             if ($session !== null && $answer->linkedIdentity !== null) {
                 ApplicationRevocation::establish(
@@ -606,14 +607,14 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     private function verifyTheDomain(Connection $connection): void
     {
         $domains = app(DomainService::class);
-        $claimed = $domains->claim(self::TENANT, $connection->id, 'example.com');
+        $claimed = $domains->claim(self::TENANT, $connection->id, 'example.com', Clients::browser());
 
         self::assertSame(DomainStatus::CLAIMED, $claimed->status);
         self::assertNotNull($claimed->domain);
 
         $this->seams->dns->publishes($claimed->domain);
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $connection->id, 'example.com')->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $connection->id, 'example.com', Clients::browser())->status);
 
         $this->seams->dns->assertLookedUp($claimed->domain->recordName, 1);
     }
@@ -635,7 +636,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
             'issuer_class' => 'single_organization',
             'acknowledged' => true,
             ...$attribute,
-        ]);
+        ], Clients::browser());
 
         self::assertTrue($changed->isChanged());
     }

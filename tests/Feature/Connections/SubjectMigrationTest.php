@@ -46,6 +46,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\RecordingRevocation;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
@@ -134,7 +135,7 @@ final class SubjectMigrationTest extends TestCase
 
         $this->usePackageTables();
 
-        $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC);
+        $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC);
 
         $this->connection = Connection::query()->whereKey((string) $created->connection?->id)->sole();
 
@@ -164,7 +165,7 @@ final class SubjectMigrationTest extends TestCase
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['second']->id => ['second-new', null, self::NEW_ISSUER],
             $this->links['first']->id  => ['first-new', 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent'],
-        ], $this->ids('third'), $actor);
+        ], $this->ids('third'), Clients::browser(), $actor);
 
         $summary = $result->connection;
 
@@ -223,7 +224,14 @@ final class SubjectMigrationTest extends TestCase
         $this->links['second']->forceFill(['provenance' => LinkOrigin::LINK_PURPOSE])->save();
 
         $relinks = [$this->links['first']->id => ['first-new'], $this->links['second']->id => ['second-new']];
-        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $relinks, $this->ids('third'));
+        $result  = $this->migration()->migrate(
+            self::TENANT,
+            $this->connection->id,
+            ['settings' => ['issuer' => self::NEW_ISSUER]],
+            $relinks,
+            $this->ids('third'),
+            Clients::browser(),
+        );
 
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
 
@@ -272,7 +280,7 @@ final class SubjectMigrationTest extends TestCase
             authenticationContext: new AuthenticationContext,
         );
 
-        self::assertTrue(app(LinkStore::class)->resolve($result)->isSuspended());
+        self::assertTrue(app(LinkStore::class)->resolve($result, Clients::browser())->isSuspended());
         self::assertSame(LinkState::SUSPENDED, Link::query()->whereKey($relinked->id)->sole()->state);
     }
 
@@ -289,7 +297,7 @@ final class SubjectMigrationTest extends TestCase
         $this->app?->instance(Linker::class, app(LinkStore::class));
 
         $widened = $this->connection->getConnection()->transaction(
-            static fn (): int => app(ScopeWidening::class)->widened(new IdentityReference($relinked->identity_type, $relinked->identity_id), 'tenant-2'),
+            static fn (): int => app(ScopeWidening::class)->widened(new IdentityReference($relinked->identity_type, $relinked->identity_id), 'tenant-2', Clients::browser()),
         );
 
         self::assertSame(1, $widened);
@@ -307,7 +315,14 @@ final class SubjectMigrationTest extends TestCase
         $this->links['first']->forceFill(['provenance' => LinkOrigin::VERIFIED_DOMAIN, 'state' => LinkState::SUSPENDED, 'suspended_at' => $this->clock->now()])->save();
 
         $relinks = [$this->links['first']->id => ['first-new']];
-        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $relinks, $this->ids('second', 'third'));
+        $result  = $this->migration()->migrate(
+            self::TENANT,
+            $this->connection->id,
+            ['settings' => ['issuer' => self::NEW_ISSUER]],
+            $relinks,
+            $this->ids('second', 'third'),
+            Clients::browser(),
+        );
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
         self::assertSame([['relinks.' . $this->links['first']->id, 'not_allowed']], self::violationsOf($result));
@@ -322,7 +337,14 @@ final class SubjectMigrationTest extends TestCase
      */
     public function testRemovesEveryLinkListed(): void
     {
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['client_id' => 'client-456']], [], $this->ids('first', 'second', 'third'));
+        $result = $this->migration()->migrate(
+            self::TENANT,
+            $this->connection->id,
+            ['settings' => ['client_id' => 'client-456']],
+            [],
+            $this->ids('first', 'second', 'third'),
+            Clients::browser(),
+        );
 
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
         self::assertSame(['client_id'], $result->changedSettings);
@@ -343,7 +365,7 @@ final class SubjectMigrationTest extends TestCase
         $request = $this->makeAuthorizationRequest($this->connection);
 
         $relinks = [$this->links['first']->id => ['first-subject']];
-        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['display_name' => 'Renamed'], $relinks, $this->ids('second', 'third'));
+        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['display_name' => 'Renamed'], $relinks, $this->ids('second', 'third'), Clients::browser());
 
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
         self::assertSame(['display_name'], $result->changedSettings);
@@ -377,7 +399,7 @@ final class SubjectMigrationTest extends TestCase
     {
         $this->app?->instance(Freshness::class, FakeFreshness::fresh()->staleFor($operation));
 
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['display_name' => 'Renamed'], [], $this->ids('first', 'second', 'third'));
+        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['display_name' => 'Renamed'], [], $this->ids('first', 'second', 'third'), Clients::browser());
 
         self::assertSame(ConnectionStatus::REFUSED, $result->status);
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
@@ -393,7 +415,14 @@ final class SubjectMigrationTest extends TestCase
     {
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [], $this->ids('first', 'second', 'third'));
+        $result = $this->migration()->migrate(
+            self::TENANT,
+            $this->connection->id,
+            ['settings' => ['issuer' => self::NEW_ISSUER]],
+            [],
+            $this->ids('first', 'second', 'third'),
+            Clients::browser(),
+        );
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
         self::assertSame([[FreshnessOperation::CONNECTION_TRUST, 300]], $this->freshness->asked());
@@ -437,7 +466,14 @@ final class SubjectMigrationTest extends TestCase
     public function testRefusesAMalformedRelink(mixed $relink, string $code): void
     {
         $id     = $this->links['first']->id;
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [$id => $relink], $this->ids('second', 'third'));
+        $result = $this->migration()->migrate(
+            self::TENANT,
+            $this->connection->id,
+            ['settings' => ['issuer' => self::NEW_ISSUER]],
+            [$id => $relink],
+            $this->ids('second', 'third'),
+            Clients::browser(),
+        );
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
         self::assertSame(FailureReason::SETTINGS_INVALID, $result->reason);
@@ -474,7 +510,14 @@ final class SubjectMigrationTest extends TestCase
     public function testAcceptsAWellShapedRelink(array $relink): void
     {
         $relinks = [$this->links['first']->id => $relink];
-        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $relinks, $this->ids('second', 'third'));
+        $result  = $this->migration()->migrate(
+            self::TENANT,
+            $this->connection->id,
+            ['settings' => ['issuer' => self::NEW_ISSUER]],
+            $relinks,
+            $this->ids('second', 'third'),
+            Clients::browser(),
+        );
 
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
 
@@ -506,7 +549,7 @@ final class SubjectMigrationTest extends TestCase
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => 'http://login.example.com']], [
             $reserved->id             => ['subject'],
             $this->links['first']->id => ['first-new'],
-        ], $this->ids('second', 'third'));
+        ], $this->ids('second', 'third'), Clients::browser());
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
         self::assertSame([['issuer', 'not_https'], ['relinks.' . $reserved->id, 'not_allowed']], self::violationsOf($result));
@@ -516,7 +559,7 @@ final class SubjectMigrationTest extends TestCase
 
         $removed = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['first']->id => ['first-new'],
-        ], [...$this->ids('second', 'third'), $reserved->id]);
+        ], [...$this->ids('second', 'third'), $reserved->id], Clients::browser());
 
         self::assertSame(ConnectionStatus::MIGRATED, $removed->status);
         self::assertSame([['1', self::ISSUER, null, 'first-new', 'active']], self::linksNow());
@@ -575,7 +618,14 @@ final class SubjectMigrationTest extends TestCase
             $relinks[(string) $id($name)] = [$name . '-new'];
         }
 
-        $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], $relinks, array_map($id, $removed));
+        $result = $this->migration()->migrate(
+            self::TENANT,
+            $this->connection->id,
+            ['settings' => ['issuer' => self::NEW_ISSUER]],
+            $relinks,
+            array_map($id, $removed),
+            Clients::browser(),
+        );
 
         self::assertSame(ConnectionStatus::REFUSED, $result->status);
         self::assertSame(FailureReason::LINKS_UNACCOUNTED, $result->reason);
@@ -593,7 +643,7 @@ final class SubjectMigrationTest extends TestCase
     {
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['first']->id => ['first-new'],
-        ], $this->ids('second', 'third', 'second'));
+        ], $this->ids('second', 'third', 'second'), Clients::browser());
 
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
         $this->assertRevokedIdentities(['2', '3']);
@@ -616,7 +666,7 @@ final class SubjectMigrationTest extends TestCase
 
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['first']->id => ['first-new'],
-        ], $prepared);
+        ], $prepared, Clients::browser());
 
         self::assertSame(FailureReason::LINKS_UNACCOUNTED, $result->reason);
         self::assertSame(4, Link::query()->where('connection_id', $this->connection->id)->count());
@@ -625,7 +675,7 @@ final class SubjectMigrationTest extends TestCase
 
         $retried = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['first']->id => ['first-new'],
-        ], [...$prepared, $late->id]);
+        ], [...$prepared, $late->id], Clients::browser());
 
         self::assertSame(ConnectionStatus::MIGRATED, $retried->status);
         $this->assertRevokedIdentities(['2', '3', '5']);
@@ -645,7 +695,7 @@ final class SubjectMigrationTest extends TestCase
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['first']->id  => ['the-same-subject'],
             $this->links['second']->id => ['the-same-subject'],
-        ], $this->ids('third'));
+        ], $this->ids('third'), Clients::browser());
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
         self::assertSame([['relinks.' . $this->links['second']->id, 'duplicate']], self::violationsOf($result));
@@ -667,7 +717,7 @@ final class SubjectMigrationTest extends TestCase
         $result = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $this->links['first']->id => ['first-new'],
             $twin->id                 => ['twin-new'],
-        ], $this->ids('second', 'third'));
+        ], $this->ids('second', 'third'), Clients::browser());
 
         self::assertSame([['relinks.' . $twin->id, 'too_many']], self::violationsOf($result));
         self::assertSame(self::ISSUER, $this->reread()->settings['issuer']);
@@ -684,7 +734,14 @@ final class SubjectMigrationTest extends TestCase
     public function testAChangeOfNothingTouchesNoLink(): void
     {
         $relinks = [$this->links['first']->id => ['first-new']];
-        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['issuer' => self::ISSUER]], $relinks, $this->ids('second', 'third'));
+        $result  = $this->migration()->migrate(
+            self::TENANT,
+            $this->connection->id,
+            ['settings' => ['issuer' => self::ISSUER]],
+            $relinks,
+            $this->ids('second', 'third'),
+            Clients::browser(),
+        );
 
         self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
         self::assertSame($this->connection->id, $result->connection?->id);
@@ -702,8 +759,14 @@ final class SubjectMigrationTest extends TestCase
     {
         $retired = $this->makeConnection(['protocol' => 'retired']);
 
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->migration()->migrate('tenant-2', $this->connection->id, ['display_name' => 'Renamed'], [], [])->reason);
-        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $this->migration()->migrate(self::TENANT, $retired->id, ['display_name' => 'Renamed'], [], [])->reason);
+        self::assertSame(
+            FailureReason::CONNECTION_NOT_FOUND,
+            $this->migration()->migrate('tenant-2', $this->connection->id, ['display_name' => 'Renamed'], [], [], Clients::browser())->reason,
+        );
+        self::assertSame(
+            FailureReason::PROTOCOL_UNAVAILABLE,
+            $this->migration()->migrate(self::TENANT, $retired->id, ['display_name' => 'Renamed'], [], [], Clients::browser())->reason,
+        );
         $this->assertNothingChanged();
     }
 
@@ -718,7 +781,7 @@ final class SubjectMigrationTest extends TestCase
     public function testRefusesAMalformedTenantId(): void
     {
         try {
-            $this->migration()->migrate('', $this->connection->id, [], [], []);
+            $this->migration()->migrate('', $this->connection->id, [], [], [], Clients::browser());
             self::fail('An empty tenant id was accepted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('A tenant id is 1 to 255 bytes.', $exception->getMessage());
@@ -821,7 +884,14 @@ final class SubjectMigrationTest extends TestCase
         $this->links['first']->forceFill(['provenance' => LinkOrigin::VERIFIED_DOMAIN])->save();
 
         $relinks = [$this->links['first']->id => ['first-new']];
-        $result  = $this->migration()->migrate(self::TENANT, $this->connection->id, ['settings' => ['client_id' => 'client-456']], $relinks, $this->ids('second', 'third'));
+        $result  = $this->migration()->migrate(
+            self::TENANT,
+            $this->connection->id,
+            ['settings' => ['client_id' => 'client-456']],
+            $relinks,
+            $this->ids('second', 'third'),
+            Clients::browser(),
+        );
 
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
 

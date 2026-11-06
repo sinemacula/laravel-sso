@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\Stages\DomainReservation;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
@@ -53,6 +54,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\ScriptedEmailMatcher;
 use Tests\Fixtures\Linking\ScriptedPrincipalScope;
 use Tests\Fixtures\Linking\ScriptedTenantMembership;
@@ -194,7 +196,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
         ]);
 
         $this->completeAtCallback('a-state-that-creates-the-counters');
-        app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, 'not-a-code', self::VERIFIER);
+        app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, 'not-a-code', self::VERIFIER, Clients::browser());
     }
 
     /**
@@ -262,7 +264,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     {
         $this->row(LinkState::RESERVED, 'a', 60, $this->domain->id);
 
-        $this->assertQueryBudget(4, 3, fn () => app(DomainService::class)->remove('tenant-1', $this->connection->id, 'example.com'));
+        $this->assertQueryBudget(4, 3, fn () => app(DomainService::class)->remove('tenant-1', $this->connection->id, 'example.com', Clients::browser()));
 
         self::assertSame(0, Link::query()->count());
     }
@@ -301,7 +303,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
      */
     public function testASettingsChange(): void
     {
-        $change = fn (array $changes): ConnectionResult => app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, $changes);
+        $change = fn (array $changes): ConnectionResult => app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, $changes, Clients::browser());
 
         $this->connection->forceFill(['linking_acknowledged_at' => null])->save();
 
@@ -334,24 +336,24 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
 
         $this->row(LinkState::ACTIVE, VerifyingDriver::SUBJECT, null, null, $this->person->id);
 
-        self::assertTrue($this->assertQueryBudget(1, 1, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isLinked());
+        self::assertTrue($this->assertQueryBudget(1, 1, fn (): LinkResolution => $store->resolve($this->verifiedResult(), Clients::browser()))->isLinked());
 
         $this->scope->verdict = ScopeVerdict::UNKNOWN;
 
-        self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isScopeUnknown());
+        self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult(), Clients::browser()))->isScopeUnknown());
 
         $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
 
-        self::assertTrue($this->assertQueryBudget(3, 2, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isSuspended());
-        self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isSuspended());
+        self::assertTrue($this->assertQueryBudget(3, 2, fn (): LinkResolution => $store->resolve($this->verifiedResult(), Clients::browser()))->isSuspended());
+        self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult(), Clients::browser()))->isSuspended());
 
         Link::query()->delete();
 
-        self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isAbsent());
+        self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult(), Clients::browser()))->isAbsent());
 
         $this->row(LinkState::RESERVED, VerifyingDriver::SUBJECT, 60);
 
-        self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult()))->isReserved());
+        self::assertTrue($this->assertQueryBudget(1, 0, fn (): LinkResolution => $store->resolve($this->verifiedResult(), Clients::browser()))->isReserved());
     }
 
     /**
@@ -363,7 +365,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
      */
     public function testAWidening(): void
     {
-        $widen = fn (): int => $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2'));
+        $widen = fn (): int => $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
 
         self::assertSame(0, $this->assertQueryBudget(2, 1, $widen));
 
@@ -408,7 +410,12 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
      */
     private function completeAtCallback(string $state): CompletionResult
     {
-        return app(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', 'state=' . $state, []));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connection->id,
+            new CompletionRequest('GET', 'state=' . $state, []),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -443,7 +450,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
      */
     private function admitted(string $code): RedemptionResult
     {
-        $admit = fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, self::VERIFIER);
+        $admit = fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser());
 
         return $this->connection->getConnection()->transaction($admit);
     }

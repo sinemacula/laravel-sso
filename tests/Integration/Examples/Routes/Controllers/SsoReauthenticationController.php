@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\Caller;
 
@@ -65,7 +66,14 @@ final readonly class SsoReauthenticationController
 
         // The package renews the code's session inside this transaction, once; nothing renews it again
         $result = DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => $this->redemptions->admit(Purpose::REAUTHENTICATE, $input['application'], $input['connection'], $input['code'], $input['verifier']),
+            fn (): RedemptionResult => $this->redemptions->admit(
+                Purpose::REAUTHENTICATE,
+                $input['application'],
+                $input['connection'],
+                $input['code'],
+                $input['verifier'],
+                ClientContext::fromRequest($request),
+            ),
         );
 
         // The code renewed the session it was started on: only when that is the

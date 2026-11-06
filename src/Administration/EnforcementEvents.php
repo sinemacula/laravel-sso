@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Events\AfterCommitDispatcher;
 use SineMacula\Laravel\Sso\Events\EnforcementChanged;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\ExemptionUsed;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 
@@ -22,8 +23,10 @@ use SineMacula\Laravel\Sso\Models\TenantEnforcement;
  *
  * A change is reported inside the transaction that made it, after the write and
  * after the revocation it needed, once per change; never for a refusal or a
- * no-op. It holds the projection and the dispatcher, so nothing of one request
- * is kept for the next (SSO-11.2).
+ * no-op. Every method takes the client the action is taken for
+ * (`Http\ClientContext`), whose IP address and user agent the event's context
+ * carries; nothing reads the request being served. It holds the projection and
+ * the dispatcher, so nothing of one request is kept for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,11 +57,13 @@ final readonly class EnforcementEvents
      * @param  \SineMacula\Laravel\Sso\Models\TenantEnforcement  $enforcement
      * @param  ?string  $previousVersion
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
-    public function changed(TenantEnforcement $enforcement, ?string $previousVersion, ?ActingIdentity $actor): void
+    public function changed(TenantEnforcement $enforcement, ?string $previousVersion, ?ActingIdentity $actor, ClientContext $client): void
     {
         $context = $this->contexts->make(
+            $client,
             connectionTenantId: $enforcement->tenant_id,
             actingIdentityMorphClass: $actor?->type,
             actingIdentityId: $actor?->id,
@@ -79,12 +84,14 @@ final readonly class EnforcementEvents
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $sessionId
      * @return void
      */
-    public function exemptionUsed(EnforcementPolicy $policy, string $application, IdentityReference $identity, ?string $sessionId = null): void
+    public function exemptionUsed(EnforcementPolicy $policy, string $application, IdentityReference $identity, ClientContext $client, ?string $sessionId = null): void
     {
         $context = $this->contexts->make(
+            $client,
             connectionTenantId: $policy->enforcingTenantId,
             application: $application,
             identityMorphClass: $identity->type,

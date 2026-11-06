@@ -6,6 +6,7 @@ namespace Tests\Unit\RateLimiting;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptScope;
@@ -57,12 +58,12 @@ final class AttemptSubjectTest extends TestCase
         $discovery = ['per_ip' => '203.0.113.7', 'per_email_domain' => 'example.com'];
 
         $cases = [
-            [AttemptSubject::authorizationRequest('203.0.113.7', 'example.com'), AttemptFlow::AUTHORIZATION_REQUEST, $discovery],
-            [AttemptSubject::authorizationRequest('203.0.113.7'), AttemptFlow::AUTHORIZATION_REQUEST, ['per_ip' => '203.0.113.7']],
-            [AttemptSubject::completion('203.0.113.7', 'conn_1'), AttemptFlow::COMPLETION, ['per_ip' => '203.0.113.7', 'per_connection' => 'conn_1']],
-            [AttemptSubject::completion(null, 'conn_1'), AttemptFlow::COMPLETION, ['per_connection' => 'conn_1']],
-            [AttemptSubject::redemption('203.0.113.7'), AttemptFlow::REDEMPTION, ['per_ip' => '203.0.113.7']],
-            [AttemptSubject::redemption(null), AttemptFlow::REDEMPTION, []],
+            [AttemptSubject::authorizationRequest(new ClientContext('203.0.113.7', null), 'example.com'), AttemptFlow::AUTHORIZATION_REQUEST, $discovery],
+            [AttemptSubject::authorizationRequest(new ClientContext('203.0.113.7', null)), AttemptFlow::AUTHORIZATION_REQUEST, ['per_ip' => '203.0.113.7']],
+            [AttemptSubject::completion(new ClientContext('203.0.113.7', null), 'conn_1'), AttemptFlow::COMPLETION, ['per_ip' => '203.0.113.7', 'per_connection' => 'conn_1']],
+            [AttemptSubject::completion(new ClientContext(null, null), 'conn_1'), AttemptFlow::COMPLETION, ['per_connection' => 'conn_1']],
+            [AttemptSubject::redemption(new ClientContext('203.0.113.7', null)), AttemptFlow::REDEMPTION, ['per_ip' => '203.0.113.7']],
+            [AttemptSubject::redemption(new ClientContext(null, null)), AttemptFlow::REDEMPTION, []],
             [AttemptSubject::metadata('conn_1'), AttemptFlow::METADATA, ['per_connection' => 'conn_1']],
             [AttemptSubject::domainCheck('conn_1'), AttemptFlow::DOMAIN_CHECK, ['per_connection' => 'conn_1']],
         ];
@@ -72,7 +73,7 @@ final class AttemptSubjectTest extends TestCase
             self::assertSame($counted, $subject->counted());
         }
 
-        $subject = AttemptSubject::completion('203.0.113.7', 'conn_1');
+        $subject = AttemptSubject::completion(new ClientContext('203.0.113.7', null), 'conn_1');
 
         self::assertSame(['203.0.113.7', null, 'conn_1'], [$subject->ip, $subject->emailDomain, $subject->connection]);
     }

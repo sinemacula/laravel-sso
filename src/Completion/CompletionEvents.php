@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
 use SineMacula\Laravel\Sso\Events\UnsolicitedResponseReinitiated;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 
@@ -48,9 +49,11 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * completion's transaction, it reaches listeners once that commits, and never
  * when it rolls back (SSO-10.5).
  *
- * It holds the projection and the dispatcher, both of which read the clock, the
- * request and the transaction from the container on each call, so nothing of
- * one completion is kept for the next (SSO-11.2).
+ * Every method takes the client the action is taken for (`Http\ClientContext`),
+ * whose IP address and user agent the event's context carries; nothing reads
+ * the request being served. It holds the projection and the dispatcher, which
+ * read the clock and the transaction from the container on each call, so
+ * nothing of one completion is kept for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -117,13 +120,14 @@ final readonly class CompletionEvents
      * and its subject never carries into the new flow (SSO-10.4).
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function reinitiated(Connection $connection): void
+    public function reinitiated(Connection $connection, ClientContext $client): void
     {
-        $context = $this->contexts->make(connectionId: $connection->id, connectionTenantId: $connection->tenant_id, protocol: $connection->protocol);
+        $context = $this->contexts->make($client, connectionId: $connection->id, connectionTenantId: $connection->tenant_id, protocol: $connection->protocol);
 
         $this->dispatcher->dispatch(new UnsolicitedResponseReinitiated($context));
     }
@@ -143,6 +147,7 @@ final readonly class CompletionEvents
         $identity   = self::identity($state);
 
         return $this->contexts->make(
+            $state->client,
             connectionId: $connection?->id,
             connectionTenantId: $connection?->tenant_id,
             protocol: $connection?->protocol,

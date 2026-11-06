@@ -21,6 +21,7 @@ namespace Tests\Integration\Examples\RedeemingAHandoff;
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use Tests\Integration\Examples\Clients;
 
 /**
  * @var array{connection: string, code: string, verifier: string} $input
@@ -39,8 +40,9 @@ $redemptions = app(HandoffRedemption::class);
 $result = null;
 
 DB::connection(StorageConnection::name())->transaction(static function () use ($redemptions, $connectionId, $code, $verifier, $caller, &$result): void {
+    $client = Clients::browser();
     // @snippet-start admit-link
-    $result = $redemptions->admit(Purpose::LINK, 'web', $connectionId, $code, $verifier, $caller);
+    $result = $redemptions->admit(Purpose::LINK, 'web', $connectionId, $code, $verifier, $client, $caller);
     // @snippet-end admit-link
 });
 

@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
@@ -48,6 +49,7 @@ use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -288,7 +290,12 @@ final class NoProviderTokensLeakTest extends TestCase
     {
         $connection = $this->connection();
         $grant      = $this->granted($connection);
-        $result     = app(CompletionService::class)->callback($connection->id, new CompletionRequest('GET', $grant->errorQuery('access_denied', self::DESCRIPTION), []));
+        $result     = app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $connection->id,
+            new CompletionRequest('GET', $grant->errorQuery('access_denied', self::DESCRIPTION), []),
+            Clients::browser(),
+        );
 
         self::assertSame(FailureReason::PROVIDER_ERROR, $result->reason);
         $this->assertLoggedContains('sso.oidc.callback_error', 'access_denied', $this->reference);
@@ -645,7 +652,7 @@ final class NoProviderTokensLeakTest extends TestCase
      */
     private function receiveCallback(Connection $connection, FakeAuthorization $grant): CompletionResult
     {
-        return app(CompletionService::class)->callback($connection->id, new CompletionRequest('GET', $grant->query(), []));
+        return app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connection->id, new CompletionRequest('GET', $grant->query(), []), Clients::browser());
     }
 
     /**
@@ -659,7 +666,7 @@ final class NoProviderTokensLeakTest extends TestCase
      */
     private function granted(Connection $connection, ?\Closure $tailor = null): FakeAuthorization
     {
-        $started = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connection->id);
+        $started = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connection->id, Clients::browser());
 
         self::assertTrue($started->isStarted());
 

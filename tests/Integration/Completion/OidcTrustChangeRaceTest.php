@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
@@ -47,6 +48,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -451,7 +453,7 @@ final class OidcTrustChangeRaceTest extends TestCase
             $this->provider->publish(self::next())->signWith(self::next());
         }
 
-        $started = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id);
+        $started = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id, Clients::browser());
 
         self::assertTrue($started->isStarted());
 
@@ -500,10 +502,17 @@ final class OidcTrustChangeRaceTest extends TestCase
         $id = $this->connection->id;
 
         $result = match ($change) {
-            self::DISABLE => app(ConnectionLifecycle::class)->disable(self::TENANT, $id),
-            self::MIGRATE => app(SubjectMigration::class)->migrate(self::TENANT, $id, ['settings' => ['issuer' => self::NEW_ISSUER]], [], [(string) $this->link?->id]),
-            self::ROTATE  => app(ConnectionService::class)->update(self::TENANT, $id, ['settings' => ['client_secret' => 'the-rotated-client-secret']]),
-            default       => throw new \LogicException(sprintf('No change is named [%s].', $change)),
+            self::DISABLE => app(ConnectionLifecycle::class)->disable(self::TENANT, $id, Clients::browser()),
+            self::MIGRATE => app(SubjectMigration::class)->migrate(
+                self::TENANT,
+                $id,
+                ['settings' => ['issuer' => self::NEW_ISSUER]],
+                [],
+                [(string) $this->link?->id],
+                Clients::browser(),
+            ),
+            self::ROTATE => app(ConnectionService::class)->update(self::TENANT, $id, ['settings' => ['client_secret' => 'the-rotated-client-secret']], Clients::browser()),
+            default      => throw new \LogicException(sprintf('No change is named [%s].', $change)),
         };
 
         return $result->isChanged();
@@ -516,7 +525,12 @@ final class OidcTrustChangeRaceTest extends TestCase
      */
     private function complete(): CompletionResult
     {
-        return app(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', $this->grant->query(), []));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connection->id,
+            new CompletionRequest('GET', $this->grant->query(), []),
+            Clients::browser(),
+        );
     }
 
     /**

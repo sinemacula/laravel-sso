@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
@@ -41,6 +42,7 @@ use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
@@ -681,7 +683,7 @@ final class SamlAdversarialCompletionTest extends TestCase
      */
     private function complete(CompletionRequest $request): CompletionResult
     {
-        return app(CompletionService::class)->assertionConsumerService($this->connection->id, $request);
+        return app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connection->id, $request, Clients::browser());
     }
 
     /**

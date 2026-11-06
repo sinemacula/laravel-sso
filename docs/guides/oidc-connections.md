@@ -91,8 +91,13 @@ use SineMacula\Laravel\Sso\Connections\ImportSaver;
 
 $result = app(ImportSaver::class)->save($tenant->id, $connection->id, [
     'settings' => [...$proposed->settings(), 'client_id' => $clientId, 'client_secret' => $secret],
-], $proposed->fetch(), $actor);
+], $proposed->fetch(), $client, $actor);
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 `$result` is the `ConnectionResult` an update answers. A caller whose authentication is not fresh enough is refused with
 `freshness_required`, and nothing is written or stamped.

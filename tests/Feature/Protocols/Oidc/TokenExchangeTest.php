@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Fetching\FetchCredentials;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -42,6 +43,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
@@ -557,10 +559,11 @@ final class TokenExchangeTest extends TestCase
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse  $tokens
              * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\IdTokenValidation
              */
             #[\Override]
-            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed): IdTokenValidation
+            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed, ClientContext $client): IdTokenValidation
             {
                 unset($connection, $options, $consumed);
 
@@ -572,7 +575,7 @@ final class TokenExchangeTest extends TestCase
 
         $connection = $this->connection('client_secret_post', self::SECRET);
         $arrival    = new CompletionRequest('GET', 'code=' . self::CODE, []);
-        $completion = app(CallbackCompletion::class)->complete($connection, OidcOptions::of($connection), $arrival, $this->consumed());
+        $completion = app(CallbackCompletion::class)->complete($connection, OidcOptions::of($connection), $arrival, $this->consumed(), Clients::browser());
 
         self::assertSame(FailureReason::SIGNATURE_INVALID, $completion->reason);
         self::assertCount(1, $this->fetcher->requests());

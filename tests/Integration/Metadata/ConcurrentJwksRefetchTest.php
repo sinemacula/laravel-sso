@@ -35,6 +35,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
@@ -554,7 +555,7 @@ final class ConcurrentJwksRefetchTest extends TestCase
         $settings = $change === 'jwks_uri' ? ['jwks_uri' => self::NEW_JWKS_URI] : ['client_secret' => 'a-new-secret-value'];
 
         try {
-            $result = app(ConnectionService::class)->update(self::TENANT, $id, ['settings' => $settings]);
+            $result = app(ConnectionService::class)->update(self::TENANT, $id, ['settings' => $settings], Clients::browser());
 
             if ($inTransaction) {
                 $database->commit();
@@ -612,7 +613,7 @@ final class ConcurrentJwksRefetchTest extends TestCase
             $events->append($event instanceof JwksRefreshFailed ? $event::class . ':' . $event->reason->value : $event::class);
         });
 
-        $selection = app(ProviderKeys::class)->select(new IdentifiedConnection($this->connectionId()), self::token(), AlgorithmAllowList::of(['RS256']));
+        $selection = app(ProviderKeys::class)->select(new IdentifiedConnection($this->connectionId()), self::token(), AlgorithmAllowList::of(['RS256']), Clients::browser());
 
         return ['selection' => $selection->outcome->value, 'events' => array_values($events->getArrayCopy())];
     }
@@ -626,7 +627,7 @@ final class ConcurrentJwksRefetchTest extends TestCase
      */
     private function refreshDue(): RefreshResult
     {
-        return app(MetadataRefresher::class)->refreshDue()[0] ?? throw new \RuntimeException('No connection was due.');
+        return app(MetadataRefresher::class)->refreshDue(Clients::browser())[0] ?? throw new \RuntimeException('No connection was due.');
     }
 
     /**

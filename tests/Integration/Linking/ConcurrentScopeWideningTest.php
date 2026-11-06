@@ -30,6 +30,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 
 /**
  * Races a principal widening across processes, each with its own database
@@ -376,7 +377,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
 
         self::assertSame($unchanged, Link::query()->sole()->state);
 
-        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2'));
+        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
     }
 
     /**
@@ -477,7 +478,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     private function widen(\Closure $underTheGuard): string
     {
         DB::connection(StorageConnection::name())->transaction(function () use ($underTheGuard): void {
-            app(ScopeWidening::class)->widened($this->person, 'tenant-2');
+            app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser());
             $underTheGuard();
         });
 
@@ -494,7 +495,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
      */
     private function redemption(string $code, string $verifier): string
     {
-        $admit  = fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier);
+        $admit  = fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier, Clients::browser());
         $answer = DB::connection(StorageConnection::name())->transaction($admit);
 
         return $answer->isRedeemed() ? self::REDEEMED : 'refused:' . $answer->reason?->value;

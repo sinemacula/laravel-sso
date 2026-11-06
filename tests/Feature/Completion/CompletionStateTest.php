@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
@@ -49,7 +50,7 @@ final class CompletionStateTest extends TestCase
     public function testAnArrivedCompletionHoldsOnlyWhatArrived(): void
     {
         $request = new CompletionRequest('POST', '', ['SAMLResponse' => 'x']);
-        $state   = CompletionState::arrived('01jbexampleconnection00000', $request);
+        $state   = CompletionState::arrived('01jbexampleconnection00000', $request, Clients::browser());
 
         self::assertSame('01jbexampleconnection00000', $state->connectionId);
         self::assertSame($request, $state->request);
@@ -87,7 +88,7 @@ final class CompletionStateTest extends TestCase
         $handoff     = new IssuedHandoff(HandoffCode::generate(), CarbonImmutable::now());
         $policy      = EnforcementPolicy::required('tenant-1', 'tenant-1', ['c'], 'version-1');
 
-        $first = CompletionState::arrived('c', new CompletionRequest('GET', 'state=1', []));
+        $first = CompletionState::arrived('c', new CompletionRequest('GET', 'state=1', []), Clients::browser());
         $state = $first->withConnection($connection)
             ->withCorrelation($correlation)
             ->withAuthorizationRequest($request, $consumed, $application)
@@ -127,7 +128,7 @@ final class CompletionStateTest extends TestCase
     {
         $consumed    = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::generate(), CarbonImmutable::now());
         $application = Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']);
-        $arrived     = CompletionState::arrived('c', new CompletionRequest('GET', '', []));
+        $arrived     = CompletionState::arrived('c', new CompletionRequest('GET', '', []), Clients::browser());
 
         self::assertFalse($arrived->withConnection(new Connection)->hasRedirectTarget());
         self::assertFalse($arrived->withAuthorizationRequest(new AuthorizationRequest, $consumed, $application)->hasRedirectTarget());
@@ -143,7 +144,7 @@ final class CompletionStateTest extends TestCase
      */
     public function testADumpShowsOnlyIds(): void
     {
-        $arrived = CompletionState::arrived('c', new CompletionRequest('POST', '', ['SAMLResponse' => 'secret-response']));
+        $arrived = CompletionState::arrived('c', new CompletionRequest('POST', '', ['SAMLResponse' => 'secret-response']), Clients::browser());
 
         self::assertSame([
             'connection_id'     => 'c',
@@ -190,7 +191,7 @@ final class CompletionStateTest extends TestCase
     {
         $this->expectExceptionObject(new \LogicException('A completion\'s state cannot be serialised.'));
 
-        serialize(CompletionState::arrived('c', new CompletionRequest('GET', '', [])));
+        serialize(CompletionState::arrived('c', new CompletionRequest('GET', '', []), Clients::browser()));
     }
 
     /**
@@ -212,7 +213,7 @@ final class CompletionStateTest extends TestCase
      */
     public function testWhatAStageDecided(): void
     {
-        $state   = CompletionState::arrived('c', new CompletionRequest('GET', '', []));
+        $state   = CompletionState::arrived('c', new CompletionRequest('GET', '', []), Clients::browser());
         $proceed = StageOutcome::proceed($state);
         $refuse  = StageOutcome::refuse($state, FailureReason::ENFORCEMENT_UNSATISFIED);
 

@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
@@ -23,6 +24,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\Completion;
@@ -47,6 +49,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
@@ -404,7 +407,7 @@ final class ConcurrentOidcCallbackTest extends TestCase
      */
     private function hasChanged(array $changes): bool
     {
-        return app(ConnectionService::class)->update('tenant-1', $this->connection->id, ['settings' => $changes])->isSucceeded();
+        return app(ConnectionService::class)->update('tenant-1', $this->connection->id, ['settings' => $changes], Clients::browser())->isSucceeded();
     }
 
     /**
@@ -414,7 +417,7 @@ final class ConcurrentOidcCallbackTest extends TestCase
      */
     private function complete(): CompletionResult
     {
-        return app(CompletionService::class)->callback($this->connection->id, $this->arrival);
+        return app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $this->connection->id, $this->arrival, Clients::browser());
     }
 
     /**
@@ -628,10 +631,11 @@ final class ConcurrentOidcCallbackTest extends TestCase
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse  $tokens
              * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\IdTokenValidation
              */
             #[\Override]
-            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed): IdTokenValidation
+            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed, ClientContext $client): IdTokenValidation
             {
                 unset($connection, $tokens, $consumed);
 

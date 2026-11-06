@@ -19,9 +19,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 Route::post('/auth/sso/start', static function (Request $request, AuthorizationRequestService $flows): JsonResponse {
-    $result = $flows->start('web', Purpose::SIGN_IN, $request->string('connection')->toString());
+    $result = $flows->start('web', Purpose::SIGN_IN, $request->string('connection')->toString(), ClientContext::fromRequest($request));
 
     // @snippet-start rate-limited-answer
     if ($result->isRateLimited()) {

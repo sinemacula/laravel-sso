@@ -212,5 +212,6 @@ Event::listen(KeyNearingExpiry::class, function (KeyNearingExpiry $event): void 
 Like any event, a warning that reached a queued listener's queue has been dispatched: delivery past that point is the
 queue's.
 
-From your own code, `app(ExpiryReport::class)->report($days, $each)` hands each entry to the closure as it reads it,
-since it keeps none in memory, and answers the counts. It refuses to run inside a transaction.
+From your own code, `app(ExpiryReport::class)->report(new ClientContext(null, null), $days, $each)` hands each entry to
+the closure as it reads it, since it keeps none in memory, and answers the counts; the client is the one each warning's
+`KeyNearingExpiry` carries, none from a schedule. It refuses to run inside a transaction.

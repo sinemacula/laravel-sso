@@ -17,6 +17,8 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\OidcConnections;
 
+use Tests\Integration\Examples\Clients;
+
 /**
  * @var array{
  *     tenant: \Tests\Integration\Examples\OidcConnections\Tenant,
@@ -34,11 +36,12 @@ $clientId   = $input['client_id'];
 $secret     = $input['secret'];
 $actor      = $input['actor'];
 
+$client = Clients::browser();
 // @snippet-start oidc-connections-save
 use SineMacula\Laravel\Sso\Connections\ImportSaver;
 
 $result = app(ImportSaver::class)->save($tenant->id, $connection->id, [
     'settings' => [...$proposed->settings(), 'client_id' => $clientId, 'client_secret' => $secret],
-], $proposed->fetch(), $actor);
+], $proposed->fetch(), $client, $actor);
 // @snippet-end oidc-connections-save
 return $result;

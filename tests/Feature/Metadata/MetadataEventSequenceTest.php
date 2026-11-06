@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -121,7 +122,7 @@ final class MetadataEventSequenceTest extends TestCase
     {
         $this->serve(self::metadata()->with(['signing_certificates' => [self::idp()->certificate(), Certificates::distinct(7)]]));
 
-        $this->refresher()->refreshDue();
+        $this->refresher()->refreshDue(Clients::browser());
 
         $this->assertEventSequence([KeyAdded::class, MetadataRefreshed::class]);
 
@@ -146,7 +147,7 @@ final class MetadataEventSequenceTest extends TestCase
     {
         $this->serve(self::metadata(self::MOVED_URL)->with(['signing_certificates' => [Certificates::distinct(7)]]));
 
-        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
+        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
 
         $this->assertEventSequence([KeyRetired::class, KeyAdded::class, ConnectionUpdated::class, MetadataRefreshed::class]);
 
@@ -171,7 +172,7 @@ final class MetadataEventSequenceTest extends TestCase
     {
         $this->serve(self::metadata());
 
-        $this->refresher()->refreshDue();
+        $this->refresher()->refreshDue(Clients::browser());
 
         $this->assertEventSequence([MetadataRefreshed::class]);
 
@@ -191,7 +192,7 @@ final class MetadataEventSequenceTest extends TestCase
     {
         $this->fetcher->respond(self::URL, FetchResult::failed());
 
-        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
+        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
 
         $this->assertEventSequence([MetadataRefreshFailed::class]);
 
@@ -222,7 +223,7 @@ final class MetadataEventSequenceTest extends TestCase
             return FetchResult::fetched(200, [], $xml);
         });
 
-        $this->refresher()->refreshDue();
+        $this->refresher()->refreshDue(Clients::browser());
 
         $this->assertEventSequence([MetadataRefreshFailed::class]);
 
@@ -242,8 +243,8 @@ final class MetadataEventSequenceTest extends TestCase
     {
         Connection::query()->whereKey($this->connection->id)->update(['metadata_claimed_until' => '2026-11-01 09:31:00']);
 
-        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
-        $this->refresher()->refreshNow('tenant-2', $this->connection->id, $this->actor);
+        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
+        $this->refresher()->refreshNow('tenant-2', $this->connection->id, $this->actor, Clients::browser());
 
         $this->assertNoEvents();
     }
@@ -260,10 +261,10 @@ final class MetadataEventSequenceTest extends TestCase
         $metadata = self::metadata(self::MOVED_URL)->with(['signing_certificates' => [$added], 'name_id_formats' => ['urn:example:secret-format']]);
 
         $this->serve($metadata);
-        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
+        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
 
         $this->fetcher->respond(self::URL, FetchResult::fetched(500, [], 'internal detail of the provider'));
-        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor);
+        $this->refresher()->refreshNow(self::TENANT, $this->connection->id, $this->actor, Clients::browser());
 
         $events = array_map(static fn (SsoEvent $event): string => serialize($event) . json_encode($event), $this->recordedEvents());
 

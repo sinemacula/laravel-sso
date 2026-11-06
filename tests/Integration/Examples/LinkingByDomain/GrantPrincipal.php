@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
+use Tests\Integration\Examples\Clients;
 
 /**
  * The example application's principal mutation (SSO-8.8): granting a user a
@@ -36,13 +37,14 @@ final readonly class GrantPrincipal
      */
     public function __invoke(IdentityReference $identity, ?string $tenantId): void
     {
+        $client = Clients::browser();
         // @snippet-start scope-widening
-        DB::connection(StorageConnection::name())->transaction(function () use ($identity, $tenantId): void {
+        DB::connection(StorageConnection::name())->transaction(function () use ($identity, $tenantId, $client): void {
             $widening = app(ScopeWidening::class);
 
             // First the identity's guard, held until this commits; the tenant
             // is `null` for a platform principal
-            $widening->widened($identity, $tenantId);
+            $widening->widened($identity, $tenantId, $client);
 
             // Then your principal guard, then the write
             $this->lockPrincipals($identity);

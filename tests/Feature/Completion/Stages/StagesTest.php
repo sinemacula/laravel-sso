@@ -37,6 +37,7 @@ use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -54,6 +55,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
@@ -745,7 +747,7 @@ final class StagesTest extends TestCase
     {
         $this->app?->instance(Linker::class, self::linker(null));
 
-        $state = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []));
+        $state = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []), Clients::browser());
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage($message);
@@ -825,7 +827,7 @@ final class StagesTest extends TestCase
      */
     private function arrived(): CompletionState
     {
-        return CompletionState::arrived($this->connection->id, new CompletionRequest('GET', 'state=' . self::STATE, []))->withConnection($this->connection);
+        return CompletionState::arrived($this->connection->id, new CompletionRequest('GET', 'state=' . self::STATE, []), Clients::browser())->withConnection($this->connection);
     }
 
     /**
@@ -847,7 +849,7 @@ final class StagesTest extends TestCase
 
         $connection = $this->makeConnection(['protocol' => 'reinitiating', 'enabled' => true]);
 
-        return CompletionState::arrived($connection->id, new CompletionRequest('POST', '', ['SAMLResponse' => 'unread']))->withConnection($connection);
+        return CompletionState::arrived($connection->id, new CompletionRequest('POST', '', ['SAMLResponse' => 'unread']), Clients::browser())->withConnection($connection);
     }
 
     /**
@@ -1041,10 +1043,11 @@ final class StagesTest extends TestCase
              * The identity given.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 

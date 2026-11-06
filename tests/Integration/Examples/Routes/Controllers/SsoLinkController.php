@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Validator;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Links\LinkService;
 use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\Caller;
@@ -64,7 +65,15 @@ final readonly class SsoLinkController
 
         // A `link` writes no session, so it is redeemed alone, for the caller
         // the application authenticated
-        $result = $this->redemptions->redeem(Purpose::LINK, $input['application'], $input['connection'], $input['code'], $input['verifier'], Caller::identity($request));
+        $result = $this->redemptions->redeem(
+            Purpose::LINK,
+            $input['application'],
+            $input['connection'],
+            $input['code'],
+            $input['verifier'],
+            ClientContext::fromRequest($request),
+            Caller::identity($request),
+        );
 
         return match (true) {
             $result->isRedeemed()    => response()->json(['link' => $result->linkId], 201, Answers::NO_STORE),
@@ -101,7 +110,7 @@ final readonly class SsoLinkController
     public function destroy(Request $request, string $link): JsonResponse
     {
         // @snippet-start route-link-remove
-        $result = $this->links->remove('me', $link, Caller::identity($request), Caller::actor($request));
+        $result = $this->links->remove('me', $link, ClientContext::fromRequest($request), Caller::identity($request), Caller::actor($request));
 
         return Answers::of($result, 200);
         // @snippet-end route-link-remove

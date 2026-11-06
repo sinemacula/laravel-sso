@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Events\DomainRestored;
 use SineMacula\Laravel\Sso\Events\DomainVerified;
 use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\EventContexts;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 
@@ -31,9 +32,11 @@ use SineMacula\Laravel\Sso\Models\Domain;
  * write, once per change; never for a refusal or a no-op. No event carries the
  * verification token or a DNS record's value (SSO-10.4).
  *
- * It holds the projection and the dispatcher, both of which read the clock, the
- * request and the transaction from the container on each call, so nothing of
- * one request is kept for the next (SSO-11.2).
+ * Every method takes the client the action is taken for (`Http\ClientContext`),
+ * whose IP address and user agent the event's context carries; nothing reads
+ * the request being served. It holds the projection and the dispatcher, which
+ * read the clock and the transaction from the container on each call, so
+ * nothing of one request is kept for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,15 +66,16 @@ final readonly class DomainEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \LogicException
      */
-    public function claimed(Connection $connection, Domain $domain, ?ActingIdentity $actor): void
+    public function claimed(Connection $connection, Domain $domain, ?ActingIdentity $actor, ClientContext $client): void
     {
         $expiresAt = $domain->pending_expires_at ?? throw new \LogicException('A claimed domain has a pending expiry.');
 
-        $this->dispatcher->dispatch(new DomainClaimed($this->context($connection, $actor), $domain->id, $domain->domain, DomainStanding::lookupName($domain), $expiresAt));
+        $this->dispatcher->dispatch(new DomainClaimed($this->context($connection, $actor, $client), $domain->id, $domain->domain, DomainStanding::lookupName($domain), $expiresAt));
     }
 
     /**
@@ -80,15 +84,16 @@ final readonly class DomainEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \LogicException
      */
-    public function verified(Connection $connection, Domain $domain, ?ActingIdentity $actor): void
+    public function verified(Connection $connection, Domain $domain, ?ActingIdentity $actor, ClientContext $client): void
     {
         $verifiedAt = $domain->verified_at ?? throw new \LogicException('A verified domain has a verification time.');
 
-        $this->dispatcher->dispatch(new DomainVerified($this->context($connection, $actor), $domain->id, $domain->domain, $verifiedAt));
+        $this->dispatcher->dispatch(new DomainVerified($this->context($connection, $actor, $client), $domain->id, $domain->domain, $verifiedAt));
     }
 
     /**
@@ -98,11 +103,12 @@ final readonly class DomainEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
      * @param  \SineMacula\Laravel\Sso\Domains\Enums\RecheckFailure  $failure
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
-    public function recheckFailed(Connection $connection, Domain $domain, RecheckFailure $failure): void
+    public function recheckFailed(Connection $connection, Domain $domain, RecheckFailure $failure, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new DomainRecheckFailed($this->context($connection, null), $domain->id, $domain->domain, $failure, $domain->lapses_at));
+        $this->dispatcher->dispatch(new DomainRecheckFailed($this->context($connection, null, $client), $domain->id, $domain->domain, $failure, $domain->lapses_at));
     }
 
     /**
@@ -112,16 +118,17 @@ final readonly class DomainEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \LogicException
      */
-    public function restored(Connection $connection, Domain $domain): void
+    public function restored(Connection $connection, Domain $domain, ClientContext $client): void
     {
         $verifiedAt = $domain->verified_at              ?? throw new \LogicException('A restored domain has a verification time.');
         $checkedAt  = $domain->last_successful_check_at ?? throw new \LogicException('A restored domain has a successful check.');
 
-        $this->dispatcher->dispatch(new DomainRestored($this->context($connection, null), $domain->id, $domain->domain, $verifiedAt, $checkedAt));
+        $this->dispatcher->dispatch(new DomainRestored($this->context($connection, null, $client), $domain->id, $domain->domain, $verifiedAt, $checkedAt));
     }
 
     /**
@@ -129,11 +136,12 @@ final readonly class DomainEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
-    public function lapsed(Connection $connection, Domain $domain): void
+    public function lapsed(Connection $connection, Domain $domain, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new DomainLapsed($this->context($connection, null), $domain->id, $domain->domain));
+        $this->dispatcher->dispatch(new DomainLapsed($this->context($connection, null, $client), $domain->id, $domain->domain));
     }
 
     /**
@@ -143,11 +151,12 @@ final readonly class DomainEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
-    public function removed(Connection $connection, Domain $domain, ?ActingIdentity $actor): void
+    public function removed(Connection $connection, Domain $domain, ?ActingIdentity $actor, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new DomainRemoved($this->context($connection, $actor), $domain->id, $domain->domain, $domain->state));
+        $this->dispatcher->dispatch(new DomainRemoved($this->context($connection, $actor, $client), $domain->id, $domain->domain, $domain->state));
     }
 
     /**
@@ -156,11 +165,13 @@ final readonly class DomainEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Events\EventContext
      */
-    private function context(Connection $connection, ?ActingIdentity $actor): EventContext
+    private function context(Connection $connection, ?ActingIdentity $actor, ClientContext $client): EventContext
     {
         return $this->contexts->make(
+            $client,
             connectionId: $connection->id,
             connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,

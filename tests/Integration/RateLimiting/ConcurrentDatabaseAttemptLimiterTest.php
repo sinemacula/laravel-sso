@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\RateLimiting\CounterKeys;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
@@ -113,7 +114,7 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
      */
     public function testRacingRedemptionsNeverExceedTheLimit(): void
     {
-        $outcomes = $this->race(static fn (AttemptLimiter $limiter): string => self::outcomeOf($limiter, AttemptSubject::redemption(self::IP)));
+        $outcomes = $this->race(static fn (AttemptLimiter $limiter): string => self::outcomeOf($limiter, AttemptSubject::redemption(new ClientContext(self::IP, null))));
 
         self::assertCount(self::MAX, array_keys($outcomes, 'allowed', true), implode(', ', $outcomes));
         self::assertCount(self::PROCESSES - self::MAX, array_keys($outcomes, 'rate_limited', true), implode(', ', $outcomes));
@@ -130,12 +131,12 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     public function testRacingRedemptionsRestartAnEndedWindowOnce(): void
     {
         for ($attempt = 0; $attempt < self::MAX; $attempt++) {
-            $this->limiter()->attempt(AttemptSubject::redemption(self::IP));
+            $this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)));
         }
 
         $this->clock->advance(60);
 
-        $outcomes = $this->race(static fn (AttemptLimiter $limiter): string => self::outcomeOf($limiter, AttemptSubject::redemption(self::IP)));
+        $outcomes = $this->race(static fn (AttemptLimiter $limiter): string => self::outcomeOf($limiter, AttemptSubject::redemption(new ClientContext(self::IP, null))));
 
         self::assertCount(self::MAX, array_keys($outcomes, 'allowed', true), implode(', ', $outcomes));
         self::assertCount(self::PROCESSES - self::MAX, array_keys($outcomes, 'rate_limited', true), implode(', ', $outcomes));
@@ -151,10 +152,12 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     public function testRacingRequestsAgainstAFullIpNeverCountTheDomain(): void
     {
         for ($attempt = 0; $attempt < self::MAX; $attempt++) {
-            $this->limiter()->attempt(AttemptSubject::authorizationRequest(self::IP));
+            $this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(self::IP, null)));
         }
 
-        $outcomes = $this->race(static fn (AttemptLimiter $limiter): string => self::outcomeOf($limiter, AttemptSubject::authorizationRequest(self::IP, self::DOMAIN)));
+        $outcomes = $this->race(
+            static fn (AttemptLimiter $limiter): string => self::outcomeOf($limiter, AttemptSubject::authorizationRequest(new ClientContext(self::IP, null), self::DOMAIN)),
+        );
 
         self::assertSame(array_fill(0, self::PROCESSES, 'rate_limited'), $outcomes);
         self::assertSame(self::MAX, $this->hits(AttemptFlow::AUTHORIZATION_REQUEST, AttemptScope::PER_IP, self::IP));
@@ -179,10 +182,10 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
         config()->set('sso.rate_limits.authorization_request.per_ip', ['max' => self::PROCESSES, 'decay_seconds' => 120]);
 
         for ($attempt = 0; $attempt < self::MAX; $attempt++) {
-            $this->limiter()->attempt(AttemptSubject::authorizationRequest(null, self::DOMAIN));
+            $this->limiter()->attempt(AttemptSubject::authorizationRequest(new ClientContext(null, null), self::DOMAIN));
         }
 
-        $subject  = AttemptSubject::authorizationRequest(self::IP, self::DOMAIN);
+        $subject  = AttemptSubject::authorizationRequest(new ClientContext(self::IP, null), self::DOMAIN);
         $outcomes = $this->race(static fn (AttemptLimiter $limiter): string => self::outcomeOf($limiter, $subject, withWait: true));
 
         self::assertSame(array_fill(0, self::PROCESSES, 'rate_limited:45'), $outcomes);

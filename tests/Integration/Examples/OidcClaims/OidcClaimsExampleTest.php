@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -94,11 +95,12 @@ final class OidcClaimsExampleTest extends ExampleTestCase
 
         $inFlight = $this->startFlow(Purpose::LINK, $connectionId, $this->person);
 
+        $client = Clients::browser();
         // @snippet-start oidc-fetch-userinfo
         $updated = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => [
             'userinfo_endpoint' => 'https://idp.acme.example/userinfo',
             'fetch_userinfo'    => true,
-        ]]);
+        ]], $client);
         // @snippet-end oidc-fetch-userinfo
         $changed = $updated->changedSettings;
 
@@ -115,7 +117,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
         self::assertTrue($this->complete($connectionId)->hasCode());
         self::assertSame([self::USERINFO], $this->userInfoRequests());
 
-        $incomplete = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => ['userinfo_endpoint' => null]]);
+        $incomplete = app(ConnectionService::class)->update($tenantId, $connectionId, ['settings' => ['userinfo_endpoint' => null]], Clients::browser());
 
         self::assertTrue($incomplete->isChanged());
         self::assertFalse($incomplete->connection?->usable);
@@ -236,7 +238,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
         $connectionId = $this->makeOidcConnection($this->provider);
         $connections  = app(ConnectionService::class);
 
-        $refused = $connections->update(self::TENANT, $connectionId, ['attribute_mapping' => ['display_name' => 'sub']]);
+        $refused = $connections->update(self::TENANT, $connectionId, ['attribute_mapping' => ['display_name' => 'sub']], Clients::browser());
 
         self::assertTrue($refused->isInvalid());
         self::assertSame(

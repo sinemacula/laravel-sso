@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Protocols\Correlation;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\StartingDriver;
 
@@ -200,7 +201,7 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(AuthorizationRequestService::class)->start($application, $purpose, $connectionId ?? $this->connection->id, null, $identity);
+        return $app->make(AuthorizationRequestService::class)->start($application, $purpose, $connectionId ?? $this->connection->id, Clients::browser(), null, $identity);
     }
 
     /**

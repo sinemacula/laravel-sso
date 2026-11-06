@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Enforcement\ExemptionGate;
 use SineMacula\Laravel\Sso\Events\ExemptionUsed;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\ListedExemption;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
@@ -73,7 +74,7 @@ final class ExemptionGateTest extends TestCase
      */
     public function testTheDefaultExemptsNobody(): void
     {
-        $outcome = $this->gate()->admit(self::required(), self::APPLICATION, $this->administrator, 'session-1');
+        $outcome = $this->gate()->admit(self::required(), self::APPLICATION, $this->administrator, Clients::browser(), 'session-1');
 
         self::assertSame(ExemptionOutcome::NOT_EXEMPT, $outcome);
         $this->assertNoEvents();
@@ -93,8 +94,8 @@ final class ExemptionGateTest extends TestCase
 
         $this->app?->instance(EnforcementExemption::class, $exemption);
 
-        $exempt = $this->gate()->admit($policy, self::APPLICATION, $this->administrator, 'session-1');
-        $member = $this->gate()->admit($policy, self::APPLICATION, $this->member);
+        $exempt = $this->gate()->admit($policy, self::APPLICATION, $this->administrator, Clients::browser(), 'session-1');
+        $member = $this->gate()->admit($policy, self::APPLICATION, $this->member, Clients::browser());
 
         self::assertSame(ExemptionOutcome::EXEMPT, $exempt);
         self::assertSame(ExemptionOutcome::NOT_EXEMPT, $member);
@@ -129,7 +130,12 @@ final class ExemptionGateTest extends TestCase
 
         $this->app?->instance(EnforcementExemption::class, $exemption);
 
-        $outcome = $this->gate()->admit(EnforcementPolicy::notRequired('child', 'parent', '01jbversionversionversion0'), self::APPLICATION, $this->administrator);
+        $outcome = $this->gate()->admit(
+            EnforcementPolicy::notRequired('child', 'parent', '01jbversionversionversion0'),
+            self::APPLICATION,
+            $this->administrator,
+            Clients::browser(),
+        );
 
         self::assertSame(ExemptionOutcome::NOT_EXEMPT, $outcome);
         self::assertSame([], $exemption->asked());
@@ -150,7 +156,7 @@ final class ExemptionGateTest extends TestCase
 
         $database->beginTransaction();
 
-        self::assertSame(ExemptionOutcome::EXEMPT, $this->gate()->admit(self::required(), self::APPLICATION, $this->administrator));
+        self::assertSame(ExemptionOutcome::EXEMPT, $this->gate()->admit(self::required(), self::APPLICATION, $this->administrator, Clients::browser()));
 
         $database->rollBack();
 
@@ -158,7 +164,7 @@ final class ExemptionGateTest extends TestCase
 
         $database->transaction(function (): void {
 
-            self::assertSame(ExemptionOutcome::EXEMPT, $this->gate()->admit(self::required(), self::APPLICATION, $this->administrator));
+            self::assertSame(ExemptionOutcome::EXEMPT, $this->gate()->admit(self::required(), self::APPLICATION, $this->administrator, Clients::browser()));
 
             $this->assertNoEvents();
         });
@@ -193,7 +199,7 @@ final class ExemptionGateTest extends TestCase
         });
 
         try {
-            $this->gate()->admit(self::required(), self::APPLICATION, $this->administrator);
+            $this->gate()->admit(self::required(), self::APPLICATION, $this->administrator, Clients::browser());
             self::fail('The gate answered.');
         } catch (\RuntimeException $exception) {
             self::assertSame('The exemptions cannot be read.', $exception->getMessage());
@@ -211,7 +217,7 @@ final class ExemptionGateTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        $this->gate()->admit(self::required(), '', $this->administrator);
+        $this->gate()->admit(self::required(), '', $this->administrator, Clients::browser());
     }
 
     /**

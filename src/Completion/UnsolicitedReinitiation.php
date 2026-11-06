@@ -248,7 +248,7 @@ final readonly class UnsolicitedReinitiation
             return CompletionResult::rejected($reason);
         }
 
-        $this->events->reinitiated($connection);
+        $this->events->reinitiated($connection, $outcome->state->client);
 
         return CompletionResult::reinitiated($reinitiation->startUrl ?? throw new \LogicException('An allowed re-initiation holds its start URL.'));
     }

@@ -7,6 +7,7 @@ namespace Tests\Integration\Examples\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Enforcement\ExemptionGate;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
@@ -29,9 +30,10 @@ final readonly class TenantAuthenticationPolicy
      * Whether the session may stay active in its tenant, on the application.
      *
      * @param  \Tests\Integration\Examples\Enforcement\UserSession  $session
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return bool
      */
-    public function admits(UserSession $session): bool
+    public function admits(UserSession $session, ClientContext $client): bool
     {
         // @snippet-start enforcement-policy
         $policy = app(Enforcement::class)->policy($session->tenant_id, 'web');
@@ -42,7 +44,7 @@ final readonly class TenantAuthenticationPolicy
         // A session established without SSO records no connection, which
         // satisfies no rule
         if ($policy->isRequired() && !$policy->isSatisfiedBy($session->sso_connection_id ?? '')) {
-            return $this->isExempt($policy, $session); // refused, unless the identity is exempt (below)
+            return $this->isExempt($policy, $session, $client); // refused, unless the identity is exempt (below)
         }
 
         return true;
@@ -55,14 +57,15 @@ final readonly class TenantAuthenticationPolicy
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @param  \Tests\Integration\Examples\Enforcement\UserSession  $session
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return bool
      */
-    private function isExempt(EnforcementPolicy $policy, UserSession $session): bool
+    private function isExempt(EnforcementPolicy $policy, UserSession $session, ClientContext $client): bool
     {
         // @snippet-start enforcement-exemption
         $identity = new IdentityReference($session->user_type, $session->user_id);
 
-        $outcome = app(ExemptionGate::class)->admit($policy, 'web', $identity, $session->id);
+        $outcome = app(ExemptionGate::class)->admit($policy, 'web', $identity, $client, $session->id);
 
         return $outcome->isExempt();
         // @snippet-end enforcement-exemption

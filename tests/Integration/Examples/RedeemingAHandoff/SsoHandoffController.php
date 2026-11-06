@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 /**
  * The sign-in redemption endpoint of `docs/guides/redeeming-a-handoff.md`
@@ -59,6 +60,7 @@ final readonly class SsoHandoffController
                 $request->string('connection')->value(),  // the connection the client started through
                 $request->string('code')->value(),
                 $request->string('verifier')->value(),
+                ClientContext::fromRequest($request),     // the client the code is redeemed for
             );
 
             // Sign in the identity the code's link resolved to, never past the

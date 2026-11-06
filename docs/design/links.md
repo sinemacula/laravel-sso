@@ -29,10 +29,10 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   `NoLinks` does not. Whatever writes a link asks `Links\LinkStorageBinding` first and refuses before writing with a
   `LogicException` naming the problem; the boot check reports the pairing while `domain_linking` is on. No row is ever
   written that the resolver ignores.
-- `LinkStore::resolve($result)` reads the row with `connection_id` the result's connection and `subject_key` its
-  subject's key, of any state, by a locking read (`lockForUpdate()`) on the write connection (SSO-11.3), and compares
-  the connection, issuer, format and subject again in PHP, byte for byte: a row whose key alone matches is not the
-  subject's. A result reaches only the links of the connection it completed through, so another connection, of any
+- `LinkStore::resolve($result, $client)` reads the row with `connection_id` the result's connection and `subject_key`
+  its subject's key, of any state, by a locking read (`lockForUpdate()`) on the write connection (SSO-11.3), and
+  compares the connection, issuer, format and subject again in PHP, byte for byte: a row whose key alone matches is not
+  the subject's. A result reaches only the links of the connection it completed through, so another connection, of any
   tenant, with the same issuer and subject resolves nothing (SSO-8.2). It answers a typed `Links\LinkResolution`:
   `absent`, `linked`, `reserved`, `suspended` or `scope_unknown`. None but `linked` resolves anything, and none but
   `absent` is an unlinked subject. Nothing else in the result (a name, an email, any mapped attribute) is read.
@@ -54,11 +54,11 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   suspended, stored or revoked. A link already suspended stays suspended and the contract is not asked.
   `Linking\ScopeWidening` reports a widening from the application's principal mutation, which is the only way a
   principal added and removed between two checks is seen.
-- `Linking\ScopeWidening::widened($identity, $tenantId)` runs first in the application's principal-change transaction,
-  on the storage connection (a `LogicException` outside one). `$tenantId` is the new principal's tenant, compared
-  exactly, or `null` for a platform principal. It takes the identity's guard (`Linking\IdentityLock`), which every
-  reservation, activation and confirmation of the identity takes first, and holds it until that transaction ends. A
-  plain read on the write connection then finds the identity's rows with verified domain provenance, the connections
+- `Linking\ScopeWidening::widened($identity, $tenantId, $client)` runs first in the application's principal-change
+  transaction, on the storage connection (a `LogicException` outside one). `$tenantId` is the new principal's tenant,
+  compared exactly, or `null` for a platform principal. It takes the identity's guard (`Linking\IdentityLock`), which
+  every reservation, activation and confirmation of the identity takes first, and holds it until that transaction ends.
+  A plain read on the write connection then finds the identity's rows with verified domain provenance, the connections
   holding them are locked in one statement in ascending id order, and the rows are read again by a locking read; a row
   in a connection that was not locked, which only an older snapshot can come to, is `Exceptions\LinkCandidatesChanged`,
   and the application retries its whole transaction. A connection of the new principal's tenant is left alone. For the
@@ -67,8 +67,8 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   `RevocationScope::identityLink($tenantId, $connectionId, $identity, $linkId)`, reason `scope_widened`, inside the
   transaction. A revocation that throws rolls the change back. Without the application taking part, nothing can suspend
   a link between two checks (`docs/guides/linking-by-domain.md`).
-- `LinkStore::create($connection, $subject, $identity, $origin, $actor, $application, $purpose, $reference)` runs in
-  one transaction on the storage connection (a savepoint inside the caller's), in this order:
+- `LinkStore::create($connection, $subject, $identity, $origin, $client, $actor, $application, $purpose, $reference)`
+  runs in one transaction on the storage connection (a savepoint inside the caller's), in this order:
   1. the connection's row is read again locked through `Connections\ConnectionFinder::findForUpdate()`, which
      serialises every creation in the connection; a connection that does not exist (or is not the tenant's the model
      names) is a `LogicException`;
@@ -104,7 +104,8 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   - `list($identity, $caller)` answers the identity's `LinkSummary`s in every connection of every tenant (SSO-1.5),
     read on the write connection, the identity compared byte for byte, ordered by `created_at` then `id`; a link whose
     connection no longer exists is left out.
-  - `remove($identity, $linkId, $caller, $actor)`, in this order, a refusal deleting, revoking and reporting nothing:
+  - `remove($identity, $linkId, $client, $caller, $actor)`, in this order, a refusal deleting, revoking and reporting
+    nothing:
     1. the identity is resolved;
     2. the link is found by its id and the identity (a plain read on the write connection); a missing link and another
        identity's are both `link_not_found`, so nothing is revealed;

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Contracts\LinkStorage;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
@@ -26,13 +27,15 @@ use SineMacula\Laravel\Sso\Models\Link;
  *
  * The application calls `widened()` first in the transaction that changes the
  * person's principals, on the storage connection, given the identity and the
- * tenant of the new principal, `null` for a platform principal; then takes the
- * guard `Contracts\PrincipalScope` documents, writes the principal, and
- * commits:
+ * tenant of the new principal, `null` for a platform principal, and the client
+ * the change is made for (`Http\ClientContext`, which each `LinkSuspended`
+ * carries: `new ClientContext(null, null)` from a console command or a job);
+ * then takes the guard `Contracts\PrincipalScope` documents, writes the
+ * principal, and commits:
  *
- * ```php
- * DB::connection($storage)->transaction(function () use ($widening, $identity, $tenantId): void {
- *     $widening->widened($identity, $tenantId);
+ * ```php DB::connection($storage)->transaction(function () use ($widening,
+ * $identity, $tenantId, $client): void {
+ *     $widening->widened($identity, $tenantId, $client);
  *     // take the guard the principal scope contract documents; write the principal
  * });
  * ```
@@ -107,11 +110,12 @@ final readonly class ScopeWidening
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $tenantId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return int
      *
      * @throws \LogicException
      */
-    public function widened(IdentityReference $identity, ?string $tenantId): int
+    public function widened(IdentityReference $identity, ?string $tenantId, ClientContext $client): int
     {
         if (DB::connection(StorageConnection::name())->transactionLevel() === 0) {
             throw new \LogicException('A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection (decision D5).');
@@ -121,7 +125,7 @@ final readonly class ScopeWidening
 
         $storage = $this->storage->find();
 
-        return $storage === null ? 0 : $this->suspended($storage, $identity, $tenantId);
+        return $storage === null ? 0 : $this->suspended($storage, $identity, $tenantId, $client);
     }
 
     /**
@@ -195,11 +199,12 @@ final readonly class ScopeWidening
      * @param  \SineMacula\Laravel\Sso\Contracts\LinkStorage  $storage
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $tenantId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return int
      *
      * @throws \SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged
      */
-    private function suspended(LinkStorage $storage, IdentityReference $identity, ?string $tenantId): int
+    private function suspended(LinkStorage $storage, IdentityReference $identity, ?string $tenantId, ClientContext $client): int
     {
         $locked = self::lockedConnections(self::owned(self::rowsOf($identity)->get()->all(), $identity));
         $rows   = self::owned(self::rowsOf($identity)->orderBy('id')->lockForUpdate()->get()->all(), $identity);
@@ -214,7 +219,8 @@ final readonly class ScopeWidening
                 continue;
             }
 
-            $suspended += self::widenedIn($storage, $connection, array_values(array_filter($rows, static fn (Link $row): bool => $row->connection_id === $connection->id)));
+            $held = array_values(array_filter($rows, static fn (Link $row): bool => $row->connection_id === $connection->id));
+            $suspended += self::widenedIn($storage, $connection, $held, $client);
         }
 
         return $suspended;
@@ -227,9 +233,10 @@ final readonly class ScopeWidening
      * @param  \SineMacula\Laravel\Sso\Contracts\LinkStorage  $storage
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  list<\SineMacula\Laravel\Sso\Models\Link>  $rows
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return int
      */
-    private static function widenedIn(LinkStorage $storage, Connection $locked, array $rows): int
+    private static function widenedIn(LinkStorage $storage, Connection $locked, array $rows, ClientContext $client): int
     {
         ReservationWithdrawal::ofRows($locked, $rows);
 
@@ -244,7 +251,7 @@ final readonly class ScopeWidening
             $identity = new IdentityReference($row->identity_type, $row->identity_id);
 
             if ($row->state === LinkState::ACTIVE) {
-                $storage->suspend($row->id, $identity, $locked->id, $locked->tenant_id, $locked->protocol);
+                $storage->suspend($row->id, $identity, $locked->id, $locked->tenant_id, $locked->protocol, $client);
                 $suspended++;
             }
 

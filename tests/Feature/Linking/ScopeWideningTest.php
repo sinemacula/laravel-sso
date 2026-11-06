@@ -37,6 +37,7 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use Tests\Concerns\ComparesIdentitiesWithoutCase;
 use Tests\Concerns\RecordsLockOrder;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\FailingRevocation;
 use Tests\Fixtures\Enforcement\TableSessions;
 use Tests\Fixtures\Links\DelegatingLinkStorage;
@@ -116,7 +117,7 @@ final class ScopeWideningTest extends LinkingTestCase
     public function testItNeedsATransaction(): void
     {
         try {
-            app(ScopeWidening::class)->widened($this->person, 'tenant-2');
+            app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser());
             self::fail('It widened with no transaction open.');
         } catch (\LogicException $exception) {
             self::assertSame(
@@ -143,7 +144,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
         $answer = $this->connection->getConnection()->transaction(function () use ($before): int {
 
-            $suspended = app(ScopeWidening::class)->widened($this->person, 'tenant-2');
+            $suspended = app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser());
 
             self::assertCount($before, $this->recordedEvents());
 
@@ -334,7 +335,7 @@ final class ScopeWideningTest extends LinkingTestCase
         $this->recordLockOrder();
 
         self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
-        self::assertTrue(app(LinkStore::class)->resolve($this->resultOfTheLink())->isSuspended());
+        self::assertTrue(app(LinkStore::class)->resolve($this->resultOfTheLink(), Clients::browser())->isSuspended());
         self::assertSame(['link', 'connections ' . $this->connection->id . ', tenant-1', 'link'], $this->lockOrder());
 
         $events = array_slice($this->recordedEvents(), $before);
@@ -376,7 +377,7 @@ final class ScopeWideningTest extends LinkingTestCase
         });
 
         $version = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
-        $answer  = app(LinkStore::class)->resolve($this->resultOfTheLink());
+        $answer  = app(LinkStore::class)->resolve($this->resultOfTheLink(), Clients::browser());
 
         self::assertTrue($latched);
         self::assertTrue($answer->isSuspended());
@@ -398,7 +399,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
             $identity = new IdentityReference('App\Models\User', 'other-' . $index);
 
-            app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, 'subject-' . $index), $identity, $origin);
+            app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, 'subject-' . $index), $identity, $origin, Clients::browser());
 
             self::assertSame(0, $this->widen(new IdentityReference('App\Models\User', 'other-' . $index), 'tenant-2'));
         }
@@ -513,7 +514,7 @@ final class ScopeWideningTest extends LinkingTestCase
         });
 
         try {
-            $database->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-9'));
+            $database->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-9', Clients::browser()));
             self::fail('The change went on over what it missed.');
         } catch (LinkCandidatesChanged $exception) {
             self::assertSame('An identity\'s verified domain links changed before they were locked; retry the whole transaction.', $exception->getMessage());
@@ -722,7 +723,7 @@ final class ScopeWideningTest extends LinkingTestCase
      */
     private function widen(IdentityReference $identity, ?string $tenantId): int
     {
-        return $this->connection->getConnection()->transaction(static fn (): int => app(ScopeWidening::class)->widened($identity, $tenantId));
+        return $this->connection->getConnection()->transaction(static fn (): int => app(ScopeWidening::class)->widened($identity, $tenantId, Clients::browser()));
     }
 
     /**

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
 use SineMacula\Laravel\Sso\RateLimiting\RateLimitStore;
@@ -101,13 +102,13 @@ final class CountersConnectionTest extends TestCase
 
         DB::beginTransaction();
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(self::IP))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isAllowed());
 
         DB::rollBack();
 
         self::assertSame(0, DB::transactionLevel());
         self::assertSame(1, DB::connection(self::COUNTERS)->table(self::TABLE)->count());
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(self::IP))->isRateLimited());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isRateLimited());
     }
 
     /**
@@ -125,13 +126,13 @@ final class CountersConnectionTest extends TestCase
 
         DB::beginTransaction();
 
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(self::IP))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isAllowed());
 
         DB::rollBack();
 
         self::assertSame(0, DB::table(self::TABLE)->count());
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(self::IP))->isAllowed());
-        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(self::IP))->isRateLimited());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isAllowed());
+        self::assertTrue($this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isRateLimited());
     }
 
     /**
@@ -149,8 +150,8 @@ final class CountersConnectionTest extends TestCase
 
         $results = DB::transaction(function (): array {
             $results = [
-                $this->limiter()->attempt(AttemptSubject::redemption(self::IP))->isAllowed(),
-                $this->limiter()->attempt(AttemptSubject::redemption(self::IP))->isRateLimited(),
+                $this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isAllowed(),
+                $this->limiter()->attempt(AttemptSubject::redemption(new ClientContext(self::IP, null)))->isRateLimited(),
             ];
 
             DB::table(self::TABLE)->insert(['key' => hash('sha256', 'after'), 'hits' => 1, 'window_ends_at' => '2026-10-31 12:01:00']);

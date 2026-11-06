@@ -38,6 +38,7 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
@@ -122,7 +123,7 @@ final class KeyServiceTest extends TestCase
      */
     public function testTheFirstKeyOfAUseBecomesCurrent(): void
     {
-        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor);
+        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor);
         $key    = self::summaryOf($result);
 
         self::assertSame(KeyStatus::ADDED, $result->status);
@@ -170,7 +171,7 @@ final class KeyServiceTest extends TestCase
         $this->add();
         $this->startRecordingEvents();
 
-        $key = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor));
+        $key = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor));
 
         self::assertSame(KeyState::NEXT, $key->state);
         self::assertNull($key->madeCurrentAt);
@@ -197,7 +198,7 @@ final class KeyServiceTest extends TestCase
         $this->startRecordingEvents();
 
         $before = $this->rows();
-        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor);
+        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor);
 
         self::assertTrue($result->isRefused());
         self::assertSame(FailureReason::KEY_STATE_CONFLICT, $result->reason);
@@ -218,7 +219,7 @@ final class KeyServiceTest extends TestCase
         $this->add();
         $this->add();
 
-        $key = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_ENCRYPTION));
+        $key = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_ENCRYPTION, Clients::browser()));
 
         self::assertSame(KeyUse::SP_ENCRYPTION, $key->use);
         self::assertSame(KeyState::CURRENT, $key->state);
@@ -234,7 +235,7 @@ final class KeyServiceTest extends TestCase
     public function testAnOidcConnectionHasAClientAssertionKey(): void
     {
         $oidc = $this->makeConnection(['protocol' => 'oidc']);
-        $key  = self::summaryOf($this->keys()->addNext(self::TENANT, $oidc->id, KeyUse::CLIENT_ASSERTION, KeyType::EC));
+        $key  = self::summaryOf($this->keys()->addNext(self::TENANT, $oidc->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC));
 
         self::assertSame(KeyUse::CLIENT_ASSERTION, $key->use);
         self::assertSame(KeyState::CURRENT, $key->state);
@@ -283,7 +284,7 @@ final class KeyServiceTest extends TestCase
     public function testRefusesAUseOrTypeNotAllowed(string $protocol, KeyUse $use, KeyType $type, array $violations): void
     {
         $connection = $this->makeConnection(['protocol' => $protocol]);
-        $result     = $this->keys()->addNext(self::TENANT, $connection->id, $use, $type, $this->actor);
+        $result     = $this->keys()->addNext(self::TENANT, $connection->id, $use, Clients::browser(), $type, $this->actor);
 
         self::assertTrue($result->isInvalid());
         self::assertSame(FailureReason::SETTINGS_INVALID, $result->reason);
@@ -377,7 +378,7 @@ final class KeyServiceTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('A tenant id is 1 to 255 bytes.');
 
-        $this->keys()->addNext('', $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
+        $this->keys()->addNext('', $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA);
     }
 
     /**
@@ -395,12 +396,12 @@ final class KeyServiceTest extends TestCase
         $first  = $this->add();
         $second = $this->add();
 
-        $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $second->id, $this->actor);
-        $this->keys()->retire(self::TENANT, $this->connection->id, $first->id, $this->actor);
+        $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $second->id, Clients::browser(), $this->actor);
+        $this->keys()->retire(self::TENANT, $this->connection->id, $first->id, Clients::browser(), $this->actor);
 
-        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), $this->actor));
+        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser(), $this->actor));
 
-        $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id, $this->actor);
+        $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id, Clients::browser(), $this->actor);
 
         $rotate = [FreshnessOperation::KEYS_ROTATE, 120];
         $trust  = [FreshnessOperation::CONNECTION_TRUST, 90];
@@ -465,7 +466,7 @@ final class KeyServiceTest extends TestCase
         $this->clock->advance(60);
         $this->startRecordingEvents();
 
-        $result   = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, $this->actor);
+        $result   = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser(), $this->actor);
         $key      = self::summaryOf($result);
         $previous = $result->previous;
 
@@ -508,11 +509,11 @@ final class KeyServiceTest extends TestCase
         config()->set('sso.keys.overlap_seconds', 3600);
 
         // Added first, so a promotion that ignored the use would find it.
-        $encryption = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_ENCRYPTION));
+        $encryption = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_ENCRYPTION, Clients::browser()));
         $signing    = $this->add();
         $next       = $this->add();
 
-        $result = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id);
+        $result = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser());
         $stored = ConnectionKey::query()->findOrFail($encryption->id);
 
         self::assertSame(KeyState::CURRENT, $encryption->state);
@@ -541,7 +542,7 @@ final class KeyServiceTest extends TestCase
         $this->add();
 
         $next     = $this->add();
-        $previous = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id)->previous;
+        $previous = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser())->previous;
 
         self::assertNotNull($previous);
         self::assertSame('2026-11-01T09:30:00+00:00', $previous->retiringUntil?->toIso8601String());
@@ -560,10 +561,10 @@ final class KeyServiceTest extends TestCase
         $other       = $this->makeConnection(['protocol' => 'saml2']);
         $retiring    = $this->add();
         $current     = $this->add();
-        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0)));
+        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser()));
         $theirs      = $this->add($other);
 
-        $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $current->id);
+        $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $current->id, Clients::browser());
 
         self::assertSame(KeyState::CURRENT, $theirs->state);
 
@@ -573,11 +574,11 @@ final class KeyServiceTest extends TestCase
         $before = $this->rows();
 
         foreach ([$current->id, $retiring->id, $certificate->id] as $keyId) {
-            self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $keyId)->reason);
+            self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $keyId, Clients::browser())->reason);
         }
 
         foreach ([$theirs->id, self::UNKNOWN, '', str_repeat('a', 27)] as $keyId) {
-            self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $keyId)->reason);
+            self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $keyId, Clients::browser())->reason);
         }
 
         self::assertSame([], $this->freshness->asked());
@@ -596,13 +597,13 @@ final class KeyServiceTest extends TestCase
         $retiring = $this->add();
         $current  = $this->add();
 
-        $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $current->id);
+        $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $current->id, Clients::browser());
 
         $next = $this->add();
 
         $this->startRecordingEvents();
 
-        $result = $this->keys()->retire(self::TENANT, $this->connection->id, $retiring->id, $this->actor);
+        $result = $this->keys()->retire(self::TENANT, $this->connection->id, $retiring->id, Clients::browser(), $this->actor);
         $key    = self::summaryOf($result);
 
         self::assertSame(KeyStatus::RETIRED, $result->status);
@@ -618,7 +619,7 @@ final class KeyServiceTest extends TestCase
         self::assertSame($retiring->id, $event->keyId);
         self::assertSame($retiring->key->fingerprint, $event->fingerprint);
 
-        $retired = self::summaryOf($this->keys()->retire(self::TENANT, $this->connection->id, $next->id, $this->actor));
+        $retired = self::summaryOf($this->keys()->retire(self::TENANT, $this->connection->id, $next->id, Clients::browser(), $this->actor));
 
         self::assertSame(KeyState::NEXT, $retired->state);
         self::assertSame([$current->id], array_column($this->rows(), 'id'));
@@ -635,7 +636,7 @@ final class KeyServiceTest extends TestCase
     {
         $other       = $this->makeConnection(['protocol' => 'saml2']);
         $current     = $this->add();
-        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0)));
+        $certificate = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser()));
         $theirs      = $this->add($other);
 
         $this->freshness->reset();
@@ -643,10 +644,10 @@ final class KeyServiceTest extends TestCase
 
         $before = $this->rows();
 
-        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->retire(self::TENANT, $this->connection->id, $current->id)->reason);
-        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->retire(self::TENANT, $this->connection->id, $certificate->id)->reason);
-        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, $theirs->id)->reason);
-        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, self::UNKNOWN)->reason);
+        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->retire(self::TENANT, $this->connection->id, $current->id, Clients::browser())->reason);
+        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->retire(self::TENANT, $this->connection->id, $certificate->id, Clients::browser())->reason);
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, $theirs->id, Clients::browser())->reason);
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, self::UNKNOWN, Clients::browser())->reason);
 
         self::assertSame([], $this->freshness->asked());
         self::assertSame($before, $this->rows());
@@ -667,7 +668,7 @@ final class KeyServiceTest extends TestCase
             $this->add();
         };
 
-        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
+        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA);
 
         self::assertSame(FailureReason::KEY_STATE_CONFLICT, $result->reason);
         self::assertCount(2, $this->rows());
@@ -685,18 +686,18 @@ final class KeyServiceTest extends TestCase
         $next    = $this->add();
 
         $this->freshness->onCheck = function () use ($next): void {
-            $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id);
+            $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser());
         };
 
-        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id)->reason);
+        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser())->reason);
 
         $newer = $this->add();
 
         $this->freshness->onCheck = function () use ($newer): void {
-            $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $newer->id);
+            $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $newer->id, Clients::browser());
         };
 
-        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->retire(self::TENANT, $this->connection->id, $newer->id)->reason);
+        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->retire(self::TENANT, $this->connection->id, $newer->id, Clients::browser())->reason);
         self::assertSame(KeyState::RETIRING, ConnectionKey::query()->findOrFail($current->id)->state);
         self::assertSame(KeyState::CURRENT, ConnectionKey::query()->findOrFail($newer->id)->state);
     }
@@ -713,10 +714,10 @@ final class KeyServiceTest extends TestCase
         $next = $this->add();
 
         $this->freshness->onCheck = function () use ($next): void {
-            $this->keys()->retire(self::TENANT, $this->connection->id, $next->id);
+            $this->keys()->retire(self::TENANT, $this->connection->id, $next->id, Clients::browser());
         };
 
-        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id)->reason);
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser())->reason);
     }
 
     /**
@@ -731,7 +732,7 @@ final class KeyServiceTest extends TestCase
             $this->connection->delete();
         };
 
-        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
+        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA);
 
         self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $result->reason);
         self::assertSame([], $this->rows());
@@ -746,7 +747,7 @@ final class KeyServiceTest extends TestCase
      */
     public function testThePrivateKeyIsStoredOnlyAsCiphertext(): void
     {
-        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
+        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA);
         $key    = self::summaryOf($result);
         $row    = ConnectionKey::query()->findOrFail($key->id);
         $stored = $row->getRawOriginal('private_key');
@@ -794,7 +795,7 @@ final class KeyServiceTest extends TestCase
         $this->startRecordingEvents();
 
         try {
-            $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
+            $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA);
             self::fail('The failed write was swallowed.');
         } catch (\RuntimeException $exception) {
             self::assertMatchesRegularExpression('/^The connection\'s key could not be written \(SQLSTATE [0-9A-Z]{5}\)\.$/', $exception->getMessage());
@@ -825,11 +826,11 @@ final class KeyServiceTest extends TestCase
 
         try {
             $listed     = $keys->keys(self::TENANT, $id);
-            $conflict   = $keys->addNext(self::TENANT, $id, KeyUse::SP_SIGNING, KeyType::RSA);
-            $promoted   = $keys->makeCurrent(self::TENANT, $id, $next->id);
-            $retired    = $keys->retire(self::TENANT, $id, $current->id);
-            $trusted    = $keys->trustCertificate(self::TENANT, $id, Certificates::distinct(0));
-            $distrusted = $keys->distrustCertificate(self::TENANT, $id, self::summaryOf($trusted)->id);
+            $conflict   = $keys->addNext(self::TENANT, $id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA);
+            $promoted   = $keys->makeCurrent(self::TENANT, $id, $next->id, Clients::browser());
+            $retired    = $keys->retire(self::TENANT, $id, $current->id, Clients::browser());
+            $trusted    = $keys->trustCertificate(self::TENANT, $id, Certificates::distinct(0), Clients::browser());
+            $distrusted = $keys->distrustCertificate(self::TENANT, $id, self::summaryOf($trusted)->id, Clients::browser());
         } finally {
             DB::connection(StorageConnection::name())->setReadPdo(null);
         }
@@ -854,16 +855,16 @@ final class KeyServiceTest extends TestCase
 
         $this->clock->advance(1);
 
-        $first = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(1)));
+        $first = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(1), Clients::browser()));
 
         $this->clock->advance(1);
 
         $current = $this->add();
 
-        $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $current->id);
+        $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $current->id, Clients::browser());
         $this->clock->advance(1);
 
-        $second = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(2)));
+        $second = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(2), Clients::browser()));
         $next   = $this->add();
         $keys   = $this->keys()->keys(self::TENANT, $this->connection->id);
 
@@ -907,7 +908,7 @@ final class KeyServiceTest extends TestCase
      */
     public function testRefusesACertificateTheInspectorRefuses(): void
     {
-        $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, 'not a certificate');
+        $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, 'not a certificate', Clients::browser());
 
         self::assertTrue($result->isInvalid());
         self::assertSame([['setting' => 'certificate', 'code' => 'invalid_format']], $result->jsonSerialize()['violations']);
@@ -925,13 +926,13 @@ final class KeyServiceTest extends TestCase
     public function testRefusesADuplicateAndAnEleventhCertificate(): void
     {
         for ($index = 1; $index <= KeyService::MAX_TRUSTED_CERTIFICATES; $index++) {
-            self::assertTrue($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct($index))->isSucceeded());
+            self::assertTrue($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct($index), Clients::browser())->isSucceeded());
         }
 
         $this->freshness->reset();
 
-        $duplicate = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(1));
-        $tooMany   = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(11));
+        $duplicate = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(1), Clients::browser());
+        $tooMany   = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(11), Clients::browser());
 
         self::assertTrue($duplicate->isInvalid());
         self::assertSame([['setting' => 'certificate', 'code' => 'duplicate']], $duplicate->jsonSerialize()['violations']);
@@ -953,11 +954,11 @@ final class KeyServiceTest extends TestCase
 
         $statements = $this->recordKeyStatements();
 
-        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, '')->reason);
-        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, self::UNKNOWN . 'x')->reason);
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, '', Clients::browser())->reason);
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, self::UNKNOWN . 'x', Clients::browser())->reason);
         self::assertSame([], $statements->getArrayCopy());
 
-        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, self::UNKNOWN)->reason);
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->retire(self::TENANT, $this->connection->id, self::UNKNOWN, Clients::browser())->reason);
         self::assertCount(1, $statements);
     }
 
@@ -974,7 +975,7 @@ final class KeyServiceTest extends TestCase
 
         ConnectionKey::query()->whereKey($retiring->id)->update(['state' => KeyState::RETIRING->value]);
 
-        $result = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id);
+        $result = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser());
 
         self::assertSame(KeyStatus::MADE_CURRENT, $result->status);
         self::assertSame(KeyState::CURRENT, self::summaryOf($result)->state);
@@ -999,9 +1000,14 @@ final class KeyServiceTest extends TestCase
         $next       = $this->add();
 
         $keys->keys(self::TENANT, $id);
-        $keys->makeCurrent(self::TENANT, $id, $next->id);
-        $keys->retire(self::TENANT, $id, $current->id);
-        $keys->distrustCertificate(self::TENANT, $id, self::summaryOf($keys->trustCertificate(self::TENANT, $id, Certificates::distinct(0)))->id);
+        $keys->makeCurrent(self::TENANT, $id, $next->id, Clients::browser());
+        $keys->retire(self::TENANT, $id, $current->id, Clients::browser());
+        $keys->distrustCertificate(
+            self::TENANT,
+            $id,
+            self::summaryOf($keys->trustCertificate(self::TENANT, $id, Certificates::distinct(0), Clients::browser()))->id,
+            Clients::browser(),
+        );
 
         $reads = $statements->getArrayCopy();
 
@@ -1022,9 +1028,9 @@ final class KeyServiceTest extends TestCase
     public function testReplacingTheTrustedCertificatesTrustsExactlyThoseGiven(): void
     {
         $id      = $this->connection->id;
-        $kept    = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(0)));
-        $dropped = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(1)));
-        $anchor  = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(4), use: KeyUse::METADATA_SIGNING));
+        $kept    = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(0), Clients::browser()));
+        $dropped = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(1), Clients::browser()));
+        $anchor  = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(4), Clients::browser(), use: KeyUse::METADATA_SIGNING));
         $request = $this->makeAuthorizationRequest($this->connection);
         $before  = Connection::query()->findOrFail($id)->trust_version;
 
@@ -1067,7 +1073,7 @@ final class KeyServiceTest extends TestCase
     {
         $id = $this->connection->id;
 
-        $this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(0));
+        $this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(0), Clients::browser());
 
         $request = $this->makeAuthorizationRequest($this->connection);
         $before  = Connection::query()->findOrFail($id)->trust_version;
@@ -1124,7 +1130,7 @@ final class KeyServiceTest extends TestCase
     #[DataProvider('provideRefusedReplacements')]
     public function testARefusedReplacementWritesNothing(\Closure $certificates, array $violations): void
     {
-        $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(11));
+        $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(11), Clients::browser());
 
         $request = $this->makeAuthorizationRequest($this->connection);
         $before  = $this->rows();
@@ -1153,7 +1159,7 @@ final class KeyServiceTest extends TestCase
      */
     public function testAReplacementLocksEveryKeyItReads(): void
     {
-        $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0));
+        $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser());
 
         $statements = $this->recordKeyStatements(true);
 
@@ -1174,7 +1180,7 @@ final class KeyServiceTest extends TestCase
     {
         $connection ??= $this->connection;
 
-        return self::summaryOf($this->keys()->addNext($connection->tenant_id, $connection->id, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor));
+        return self::summaryOf($this->keys()->addNext($connection->tenant_id, $connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor));
     }
 
     /**
@@ -1191,7 +1197,7 @@ final class KeyServiceTest extends TestCase
         return match ($operation) {
             'makeCurrent'         => $this->add()->id,
             'retire'              => $this->retiring($current)->id,
-            'distrustCertificate' => self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0)))->id,
+            'distrustCertificate' => self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser()))->id,
             default               => self::UNKNOWN,
         };
     }
@@ -1204,7 +1210,7 @@ final class KeyServiceTest extends TestCase
      */
     private function retiring(KeySummary $current): KeySummary
     {
-        $previous = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $this->add()->id)->previous;
+        $previous = $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $this->add()->id, Clients::browser())->previous;
 
         self::assertNotNull($previous);
         self::assertSame($current->id, $previous->id);
@@ -1226,11 +1232,11 @@ final class KeyServiceTest extends TestCase
         $keys = $this->keys();
 
         return match ($operation) {
-            'addNext'          => $keys->addNext($tenant, $connection, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor),
-            'makeCurrent'      => $keys->makeCurrent($tenant, $connection, $keyId, $this->actor),
-            'retire'           => $keys->retire($tenant, $connection, $keyId, $this->actor),
-            'trustCertificate' => $keys->trustCertificate($tenant, $connection, Certificates::rsa2048(), $this->actor),
-            default            => $keys->distrustCertificate($tenant, $connection, $keyId, $this->actor),
+            'addNext'          => $keys->addNext($tenant, $connection, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor),
+            'makeCurrent'      => $keys->makeCurrent($tenant, $connection, $keyId, Clients::browser(), $this->actor),
+            'retire'           => $keys->retire($tenant, $connection, $keyId, Clients::browser(), $this->actor),
+            'trustCertificate' => $keys->trustCertificate($tenant, $connection, Certificates::rsa2048(), Clients::browser(), $this->actor),
+            default            => $keys->distrustCertificate($tenant, $connection, $keyId, Clients::browser(), $this->actor),
         };
     }
 
@@ -1306,7 +1312,7 @@ final class KeyServiceTest extends TestCase
 
             $locked = Connection::query()->whereKey($this->connection->id)->lockForUpdate()->firstOrFail();
 
-            return $this->keys()->replaceTrustedCertificatesLocked($locked, $certificates, $this->actor);
+            return $this->keys()->replaceTrustedCertificatesLocked($locked, $certificates, Clients::browser(), $this->actor);
         });
     }
 

@@ -34,6 +34,7 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\RecordingRevocation;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
@@ -247,7 +248,7 @@ final class LinkServiceTest extends TestCase
         $link = $this->makeLink($this->connection);
 
         try {
-            $this->service()->remove($identity, $link->id, $caller);
+            $this->service()->remove($identity, $link->id, Clients::browser(), $caller);
             self::fail('The removal succeeded.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame($message, $exception->getMessage());
@@ -268,7 +269,7 @@ final class LinkServiceTest extends TestCase
     {
         $link = $this->makeLink($this->connection, 'subject-1', ['last_used_at' => CarbonImmutable::parse('2026-11-01T09:00:00Z')]);
 
-        $result = $this->service()->remove($this->identity, $link->id, null, new ActingIdentity('App\Models\User', '42'));
+        $result = $this->service()->remove($this->identity, $link->id, Clients::browser(), null, new ActingIdentity('App\Models\User', '42'));
 
         self::assertTrue($result->isRemoved());
         self::assertSame([
@@ -334,7 +335,7 @@ final class LinkServiceTest extends TestCase
         $link   = $this->makeLink($this->connection, 'subject-1');
         $before = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
 
-        self::assertTrue($this->service()->remove($this->identity, $link->id, null, new ActingIdentity('App\Models\User', '42'))->isRemoved());
+        self::assertTrue($this->service()->remove($this->identity, $link->id, Clients::browser(), null, new ActingIdentity('App\Models\User', '42'))->isRemoved());
         self::assertSame($before + 1, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
     }
 
@@ -348,7 +349,7 @@ final class LinkServiceTest extends TestCase
     {
         $link = $this->makeLink($this->connection);
 
-        $result = $this->service()->remove('me', $link->id, $this->identity);
+        $result = $this->service()->remove('me', $link->id, Clients::browser(), $this->identity);
 
         self::assertTrue($result->isRemoved());
         self::assertSame($link->id, $result->link?->id);
@@ -372,7 +373,7 @@ final class LinkServiceTest extends TestCase
         $kept    = $this->makeLink($this->connection, 'subject-2');
         $theirs  = $this->makeLink($this->connection, 'subject-3', ['identity_id' => '2']);
 
-        self::assertTrue($this->service()->remove($this->identity, $removed->id)->isRemoved());
+        self::assertTrue($this->service()->remove($this->identity, $removed->id, Clients::browser())->isRemoved());
 
         $left = Link::query()->orderBy('id')->pluck('id')->all();
 
@@ -412,7 +413,7 @@ final class LinkServiceTest extends TestCase
             default        => '',
         };
 
-        $result = $this->service()->remove($this->identity, $id);
+        $result = $this->service()->remove($this->identity, $id, Clients::browser());
 
         self::assertSame(['removed' => false, 'link' => null, 'reason' => 'link_not_found'], $result->jsonSerialize());
         $this->assertNothingChanged(2);
@@ -431,7 +432,7 @@ final class LinkServiceTest extends TestCase
 
         $link = $this->makeLink($this->connection);
 
-        $result = $this->service()->remove($this->identity, $link->id);
+        $result = $this->service()->remove($this->identity, $link->id, Clients::browser());
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
         self::assertNull($result->link);
@@ -453,7 +454,7 @@ final class LinkServiceTest extends TestCase
             Link::query()->whereKey($gone->id)->delete();
         };
 
-        self::assertSame(FailureReason::LINK_NOT_FOUND, $this->service()->remove($this->identity, $gone->id)->reason);
+        self::assertSame(FailureReason::LINK_NOT_FOUND, $this->service()->remove($this->identity, $gone->id, Clients::browser())->reason);
         $this->assertNothingChanged(0);
 
         $moved = $this->makeLink($this->connection, 'subject-2');
@@ -462,7 +463,7 @@ final class LinkServiceTest extends TestCase
             Link::query()->whereKey($moved->id)->update(['identity_id' => '2']);
         };
 
-        self::assertSame(FailureReason::LINK_NOT_FOUND, $this->service()->remove($this->identity, $moved->id)->reason);
+        self::assertSame(FailureReason::LINK_NOT_FOUND, $this->service()->remove($this->identity, $moved->id, Clients::browser())->reason);
         $this->assertNothingChanged(1);
         self::assertSame('2', Link::query()->sole()->identity_id);
     }
@@ -480,7 +481,7 @@ final class LinkServiceTest extends TestCase
         $link       = $this->makeLink($this->connection, 'subject-1');
         $statements = $this->recordLinkStatements();
 
-        self::assertTrue($this->service()->remove($this->identity, $link->id)->isRemoved());
+        self::assertTrue($this->service()->remove($this->identity, $link->id, Clients::browser())->isRemoved());
         self::assertSame([
             ['transaction' => false, 'locked' => false],
             ['transaction' => true, 'locked' => true],
@@ -497,7 +498,7 @@ final class LinkServiceTest extends TestCase
     {
         $orphan = $this->makeLink($this->connection, 'subject-1', ['connection_id' => '01jbzzzzzzzzzzzzzzzzzzzzzz']);
 
-        $result = $this->service()->remove($this->identity, $orphan->id);
+        $result = $this->service()->remove($this->identity, $orphan->id, Clients::browser());
 
         self::assertSame(FailureReason::LINK_NOT_FOUND, $result->reason);
         self::assertSame([[FreshnessOperation::LINK_REMOVE, 300]], $this->freshness->asked());
@@ -516,7 +517,7 @@ final class LinkServiceTest extends TestCase
             'reservation_expires_at' => CarbonImmutable::parse('2026-11-01T09:35:00Z'),
         ]);
 
-        $result = $this->service()->remove($this->identity, $link->id);
+        $result = $this->service()->remove($this->identity, $link->id, Clients::browser());
 
         self::assertSame(LinkState::RESERVED, $result->link?->state);
         self::assertSame(0, Link::query()->count());

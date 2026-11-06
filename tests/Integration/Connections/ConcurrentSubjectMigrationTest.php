@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\RecordingRevocation;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
@@ -120,7 +121,7 @@ final class ConcurrentSubjectMigrationTest extends TestCase
 
         $this->usePackageTables();
 
-        $created = $this->service()->create(self::TENANT, 'oidc', 'Acme', self::OIDC);
+        $created = $this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC);
 
         $this->connection = Connection::query()->whereKey((string) $created->connection?->id)->sole();
 
@@ -229,6 +230,7 @@ final class ConcurrentSubjectMigrationTest extends TestCase
             new LinkSubject(self::ISSUER, 'late-subject'),
             new IdentityReference('user', '9'),
             LinkOrigin::LINK_PURPOSE,
+            Clients::browser(),
         );
         $sawWaiter = self::hasAWaiterOnceSignalled($database, $signal);
 
@@ -272,6 +274,7 @@ final class ConcurrentSubjectMigrationTest extends TestCase
             ['settings' => ['issuer' => self::NEW_ISSUER]],
             [$this->links['first'] => ['first-new']],
             [$this->links['second'], $this->links['third']],
+            Clients::browser(),
         );
 
         if ($readFirst) {

@@ -11,6 +11,7 @@ use Illuminate\Support\ViewErrorBag;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
@@ -40,6 +41,7 @@ use SineMacula\Laravel\Sso\Secrets\MaskedSecret;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -122,8 +124,8 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
         self::assertSame($connectionId, $connections->get($this->tenant->id, $connectionId)?->id);
         self::assertNull($connections->get('Tenant-1', $connectionId));
         self::assertSame([], $connections->list('tenant-2'));
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $lifecycle->disable('tenant-2', $connectionId)->reason);
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $migration->migrate('tenant-2', $connectionId, [], [], [])->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $lifecycle->disable('tenant-2', $connectionId, Clients::browser())->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $migration->migrate('tenant-2', $connectionId, [], [], [], Clients::browser())->reason);
     }
 
     /**
@@ -204,12 +206,13 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
         $actor        = $this->actor();
         $connectionId = $this->createdId();
 
+        $client = Clients::browser();
         // @snippet-start connections-update
         $result = $connections->update($tenant->id, $connectionId, [
             'display_name'      => 'Acme SSO',
             'settings'          => ['token_endpoint' => 'https://idp.acme.example/oauth2/token', 'userinfo_endpoint' => null],
             'attribute_mapping' => ['department' => 'dept', 'groups' => null],
-        ], $actor);
+        ], $client, $actor);
         // @snippet-end connections-update
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame(['token_endpoint', 'userinfo_endpoint', 'display_name', 'attribute_mapping'], $result->changedSettings);
@@ -226,7 +229,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
 
         $this->freshness->staleFor(FreshnessOperation::CONNECTION_TRUST);
 
-        $stale = $connections->update($tenant->id, $connectionId, ['settings' => ['token_endpoint' => 'https://idp.acme.example/token']], $actor);
+        $stale = $connections->update($tenant->id, $connectionId, ['settings' => ['token_endpoint' => 'https://idp.acme.example/token']], Clients::browser(), $actor);
 
         self::assertSame(ConnectionStatus::REFUSED, $stale->status);
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $stale->reason);
@@ -276,17 +279,18 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
         $actor        = $this->actor();
         $connectionId = $this->createdId();
 
+        $client = Clients::browser();
         // @snippet-start connections-enable
-        $result = $connections->enable($tenant->id, $connectionId, $actor);
+        $result = $connections->enable($tenant->id, $connectionId, $client, $actor);
         // @snippet-end connections-enable
         self::assertSame(ConnectionStatus::ENABLED, $result->status);
         self::assertTrue($result->connection?->enabled);
         $this->freshness->assertAsked(FreshnessOperation::CONNECTION_ENABLE);
-        self::assertSame(ConnectionStatus::UNCHANGED, $connections->enable($tenant->id, $connectionId, $actor)->status);
+        self::assertSame(ConnectionStatus::UNCHANGED, $connections->enable($tenant->id, $connectionId, Clients::browser(), $actor)->status);
 
         $this->freshness->staleFor(FreshnessOperation::CONNECTION_ENABLE);
 
-        $stale = $connections->enable($tenant->id, $connectionId, $actor);
+        $stale = $connections->enable($tenant->id, $connectionId, Clients::browser(), $actor);
 
         self::assertSame(ConnectionStatus::REFUSED, $stale->status);
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $stale->reason);
@@ -308,8 +312,9 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
         $connectionId = $this->makeOidcConnection(new FakeOpenIdProvider(clock: $this->clock));
         $reported     = self::reported(ConnectionDisabled::class);
 
+        $client = Clients::browser();
         // @snippet-start connections-disable
-        $result = $lifecycle->disable($tenant->id, $connectionId, $actor);
+        $result = $lifecycle->disable($tenant->id, $connectionId, $client, $actor);
         // @snippet-end connections-disable
         self::assertSame(ConnectionStatus::DISABLED, $result->status);
         self::assertFalse($result->connection?->enabled);
@@ -322,7 +327,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
         self::assertInstanceOf(ConnectionDisabled::class, $event);
         self::assertSame('admin-1', $event->context()->actingIdentityId);
 
-        self::assertSame(ConnectionStatus::UNCHANGED, $lifecycle->disable($tenant->id, $connectionId, $actor)->status);
+        self::assertSame(ConnectionStatus::UNCHANGED, $lifecycle->disable($tenant->id, $connectionId, Clients::browser(), $actor)->status);
         self::assertCount(1, $this->revocations->revoked());
         self::assertCount(1, $reported);
     }
@@ -344,8 +349,9 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
         $connectionId = $this->createdId();
         $reported     = self::reported(ConnectionDeleted::class);
 
+        $client = Clients::browser();
         // @snippet-start connections-delete
-        $result = $lifecycle->delete($tenant->id, $connectionId, $actor);
+        $result = $lifecycle->delete($tenant->id, $connectionId, $client, $actor);
         // @snippet-end connections-delete
         self::assertSame(ConnectionStatus::DELETED, $result->status);
         self::assertNull($result->connection);
@@ -356,7 +362,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
 
         $this->freshness->staleFor(FreshnessOperation::CONNECTION_DELETE);
 
-        $stale = $lifecycle->delete($tenant->id, $kept, $actor);
+        $stale = $lifecycle->delete($tenant->id, $kept, Clients::browser(), $actor);
 
         self::assertSame(ConnectionStatus::REFUSED, $stale->status);
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $stale->reason);
@@ -391,19 +397,20 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
         $reported    = self::reported(ConnectionUpdated::class, LinkRemoved::class, LinkCreated::class);
         $unaccounted = $migration->migrate($tenant->id, $connectionId, ['settings' => ['issuer' => self::NEW_ISSUER]], [
             $linkId => ['00u1a2b3c4', null, self::NEW_ISSUER],
-        ], [$leaverLinkId, $formerContractorLinkId], $actor);
+        ], [$leaverLinkId, $formerContractorLinkId], Clients::browser(), $actor);
 
         self::assertSame(ConnectionStatus::REFUSED, $unaccounted->status);
         self::assertSame(FailureReason::LINKS_UNACCOUNTED, $unaccounted->reason);
         self::assertCount(0, $reported);
 
+        $client = Clients::browser();
         // @snippet-start connections-migrate
         $issuer = 'https://login.acme.example';
 
         $result = $migration->migrate($tenant->id, $connectionId, ['settings' => ['issuer' => $issuer]], [
             $linkId      => ['00u1a2b3c4', null, $issuer], // the new subject, no NameID format, the new issuer
             $otherLinkId => ['E-1042', null, $issuer],
-        ], [$leaverLinkId, $formerContractorLinkId], $actor); // the links to remove
+        ], [$leaverLinkId, $formerContractorLinkId], $client, $actor); // the links to remove
         // @snippet-end connections-migrate
         self::assertSame(ConnectionStatus::MIGRATED, $result->status);
         self::assertSame(['issuer'], $result->changedSettings);
@@ -553,7 +560,12 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     {
         $asserted = static fn (FakeIdToken $token): FakeIdToken => $token->with('iss', self::NEW_ISSUER)->with('sub', $subject);
         $grant    = $provider->authorize($start, $asserted);
-        $result   = app(CompletionService::class)->callback($connectionId, new CompletionRequest('GET', $grant->query(['iss' => self::NEW_ISSUER]), []));
+        $result   = app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $connectionId,
+            new CompletionRequest('GET', $grant->query(['iss' => self::NEW_ISSUER]), []),
+            Clients::browser(),
+        );
 
         return HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
     }

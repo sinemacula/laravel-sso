@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -154,6 +155,7 @@ final readonly class KeyService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
@@ -162,7 +164,7 @@ final readonly class KeyService
      * @throws \RuntimeException
      * @throws \Throwable
      */
-    public function addNext(string $tenantId, string $connectionId, KeyUse $use, ?KeyType $type = null, ?ActingIdentity $actor = null): KeyResult
+    public function addNext(string $tenantId, string $connectionId, KeyUse $use, ClientContext $client, ?KeyType $type = null, ?ActingIdentity $actor = null): KeyResult
     {
         $type ??= KeyType::RSA;
 
@@ -175,7 +177,7 @@ final readonly class KeyService
         $generated = $this->generator->generate($type, $connection->id);
         $encrypted = $this->encrypter->encrypt($generated->privateKey->reveal());
 
-        return $this->change($tenantId, $connectionId, fn (Connection $locked): KeyResult => $this->insertOwnKey($locked, $use, $generated, $encrypted, $actor));
+        return $this->change($tenantId, $connectionId, fn (Connection $locked): KeyResult => $this->insertOwnKey($locked, $use, $generated, $encrypted, $actor, $client));
     }
 
     /**
@@ -185,13 +187,14 @@ final readonly class KeyService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $keyId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function makeCurrent(string $tenantId, string $connectionId, string $keyId, ?ActingIdentity $actor = null): KeyResult
+    public function makeCurrent(string $tenantId, string $connectionId, string $keyId, ClientContext $client, ?ActingIdentity $actor = null): KeyResult
     {
         $overlap = $this->settings->overlapSeconds();
 
@@ -201,7 +204,7 @@ final readonly class KeyService
             $keyId,
             static fn (): bool => true,
             static fn (ConnectionKey $key): bool => $key->use->isOwnKey() && $key->state === KeyState::NEXT,
-            fn (Connection $locked, ConnectionKey $key): KeyResult => $this->promote($locked, $key, $overlap, $actor),
+            fn (Connection $locked, ConnectionKey $key): KeyResult => $this->promote($locked, $key, $overlap, $actor, $client),
         );
     }
 
@@ -213,13 +216,14 @@ final readonly class KeyService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $keyId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function retire(string $tenantId, string $connectionId, string $keyId, ?ActingIdentity $actor = null): KeyResult
+    public function retire(string $tenantId, string $connectionId, string $keyId, ClientContext $client, ?ActingIdentity $actor = null): KeyResult
     {
         return $this->keyChange(
             $tenantId,
@@ -227,7 +231,7 @@ final readonly class KeyService
             $keyId,
             static fn (): bool => true,
             static fn (ConnectionKey $key): bool => $key->use->isOwnKey() && in_array($key->state, [KeyState::NEXT, KeyState::RETIRING], true),
-            fn (Connection $locked, ConnectionKey $key): KeyResult => KeyResult::retired($this->remove($locked, $key, $actor)),
+            fn (Connection $locked, ConnectionKey $key): KeyResult => KeyResult::retired($this->remove($locked, $key, $actor, $client)),
         );
     }
 
@@ -241,6 +245,7 @@ final readonly class KeyService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $certificate
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
@@ -248,15 +253,21 @@ final readonly class KeyService
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function trustCertificate(string $tenantId, string $connectionId, string $certificate, ?ActingIdentity $actor = null, KeyUse $use = KeyUse::IDP_SIGNING): KeyResult
-    {
+    public function trustCertificate(
+        string $tenantId,
+        string $connectionId,
+        string $certificate,
+        ClientContext $client,
+        ?ActingIdentity $actor = null,
+        KeyUse $use = KeyUse::IDP_SIGNING,
+    ): KeyResult {
         $facts = $this->trustPrechecked($tenantId, $connectionId, $certificate, $use);
 
         if ($facts instanceof KeyResult) {
             return $facts;
         }
 
-        return $this->change($tenantId, $connectionId, fn (Connection $locked): KeyResult => $this->insertTrusted($locked, $facts, $use, $actor));
+        return $this->change($tenantId, $connectionId, fn (Connection $locked): KeyResult => $this->insertTrusted($locked, $facts, $use, $actor, $client));
     }
 
     /**
@@ -268,13 +279,14 @@ final readonly class KeyService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  string  $keyId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function distrustCertificate(string $tenantId, string $connectionId, string $keyId, ?ActingIdentity $actor = null): KeyResult
+    public function distrustCertificate(string $tenantId, string $connectionId, string $keyId, ClientContext $client, ?ActingIdentity $actor = null): KeyResult
     {
         return $this->keyChange(
             $tenantId,
@@ -282,7 +294,7 @@ final readonly class KeyService
             $keyId,
             static fn (ConnectionKey $key): bool => $key->use->isTrustedCertificate(),
             static fn (): bool => true,
-            fn (Connection $locked, ConnectionKey $key): KeyResult => KeyResult::distrusted($this->remove($locked, $key, $actor)),
+            fn (Connection $locked, ConnectionKey $key): KeyResult => KeyResult::distrusted($this->remove($locked, $key, $actor, $client)),
         );
     }
 
@@ -310,6 +322,7 @@ final readonly class KeyService
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  list<string>  $pems
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return Replacement
      *
@@ -317,7 +330,7 @@ final readonly class KeyService
      *
      * @internal
      */
-    public function replaceTrustedCertificatesLocked(Connection $locked, array $pems, ?ActingIdentity $actor = null): array
+    public function replaceTrustedCertificatesLocked(Connection $locked, array $pems, ClientContext $client, ?ActingIdentity $actor = null): array
     {
         $wanted     = [];
         $violations = [];
@@ -340,7 +353,7 @@ final readonly class KeyService
 
         foreach ($retired as $key) {
             $key->delete();
-            $this->events->keyRetired($locked, $key, $actor);
+            $this->events->keyRetired($locked, $key, $actor, $client);
         }
 
         if ($retired !== []) {
@@ -348,7 +361,7 @@ final readonly class KeyService
         }
 
         $added = $violations === [] ? array_diff_key($wanted, $stored) : [];
-        $trust = fn (array $facts): KeySummary => $this->insertTrusted($locked, $facts, KeyUse::IDP_SIGNING, $actor)->key
+        $trust = fn (array $facts): KeySummary => $this->insertTrusted($locked, $facts, KeyUse::IDP_SIGNING, $actor, $client)->key
                 ?? throw new \LogicException('A judged certificate is trusted.');
 
         return [
@@ -541,13 +554,20 @@ final readonly class KeyService
      * @param  \SineMacula\Laravel\Sso\Keys\GeneratedKey  $generated
      * @param  string  $encrypted
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      * @throws \RuntimeException
      */
-    private function insertOwnKey(Connection $locked, KeyUse $use, GeneratedKey $generated, #[\SensitiveParameter] string $encrypted, ?ActingIdentity $actor): KeyResult
-    {
+    private function insertOwnKey(
+        Connection $locked,
+        KeyUse $use,
+        GeneratedKey $generated,
+        #[\SensitiveParameter] string $encrypted,
+        ?ActingIdentity $actor,
+        ClientContext $client,
+    ): KeyResult {
         if (!ClientAssertionKeys::fits($locked, $use, $generated->type)) {
             return KeyResult::invalid([new SettingViolation('key_type', ViolationCode::NOT_ALLOWED)]);
         }
@@ -578,10 +598,10 @@ final readonly class KeyService
 
         CiphertextWrite::save($key, 'private_key', 'The connection\'s key could not be written');
 
-        $this->events->keyAdded($locked, $key, $actor);
+        $this->events->keyAdded($locked, $key, $actor, $client);
 
         if ($first) {
-            $this->events->keyMadeCurrent($locked, $key, null, $actor);
+            $this->events->keyMadeCurrent($locked, $key, null, $actor, $client);
         }
 
         return KeyResult::added(KeySummary::of($key));
@@ -597,12 +617,13 @@ final readonly class KeyService
      * @param  CertificateFacts  $facts
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function insertTrusted(Connection $locked, array $facts, KeyUse $use, ?ActingIdentity $actor): KeyResult
+    private function insertTrusted(Connection $locked, array $facts, KeyUse $use, ?ActingIdentity $actor, ClientContext $client): KeyResult
     {
         $violation = self::trustViolation($locked, $facts, $use, true);
 
@@ -633,7 +654,7 @@ final readonly class KeyService
             $this->voider->voidFor($locked);
         }
 
-        $this->events->keyAdded($locked, $key, $actor);
+        $this->events->keyAdded($locked, $key, $actor, $client);
 
         return KeyResult::trusted(KeySummary::of($key));
     }
@@ -646,9 +667,10 @@ final readonly class KeyService
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  int  $overlap
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      */
-    private function promote(Connection $locked, ConnectionKey $key, int $overlap, ?ActingIdentity $actor): KeyResult
+    private function promote(Connection $locked, ConnectionKey $key, int $overlap, ?ActingIdentity $actor, ClientContext $client): KeyResult
     {
         $now      = $this->clock->now();
         $previous = self::query($locked, true)->where('use', $key->use->value)->where('state', KeyState::CURRENT->value)->first();
@@ -657,7 +679,7 @@ final readonly class KeyService
 
         $key->forceFill(['state' => KeyState::CURRENT, 'made_current_at' => $now, 'retiring_until' => null])->save();
 
-        $this->events->keyMadeCurrent($locked, $key, $previous, $actor);
+        $this->events->keyMadeCurrent($locked, $key, $previous, $actor, $client);
 
         return KeyResult::madeCurrent(KeySummary::of($key), $previous === null ? null : KeySummary::of($previous));
     }
@@ -671,11 +693,12 @@ final readonly class KeyService
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Keys\KeySummary
      *
      * @throws \LogicException
      */
-    private function remove(Connection $locked, ConnectionKey $key, ?ActingIdentity $actor): KeySummary
+    private function remove(Connection $locked, ConnectionKey $key, ?ActingIdentity $actor, ClientContext $client): KeySummary
     {
         $summary = KeySummary::of($key);
 
@@ -685,7 +708,7 @@ final readonly class KeyService
             $this->voider->voidFor($locked);
         }
 
-        $this->events->keyRetired($locked, $key, $actor);
+        $this->events->keyRetired($locked, $key, $actor, $client);
 
         return $summary;
     }

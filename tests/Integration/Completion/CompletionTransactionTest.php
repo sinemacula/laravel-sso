@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\Linker;
@@ -31,6 +32,7 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Links\FixedLinker;
@@ -222,7 +224,12 @@ final class CompletionTransactionTest extends TestCase
         $database->beginTransaction();
 
         try {
-            $endpoint === 'callback' ? $service->callback($this->connection->id, $request) : $service->assertionConsumerService($this->connection->id, $request);
+            $endpoint === 'callback' ? $service->complete(CompletionEndpoint::CALLBACK, $this->connection->id, $request, Clients::browser()) : $service->complete(
+                CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+                $this->connection->id,
+                $request,
+                Clients::browser(),
+            );
 
             self::fail('A completion inside the caller\'s transaction was answered.');
         } catch (\LogicException $exception) {
@@ -257,7 +264,12 @@ final class CompletionTransactionTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', 'state=' . $state, []));
+        return $app->make(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connection->id,
+            new CompletionRequest('GET', 'state=' . $state, []),
+            Clients::browser(),
+        );
     }
 
     /**

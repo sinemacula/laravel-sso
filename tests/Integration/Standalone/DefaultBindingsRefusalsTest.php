@@ -15,6 +15,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
@@ -73,6 +74,7 @@ use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Concerns\FlowRoutes;
 use Tests\Concerns\RaceFlows;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
@@ -384,13 +386,20 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
 
         $subject = new LinkSubject($this->flowProvider($connection)->issuer, FakeOpenIdProvider::SUBJECT);
 
-        self::assertTrue(app(LinkStore::class)->create($connection, $subject, $this->person, LinkOrigin::LINK_PURPOSE)->isCreated());
+        self::assertTrue(app(LinkStore::class)->create($connection, $subject, $this->person, LinkOrigin::LINK_PURPOSE, Clients::browser())->isCreated());
 
         $start = $this->startedFlow($connection);
         $code  = $this->completedCode($this->completeFlow($connection, $start));
 
         $answer = DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::FLOW_APPLICATION, $connection->id, $code, $start['verifier']),
+            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(
+                Purpose::SIGN_IN,
+                self::FLOW_APPLICATION,
+                $connection->id,
+                $code,
+                $start['verifier'],
+                Clients::browser(),
+            ),
         );
 
         $this->assertOnlyRebound(Fetcher::class, Linker::class);
@@ -484,7 +493,12 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
         $this->startRecordingEvents();
 
         try {
-            app(LinkingPolicyService::class)->change(self::TENANT, $connection->id, ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true]);
+            app(LinkingPolicyService::class)->change(
+                self::TENANT,
+                $connection->id,
+                ['enabled' => true, 'issuer_class' => 'single_organization', 'acknowledged' => true],
+                Clients::browser(),
+            );
 
             self::fail('Linking went on over a linker that would ignore its rows.');
         } catch (\LogicException $exception) {
@@ -562,7 +576,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
         $this->app?->instance(Linker::class, new NoLinks);
 
         try {
-            app(HandoffRedemption::class)->redeem(Purpose::LINK, self::FLOW_APPLICATION, $connection->id, $code, $start['verifier'], $this->person);
+            app(HandoffRedemption::class)->redeem(Purpose::LINK, self::FLOW_APPLICATION, $connection->id, $code, $start['verifier'], Clients::browser(), $this->person);
 
             self::fail('A link was redeemed over a linker that would ignore it.');
         } catch (\LogicException $exception) {
@@ -576,7 +590,17 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
 
         $this->app?->instance(Linker::class, $store);
 
-        self::assertTrue(app(HandoffRedemption::class)->redeem(Purpose::LINK, self::FLOW_APPLICATION, $connection->id, $code, $start['verifier'], $this->person)->isRedeemed());
+        self::assertTrue(
+            app(HandoffRedemption::class)->redeem(
+                Purpose::LINK,
+                self::FLOW_APPLICATION,
+                $connection->id,
+                $code,
+                $start['verifier'],
+                Clients::browser(),
+                $this->person,
+            )->isRedeemed(),
+        );
         self::assertSame($this->person->id, Link::query()->sole()->identity_id);
     }
 
@@ -610,7 +634,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
      */
     private function createConnection(): ?FailureReason
     {
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Acme')->reason);
+        return $this->withNothingWritten(static fn (): ?FailureReason => app(ConnectionService::class)->create(self::TENANT, 'oidc', 'Acme', Clients::browser())->reason);
     }
 
     /**
@@ -622,7 +646,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     {
         $connection = $this->makeConnection();
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(ConnectionService::class)->enable(self::TENANT, $connection->id)->reason);
+        return $this->withNothingWritten(static fn (): ?FailureReason => app(ConnectionService::class)->enable(self::TENANT, $connection->id, Clients::browser())->reason);
     }
 
     /**
@@ -634,7 +658,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     {
         $connection = $this->makeConnection(['enabled' => true]);
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id)->reason);
+        return $this->withNothingWritten(static fn (): ?FailureReason => app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id, Clients::browser())->reason);
     }
 
     /**
@@ -646,7 +670,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     {
         $connection = $this->makeConnection();
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(ConnectionLifecycle::class)->delete(self::TENANT, $connection->id)->reason);
+        return $this->withNothingWritten(static fn (): ?FailureReason => app(ConnectionLifecycle::class)->delete(self::TENANT, $connection->id, Clients::browser())->reason);
     }
 
     /**
@@ -659,7 +683,9 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
         $connection = $this->flowSamlConnection(self::TENANT, 'idp-initiated');
         $changes    = ['settings' => ['idp_initiated' => true, 'idp_initiated_start_url' => self::IDP_START_URL]];
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(ConnectionService::class)->update(self::TENANT, $connection->id, $changes)->reason);
+        return $this->withNothingWritten(
+            static fn (): ?FailureReason => app(ConnectionService::class)->update(self::TENANT, $connection->id, $changes, Clients::browser())->reason,
+        );
     }
 
     /**
@@ -671,7 +697,9 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     {
         $connection = $this->makeConnection(['protocol' => 'saml2']);
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING)->reason);
+        return $this->withNothingWritten(
+            static fn (): ?FailureReason => app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::SP_SIGNING, Clients::browser())->reason,
+        );
     }
 
     /**
@@ -683,7 +711,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     {
         $connection = $this->makeConnection();
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(DomainService::class)->claim(self::TENANT, $connection->id, self::DOMAIN)->reason);
+        return $this->withNothingWritten(static fn (): ?FailureReason => app(DomainService::class)->claim(self::TENANT, $connection->id, self::DOMAIN, Clients::browser())->reason);
     }
 
     /**
@@ -697,7 +725,9 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
 
         $this->makeDomain($connection, self::DOMAIN);
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(DomainService::class)->verify(self::TENANT, $connection->id, self::DOMAIN)->reason);
+        return $this->withNothingWritten(
+            static fn (): ?FailureReason => app(DomainService::class)->verify(self::TENANT, $connection->id, self::DOMAIN, Clients::browser())->reason,
+        );
     }
 
     /**
@@ -711,7 +741,9 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
 
         $this->makeDomain($connection, self::DOMAIN);
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(DomainService::class)->remove(self::TENANT, $connection->id, self::DOMAIN)->reason);
+        return $this->withNothingWritten(
+            static fn (): ?FailureReason => app(DomainService::class)->remove(self::TENANT, $connection->id, self::DOMAIN, Clients::browser())->reason,
+        );
     }
 
     /**
@@ -724,7 +756,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     {
         $connection = $this->makeConnection(['enabled' => true, 'has_completed_sign_in' => true]);
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(EnforcementService::class)->update(self::TENANT, true, [$connection->id])->reason);
+        return $this->withNothingWritten(static fn (): ?FailureReason => app(EnforcementService::class)->update(self::TENANT, true, [$connection->id], Clients::browser())->reason);
     }
 
     /**
@@ -766,7 +798,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
         $link       = $this->makeLink($connection, 'subject-1', ['identity_type' => $this->person->type, 'identity_id' => $this->person->id]);
         $person     = $this->person;
 
-        return $this->withNothingWritten(static fn (): ?FailureReason => app(LinkService::class)->remove($person, $link->id)->reason);
+        return $this->withNothingWritten(static fn (): ?FailureReason => app(LinkService::class)->remove($person, $link->id, Clients::browser())->reason);
     }
 
     /**
@@ -881,7 +913,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
      */
     private function holdByVerifiedDomain(Connection $connection, LinkSubject $subject): void
     {
-        self::assertTrue(app(LinkStore::class)->create($connection, $subject, $this->person, LinkOrigin::VERIFIED_DOMAIN)->isCreated());
+        self::assertTrue(app(LinkStore::class)->create($connection, $subject, $this->person, LinkOrigin::VERIFIED_DOMAIN, Clients::browser())->isCreated());
     }
 
     /**
@@ -907,7 +939,12 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
      */
     private function callbackFor(Connection $connection, array $start): CompletionResult
     {
-        return app(CompletionService::class)->callback($connection->id, new CompletionRequest('GET', $this->flowGrant($connection, $start)->query(), []));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $connection->id,
+            new CompletionRequest('GET', $this->flowGrant($connection, $start)->query(), []),
+            Clients::browser(),
+        );
     }
 
     /**

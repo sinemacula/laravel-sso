@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -236,7 +237,7 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
         $thrown   = null;
 
         try {
-            app(HandoffRedemption::class)->redeem(Purpose::REAUTHENTICATE, 'web', $this->connectionId, $redirect->code(), self::VERIFIER);
+            app(HandoffRedemption::class)->redeem(Purpose::REAUTHENTICATE, 'web', $this->connectionId, $redirect->code(), self::VERIFIER, Clients::browser());
         } catch (\LogicException $exception) {
             $thrown = $exception;
         }
@@ -342,8 +343,9 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
         $codeChallenge = self::CHALLENGE;
         $identity      = $this->person;
 
+        $client = Clients::browser();
         // @snippet-start reauthenticating-start
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $connectionId, $codeChallenge, $identity, $sessionId);
+        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $codeChallenge, $identity, $sessionId);
         // @snippet-end reauthenticating-start
         self::assertNull($start->verifier);
 
@@ -366,6 +368,7 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
         $code         = $redirect->code();
         $verifier     = self::VERIFIER;
 
+        $client = Clients::browser();
         // @snippet-start reauthenticating-admit
         $result = DB::connection(StorageConnection::name())->transaction(
             static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(
@@ -374,6 +377,7 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
                 $connectionId,
                 $code,
                 $verifier,
+                $client,
             ),
         );
 
@@ -401,10 +405,11 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
         $code         = $this->respondAtProvider($this->provider, $connectionId, $start)->code();
         $verifier     = self::verifierOf($start);
 
+        $client = Clients::browser();
         // @snippet-start reauthenticating-sign-in
-        $signedIn = DB::connection(StorageConnection::name())->transaction(static function () use ($sessionId, $connectionId, $code, $verifier): RedemptionResult {
+        $signedIn = DB::connection(StorageConnection::name())->transaction(static function () use ($sessionId, $connectionId, $code, $verifier, $client): RedemptionResult {
 
-            $result = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $connectionId, $code, $verifier);
+            $result = app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $connectionId, $code, $verifier, $client);
 
             if ($result->isAdmitted() && $result->linkedIdentity !== null) {
                 Session::on(StorageConnection::name())->create([

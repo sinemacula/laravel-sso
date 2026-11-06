@@ -33,6 +33,7 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\FailingRevocation;
 use Tests\Fixtures\Enforcement\RecordingRevocation;
 use Tests\Fixtures\FixedClock;
@@ -223,7 +224,7 @@ final class EnforcementServiceTest extends TestCase
     public function testTurningItOffRevokesNothing(): void
     {
         $on  = self::summaryOf($this->turnOn([$this->completed->id]), EnforcementStatus::UPDATED);
-        $off = self::summaryOf($this->service()->update(self::TENANT, false, [$this->untried->id], $this->actor), EnforcementStatus::UPDATED);
+        $off = self::summaryOf($this->service()->update(self::TENANT, false, [$this->untried->id], Clients::browser(), $this->actor), EnforcementStatus::UPDATED);
 
         self::assertFalse($off->enabled);
         self::assertSame([$this->untried->id], $off->connectionIds);
@@ -241,7 +242,7 @@ final class EnforcementServiceTest extends TestCase
      */
     public function testStoringARuleThatIsOffIsAChange(): void
     {
-        $summary = self::summaryOf($this->service()->update(self::TENANT, false, [$this->untried->id]), EnforcementStatus::UPDATED);
+        $summary = self::summaryOf($this->service()->update(self::TENANT, false, [$this->untried->id], Clients::browser()), EnforcementStatus::UPDATED);
 
         self::assertFalse($summary->enabled);
         self::assertNotNull($summary->version);
@@ -268,7 +269,7 @@ final class EnforcementServiceTest extends TestCase
         $versions = [];
 
         foreach ($changes as [$enabled, $ids]) {
-            $versions[] = self::summaryOf($this->service()->update(self::TENANT, $enabled, $ids), EnforcementStatus::UPDATED)->version;
+            $versions[] = self::summaryOf($this->service()->update(self::TENANT, $enabled, $ids, Clients::browser()), EnforcementStatus::UPDATED)->version;
         }
 
         self::assertCount(5, array_unique($versions));
@@ -352,7 +353,7 @@ final class EnforcementServiceTest extends TestCase
      */
     public function testTurningOffATenantWithNoRuleIsUnchanged(): void
     {
-        $result = $this->service()->update(self::TENANT, false, []);
+        $result = $this->service()->update(self::TENANT, false, [], Clients::browser());
 
         self::assertEquals(new EnforcementSummary(self::TENANT, false, []), self::summaryOf($result, EnforcementStatus::UNCHANGED));
         $this->assertNoRuleStored();
@@ -396,7 +397,7 @@ final class EnforcementServiceTest extends TestCase
     #[DataProvider('provideViolations')]
     public function testIdsRefusedAreInvalid(bool $enabled, array $ids, array $violations): void
     {
-        $result = $this->service()->update(self::TENANT, $enabled, $ids, $this->actor);
+        $result = $this->service()->update(self::TENANT, $enabled, $ids, Clients::browser(), $this->actor);
 
         self::assertTrue($result->isInvalid());
         self::assertSame(FailureReason::SETTINGS_INVALID, $result->reason);
@@ -485,7 +486,7 @@ final class EnforcementServiceTest extends TestCase
         Config::set('sso.freshness.max_age_seconds.enforcement_update', 120);
 
         $this->turnOn([$this->completed->id]);
-        $this->service()->update(self::TENANT, false, [], $this->actor);
+        $this->service()->update(self::TENANT, false, [], Clients::browser(), $this->actor);
 
         self::assertSame([[FreshnessOperation::ENFORCEMENT_UPDATE, 120], [FreshnessOperation::ENFORCEMENT_UPDATE, 120]], $this->freshness->asked());
     }
@@ -543,7 +544,7 @@ final class EnforcementServiceTest extends TestCase
     {
         foreach (['', str_repeat('t', 256)] as $tenantId) {
             try {
-                $this->service()->update($tenantId, false, []);
+                $this->service()->update($tenantId, false, [], Clients::browser());
                 self::fail('The tenant was accepted.');
             } catch (\InvalidArgumentException) {
                 $this->addToAssertionCount(1);
@@ -589,9 +590,9 @@ final class EnforcementServiceTest extends TestCase
         });
 
         try {
-            $updated   = $service->update(self::TENANT, true, $ids);
-            $unchanged = $service->update(self::TENANT, true, $ids);
-            $refused   = $service->update(self::TENANT, true, [$this->untried->id]);
+            $updated   = $service->update(self::TENANT, true, $ids, Clients::browser());
+            $unchanged = $service->update(self::TENANT, true, $ids, Clients::browser());
+            $refused   = $service->update(self::TENANT, true, [$this->untried->id], Clients::browser());
             $read      = $service->get(self::TENANT);
         } finally {
             DB::connection(StorageConnection::name())->setReadPdo(null);
@@ -636,7 +637,7 @@ final class EnforcementServiceTest extends TestCase
      */
     public function testAFailedRevocationRollsALaterChangeBack(): void
     {
-        $before  = self::summaryOf($this->service()->update(self::TENANT, false, [$this->completed->id]), EnforcementStatus::UPDATED);
+        $before  = self::summaryOf($this->service()->update(self::TENANT, false, [$this->completed->id], Clients::browser()), EnforcementStatus::UPDATED);
         $failing = new FailingRevocation;
 
         $this->app?->instance(SessionRevocation::class, $failing);
@@ -683,7 +684,7 @@ final class EnforcementServiceTest extends TestCase
      */
     public function testTheLockedRecheckSeesAConnectionDeletedMeanwhile(): void
     {
-        $before = self::summaryOf($this->service()->update(self::TENANT, false, [$this->completed->id]), EnforcementStatus::UPDATED);
+        $before = self::summaryOf($this->service()->update(self::TENANT, false, [$this->completed->id], Clients::browser()), EnforcementStatus::UPDATED);
 
         $this->startRecordingEvents();
 
@@ -787,7 +788,7 @@ final class EnforcementServiceTest extends TestCase
         $variant = $this->makeConnection(['tenant_id' => 'Tenant-1', 'enabled' => true, 'has_completed_sign_in' => true]);
 
         $lower = self::summaryOf($this->turnOn([$this->completed->id]), EnforcementStatus::UPDATED);
-        $upper = self::summaryOf($this->service()->update('Tenant-1', true, [$variant->id]), EnforcementStatus::UPDATED);
+        $upper = self::summaryOf($this->service()->update('Tenant-1', true, [$variant->id], Clients::browser()), EnforcementStatus::UPDATED);
 
         self::assertSame(2, TenantEnforcement::query()->count());
         self::assertEquals($lower, $this->service()->get(self::TENANT));
@@ -804,7 +805,7 @@ final class EnforcementServiceTest extends TestCase
      */
     private function turnOn(array $ids): EnforcementResult
     {
-        return $this->service()->update(self::TENANT, true, $ids, $this->actor);
+        return $this->service()->update(self::TENANT, true, $ids, Clients::browser(), $this->actor);
     }
 
     /**

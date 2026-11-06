@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\Stages\ConsumeRequest;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -22,6 +23,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -257,7 +259,12 @@ final class ConcurrentCompletionTest extends TestCase
         $connectionId = $this->connection->id;
 
         return static function () use ($connectionId): string {
-            $result = app(CompletionService::class)->callback($connectionId, new CompletionRequest('GET', 'state=' . self::STATE, []));
+            $result = app(CompletionService::class)->complete(
+                CompletionEndpoint::CALLBACK,
+                $connectionId,
+                new CompletionRequest('GET', 'state=' . self::STATE, []),
+                Clients::browser(),
+            );
             $issuer = app(HandoffIssuer::class);
 
             assert($issuer instanceof RecordingHandoffIssuer);

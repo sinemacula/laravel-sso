@@ -75,7 +75,7 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
    `AuthnRequest` by HTTP-Redirect or HTTP-POST with the flow's state as `RelayState`, and the request is stored with
    its `ID`.
 2. The identity provider posts the response to the connection's assertion consumer service; the application's route
-   calls `CompletionService::assertionConsumerService()`.
+   calls `CompletionService::complete()` with `CompletionEndpoint::ASSERTION_CONSUMER_SERVICE`.
 3. Correlation names the request, consumption consumes it, validation verifies the response, and the locked steps
    record the assertion, resolve the link, judge enforcement and issue the handoff code.
 4. The application answers the `CompletionResult` with a `303` to its redirect URI carrying the code.

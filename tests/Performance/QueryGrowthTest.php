@@ -35,6 +35,7 @@ use Tests\Concerns\MakesPrunableRows;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Keys\Certificates;
 
 /**
@@ -400,7 +401,7 @@ final class QueryGrowthTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(ExpiryReport::class)->report();
+        return $app->make(ExpiryReport::class)->report(Clients::browser());
     }
 
     /**
@@ -532,7 +533,7 @@ final class QueryGrowthTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(DomainRechecker::class)->recheckAll();
+        return $app->make(DomainRechecker::class)->recheckAll(Clients::browser());
     }
 
     /**

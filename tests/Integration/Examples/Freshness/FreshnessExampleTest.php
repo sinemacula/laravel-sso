@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -65,8 +66,8 @@ final class FreshnessExampleTest extends ExampleTestCase
 
         $connectionId = $this->createConnection();
 
-        self::assertTrue(app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING)->isSucceeded());
-        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId)->isChanged());
+        self::assertTrue(app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, Clients::browser())->isSucceeded());
+        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId, Clients::browser())->isChanged());
 
         $this->freshness->assertAsked(FreshnessOperation::CONNECTION_TRUST, 300);
         $this->freshness->assertAsked(FreshnessOperation::KEYS_ROTATE, 120);
@@ -90,16 +91,16 @@ final class FreshnessExampleTest extends ExampleTestCase
         $this->serveSession($this->clock->now()->getTimestamp() - 200);
 
         $connectionId = $this->createConnection();
-        $rotated      = app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING);
+        $rotated      = app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, Clients::browser());
 
         self::assertTrue($rotated->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $rotated->reason);
         self::assertNull($rotated->key);
-        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId)->isChanged());
+        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId, Clients::browser())->isChanged());
 
         $this->clock->advance(101);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId)->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId, Clients::browser())->reason);
         self::assertTrue(app(ConnectionService::class)->get(self::TENANT, $connectionId)?->enabled);
     }
 
@@ -118,7 +119,7 @@ final class FreshnessExampleTest extends ExampleTestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('sso.freshness.max_age_seconds.keys_rotate must be an integer from 1 to 3600.');
 
-        app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING);
+        app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, Clients::browser());
     }
 
     /**
@@ -154,7 +155,7 @@ final class FreshnessExampleTest extends ExampleTestCase
 
         $this->serveSession($this->clock->now()->getTimestamp() - 300);
 
-        self::assertTrue(app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId)->isChanged());
+        self::assertTrue(app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, Clients::browser())->isChanged());
         self::assertNull(app(ConnectionService::class)->get(self::TENANT, $connectionId));
     }
 
@@ -172,7 +173,7 @@ final class FreshnessExampleTest extends ExampleTestCase
 
         $this->serveSession($this->clock->now()->getTimestamp() - 301);
 
-        $deleted = app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId);
+        $deleted = app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, Clients::browser());
 
         self::assertTrue($deleted->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $deleted->reason);
@@ -196,11 +197,11 @@ final class FreshnessExampleTest extends ExampleTestCase
 
         $this->serveToken($now - 60);
 
-        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId)->isChanged());
+        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId, Clients::browser())->isChanged());
 
         $this->serveToken($now + 1);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId)->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId, Clients::browser())->reason);
         self::assertTrue(app(ConnectionService::class)->get(self::TENANT, $connectionId)?->enabled);
     }
 
@@ -249,13 +250,14 @@ final class FreshnessExampleTest extends ExampleTestCase
     {
         $connectionId = $this->createConnection();
 
+        $client = Clients::browser();
         // @snippet-start fake-freshness
         $freshness = FakeFreshness::fresh()->staleFor(FreshnessOperation::CONNECTION_DELETE);
 
         $this->instance(Freshness::class, $freshness);
 
-        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId)->isSucceeded());
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId)->reason);
+        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId, $client)->isSucceeded());
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, $client)->reason);
 
         $freshness->assertAsked(FreshnessOperation::CONNECTION_ENABLE, 300);
         $freshness->assertAskedExactly([FreshnessOperation::CONNECTION_ENABLE, FreshnessOperation::CONNECTION_DELETE]);
@@ -293,7 +295,7 @@ final class FreshnessExampleTest extends ExampleTestCase
      */
     private function createConnection(): string
     {
-        $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example SAML', [
+        $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example SAML', Clients::browser(), [
             'idp_entity_id' => FakeSamlIdentityProvider::ENTITY_ID,
             'sso_url'       => FakeSamlIdentityProvider::SSO_URL,
         ]);

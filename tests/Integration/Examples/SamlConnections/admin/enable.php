@@ -16,6 +16,7 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\SamlConnections;
 
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
+use Tests\Integration\Examples\Clients;
 
 /**
  * @var array{
@@ -28,7 +29,8 @@ $tenant       = $input['tenant'];
 $connectionId = $input['connection_id'];
 $actor        = $input['actor'];
 
+$client = Clients::browser();
 // @snippet-start saml-connections-enable
-$result = app(ConnectionService::class)->enable($tenant->id, $connectionId, $actor);
+$result = app(ConnectionService::class)->enable($tenant->id, $connectionId, $client, $actor);
 // @snippet-end saml-connections-enable
 return $result;

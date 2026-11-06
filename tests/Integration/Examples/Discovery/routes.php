@@ -18,12 +18,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Discovery\DiscoveryService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 Route::post('/auth/sso/discovery', static function (Request $request, DiscoveryService $discovery): JsonResponse {
     $result = $discovery->start(
         application: $request->string('application')->toString(),
         purpose: Purpose::SIGN_IN,
         email: $request->string('email')->toString(),
+        client: ClientContext::fromRequest($request),
         codeChallenge: $request->has('code_challenge') ? $request->string('code_challenge')->toString() : null,
     );
 

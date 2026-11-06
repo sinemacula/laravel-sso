@@ -30,6 +30,7 @@ use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsLockOrder;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -86,7 +87,7 @@ final class ReservationWithdrawalTest extends LinkingTestCase
     {
         [$start, $completion] = $this->reserved();
 
-        self::assertTrue(app(DomainService::class)->remove('tenant-1', $this->connection->id, 'example.com')->isChanged());
+        self::assertTrue(app(DomainService::class)->remove('tenant-1', $this->connection->id, 'example.com', Clients::browser())->isChanged());
         self::assertSame(0, Link::query()->count());
         self::assertSame(2, $this->linksVersion());
         self::assertSame(FailureReason::RESERVATION_INVALID, $this->admit($completion, $start)->reason);
@@ -120,7 +121,7 @@ final class ReservationWithdrawalTest extends LinkingTestCase
 
         $records === [] ? $this->dns->absent(self::RECORD) : $this->dns->found(self::RECORD, ...$records);
 
-        $entry = app(DomainRechecker::class)->recheck($this->claim());
+        $entry = app(DomainRechecker::class)->recheck($this->claim(), Clients::browser());
 
         self::assertSame($outcome, $entry->outcome);
         self::assertSame(0, Link::query()->count());
@@ -142,7 +143,7 @@ final class ReservationWithdrawalTest extends LinkingTestCase
 
         $this->dns->failing(self::RECORD);
 
-        self::assertSame(RecheckOutcome::LOOKUP_FAILED, app(DomainRechecker::class)->recheck($this->claim())->outcome);
+        self::assertSame(RecheckOutcome::LOOKUP_FAILED, app(DomainRechecker::class)->recheck($this->claim(), Clients::browser())->outcome);
         self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
         self::assertTrue($this->admit($completion, $start)->isRedeemed());
     }
@@ -161,7 +162,7 @@ final class ReservationWithdrawalTest extends LinkingTestCase
 
         $this->clock->advance(30);
 
-        self::assertSame(RecheckOutcome::LAPSED, app(DomainRechecker::class)->recheck($this->claim())->outcome);
+        self::assertSame(RecheckOutcome::LAPSED, app(DomainRechecker::class)->recheck($this->claim(), Clients::browser())->outcome);
         self::assertSame(0, Link::query()->count());
         self::assertSame(FailureReason::RESERVATION_INVALID, $this->admit($completion, $start)->reason);
     }
@@ -177,11 +178,11 @@ final class ReservationWithdrawalTest extends LinkingTestCase
         [$start, $completion] = $this->reserved();
 
         $this->dns->absent(self::RECORD);
-        app(DomainRechecker::class)->recheck($this->claim());
+        app(DomainRechecker::class)->recheck($this->claim(), Clients::browser());
 
         $this->dns->found(self::RECORD, $this->claim()->verification_token);
 
-        self::assertSame(RecheckOutcome::RESTORED, app(DomainRechecker::class)->recheck($this->claim())->outcome);
+        self::assertSame(RecheckOutcome::RESTORED, app(DomainRechecker::class)->recheck($this->claim(), Clients::browser())->outcome);
         self::assertSame(0, Link::query()->count());
         self::assertSame(FailureReason::RESERVATION_INVALID, $this->admit($completion, $start)->reason);
     }
@@ -196,7 +197,7 @@ final class ReservationWithdrawalTest extends LinkingTestCase
     {
         [$start, $completion] = $this->reserved();
 
-        self::assertTrue(app(ConnectionLifecycle::class)->disable('tenant-1', $this->connection->id)->isChanged());
+        self::assertTrue(app(ConnectionLifecycle::class)->disable('tenant-1', $this->connection->id, Clients::browser())->isChanged());
         self::assertSame(0, Link::query()->count());
         self::assertSame(FailureReason::HANDOFF_UNKNOWN, $this->admit($completion, $start)->reason);
     }
@@ -210,7 +211,7 @@ final class ReservationWithdrawalTest extends LinkingTestCase
     {
         [$start, $completion] = $this->reserved();
 
-        self::assertTrue(app(ConnectionLifecycle::class)->delete('tenant-1', $this->connection->id)->isChanged());
+        self::assertTrue(app(ConnectionLifecycle::class)->delete('tenant-1', $this->connection->id, Clients::browser())->isChanged());
         self::assertSame(0, Link::query()->count());
         self::assertSame(FailureReason::HANDOFF_UNKNOWN, $this->admit($completion, $start)->reason);
     }

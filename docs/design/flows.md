@@ -113,8 +113,9 @@ earlier binding is kept and nothing outlives a request (SSO-11.2).
   (`Protocols\Correlation`: `solicited` with the state and/or the SAML request id, `unsolicited`, `uncorrelated`)
   without validating anything; `complete()` validates against the `Protocols\ConsumedRequest` (purpose, application,
   reference, start time, expected issuer and `iss` requirement, SAML request id, nonce digest matched by `isNonce()`,
-  the PKCE verifier, decrypted only when the driver asks for it with `codeVerifier()` to build the token request) and
-  answers `Protocols\Completion::verified(VerifiedClaims)` or `refused(FailureReason)`.
+  the PKCE verifier, decrypted only when the driver asks for it with `codeVerifier()` to build the token request), for
+  the `Http\ClientContext` the response arrived from, which any event the validation reports carries (the OIDC driver's
+  JWKS refetch), and answers `Protocols\Completion::verified(VerifiedClaims)` or `refused(FailureReason)`.
   `Protocols\Start` keeps what a request stores, typed: `samlRequestId`, `expectedIssuer`, `issuerRequired`.
 - The steps run in `Completion\Enums\CompletionStep`'s order: `correlation`, `consumption`, `validation`,
   `replay_recording`, `link_resolution`, `enforcement`, `purpose_rules`, `domain_reservation`, `provisioning`,

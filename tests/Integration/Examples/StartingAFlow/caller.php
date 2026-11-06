@@ -19,12 +19,13 @@ declare(strict_types = 1);
 
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 
-/** @var array{user: \Tests\Integration\Examples\StartingAFlow\User, connection: string, code_challenge: string, session: string} $input */
+/** @var array{user: \Tests\Integration\Examples\StartingAFlow\User, connection: string, code_challenge: string, session: string, client: \SineMacula\Laravel\Sso\Http\ClientContext} $input */
 $requests     = app(AuthorizationRequestService::class);
 $user         = $input['user'];
 $connectionId = $input['connection'];
 $challenge    = $input['code_challenge'];
 $sessionId    = $input['session'];
+$client       = $input['client'];
 
 // @snippet-start start-for-the-caller
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -32,7 +33,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-$linking          = $requests->start('web', Purpose::LINK, $connectionId, $challenge, $identity);
-$reauthenticating = $requests->start('web', Purpose::REAUTHENTICATE, $connectionId, $challenge, $identity, $sessionId);
+$linking          = $requests->start('web', Purpose::LINK, $connectionId, $client, $challenge, $identity);
+$reauthenticating = $requests->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $challenge, $identity, $sessionId);
 // @snippet-end start-for-the-caller
 return [$linking, $reauthenticating];

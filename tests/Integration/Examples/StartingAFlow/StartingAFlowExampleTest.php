@@ -15,8 +15,10 @@ use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -83,30 +85,30 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * With one start a minute for each address, the service resolved for the
-     * office's request starts once and is then rate limited for the minute,
-     * while the service resolved for another address's request still starts.
+     * With one start a minute for each address, the service starts once for the
+     * office's client and is then rate limited for the minute, while it still
+     * starts for another address's client: it counts the client it is given,
+     * never the request being served.
      *
      * @return void
      */
-    public function testTheServiceCountsTheRequestBeingServed(): void
+    public function testTheServiceCountsTheClientItIsGiven(): void
     {
         config()->set('sso.rate_limits.authorization_request.per_ip', ['max' => 1, 'decay_seconds' => 60]);
 
-        $this->serving(self::OFFICE);
-
+        $office   = ClientContext::fromRequest(Request::create(self::ROUTE, 'POST', server: ['REMOTE_ADDR' => self::OFFICE]));
         $requests = self::resolved();
 
-        self::assertTrue($requests->start(self::APPLICATION, Purpose::SIGN_IN, $this->connectionId)->isStarted());
+        self::assertTrue($requests->start(self::APPLICATION, Purpose::SIGN_IN, $this->connectionId, $office)->isStarted());
 
-        $limited = $requests->start(self::APPLICATION, Purpose::SIGN_IN, $this->connectionId);
+        $limited = $requests->start(self::APPLICATION, Purpose::SIGN_IN, $this->connectionId, $office);
 
         self::assertTrue($limited->isRateLimited());
         self::assertSame(60, $limited->retryAfter);
 
-        $this->serving(self::ELSEWHERE);
+        $elsewhere = ClientContext::fromRequest(Request::create(self::ROUTE, 'POST', server: ['REMOTE_ADDR' => self::ELSEWHERE]));
 
-        self::assertTrue(self::resolved()->start(self::APPLICATION, Purpose::SIGN_IN, $this->connectionId)->isStarted());
+        self::assertTrue(self::resolved()->start(self::APPLICATION, Purpose::SIGN_IN, $this->connectionId, $elsewhere)->isStarted());
     }
 
     /**
@@ -288,18 +290,6 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * Serve a request from the address, as the container holds the request an
-     * application is serving.
-     *
-     * @param  string  $ip
-     * @return void
-     */
-    private function serving(string $ip): void
-    {
-        $this->instance('request', Request::create(self::ROUTE, 'POST', server: ['REMOTE_ADDR' => $ip]));
-    }
-
-    /**
      * Post a start to the guide's route from the office's address, as the
      * client does.
      *
@@ -329,7 +319,7 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * The service the guide resolves for the request being served.
+     * The service the guide resolves for each request.
      *
      * @return \SineMacula\Laravel\Sso\Flows\AuthorizationRequestService
      */
@@ -351,6 +341,8 @@ final class StartingAFlowExampleTest extends ExampleTestCase
      */
     private static function startForCaller(array $input): array
     {
+        $input['client'] = Clients::browser();
+
         $results = require __DIR__ . '/caller.php';
 
         self::assertIsArray($results);

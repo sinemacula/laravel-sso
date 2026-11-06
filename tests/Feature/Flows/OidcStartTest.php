@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Feature\Flows;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -29,6 +28,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
@@ -134,10 +134,6 @@ final class OidcStartTest extends TestCase
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(Freshness::class, $this->freshness);
         $this->app?->instance(Fetcher::class, $this->fetcher);
-        $this->app?->instance('request', Request::create('/auth/sso/authorization-requests', 'POST', server: [
-            'REMOTE_ADDR'     => self::IP,
-            'HTTP_USER_AGENT' => self::USER_AGENT,
-        ]));
 
         config()->set('sso.features.oidc', true);
         config()->set('sso.endpoints.base_url', 'https://api.example.com');
@@ -831,7 +827,7 @@ final class OidcStartTest extends TestCase
         ?IdentityReference $identity = null,
         ?string $session = null,
     ): StartResult {
-        return app(AuthorizationRequestService::class)->start('web', $purpose, $connection->id, $challenge, $identity, $session);
+        return app(AuthorizationRequestService::class)->start('web', $purpose, $connection->id, self::client(), $challenge, $identity, $session);
     }
 
     /**
@@ -933,5 +929,16 @@ final class OidcStartTest extends TestCase
     private static function s256(string $value): string
     {
         return rtrim(strtr(base64_encode(hash('sha256', $value, true)), '+/', '-_'), '=');
+    }
+
+    /**
+     * The client every action of the test is taken for: the browser's IP
+     * address and user agent, which its events carry.
+     *
+     * @return \SineMacula\Laravel\Sso\Http\ClientContext
+     */
+    private static function client(): ClientContext
+    {
+        return new ClientContext(self::IP, self::USER_AGENT);
     }
 }

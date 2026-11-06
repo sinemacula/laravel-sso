@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyRing;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -198,20 +199,21 @@ final readonly class SamlMetadataSource extends MetadataSource
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \SineMacula\Laravel\Sso\Metadata\FetchedMetadata  $fetched
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \Throwable
      */
     #[\Override]
-    public function write(RefreshClaim $claim, FetchedMetadata $fetched, ?ActingIdentity $actor): RefreshResult
+    public function write(RefreshClaim $claim, FetchedMetadata $fetched, ?ActingIdentity $actor, ClientContext $client): RefreshResult
     {
         $metadata = $fetched->document();
 
         if (!$metadata instanceof IdpMetadata || $fetched->validatedAt === null) {
-            return $this->applier->fail($claim, $fetched->reason ?? FailureReason::METADATA_INVALID, $actor);
+            return $this->applier->fail($claim, $fetched->reason ?? FailureReason::METADATA_INVALID, $client, $actor);
         }
 
-        return $this->applier->apply($claim, $metadata, $fetched->validatedAt, $actor);
+        return $this->applier->apply($claim, $metadata, $fetched->validatedAt, $client, $actor);
     }
 
     /**

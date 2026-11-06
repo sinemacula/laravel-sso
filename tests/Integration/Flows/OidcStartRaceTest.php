@@ -31,6 +31,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -417,7 +418,7 @@ final class OidcStartRaceTest extends TestCase
      */
     private function startFlow(): StartResult
     {
-        return app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id);
+        return app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id, Clients::browser());
     }
 
     /**
@@ -430,7 +431,7 @@ final class OidcStartRaceTest extends TestCase
     {
         $value = $change === self::CLIENT_SECRET ? self::NEW_SECRET : self::NEW_JWKS_URI;
 
-        return app(ConnectionService::class)->update(self::TENANT, $this->connection->id, ['settings' => [$change => $value]])->status;
+        return app(ConnectionService::class)->update(self::TENANT, $this->connection->id, ['settings' => [$change => $value]], Clients::browser())->status;
     }
 
     /**

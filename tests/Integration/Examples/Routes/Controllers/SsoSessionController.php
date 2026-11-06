@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\SignIns;
 
@@ -64,10 +65,12 @@ final readonly class SsoSessionController
             'verifier'    => ['required', 'string'],
         ]);
 
+        $client = ClientContext::fromRequest($request);
+
         // The code is consumed and the session written in one transaction, on
         // the package's storage connection
-        [$result, $sessionId] = DB::connection(StorageConnection::name())->transaction(function () use ($input): array {
-            $result = $this->redemptions->admit(Purpose::SIGN_IN, $input['application'], $input['connection'], $input['code'], $input['verifier']);
+        [$result, $sessionId] = DB::connection(StorageConnection::name())->transaction(function () use ($input, $client): array {
+            $result = $this->redemptions->admit(Purpose::SIGN_IN, $input['application'], $input['connection'], $input['code'], $input['verifier'], $client);
 
             // Active, or pending your own further factor; an unlinked handoff
             // signs nobody in

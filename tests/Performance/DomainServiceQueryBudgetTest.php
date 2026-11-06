@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 
 /**
@@ -153,7 +154,7 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
     {
         $this->claimDomain();
 
-        $removed = $this->assertQueryBudget(4, 2, fn (): DomainResult => $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com'));
+        $removed = $this->assertQueryBudget(4, 2, fn (): DomainResult => $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com', Clients::browser()));
 
         self::assertSame(DomainStatus::REMOVED, $removed->status);
     }
@@ -183,7 +184,7 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
      */
     private function claimDomain(string $domain = 'example.com'): DomainResult
     {
-        return $this->domains()->claim(self::TENANT, $this->connection->id, $domain);
+        return $this->domains()->claim(self::TENANT, $this->connection->id, $domain, Clients::browser());
     }
 
     /**
@@ -194,7 +195,7 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
      */
     private function verifyDomain(string $domain = 'example.com'): DomainResult
     {
-        return $this->domains()->verify(self::TENANT, $this->connection->id, $domain);
+        return $this->domains()->verify(self::TENANT, $this->connection->id, $domain, Clients::browser());
     }
 
     /**

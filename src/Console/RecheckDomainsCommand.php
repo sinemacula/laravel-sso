@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Domains\RecheckEntry;
 use SineMacula\Laravel\Sso\Domains\RecheckReport;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
@@ -46,7 +47,7 @@ final class RecheckDomainsCommand extends Command
     public function handle(DomainRechecker $rechecker): int
     {
         try {
-            $report = $rechecker->recheckAll();
+            $report = $rechecker->recheckAll(new ClientContext(null, null));
         } catch (\Throwable $exception) {
             $this->error(sprintf('The domain recheck stopped on %s.', $exception::class));
 

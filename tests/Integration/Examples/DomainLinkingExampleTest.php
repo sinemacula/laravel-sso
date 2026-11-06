@@ -137,9 +137,10 @@ final class DomainLinkingExampleTest extends ExampleTestCase
      */
     private function verifyTheDomain(): void
     {
+        $client = Clients::browser();
         // @snippet-start domain-verify
         $domains = app(DomainService::class);
-        $claimed = $domains->claim(self::TENANT, $this->connectionId, 'example.com')->domain;
+        $claimed = $domains->claim(self::TENANT, $this->connectionId, 'example.com', $client)->domain;
 
         self::assertNotNull($claimed);
         self::assertSame('_sso-verification.example.com', $claimed->recordName);
@@ -147,12 +148,12 @@ final class DomainLinkingExampleTest extends ExampleTestCase
         // The tenant has not published the record yet
         $this->dns->absent($claimed->recordName);
 
-        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify(self::TENANT, $this->connectionId, 'example.com')->reason);
+        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify(self::TENANT, $this->connectionId, 'example.com', $client)->reason);
 
         // Now it has
         $this->dns->publishes($claimed);
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, 'example.com')->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, 'example.com', $client)->status);
 
         $this->dns->assertLookedUp($claimed->recordName, 2);
         // @snippet-end domain-verify
@@ -166,12 +167,13 @@ final class DomainLinkingExampleTest extends ExampleTestCase
      */
     private function turnLinkingOn(): void
     {
+        $client = Clients::browser();
         // @snippet-start domain-linking-policy
         $changed = app(LinkingPolicyService::class)->change(self::TENANT, $this->connectionId, [
             'enabled'      => true,
             'issuer_class' => 'single_organization',
             'acknowledged' => true,
-        ]);
+        ], $client);
 
         self::assertTrue($changed->isChanged());
         // @snippet-end domain-linking-policy

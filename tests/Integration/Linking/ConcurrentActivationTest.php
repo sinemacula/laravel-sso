@@ -33,6 +33,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 
 /**
  * Races an activation across processes, each with its own database connection,
@@ -421,7 +422,7 @@ final class ConcurrentActivationTest extends LinkingTestCase
      */
     private function redemption(): string
     {
-        $admit  = fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $this->code, $this->verifier);
+        $admit  = fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $this->code, $this->verifier, Clients::browser());
         $answer = DB::connection(StorageConnection::name())->transaction($admit);
 
         return $answer->isRedeemed() ? self::REDEEMED : 'refused:' . $answer->reason?->value;
@@ -438,7 +439,7 @@ final class ConcurrentActivationTest extends LinkingTestCase
 
         $claim = Domain::query()->whereKey($this->domain->id)->sole();
 
-        return app(DomainRechecker::class)->recheck($claim)->outcome === RecheckOutcome::LAPSED ? self::CHANGED : 'skipped';
+        return app(DomainRechecker::class)->recheck($claim, Clients::browser())->outcome === RecheckOutcome::LAPSED ? self::CHANGED : 'skipped';
     }
 
     /**
@@ -448,7 +449,12 @@ final class ConcurrentActivationTest extends LinkingTestCase
      */
     private function changeSettings(): string
     {
-        return app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['organization_value' => 'changed.example'])->isChanged() ? self::CHANGED : 'refused';
+        return app(LinkingPolicyService::class)->change(
+            'tenant-1',
+            $this->connection->id,
+            ['organization_value' => 'changed.example'],
+            Clients::browser(),
+        )->isChanged() ? self::CHANGED : 'refused';
     }
 
     /**
@@ -459,7 +465,7 @@ final class ConcurrentActivationTest extends LinkingTestCase
     private function widen(): string
     {
         DB::connection(StorageConnection::name())->transaction(function (): void {
-            app(ScopeWidening::class)->widened($this->person, 'tenant-2');
+            app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser());
         });
 
         return self::CHANGED;

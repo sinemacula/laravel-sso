@@ -71,6 +71,7 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\FailingRevocation;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingRevocation;
@@ -180,7 +181,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
         $other = str_repeat('a', 43);
         $code  = (string) $completion->handoff?->code->reveal();
         $spent = DB::connection(StorageConnection::name())->transaction(
-            fn () => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $other),
+            fn () => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $other, Clients::browser()),
         );
 
         self::assertSame(FailureReason::VERIFIER_MISMATCH, $spent->reason);
@@ -253,7 +254,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
 
             $captured = $event->grant;
 
-            app(LinkStore::class)->create($this->connection, LinkSubject::of($event->result), $this->person, LinkOrigin::PROVISIONING);
+            app(LinkStore::class)->create($this->connection, LinkSubject::of($event->result), $this->person, LinkOrigin::PROVISIONING, Clients::browser());
         });
 
         $completion = $this->complete();
@@ -599,7 +600,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
 
         $dns->found('_sso-verification.example.com', $this->domain->verification_token);
 
-        $verified = app(DomainService::class)->verify('tenant-1', $this->connection->id, 'example.com');
+        $verified = app(DomainService::class)->verify('tenant-1', $this->connection->id, 'example.com', Clients::browser());
 
         self::assertSame(DomainStatus::VERIFIED, $verified->status, (string) $verified->reason?->value);
         self::assertSame(2, $this->domain->refresh()->verification_generation);
@@ -627,7 +628,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
 
         self::assertSame(1, Link::query()->count());
 
-        $changed = app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['organization_value' => 'changed.example']);
+        $changed = app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['organization_value' => 'changed.example'], Clients::browser());
 
         self::assertTrue($changed->isChanged());
         self::assertSame(['linking.organization_value'], $changed->changedSettings);
@@ -811,7 +812,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
         $verifier   = (string) $start->verifier?->reveal();
 
         try {
-            app(HandoffRedemption::class)->redeem(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier);
+            app(HandoffRedemption::class)->redeem(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier, Clients::browser());
             self::fail('The standalone path redeemed a reauthentication.');
         } catch (\LogicException $exception) {
             self::assertStringContainsString('admit()', $exception->getMessage());
@@ -841,14 +842,14 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
         $verifier   = (string) $start->verifier?->reveal();
 
         try {
-            app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier);
+            app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier, Clients::browser());
             self::fail('A session was admitted with no transaction open.');
         } catch (\LogicException $exception) {
             self::assertSame('A session is admitted inside the caller\'s transaction on the package\'s storage connection (decision D5).', $exception->getMessage());
         }
 
         try {
-            app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier);
+            app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier, Clients::browser());
             self::fail('The standalone path activated a reservation.');
         } catch (\LogicException $exception) {
             self::assertStringContainsString('admit()', $exception->getMessage());
@@ -925,6 +926,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
             new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
             $this->person,
             LinkOrigin::PROVISIONING,
+            Clients::browser(),
         );
     }
 

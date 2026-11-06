@@ -51,6 +51,6 @@ final readonly class ResolveLink implements CompletionStage
     {
         $result = $state->result ?? throw new \LogicException('A link is resolved once the result is verified.');
 
-        return StageOutcome::proceed($state->withResolution($this->linker->resolve($result)));
+        return StageOutcome::proceed($state->withResolution($this->linker->resolve($result, $state->client)));
     }
 }

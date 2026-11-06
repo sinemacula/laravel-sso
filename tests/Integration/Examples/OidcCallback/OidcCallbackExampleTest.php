@@ -18,6 +18,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -151,12 +152,13 @@ final class OidcCallbackExampleTest extends ExampleTestCase
         $connectionId = $this->connectionId;
         $secret       = self::SECRET;
 
+        $client = Clients::browser();
         // @snippet-start oidc-client-secret-post
         $connections->update($tenantId, $connectionId, ['settings' => [
             'client_id'             => 'the-client-id',
             'client_authentication' => 'client_secret_post',
             'client_secret'         => $secret,
-        ]]);
+        ]], $client);
         // @snippet-end oidc-client-secret-post
         $changed = $connections->get($tenantId, $connectionId);
 

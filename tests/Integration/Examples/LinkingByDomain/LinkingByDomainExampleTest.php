@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -121,13 +122,13 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
         $this->addMember('person-1', self::EMAIL, $this->clock->now()->subDays(2));
 
         $domains = app(DomainService::class);
-        $claimed = $domains->claim(self::TENANT, $this->connectionId, self::DOMAIN)->domain;
+        $claimed = $domains->claim(self::TENANT, $this->connectionId, self::DOMAIN, Clients::browser())->domain;
 
         self::assertNotNull($claimed);
 
         $this->dns->publishes($claimed);
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, self::DOMAIN)->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, self::DOMAIN, Clients::browser())->status);
     }
 
     /**

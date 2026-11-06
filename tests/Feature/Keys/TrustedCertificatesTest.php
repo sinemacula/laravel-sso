@@ -31,6 +31,7 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
@@ -236,7 +237,7 @@ final class TrustedCertificatesTest extends TestCase
 
         $this->trust(Certificates::distinct(0));
 
-        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $other->id, Certificates::distinct(0))->isSucceeded());
+        self::assertTrue($this->keys()->trustCertificate(self::TENANT, $other->id, Certificates::distinct(0), Clients::browser())->isSucceeded());
     }
 
     /**
@@ -263,7 +264,7 @@ final class TrustedCertificatesTest extends TestCase
         self::assertSame(10, ConnectionKey::query()->count());
         $this->assertNoEvents();
 
-        $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $trusted[0]->id);
+        $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $trusted[0]->id, Clients::browser());
 
         self::assertTrue($this->trust(Certificates::distinct(11))->isSucceeded());
     }
@@ -275,7 +276,7 @@ final class TrustedCertificatesTest extends TestCase
      */
     public function testOwnKeysDoNotCountTowardsTheCap(): void
     {
-        $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA);
+        $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA);
 
         for ($index = 1; $index <= KeyService::MAX_TRUSTED_CERTIFICATES; $index++) {
             self::assertTrue($this->trust(Certificates::distinct($index))->isSucceeded());
@@ -290,7 +291,7 @@ final class TrustedCertificatesTest extends TestCase
     public function testAnOidcConnectionIsRefused(): void
     {
         $oidc   = $this->makeConnection(['protocol' => 'oidc']);
-        $result = $this->keys()->trustCertificate(self::TENANT, $oidc->id, Certificates::distinct(0));
+        $result = $this->keys()->trustCertificate(self::TENANT, $oidc->id, Certificates::distinct(0), Clients::browser());
 
         self::assertTrue($result->isInvalid());
         self::assertSame([['setting' => 'certificate', 'code' => 'unsupported']], $result->jsonSerialize()['violations']);
@@ -337,7 +338,7 @@ final class TrustedCertificatesTest extends TestCase
         $this->freshness->reset();
         $this->startRecordingEvents();
 
-        $result = $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $first->id, new ActingIdentity('App\Models\User', '42'));
+        $result = $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $first->id, Clients::browser(), new ActingIdentity('App\Models\User', '42'));
         $key    = self::summaryOf($result);
 
         self::assertSame(KeyStatus::DISTRUSTED, $result->status);
@@ -355,7 +356,7 @@ final class TrustedCertificatesTest extends TestCase
         self::assertSame(KeyUse::IDP_SIGNING, $event->use);
         self::assertSame('42', $event->context->actingIdentityId);
 
-        self::assertTrue($this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $second->id)->isSucceeded());
+        self::assertTrue($this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $second->id, Clients::browser())->isSucceeded());
         self::assertSame([], $this->ring()->trustedCertificates($this->connection->id));
     }
 
@@ -369,14 +370,14 @@ final class TrustedCertificatesTest extends TestCase
     public function testDistrustsOnlyTheConnectionsCertificates(): void
     {
         $other  = $this->makeConnection(['protocol' => 'saml2']);
-        $own    = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, KeyType::RSA));
-        $theirs = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $other->id, Certificates::distinct(0)));
+        $own    = self::summaryOf($this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA));
+        $theirs = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $other->id, Certificates::distinct(0), Clients::browser()));
 
         $this->freshness->reset();
         $this->startRecordingEvents();
 
         foreach ([$own->id, $theirs->id, '01jbunknownkey000000000000', ''] as $keyId) {
-            self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $keyId)->reason);
+            self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $keyId, Clients::browser())->reason);
         }
 
         self::assertSame([], $this->freshness->asked());
@@ -442,7 +443,7 @@ final class TrustedCertificatesTest extends TestCase
 
         $this->clock->advance(60);
 
-        $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), null, KeyUse::METADATA_SIGNING);
+        $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser(), null, KeyUse::METADATA_SIGNING);
 
         self::assertSame(KeyUse::METADATA_SIGNING, self::summaryOf($result)->use);
         self::assertSame('2026-11-01T09:31:00+00:00', AuthorizationRequest::query()->findOrFail($pending->id)->voided_at?->toIso8601String());
@@ -463,12 +464,14 @@ final class TrustedCertificatesTest extends TestCase
     public function testAnchorsAreASetOfTheirOwn(): void
     {
         $signing = self::summaryOf($this->trust(Certificates::distinct(0)));
-        $anchor  = self::summaryOf($this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), null, KeyUse::METADATA_SIGNING));
-        $ring    = app(KeyRing::class);
+        $anchor  = self::summaryOf(
+            $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser(), null, KeyUse::METADATA_SIGNING),
+        );
+        $ring = app(KeyRing::class);
 
         self::assertSame([$signing->id], array_map(static fn (KeySummary $key): string => $key->id, $ring->trustedCertificates($this->connection->id)));
         self::assertSame([$anchor->id], array_map(static fn (KeySummary $key): string => $key->id, $ring->trustedCertificates($this->connection->id, KeyUse::METADATA_SIGNING)));
-        $again = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), null, KeyUse::METADATA_SIGNING);
+        $again = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser(), null, KeyUse::METADATA_SIGNING);
 
         self::assertSame([['setting' => 'certificate', 'code' => 'duplicate']], $again->jsonSerialize()['violations']);
     }
@@ -486,7 +489,7 @@ final class TrustedCertificatesTest extends TestCase
         foreach ([KeyUse::IDP_SIGNING, KeyUse::METADATA_SIGNING] as $use) {
             foreach ([Certificates::ecP256(), Certificates::ecP384()] as $certificate) {
 
-                $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $certificate, null, $use);
+                $result = $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $certificate, Clients::browser(), null, $use);
 
                 $refusal = [$result->reason, $result->jsonSerialize()['violations']];
 
@@ -509,7 +512,7 @@ final class TrustedCertificatesTest extends TestCase
     public function testOnlyATrustedCertificatesUseIsTrusted(): void
     {
         try {
-            $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), null, KeyUse::SP_SIGNING);
+            $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser(), null, KeyUse::SP_SIGNING);
             self::fail('An own key\'s use was trusted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('A certificate is trusted as [idp_signing] or [metadata_signing], never as [sp_signing].', $exception->getMessage());
@@ -534,7 +537,7 @@ final class TrustedCertificatesTest extends TestCase
 
         $this->clock->advance(60);
 
-        self::assertTrue($this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id)->isSucceeded());
+        self::assertTrue($this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $certificate->id, Clients::browser())->isSucceeded());
 
         self::assertSame('2026-11-01T09:31:00+00:00', AuthorizationRequest::query()->findOrFail($request->id)->voided_at?->toIso8601String());
         self::assertSame('2026-11-01T09:31:00+00:00', HandoffCode::query()->findOrFail($code->id)->voided_at?->toIso8601String());
@@ -555,7 +558,10 @@ final class TrustedCertificatesTest extends TestCase
         $code    = $this->makeHandoffCode($this->connection);
 
         self::assertTrue($this->trust(Certificates::distinct(0))->isInvalid());
-        self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, '01jbunknownkey000000000000')->reason);
+        self::assertSame(
+            FailureReason::KEY_NOT_FOUND,
+            $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, '01jbunknownkey000000000000', Clients::browser())->reason,
+        );
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
@@ -573,7 +579,7 @@ final class TrustedCertificatesTest extends TestCase
      */
     private function trust(string $certificate): KeyResult
     {
-        return $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $certificate);
+        return $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $certificate, Clients::browser());
     }
 
     /**

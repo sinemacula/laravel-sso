@@ -7,6 +7,7 @@ namespace Tests\Integration\Examples;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
@@ -67,6 +68,7 @@ final class SamlExampleTest extends ExampleTestCase
      */
     public function testLinkingASubjectToAnIdentity(): void
     {
+        $client = Clients::browser();
         // @snippet-start saml-link
         $start = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
 
@@ -78,7 +80,12 @@ final class SamlExampleTest extends ExampleTestCase
 
         // The browser posts the response, with the RelayState, to the assertion
         // consumer service
-        $result   = app(CompletionService::class)->assertionConsumerService($this->connectionId, $response->completionRequest($request->relayState));
+        $result = app(CompletionService::class)->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $this->connectionId,
+            $response->completionRequest($request->relayState),
+            $client,
+        );
         $redirect = HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'POST'));
 
         // The client redeems only a code whose reference is the one it started
@@ -183,6 +190,7 @@ final class SamlExampleTest extends ExampleTestCase
      */
     public function testAResponseIsMadeAtTheInstantOfThePackagesClock(): void
     {
+        $client = Clients::browser();
         // @snippet-start saml-instant
         $this->travelTo(CarbonImmutable::parse('2026-11-02T09:30:00Z'));
 
@@ -191,7 +199,12 @@ final class SamlExampleTest extends ExampleTestCase
 
         // Made at Laravel's time, a day after the package's clock
         $response = $this->idp->respondTo($request);
-        $result   = app(CompletionService::class)->assertionConsumerService($this->connectionId, $response->completionRequest($request->relayState));
+        $result   = app(CompletionService::class)->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $this->connectionId,
+            $response->completionRequest($request->relayState),
+            $client,
+        );
 
         self::assertSame(FailureReason::ASSERTION_EXPIRED, $result->reason);
 

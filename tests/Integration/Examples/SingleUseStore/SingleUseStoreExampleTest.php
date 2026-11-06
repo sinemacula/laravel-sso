@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
@@ -22,6 +23,7 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeServiceProvider;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -242,10 +244,12 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
         $unsolicited  = $idp->response($sp->entityId, $sp->assertionConsumerService, $this->clock->now());
         $completions  = app(CompletionService::class);
 
-        self::assertTrue($completions->assertionConsumerService($connectionId, $unsolicited->completionRequest())->isReinitiated());
+        self::assertTrue(
+            $completions->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $connectionId, $unsolicited->completionRequest(), Clients::browser())->isReinitiated(),
+        );
         self::assertSame(['saml_assertion'], self::heldNamespaces());
 
-        $replayed = $completions->assertionConsumerService($connectionId, $unsolicited->completionRequest());
+        $replayed = $completions->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $connectionId, $unsolicited->completionRequest(), Clients::browser());
 
         self::assertTrue($replayed->isRejected());
         self::assertSame(FailureReason::REPLAYED, $replayed->reason);

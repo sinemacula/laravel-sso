@@ -16,17 +16,20 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\IntegratingWithLaravelIam;
 
+use Tests\Integration\Examples\Clients;
+
 /** @var array{identity: \SineMacula\Laravel\Sso\Identities\IdentityReference, tenant: ?string} $change */
 $identity = $change['identity'];
 $tenantId = $change['tenant'];
 
+$client = Clients::browser();
 // @snippet-start iam-scope-widening
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 
-DB::connection(StorageConnection::name())->transaction(static function () use ($identity, $tenantId): void {
-    app(ScopeWidening::class)->widened($identity, $tenantId); // 1. the guard, suspensions, revocation
+DB::connection(StorageConnection::name())->transaction(static function () use ($identity, $tenantId, $client): void {
+    app(ScopeWidening::class)->widened($identity, $tenantId, $client); // 1. the guard, suspensions, revocation
 
     $principals = app(Principals::class);
 

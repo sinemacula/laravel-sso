@@ -18,7 +18,7 @@ are a contract.
   | Field                                          | Meaning                                                                |
   |------------------------------------------------|------------------------------------------------------------------------|
   | `occurredAt`                                   | When the event was built, from `Contracts\Clock` (a `CarbonImmutable`) |
-  | `ip`, `userAgent`                              | The client of the request being served                                 |
+  | `ip`, `userAgent`                              | The client the action was given, as an `Http\ClientContext`            |
   | `connectionId`                                 | The connection the event concerns                                      |
   | `connectionTenantId`                           | The tenant that owns the connection, or the enforcement rule           |
   | `protocol`                                     | `saml2`, `oidc`, or a registered driver's name                         |
@@ -41,23 +41,26 @@ are a contract.
   `null`. `toArray()` is the record an audit sink keeps: snake_case keys, and `occurred_at` as an ISO 8601 UTC string to
   the microsecond.
 - One projection builds every context: `Events\EventContexts::make()`. Nothing else in the package calls
-  `new EventContext`. Its parameter list is the admission control: fifteen named fields, each `?string` defaulting to
-  `null`, and nothing else. No array and no object is admitted, so a verified result, a request, a raw payload or a set
-  of mapped attributes can never reach an event whole, and a field the context does not name cannot reach one. A
-  secret, an assertion, a provider token, a verifier, a handoff code, protocol state (`state`, `RelayState`, a nonce,
-  the PKCE verifier) and a transport header have no parameter to arrive through (SSO-10.4). Later parts of the package
-  add typed convenience methods to the projection (from a verified result, from an authorisation request) that pick the
-  fields they may and pass them to `make()`.
+  `new EventContext`. Its parameter list is the admission control: the action's `Http\ClientContext`, required, then
+  fifteen named fields, each `?string` defaulting to `null`, and nothing else. No array and no other object is admitted,
+  so a verified result, a request, a raw payload or a set of mapped attributes can never reach an event whole, and a
+  field the context does not name cannot reach one. A secret, an assertion, a provider token, a verifier, a handoff
+  code, protocol state (`state`, `RelayState`, a nonce, the PKCE verifier) and a transport header have no parameter to
+  arrive through (SSO-10.4). Later parts of the package add typed convenience methods to the projection (from a verified
+  result, from an authorisation request) that pick the fields they may and pass them to `make()`.
 - The public reference (`requestReference`) is the only flow identifier an event carries (SSO-9.8). The authorisation
   request's internal id, its `state` and `RelayState`, the SAML request and assertion ids, and the handoff code are
   never passed to the projection.
 - Mapped attributes appear only on the unlinked-result event (SSO-8.6), which carries them on its own fields, outside
   the context, because a provisioning listener needs them. No other event carries one.
-- The projection reads the time from `Contracts\Clock` and the client from the container's `request`, resolved on each
-  call and never held, so an Octane or queue worker never attributes one request's event to another's client
-  (SSO-11.2). With no `request` bound, the client is `null`; in the console, it is what the request Laravel binds for
-  the console reports.
-- Every value is cleaned before it is kept, without reading configuration:
+- The projection reads the time from `Contracts\Clock` and takes the client from the `Http\ClientContext` each call is
+  given, never from the request being served, so an Octane or queue worker never attributes one request's event to
+  another's client (SSO-11.2). Every public action that records an event takes that context and threads it to the
+  projection; the application builds it with `ClientContext::fromRequest($request)`, and work with no client (a console
+  command, a queued job, the schedule) passes `new ClientContext(null, null)`, so its events carry neither value.
+- Every value is cleaned before it is kept, without reading configuration, on top of what the client context already
+  made safe (an IP address kept only when valid; a user agent without NUL bytes or invalid UTF-8, cut to 512
+  characters):
   - the IP address is kept only when it is a valid IPv4 or IPv6 address;
   - the user agent has invalid UTF-8 replaced (`mb_scrub`), C0 controls, DEL, C1 controls and the Unicode
     bidirectional controls (U+202A to U+202E, U+2066 to U+2069) removed, and is cut to 512 characters

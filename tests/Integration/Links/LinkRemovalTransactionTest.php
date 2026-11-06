@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Enforcement\FailingRevocation;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
@@ -223,7 +224,7 @@ final class LinkRemovalTransactionTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(LinkService::class)->remove($this->identity, $this->link->id);
+        return $app->make(LinkService::class)->remove($this->identity, $this->link->id, Clients::browser());
     }
 
     /**

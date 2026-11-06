@@ -37,6 +37,7 @@ $result = app(ConnectionService::class)->create(
     tenantId: $tenant->id,
     protocol: 'saml2',
     displayName: 'Acme Entra ID',
+    client: $client,
     settings: [
         'idp_entity_id'  => 'https://sts.windows.net/0000-1111/',
         'sso_url'        => 'https://login.microsoftonline.com/0000-1111/saml2',
@@ -46,6 +47,11 @@ $result = app(ConnectionService::class)->create(
     actor: $actor,
 );
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 A connection is created disabled and may be saved incomplete. Every SAML setting, what it allows and its default are in
 [Managing connections](managing-connections.md#saml-settings). Choose the subject with care: a persistent `NameID`, or
@@ -70,8 +76,8 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 
 $keys = app(KeyService::class);
 
-$keys->addNext($tenant->id, $connectionId, KeyUse::SP_SIGNING, actor: $actor);
-$keys->addNext($tenant->id, $connectionId, KeyUse::SP_ENCRYPTION, actor: $actor);
+$keys->addNext($tenant->id, $connectionId, KeyUse::SP_SIGNING, $client, actor: $actor);
+$keys->addNext($tenant->id, $connectionId, KeyUse::SP_ENCRYPTION, $client, actor: $actor);
 ```
 
 ### SAML is RSA only
@@ -99,7 +105,7 @@ administrator gave you (see [Keys](keys.md#trusting-identity-provider-certificat
 <!-- snippet: tests/Integration/Examples/SamlConnections/admin/trust.php#saml-connections-trust -->
 
 ```php
-$keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $actor);
+$keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $client, $actor);
 ```
 
 A signature is valid when any trusted certificate verifies it; a certificate carried in a response is never trusted for
@@ -171,7 +177,7 @@ HTTP-POST only.
 <!-- snippet: tests/Integration/Examples/SamlConnections/admin/enable.php#saml-connections-enable -->
 
 ```php
-$result = app(ConnectionService::class)->enable($tenant->id, $connectionId, $actor);
+$result = app(ConnectionService::class)->enable($tenant->id, $connectionId, $client, $actor);
 ```
 
 Enabling does not check that the connection is complete, but an incomplete one is never used: a SAML connection is

@@ -28,6 +28,11 @@ use PHPUnit\Framework\TestCase;
  * One rule names what is outside the package: only `Logging` names the log
  * manager, a logger, the `Log` facade or the `logger()` and `info()` helpers,
  * so every log call the package makes goes through `Logging\SanitizingLogger`.
+ * Another holds the request to the edge: only `Http\ClientContext` and
+ * `Protocols\CompletionRequest` name `Illuminate\Http\Request`, each given it
+ * by the application, and nothing resolves the request being served from the
+ * container or calls the `request()` helper, so every core action takes its
+ * client as a plain value.
  *
  * One rule is about the suite rather than the package: the package stands
  * alone, so nothing it ships (its classes, configuration, migrations and
@@ -119,7 +124,19 @@ final class NamespaceDependenciesTest extends TestCase
             'forbids' => ['Testing'],
             'allows'  => [],
         ],
+        'the client context names nothing else of the package' => [
+            'from'    => ['Http'],
+            'except'  => [],
+            'forbids' => ['*'],
+            'allows'  => ['Http'],
+        ],
     ];
+
+    /** @var list<string> The classes that read the request being served, given it by the application: what arrived at a completion endpoint, and the client it came from. */
+    private const array REQUEST_READERS = ['Http\ClientContext', 'Protocols\CompletionRequest'];
+
+    /** @var string A read of the request being served through the container: `make('request')`, `bound('request')` and the like. */
+    private const string CONTAINER_REQUEST = '/->\s*(?:make|bound|get|has|resolved)\s*\(\s*[\'"]request[\'"]/i';
 
     /** @var list<string> What writes to the application's logs directly, by its lower-case name: the log manager, its loggers, the `Log` facade (imported or by its global alias) and the `logger()` and `info()` helpers. Only `Logging` names them, so every log call the package makes goes through `Logging\SanitizingLogger`. */
     private const array LOG_WRITERS = [
@@ -240,6 +257,47 @@ final class NamespaceDependenciesTest extends TestCase
 
         self::assertSame([], $found);
         self::assertNotSame([], self::logWritersIn(self::sources()['Logging\SanitizingLogger']));
+    }
+
+    /**
+     * No core service reads the request being served: each takes plain values,
+     * and only the client context and the completion request name
+     * `Illuminate\Http\Request`, each given the request by the application, and
+     * nothing resolves the request from the container or calls the `request()`
+     * helper.
+     *
+     * @return void
+     */
+    public function testOnlyTheRequestHelpersReadTheRequest(): void
+    {
+        $found = [];
+
+        foreach (self::sources() as $class => $source) {
+
+            if (preg_match(self::CONTAINER_REQUEST, $source) === 1) {
+                $found[] = "{$class} resolves the request from the container";
+            }
+
+            if (in_array('request', self::helperCallsIn($source), true)) {
+                $found[] = "{$class} calls request()";
+            }
+
+            if (in_array($class, self::REQUEST_READERS, true)) {
+                continue;
+            }
+
+            if (!in_array('illuminate\http\request', array_map(strtolower(...), self::qualifiedNamesIn($source)), true)) {
+                continue;
+            }
+
+            $found[] = "{$class} names the request";
+        }
+
+        self::assertSame([], $found);
+
+        foreach (self::REQUEST_READERS as $reader) {
+            self::assertContains('Illuminate\Http\Request', self::qualifiedNamesIn(self::sources()[$reader]), "{$reader} no longer reads a request.");
+        }
     }
 
     /**
@@ -748,6 +806,34 @@ final class NamespaceDependenciesTest extends TestCase
         $writers = array_filter($names, static fn (string $name): bool => in_array(strtolower($name), self::LOG_WRITERS, true));
 
         return array_values(array_unique($writers));
+    }
+
+    /**
+     * The lower-case names of the functions the source calls by a plain name:
+     * none of a method, a static method, a declaration or a `new`.
+     *
+     * @param  string  $source
+     * @return list<string>
+     */
+    private static function helperCallsIn(string $source): array
+    {
+        $tokens = self::tokens($source);
+        $calls  = [];
+
+        foreach ($tokens as $index => $token) {
+
+            if (!is_array($token) || !in_array($token[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)) {
+                continue;
+            }
+
+            if (($tokens[$index + 1] ?? null) !== '(' || self::isMember($tokens[$index - 1] ?? null)) {
+                continue;
+            }
+
+            $calls[] = strtolower(ltrim($token[1], '\\'));
+        }
+
+        return array_values(array_unique($calls));
     }
 
     /**

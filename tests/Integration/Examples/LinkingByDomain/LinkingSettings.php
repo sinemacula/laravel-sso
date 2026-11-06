@@ -8,6 +8,7 @@ use Illuminate\Validation\ValidationException;
 use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
+use Tests\Integration\Examples\Clients;
 
 /**
  * The example application's administration action that turns linking by a
@@ -37,13 +38,14 @@ final readonly class LinkingSettings
      */
     public function enable(string $tenantId, string $connectionId, ?string $organization, ActingIdentity $actor): ConnectionResult
     {
+        $client = Clients::browser();
         // @snippet-start linking-policy-change
         $result = app(LinkingPolicyService::class)->change($tenantId, $connectionId, [
             'enabled'            => true,
             'issuer_class'       => 'shared', // or single_organization, acknowledged
             'organization_claim' => 'hd',
             'organization_value' => $organization,
-        ], $actor);
+        ], $client, $actor);
 
         if ($result->isInvalid()) {
             // Each violation names a setting and a code, never the value given

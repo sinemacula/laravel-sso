@@ -17,6 +17,7 @@ use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -105,7 +106,7 @@ abstract class DomainServiceTestCase extends TestCase
     {
         $connection ??= $this->connection;
 
-        return $this->domains()->claim($connection->tenant_id, $connection->id, $domain, $this->actor);
+        return $this->domains()->claim($connection->tenant_id, $connection->id, $domain, Clients::browser(), $this->actor);
     }
 
     /**
@@ -120,7 +121,7 @@ abstract class DomainServiceTestCase extends TestCase
     {
         $connection ??= $this->connection;
 
-        return $this->domains()->verify($connection->tenant_id, $connection->id, $domain, $this->actor);
+        return $this->domains()->verify($connection->tenant_id, $connection->id, $domain, Clients::browser(), $this->actor);
     }
 
     /**

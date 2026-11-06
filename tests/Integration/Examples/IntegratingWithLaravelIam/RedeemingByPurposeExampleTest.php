@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Links\LinkService;
 use SineMacula\Laravel\Sso\Links\LinkSummary;
 use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 use Tests\Integration\Examples\IntegratingWithLaravelIam\Contracts\ExternalIdentityLinks;
 
@@ -253,9 +254,10 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
         $verifier     = self::verifierOf($start);
         $caller       = $this->person;
 
+        $client = Clients::browser();
         // @snippet-start iam-link
         $redemption = app(HandoffRedemption::class)
-            ->redeem(Purpose::LINK, $application, $connectionId, $code, $verifier, $caller);
+            ->redeem(Purpose::LINK, $application, $connectionId, $code, $verifier, $client, $caller);
         // @snippet-end iam-link
         $links = app(LinkService::class)->list($this->person);
 
@@ -280,7 +282,15 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
         $stranger = new IdentityReference('App\Models\User', 'person-2');
         $start    = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
         $redirect = $this->respondAtProvider($this->provider, $this->connectionId, $start);
-        $refused  = app(HandoffRedemption::class)->redeem(Purpose::LINK, self::APPLICATION, $this->connectionId, $redirect->code(), self::verifierOf($start), $stranger);
+        $refused  = app(HandoffRedemption::class)->redeem(
+            Purpose::LINK,
+            self::APPLICATION,
+            $this->connectionId,
+            $redirect->code(),
+            self::verifierOf($start),
+            Clients::browser(),
+            $stranger,
+        );
 
         self::assertTrue($refused->isRefused());
         self::assertSame(FailureReason::IDENTITY_MISMATCH, $refused->reason);

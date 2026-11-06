@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
@@ -32,6 +33,7 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -452,7 +454,7 @@ final class ConcurrentReservationTest extends LinkingTestCase
      */
     private function withdrawDomain(): string
     {
-        return app(DomainService::class)->remove('tenant-1', $this->connection->id, 'example.com')->isChanged() ? self::CHANGED : 'refused';
+        return app(DomainService::class)->remove('tenant-1', $this->connection->id, 'example.com', Clients::browser())->isChanged() ? self::CHANGED : 'refused';
     }
 
     /**
@@ -480,7 +482,12 @@ final class ConcurrentReservationTest extends LinkingTestCase
      */
     private function changeSettings(): string
     {
-        return app(LinkingPolicyService::class)->change('tenant-1', $this->connection->id, ['organization_value' => 'changed.example'])->isChanged() ? self::CHANGED : 'refused';
+        return app(LinkingPolicyService::class)->change(
+            'tenant-1',
+            $this->connection->id,
+            ['organization_value' => 'changed.example'],
+            Clients::browser(),
+        )->isChanged() ? self::CHANGED : 'refused';
     }
 
     /**
@@ -491,7 +498,7 @@ final class ConcurrentReservationTest extends LinkingTestCase
     private function explicitLink(): string
     {
         $subject  = new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT);
-        $creation = app(LinkStore::class)->create($this->connection, $subject, new IdentityReference('App\Models\User', 'explicit'), LinkOrigin::LINK_PURPOSE);
+        $creation = app(LinkStore::class)->create($this->connection, $subject, new IdentityReference('App\Models\User', 'explicit'), LinkOrigin::LINK_PURPOSE, Clients::browser());
 
         return $creation->isCreated() ? 'created' : 'refused:' . $creation->reason()?->value;
     }
@@ -523,7 +530,14 @@ final class ConcurrentReservationTest extends LinkingTestCase
     {
         self::await($this->signal($signal));
 
-        return $this->outcomeOf(app(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', 'state=' . rawurlencode($state), [])));
+        return $this->outcomeOf(
+            app(CompletionService::class)->complete(
+                CompletionEndpoint::CALLBACK,
+                $this->connection->id,
+                new CompletionRequest('GET', 'state=' . rawurlencode($state), []),
+                Clients::browser(),
+            ),
+        );
     }
 
     /**

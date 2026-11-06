@@ -18,7 +18,9 @@ use SineMacula\Laravel\Sso\Discovery\DiscoveryService;
 use SineMacula\Laravel\Sso\Discovery\DomainRouter;
 use SineMacula\Laravel\Sso\Discovery\Pacer;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
+use SineMacula\Laravel\Sso\Events\AuthorizationRequestStarted;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\Enums\StartStatus;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
@@ -26,6 +28,7 @@ use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Flows\Verifier;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -35,8 +38,10 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\RateLimiting\CounterKeys;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptScope;
+use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\StartingDriver;
@@ -62,7 +67,7 @@ use Tests\TestCase;
 #[CoversClass(Pacer::class)]
 final class DiscoveryServiceTest extends TestCase
 {
-    use UsesConnections, UsesDomains;
+    use RecordsEventSequences, UsesConnections, UsesDomains;
 
     /** @var string The IP address every start comes from. */
     private const string IP = '203.0.113.7';
@@ -81,6 +86,9 @@ final class DiscoveryServiceTest extends TestCase
 
     /** @var int The least time a discovery start takes in these tests, in milliseconds. */
     private const int FLOOR = 50;
+
+    /** @var \SineMacula\Laravel\Sso\Http\ClientContext The client every start is made for. */
+    private ClientContext $client;
 
     /** @var \Tests\Fixtures\Freshness\RecordingFreshness The freshness contract a `link` asks. */
     private RecordingFreshness $freshness;
@@ -109,7 +117,7 @@ final class DiscoveryServiceTest extends TestCase
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Freshness::class, $this->freshness);
-        $this->bindRequestFrom(self::IP);
+        $this->client = new ClientContext(self::IP, null);
 
         config()->set('sso.features.oidc', true);
         config()->set('sso.features.discovery', true);
@@ -265,7 +273,7 @@ final class DiscoveryServiceTest extends TestCase
         foreach ([self::MATCH, self::MISS] as $email) {
 
             try {
-                $this->service()->start('discovering', Purpose::SIGN_IN, $email);
+                $this->service()->start('discovering', Purpose::SIGN_IN, $email, Clients::browser());
             } catch (\LogicException $exception) {
                 $refusals[] = $exception->getMessage();
             }
@@ -317,7 +325,7 @@ final class DiscoveryServiceTest extends TestCase
 
         self::assertTrue($this->discover('first@example.com')->isStarted());
 
-        $this->bindRequestFrom('198.51.100.9');
+        $this->client = new ClientContext('198.51.100.9', null);
 
         $limited = $this->discover('second@EXAMPLE.com.');
 
@@ -374,16 +382,67 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * With no request being served there is no client, so only the domain is
+     * Rows of `[email, application, limited, reason]`: each way a discovery
+     * start reports, `null` reason for a match that stores its request.
+     *
+     * @return iterable<string, array{0: string, 1: string, 2: bool, 3: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideReports(): iterable
+    {
+        yield 'a match' => [self::MATCH, 'discovering', false, null];
+        yield 'rate limited' => [self::MATCH, 'discovering', true, FailureReason::RATE_LIMITED];
+        yield 'no match' => [self::MISS, 'discovering', false, FailureReason::DISCOVERY_NO_MATCH];
+        yield 'an application not allowed' => [self::MATCH, 'missing', false, FailureReason::APPLICATION_NOT_ALLOWED];
+    }
+
+    /**
+     * What a discovery start reports carries the IP address and user agent of
+     * the client it was given, never the request's being served:
+     * `AuthorizationRequestStarted` for a match, and exactly one `FlowFailed`
+     * for a miss or a refusal.
+     *
+     * @param  string  $email
+     * @param  string  $application
+     * @param  bool  $limited
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('provideReports')]
+    public function testWhatADiscoveryStartReportsCarriesTheClientItWasGiven(string $email, string $application, bool $limited, ?FailureReason $reason): void
+    {
+        $this->client = new ClientContext(self::IP, 'Example/1.0');
+
+        if ($limited) {
+            config()->set('sso.rate_limits.authorization_request.per_ip', ['max' => 1, 'decay_seconds' => 60]);
+            $this->discover(self::MISS);
+        }
+
+        $this->app?->instance('request', Request::create('/', 'POST', server: ['REMOTE_ADDR' => '198.51.100.9', 'HTTP_USER_AGENT' => 'Served/1.0']));
+        $this->startRecordingEvents();
+
+        $this->discover($email, application: $application);
+
+        $event = $reason === null ? $this->recordedEvents()[0] ?? null : $this->assertExactlyOneFailure(Flow::AUTHORIZATION_REQUEST, $reason);
+
+        if ($reason === null) {
+            self::assertInstanceOf(AuthorizationRequestStarted::class, $event);
+        }
+
+        self::assertNotNull($event);
+        self::assertSame([self::IP, 'Example/1.0'], [$event->context()->ip, $event->context()->userAgent]);
+    }
+
+    /**
+     * A start made for no client counts no IP address, so only the domain is
      * counted.
      *
      * @return void
      */
-    public function testAStartWithNoRequestCountsTheDomainAlone(): void
+    public function testAStartForNoClientCountsTheDomainAlone(): void
     {
         $subjects = $this->recordAttempts();
 
-        $this->app?->offsetUnset('request');
+        $this->client = new ClientContext(null, null);
 
         self::assertTrue($this->discover(self::MATCH)->isStarted());
         self::assertCount(1, $subjects);
@@ -517,7 +576,7 @@ final class DiscoveryServiceTest extends TestCase
         $queries = $this->recordQueries();
 
         try {
-            $this->service()->start('discovering', $purpose, self::MATCH, null, $withIdentity ? self::identity() : null, $sessionId);
+            $this->service()->start('discovering', $purpose, self::MATCH, Clients::browser(), null, $withIdentity ? self::identity() : null, $sessionId);
             self::fail('A misbound start was accepted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame($message, $exception->getMessage());
@@ -661,7 +720,7 @@ final class DiscoveryServiceTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('`sso.applications.discovering.discovery.fallback_url` must be an exact redirect URI');
 
-        $this->service()->start('discovering', Purpose::SIGN_IN, self::MATCH);
+        $this->service()->start('discovering', Purpose::SIGN_IN, self::MATCH, Clients::browser());
     }
 
     /**
@@ -708,7 +767,7 @@ final class DiscoveryServiceTest extends TestCase
         ?string $sessionId = null,
     ): StartResult {
         $startedAt = (int) hrtime(true);
-        $result    = $this->service()->start($application, $purpose, $email, $codeChallenge, $identity, $sessionId);
+        $result    = $this->service()->start($application, $purpose, $email, $this->client, $codeChallenge, $identity, $sessionId);
         $took      = (int) hrtime(true) - $startedAt;
 
         self::assertGreaterThanOrEqual(self::FLOOR * 1000000, $took, 'The answer came before the least time a discovery start takes.');
@@ -727,17 +786,6 @@ final class DiscoveryServiceTest extends TestCase
         $app = $this->app;
 
         return $app->make(DiscoveryService::class);
-    }
-
-    /**
-     * Bind a request being served from the IP address.
-     *
-     * @param  string  $ip
-     * @return void
-     */
-    private function bindRequestFrom(string $ip): void
-    {
-        $this->app?->instance('request', Request::create('/auth/sso/discovery', 'POST', server: ['REMOTE_ADDR' => $ip]));
     }
 
     /**

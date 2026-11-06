@@ -71,6 +71,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsLockOrder;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -168,7 +169,7 @@ final class ProvisioningTest extends LinkingTestCase
      */
     public function testTheStageStopsOnlyWhatItKnowsIsUnlinked(): void
     {
-        $arrived  = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []));
+        $arrived  = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []), Clients::browser());
         $consumed = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString(str_repeat('r', 32)), $this->clock->now());
         $request  = new AuthorizationRequest;
         $signIn   = $arrived->withAuthorizationRequest($request, $consumed, Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']));
@@ -324,7 +325,7 @@ final class ProvisioningTest extends LinkingTestCase
             self::assertNotSame($event->result, $copied);
             self::assertSame($event->result->toArray(), $copied->toArray());
 
-            $this->answers[] = app(ProvisioningHelper::class)->link($event->grant, $copied, $this->person);
+            $this->answers[] = app(ProvisioningHelper::class)->link($event->grant, $copied, $this->person, Clients::browser());
 
             self::assertFalse($event->grant->isUsable());
 
@@ -356,7 +357,7 @@ final class ProvisioningTest extends LinkingTestCase
 
             self::assertTrue($forged->isUsable());
 
-            $this->answers[] = app(ProvisioningHelper::class)->link($forged, $event->result, $this->other);
+            $this->answers[] = app(ProvisioningHelper::class)->link($forged, $event->result, $this->other, Clients::browser());
 
             self::assertSame(0, Link::query()->count());
             self::assertTrue($event->grant->isUsable());
@@ -1294,7 +1295,7 @@ final class ProvisioningTest extends LinkingTestCase
         $start = $this->start();
 
         $this->onOffer(function (ResultUnlinked $event): void {
-            app(LinkStore::class)->create($this->connection, LinkSubject::of($event->result), $this->other, LinkOrigin::LINK_PURPOSE);
+            app(LinkStore::class)->create($this->connection, LinkSubject::of($event->result), $this->other, LinkOrigin::LINK_PURPOSE, Clients::browser());
 
             $this->provision($event);
         });
@@ -1324,7 +1325,7 @@ final class ProvisioningTest extends LinkingTestCase
         $this->start();
 
         $this->onOffer(function (ResultUnlinked $event): void {
-            app(LinkStore::class)->create($this->connection, LinkSubject::of($event->result), $this->person, LinkOrigin::LINK_PURPOSE);
+            app(LinkStore::class)->create($this->connection, LinkSubject::of($event->result), $this->person, LinkOrigin::LINK_PURPOSE, Clients::browser());
 
             $this->provision($event);
         });
@@ -1669,7 +1670,7 @@ final class ProvisioningTest extends LinkingTestCase
     public function testAnOfferOutOfTurnIsALogicException(int $parts, string $message): void
     {
         $start = $this->start();
-        $state = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []));
+        $state = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []), Clients::browser());
 
         if ($parts > 0) {
             $state = $state->withResult(new VerifiedResult(
@@ -1827,7 +1828,7 @@ final class ProvisioningTest extends LinkingTestCase
      */
     private function provision(ResultUnlinked $event, ?IdentityReference $identity = null): ProvisioningResult
     {
-        $answer = app(ProvisioningHelper::class)->link($event->grant, $event->result, $identity ?? $this->person);
+        $answer = app(ProvisioningHelper::class)->link($event->grant, $event->result, $identity ?? $this->person, Clients::browser());
 
         $this->answers[] = $answer;
 
@@ -2010,7 +2011,7 @@ final class ProvisioningTest extends LinkingTestCase
      */
     private function holdTheLimitOf(IdentityReference $identity): void
     {
-        app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, 'another-subject'), $identity, LinkOrigin::LINK_PURPOSE);
+        app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, 'another-subject'), $identity, LinkOrigin::LINK_PURPOSE, Clients::browser());
     }
 
     /**
@@ -2020,7 +2021,13 @@ final class ProvisioningTest extends LinkingTestCase
      */
     private function linkTheSubject(): Link
     {
-        app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, LinkOrigin::PROVISIONING);
+        app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            LinkOrigin::PROVISIONING,
+            Clients::browser(),
+        );
 
         return Link::query()->sole();
     }

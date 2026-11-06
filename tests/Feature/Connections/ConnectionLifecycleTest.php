@@ -39,6 +39,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Domains\RecordingWithdrawal;
 use Tests\Fixtures\Enforcement\RecordingRevocation;
 use Tests\Fixtures\FixedClock;
@@ -144,7 +145,7 @@ final class ConnectionLifecycleTest extends TestCase
 
         $this->clock->advance(60);
 
-        $result = $this->lifecycle()->disable(self::TENANT, $this->connection->id, new ActingIdentity('App\Models\User', '42'));
+        $result = $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser(), new ActingIdentity('App\Models\User', '42'));
 
         $summary = $result->connection;
 
@@ -210,7 +211,7 @@ final class ConnectionLifecycleTest extends TestCase
         $this->connection->forceFill(['enabled' => false])->save();
 
         $request = $this->makeAuthorizationRequest($this->connection);
-        $result  = $this->lifecycle()->disable(self::TENANT, $this->connection->id);
+        $result  = $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser());
 
         $summary = $result->connection;
 
@@ -240,7 +241,7 @@ final class ConnectionLifecycleTest extends TestCase
             Connection::query()->whereKey($this->connection->id)->update(['enabled' => false]);
         };
 
-        $result = $this->lifecycle()->disable(self::TENANT, $this->connection->id);
+        $result = $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser());
 
         self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
         self::assertNull(AuthorizationRequest::query()->findOrFail($request->id)->voided_at);
@@ -319,8 +320,8 @@ final class ConnectionLifecycleTest extends TestCase
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $disabled = $this->lifecycle()->disable(self::TENANT, $this->connection->id);
-        $deleted  = $this->lifecycle()->delete(self::TENANT, $this->connection->id);
+        $disabled = $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser());
+        $deleted  = $this->lifecycle()->delete(self::TENANT, $this->connection->id, Clients::browser());
 
         self::assertTrue($disabled->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $disabled->reason);
@@ -348,8 +349,8 @@ final class ConnectionLifecycleTest extends TestCase
         $theirs = $this->makeConnection(['tenant_id' => self::OTHER_TENANT, 'enabled' => true]);
 
         foreach ([[self::TENANT, $theirs->id], [self::OTHER_TENANT, $this->connection->id], [self::TENANT, '01jbunknownconnection00000']] as [$tenant, $id]) {
-            self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->lifecycle()->disable($tenant, $id)->reason);
-            self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->lifecycle()->delete($tenant, $id)->reason);
+            self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->lifecycle()->disable($tenant, $id, Clients::browser())->reason);
+            self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $this->lifecycle()->delete($tenant, $id, Clients::browser())->reason);
         }
 
         self::assertSame([], $this->freshness->asked());
@@ -392,8 +393,8 @@ final class ConnectionLifecycleTest extends TestCase
     {
         $connection = $this->makeConnection(['protocol' => 'retired', 'enabled' => true]);
 
-        self::assertSame(ConnectionStatus::DISABLED, $this->lifecycle()->disable(self::TENANT, $connection->id)->status);
-        self::assertSame(ConnectionStatus::DELETED, $this->lifecycle()->delete(self::TENANT, $connection->id)->status);
+        self::assertSame(ConnectionStatus::DISABLED, $this->lifecycle()->disable(self::TENANT, $connection->id, Clients::browser())->status);
+        self::assertSame(ConnectionStatus::DELETED, $this->lifecycle()->delete(self::TENANT, $connection->id, Clients::browser())->status);
         self::assertSame(0, Connection::query()->whereKey($connection->id)->count());
     }
 
@@ -413,7 +414,7 @@ final class ConnectionLifecycleTest extends TestCase
 
         $this->populate($this->other);
 
-        $result = $this->lifecycle()->delete(self::TENANT, $this->connection->id, new ActingIdentity('App\Models\User', '42'));
+        $result = $this->lifecycle()->delete(self::TENANT, $this->connection->id, Clients::browser(), new ActingIdentity('App\Models\User', '42'));
 
         self::assertSame(ConnectionStatus::DELETED, $result->status);
         self::assertTrue($result->isChanged());
@@ -453,7 +454,7 @@ final class ConnectionLifecycleTest extends TestCase
 
         $this->makeDomain($this->other, 'other.example.com', ['state' => DomainState::VERIFIED]);
 
-        self::assertTrue($this->lifecycle()->delete(self::TENANT, $this->connection->id)->isChanged());
+        self::assertTrue($this->lifecycle()->delete(self::TENANT, $this->connection->id, Clients::browser())->isChanged());
 
         self::assertSame(
             [[$this->connection->id, $first->id, 1, true], [$this->connection->id, $second->id, 1, true]],
@@ -473,7 +474,7 @@ final class ConnectionLifecycleTest extends TestCase
 
         $code = $this->makeHandoffCode($this->connection);
 
-        self::assertSame(ConnectionStatus::DELETED, $this->lifecycle()->delete(self::TENANT, $this->connection->id)->status);
+        self::assertSame(ConnectionStatus::DELETED, $this->lifecycle()->delete(self::TENANT, $this->connection->id, Clients::browser())->status);
         self::assertSame(0, HandoffCode::query()->whereKey($code->id)->count());
         $this->assertRevoked(RevocationReason::CONNECTION_DELETED);
     }
@@ -586,8 +587,8 @@ final class ConnectionLifecycleTest extends TestCase
     private function changes(): array
     {
         return [
-            'disable' => fn (string $tenant, string $id): ConnectionResult => $this->lifecycle()->disable($tenant, $id),
-            'delete'  => fn (string $tenant, string $id): ConnectionResult => $this->lifecycle()->delete($tenant, $id),
+            'disable' => fn (string $tenant, string $id): ConnectionResult => $this->lifecycle()->disable($tenant, $id, Clients::browser()),
+            'delete'  => fn (string $tenant, string $id): ConnectionResult => $this->lifecycle()->delete($tenant, $id, Clients::browser()),
         ];
     }
 

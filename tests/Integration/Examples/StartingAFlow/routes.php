@@ -20,12 +20,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 
 Route::post('/auth/sso/authorization-requests', static function (Request $request, AuthorizationRequestService $requests): JsonResponse {
     $result = $requests->start(
         application: $request->string('application')->toString(),
         purpose: Purpose::SIGN_IN,
         connectionId: $request->string('connection')->toString(),
+        client: ClientContext::fromRequest($request),
         codeChallenge: $request->has('code_challenge') ? $request->string('code_challenge')->toString() : null,
     );
 

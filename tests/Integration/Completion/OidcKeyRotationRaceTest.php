@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
@@ -46,6 +47,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -450,10 +452,15 @@ final class OidcKeyRotationRaceTest extends TestCase
         $id = $this->connection->id;
 
         return match ($change) {
-            self::TRUST    => app(ConnectionService::class)->update(self::TENANT, $id, ['settings' => ['client_secret' => 'the-rotated-client-secret']])->isChanged(),
-            self::DISTRUST => app(KeyService::class)->distrustCertificate(self::TENANT, $id, $this->trustedCertificateId())->isSucceeded(),
-            self::DISABLE  => app(ConnectionLifecycle::class)->disable(self::TENANT, $id)->isChanged(),
-            self::DELETE   => app(ConnectionLifecycle::class)->delete(self::TENANT, $id)->isSucceeded(),
+            self::TRUST => app(ConnectionService::class)->update(
+                self::TENANT,
+                $id,
+                ['settings' => ['client_secret' => 'the-rotated-client-secret']],
+                Clients::browser(),
+            )->isChanged(),
+            self::DISTRUST => app(KeyService::class)->distrustCertificate(self::TENANT, $id, $this->trustedCertificateId(), Clients::browser())->isSucceeded(),
+            self::DISABLE  => app(ConnectionLifecycle::class)->disable(self::TENANT, $id, Clients::browser())->isChanged(),
+            self::DELETE   => app(ConnectionLifecycle::class)->delete(self::TENANT, $id, Clients::browser())->isSucceeded(),
             default        => throw new \LogicException(sprintf('No change is named [%s].', $change)),
         };
     }
@@ -507,7 +514,7 @@ final class OidcKeyRotationRaceTest extends TestCase
      */
     private function started(): array
     {
-        $started = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id);
+        $started = app(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $this->connection->id, Clients::browser());
 
         self::assertTrue($started->isStarted());
 
@@ -525,7 +532,7 @@ final class OidcKeyRotationRaceTest extends TestCase
      */
     private function complete(FakeAuthorization $grant): CompletionResult
     {
-        return app(CompletionService::class)->callback($this->connection->id, new CompletionRequest('GET', $grant->query(), []));
+        return app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $this->connection->id, new CompletionRequest('GET', $grant->query(), []), Clients::browser());
     }
 
     /**

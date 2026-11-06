@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Keys\Certificates;
 
 /**
@@ -266,7 +267,7 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(ExpiryReport::class)->report($withinDays);
+        return $app->make(ExpiryReport::class)->report(Clients::browser(), $withinDays);
     }
 
     /**

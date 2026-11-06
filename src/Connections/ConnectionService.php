@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\ClientAssertionKeys;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
@@ -187,6 +188,7 @@ final readonly class ConnectionService
      * @param  string  $tenantId
      * @param  string  $protocol
      * @param  string  $displayName
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  array<string, mixed>  $settings
      * @param  array<string, mixed>  $attributeMapping
      * @param  ?string  $preset
@@ -196,11 +198,14 @@ final readonly class ConnectionService
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
+     *
+     * @SuppressWarnings("php:S107")
      */
     public function create(
         string $tenantId,
         string $protocol,
         string $displayName,
+        ClientContext $client,
         #[\SensitiveParameter] array $settings = [],
         array $attributeMapping = [],
         ?string $preset = null,
@@ -235,7 +240,7 @@ final readonly class ConnectionService
             ? $this->staleRefusal(self::operations($typed, [...array_keys($values), ...array_keys($given)], [FreshnessOperation::CONNECTION_TRUST]))
             : ConnectionResult::invalid($violations);
 
-        return $refusal ?? $this->transaction(function () use ($tenantId, $protocol, $name, $typed, $given, $map, $actor): ConnectionResult {
+        return $refusal ?? $this->transaction(function () use ($tenantId, $protocol, $name, $typed, $given, $map, $client, $actor): ConnectionResult {
 
             $connection = new Connection;
 
@@ -251,7 +256,7 @@ final readonly class ConnectionService
 
             CiphertextWrite::save($connection, self::SECRETS, self::SECRETS_NOT_WRITTEN);
 
-            $this->events->connectionCreated($connection, $actor);
+            $this->events->connectionCreated($connection, $actor, $client);
 
             return ConnectionResult::created($this->summary($connection));
         });
@@ -275,6 +280,7 @@ final readonly class ConnectionService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  array<string, mixed>  $changes
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -282,11 +288,11 @@ final readonly class ConnectionService
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function update(string $tenantId, string $connectionId, #[\SensitiveParameter] array $changes, ?ActingIdentity $actor = null): ConnectionResult
+    public function update(string $tenantId, string $connectionId, #[\SensitiveParameter] array $changes, ClientContext $client, ?ActingIdentity $actor = null): ConnectionResult
     {
         self::assertTenant($tenantId);
 
-        return $this->transaction(function () use ($tenantId, $connectionId, $changes, $actor): ConnectionResult {
+        return $this->transaction(function () use ($tenantId, $connectionId, $changes, $client, $actor): ConnectionResult {
 
             $connection = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -294,7 +300,7 @@ final readonly class ConnectionService
                 return ConnectionResult::refused($connection === null ? FailureReason::CONNECTION_NOT_FOUND : FailureReason::PROTOCOL_UNAVAILABLE);
             }
 
-            return $this->changeLocked($connection, $changes, $actor);
+            return $this->changeLocked($connection, $changes, $client, $actor);
         });
     }
 
@@ -338,6 +344,7 @@ final readonly class ConnectionService
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -345,11 +352,11 @@ final readonly class ConnectionService
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function enable(string $tenantId, string $connectionId, ?ActingIdentity $actor = null): ConnectionResult
+    public function enable(string $tenantId, string $connectionId, ClientContext $client, ?ActingIdentity $actor = null): ConnectionResult
     {
         self::assertTenant($tenantId);
 
-        return $this->transaction(function () use ($tenantId, $connectionId, $actor): ConnectionResult {
+        return $this->transaction(function () use ($tenantId, $connectionId, $client, $actor): ConnectionResult {
 
             $connection = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -365,7 +372,7 @@ final readonly class ConnectionService
 
             $connection->forceFill(['enabled' => true, 'trust_version' => $connection->trust_version + 1])->save();
 
-            $this->events->connectionEnabled($connection, $actor);
+            $this->events->connectionEnabled($connection, $actor, $client);
 
             return ConnectionResult::enabled($this->summary($connection));
         });
@@ -386,6 +393,7 @@ final readonly class ConnectionService
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $changes
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @param  ?list<\SineMacula\Laravel\Sso\Connections\SettingViolation>  $relinkViolations
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
@@ -399,8 +407,13 @@ final readonly class ConnectionService
      *
      * @internal
      */
-    public function changeLocked(Connection $locked, #[\SensitiveParameter] array $changes, ?ActingIdentity $actor = null, ?array $relinkViolations = null): ConnectionResult
-    {
+    public function changeLocked(
+        Connection $locked,
+        #[\SensitiveParameter] array $changes,
+        ClientContext $client,
+        ?ActingIdentity $actor = null,
+        ?array $relinkViolations = null,
+    ): ConnectionResult {
         $asked           = $changes + self::NO_CHANGES;
         $migrating       = $relinkViolations !== null;
         $secretNames     = $this->secretNamesOf($locked->protocol);
@@ -457,7 +470,7 @@ final readonly class ConnectionService
             $this->voider->voidFor($locked);
         }
 
-        $this->events->connectionUpdated($locked, $changed, $actor);
+        $this->events->connectionUpdated($locked, $changed, $actor, $client);
 
         return ConnectionResult::updated($this->summary($locked), $changed);
     }

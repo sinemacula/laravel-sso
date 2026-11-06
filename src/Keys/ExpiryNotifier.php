@@ -11,6 +11,7 @@ use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\ExpiryNotice;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
@@ -81,11 +82,12 @@ final readonly class ExpiryNotifier
      * `null` means the key is no longer reportable.
      *
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return ?\SineMacula\Laravel\Sso\Keys\Enums\ExpiryNotice
      *
      * @throws \Throwable
      */
-    public function notify(ConnectionKey $key): ?ExpiryNotice
+    public function notify(ConnectionKey $key, ClientContext $client): ?ExpiryNotice
     {
         $claim = $this->claim($key);
 
@@ -94,7 +96,7 @@ final readonly class ExpiryNotifier
         }
 
         try {
-            $this->events->keyNearingExpiry($claim->connection, $claim->key, $claim->thresholdDays);
+            $this->events->keyNearingExpiry($claim->connection, $claim->key, $claim->thresholdDays, $client);
         } catch (\Throwable $exception) {
 
             self::release($claim);

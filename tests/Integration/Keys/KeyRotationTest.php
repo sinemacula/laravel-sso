@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -89,7 +90,7 @@ final class KeyRotationTest extends TestCase
         $id = $this->connection->id;
 
         // The first key is current at once, and alone decrypts
-        $old = self::summaryOf($this->keys()->addNext(self::TENANT, $id, KeyUse::SP_ENCRYPTION));
+        $old = self::summaryOf($this->keys()->addNext(self::TENANT, $id, KeyUse::SP_ENCRYPTION, Clients::browser()));
 
         self::assertSame(KeyState::CURRENT, $old->state);
         self::assertSame([$old->id], self::ids($this->ring()->published($id, KeyUse::SP_ENCRYPTION)));
@@ -99,7 +100,7 @@ final class KeyRotationTest extends TestCase
         // A next key is published alongside it, and does not yet decrypt
         $this->clock->advance(86400);
 
-        $new = self::summaryOf($this->keys()->addNext(self::TENANT, $id, KeyUse::SP_ENCRYPTION));
+        $new = self::summaryOf($this->keys()->addNext(self::TENANT, $id, KeyUse::SP_ENCRYPTION, Clients::browser()));
 
         self::assertSame(KeyState::NEXT, $new->state);
         self::assertSame([$old->id, $new->id], self::ids($this->ring()->published($id, KeyUse::SP_ENCRYPTION)));
@@ -109,7 +110,7 @@ final class KeyRotationTest extends TestCase
         // Made current, it replaces the old key, which still decrypts
         $this->clock->advance(86400);
 
-        $result = $this->keys()->makeCurrent(self::TENANT, $id, $new->id);
+        $result = $this->keys()->makeCurrent(self::TENANT, $id, $new->id, Clients::browser());
 
         self::assertSame($old->id, $result->previous?->id);
         self::assertSame([$new->id], self::ids($this->ring()->published($id, KeyUse::SP_ENCRYPTION)));
@@ -131,7 +132,7 @@ final class KeyRotationTest extends TestCase
 
         // The old key is retired and removed; the new one decrypts with its own
         // private key
-        $retired = $this->keys()->retire(self::TENANT, $id, $old->id);
+        $retired = $this->keys()->retire(self::TENANT, $id, $old->id, Clients::browser());
 
         self::assertTrue($retired->isSucceeded());
         self::assertSame([[$new->id, 'current', '2026-11-03 09:30:00', null]], $this->rows());

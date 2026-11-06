@@ -39,6 +39,7 @@ $result = $enforcement->update(
     $tenant->id,
     true,
     [$connectionId],
+    $client,
     new ActingIdentity($user->getMorphClass(), (string) $user->getKey()),
 );
 
@@ -46,6 +47,11 @@ self::assertSame(EnforcementStatus::UPDATED, $result->status);
 
 $version = $result->enforcement?->version; // a new lower-case ULID on every change
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 The ids you give are the tenant's connections that satisfy the rule: a session established through any of them that
 is still enabled complies. Turning the rule on asks the freshness contract with `sso.enforcement.update` (see
@@ -105,7 +111,7 @@ $session->update(['enforcement_version' => $policy->version]);
 // A session established without SSO records no connection, which
 // satisfies no rule
 if ($policy->isRequired() && !$policy->isSatisfiedBy($session->sso_connection_id ?? '')) {
-    return $this->isExempt($policy, $session); // refused, unless the identity is exempt (below)
+    return $this->isExempt($policy, $session, $client); // refused, unless the identity is exempt (below)
 }
 
 return true;
@@ -198,7 +204,7 @@ session unless the answer is `exempt`:
 ```php
 $identity = new IdentityReference($session->user_type, $session->user_id);
 
-$outcome = app(ExemptionGate::class)->admit($policy, 'web', $identity, $session->id);
+$outcome = app(ExemptionGate::class)->admit($policy, 'web', $identity, $client, $session->id);
 
 return $outcome->isExempt();
 ```

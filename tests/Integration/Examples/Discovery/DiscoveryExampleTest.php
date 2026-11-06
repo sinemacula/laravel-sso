@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Discovery\DiscoveryService;
 use SineMacula\Laravel\Sso\Domains\DomainService;
@@ -27,6 +28,7 @@ use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -110,20 +112,20 @@ final class DiscoveryExampleTest extends ExampleTestCase
         // @snippet-start discovery-service
         $discovery = app(DiscoveryService::class);
         // @snippet-end discovery-service
-        $match = $discovery->start(self::APPLICATION, Purpose::SIGN_IN, self::MATCH);
+        $match = $discovery->start(self::APPLICATION, Purpose::SIGN_IN, self::MATCH, Clients::browser());
 
         self::assertTrue($match->isStarted());
         self::assertTrue($match->navigation?->isRedirect());
         self::assertSame($this->provider->endpoint('authorization'), Str::before($match->navigation->url(), '?'));
 
         $next = app(DiscoveryService::class);
-        $miss = $next->start(self::APPLICATION, Purpose::SIGN_IN, 'jane@mail.example.com');
+        $miss = $next->start(self::APPLICATION, Purpose::SIGN_IN, 'jane@mail.example.com', Clients::browser());
 
         self::assertNotSame($discovery, $next);
         self::assertTrue($miss->isStarted());
         self::assertSame(self::FALLBACK_URL, $miss->navigation?->url());
 
-        $refused = $next->start('mobile', Purpose::SIGN_IN, self::MATCH);
+        $refused = $next->start('mobile', Purpose::SIGN_IN, self::MATCH, Clients::browser());
 
         self::assertTrue($refused->isRefused());
         self::assertSame(FailureReason::APPLICATION_NOT_ALLOWED, $refused->reason);
@@ -142,7 +144,7 @@ final class DiscoveryExampleTest extends ExampleTestCase
     {
         self::assertStringContainsString('[applications] OK', self::checked()[1]);
 
-        $miss = app(DiscoveryService::class)->start(self::APPLICATION, Purpose::SIGN_IN, self::MISS);
+        $miss = app(DiscoveryService::class)->start(self::APPLICATION, Purpose::SIGN_IN, self::MISS, Clients::browser());
 
         self::assertTrue($miss->isStarted());
         self::assertTrue($miss->navigation?->isRedirect());
@@ -154,7 +156,7 @@ final class DiscoveryExampleTest extends ExampleTestCase
 
         config()->set('sso.features.discovery', false);
 
-        $off = app(DiscoveryService::class)->start(self::APPLICATION, Purpose::SIGN_IN, self::MATCH);
+        $off = app(DiscoveryService::class)->start(self::APPLICATION, Purpose::SIGN_IN, self::MATCH, Clients::browser());
 
         self::assertTrue($off->isRefused());
         self::assertSame(FailureReason::FEATURE_DISABLED, $off->reason);
@@ -193,8 +195,13 @@ final class DiscoveryExampleTest extends ExampleTestCase
         self::assertSame('redirect', $body['navigation']['type']);
         self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
 
-        $grant    = $this->provider->authorize($body['navigation']['url']);
-        $result   = app(CompletionService::class)->callback($this->connectionId, new CompletionRequest('GET', $grant->query(), []));
+        $grant  = $this->provider->authorize($body['navigation']['url']);
+        $result = app(CompletionService::class)->complete(
+            CompletionEndpoint::CALLBACK,
+            $this->connectionId,
+            new CompletionRequest('GET', $grant->query(), []),
+            Clients::browser(),
+        );
         $redirect = HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
 
         self::assertSame($body['reference'], $redirect->reference);
@@ -296,13 +303,13 @@ final class DiscoveryExampleTest extends ExampleTestCase
     private function verifyTheDomain(): void
     {
         $domains = app(DomainService::class);
-        $claimed = $domains->claim(self::TENANT, $this->connectionId, 'example.com')->domain;
+        $claimed = $domains->claim(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->domain;
 
         self::assertNotNull($claimed);
 
         $this->dns->publishes($claimed);
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, 'example.com')->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->status);
     }
 
     /**
@@ -329,7 +336,7 @@ final class DiscoveryExampleTest extends ExampleTestCase
         $connectionId = $this->connectionId;
 
         return DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::APPLICATION, $connectionId, $code, $verifier),
+            static fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, self::APPLICATION, $connectionId, $code, $verifier, Clients::browser()),
         );
     }
 

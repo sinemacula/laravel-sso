@@ -20,8 +20,10 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainStatus;
 use SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Domains\RecheckReport;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -114,7 +116,7 @@ final class DomainRechecksExampleTest extends ExampleTestCase
         $this->dns->failing($failing->recordName);
 
         // @snippet-start recheck-from-code
-        $report = app(DomainRechecker::class)->recheckAll();
+        $report = app(DomainRechecker::class)->recheckAll(new ClientContext(null, null)); // no client, as the schedule runs it
 
         self::assertTrue($report->hasLookupFailures());
         self::assertFalse($report->hasResolverThrows());
@@ -160,7 +162,7 @@ final class DomainRechecksExampleTest extends ExampleTestCase
             throw new \RuntimeException("The resolver could not reach {$name}.");
         });
 
-        $report = app(DomainRechecker::class)->recheckAll();
+        $report = app(DomainRechecker::class)->recheckAll(new ClientContext(null, null)); // no client, as the schedule runs it
 
         self::assertTrue($report->hasResolverThrows());
         self::assertFalse($report->hasLookupFailures());
@@ -240,13 +242,13 @@ final class DomainRechecksExampleTest extends ExampleTestCase
     private function verified(string $domain): DomainSummary
     {
         $domains = app(DomainService::class);
-        $claimed = $domains->claim(self::TENANT, $this->connectionId, $domain)->domain;
+        $claimed = $domains->claim(self::TENANT, $this->connectionId, $domain, Clients::browser())->domain;
 
         self::assertNotNull($claimed);
 
         $this->dns->publishes($claimed);
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, $domain)->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, $domain, Clients::browser())->status);
 
         return $claimed;
     }

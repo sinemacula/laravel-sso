@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionEvents;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Completion\UnsolicitedReinitiation;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
@@ -30,6 +31,7 @@ use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\DumpsValues;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
@@ -214,7 +216,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
 
             $posted[] = $encoded;
 
-            app(CompletionService::class)->assertionConsumerService($this->connection->id, $request);
+            app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connection->id, $request, Clients::browser());
         }
 
         $this->connection->forceFill(['settings' => [...$this->connection->settings, 'idp_initiated' => false]])->save();
@@ -280,7 +282,12 @@ final class SamlReinitiationEventSequenceTest extends TestCase
      */
     private function complete(FakeSamlResponse $response): CompletionResult
     {
-        return app(CompletionService::class)->assertionConsumerService($this->connection->id, $response->completionRequest(self::RELAY_STATE));
+        return app(CompletionService::class)->complete(
+            CompletionEndpoint::ASSERTION_CONSUMER_SERVICE,
+            $this->connection->id,
+            $response->completionRequest(self::RELAY_STATE),
+            Clients::browser(),
+        );
     }
 
     /**

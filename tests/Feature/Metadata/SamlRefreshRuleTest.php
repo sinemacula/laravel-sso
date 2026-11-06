@@ -31,6 +31,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
@@ -138,7 +139,7 @@ final class SamlRefreshRuleTest extends TestCase
         }
 
         self::assertSame($due ? [$connection->id] : [], $this->refresher()->dueConnectionIds());
-        self::assertSame($due ? RefreshOutcome::REFRESHED : RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id)->outcome);
+        self::assertSame($due ? RefreshOutcome::REFRESHED : RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
         self::assertSame($due ? 1 : 0, $this->row($connection)->metadata_version);
         self::assertCount($due ? 1 : 0, $this->fetcher->requests());
     }
@@ -190,7 +191,7 @@ final class SamlRefreshRuleTest extends TestCase
         self::assertNull($this->expiry()->expiresAt($row));
         self::assertSame([$connection->id], $this->refresher()->dueConnectionIds());
 
-        self::assertTrue($this->refresher()->refreshQueued($connection->id)->isRefreshed());
+        self::assertTrue($this->refresher()->refreshQueued($connection->id, Clients::browser())->isRefreshed());
         self::assertSame(self::LIMIT, $this->expiry()->expiresAt($this->row($connection))?->toIso8601String());
     }
 
@@ -211,7 +212,7 @@ final class SamlRefreshRuleTest extends TestCase
         self::assertTrue($this->expiry()->isExpired($this->row($connection)));
         self::assertSame([$connection->id], $this->refresher()->dueConnectionIds());
 
-        self::assertTrue(app(KeyService::class)->distrustCertificate(self::TENANT, $connection->id, $key)->isSucceeded());
+        self::assertTrue(app(KeyService::class)->distrustCertificate(self::TENANT, $connection->id, $key, Clients::browser())->isSucceeded());
 
         $row = $this->row($connection);
 
@@ -219,7 +220,7 @@ final class SamlRefreshRuleTest extends TestCase
         self::assertFalse($this->expiry()->isExpired($row));
         self::assertNull($this->expiry()->expiresAt($row));
         self::assertSame([], $this->refresher()->dueConnectionIds());
-        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id)->outcome);
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
     }
 
     /**
@@ -236,7 +237,7 @@ final class SamlRefreshRuleTest extends TestCase
 
         $this->row($connection)->forceFill(['metadata_fetched_at' => $this->clock->now()->subDays(40)])->save();
 
-        app(KeyService::class)->distrustCertificate(self::TENANT, $connection->id, $key);
+        app(KeyService::class)->distrustCertificate(self::TENANT, $connection->id, $key, Clients::browser());
 
         self::assertFalse($this->expiry()->isExpired($this->row($connection)));
 
@@ -266,7 +267,7 @@ final class SamlRefreshRuleTest extends TestCase
         self::assertSame(self::LIMIT, $this->expiry()->expiresAt($row)?->toIso8601String());
         self::assertSame('2026-11-02T09:30:00+00:00', $row->metadata_refresh_at?->toIso8601String());
 
-        app(KeyService::class)->distrustCertificate(self::TENANT, $connection->id, $second);
+        app(KeyService::class)->distrustCertificate(self::TENANT, $connection->id, $second, Clients::browser());
 
         self::assertSame(self::LIMIT, $this->expiry()->expiresAt($this->row($connection))?->toIso8601String());
     }
@@ -310,7 +311,7 @@ final class SamlRefreshRuleTest extends TestCase
         $this->anchor($connection, self::idp()->certificate());
 
         self::assertSame([], $this->refresher()->dueConnectionIds());
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->isRefreshed());
         self::assertSame(self::LIMIT, $this->expiry()->expiresAt($this->row($connection))?->toIso8601String());
         self::assertSame([], $this->refresher()->dueConnectionIds());
 
@@ -335,7 +336,7 @@ final class SamlRefreshRuleTest extends TestCase
 
         $this->app?->instance(Freshness::class, $freshness);
 
-        $result = app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => true]]);
+        $result = app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => true]], Clients::browser());
         $row    = $this->row($connection);
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
@@ -366,7 +367,7 @@ final class SamlRefreshRuleTest extends TestCase
 
         $this->startRecordingEvents();
 
-        $result = app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => true]]);
+        $result = app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => true]], Clients::browser());
         $row    = $this->row($connection);
         $events = $this->recordedEvents();
 
@@ -414,7 +415,7 @@ final class SamlRefreshRuleTest extends TestCase
 
         $this->app?->instance(Freshness::class, $freshness);
 
-        self::assertTrue(app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => $given]])->isChanged());
+        self::assertTrue(app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => $given]], Clients::browser())->isChanged());
         self::assertSame([FreshnessOperation::CONNECTION_TRUST], array_column($freshness->asked(), 'operation'));
         self::assertSame(1, $this->row($connection)->trust_version);
     }
@@ -435,8 +436,8 @@ final class SamlRefreshRuleTest extends TestCase
         $this->anchor($anchored, self::idp()->certificate());
         $this->row($anchored)->forceFill($stamp)->save();
 
-        app(ConnectionService::class)->update(self::TENANT, $leaving->id, ['settings' => ['metadata_refresh' => null]]);
-        app(ConnectionService::class)->update(self::TENANT, $anchored->id, ['settings' => ['metadata_refresh' => true]]);
+        app(ConnectionService::class)->update(self::TENANT, $leaving->id, ['settings' => ['metadata_refresh' => null]], Clients::browser());
+        app(ConnectionService::class)->update(self::TENANT, $anchored->id, ['settings' => ['metadata_refresh' => true]], Clients::browser());
 
         self::assertSame('2026-10-31T09:30:00+00:00', $this->row($leaving)->metadata_fetched_at?->toIso8601String());
         self::assertNull($this->expiry()->expiresAt($this->row($leaving)));
@@ -458,11 +459,11 @@ final class SamlRefreshRuleTest extends TestCase
 
         $this->anchor($connection, self::idp()->certificate());
 
-        app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['force_authn' => true]]);
+        app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['force_authn' => true]], Clients::browser());
 
         self::assertSame('2026-09-22T09:30:00+00:00', $this->row($connection)->metadata_fetched_at?->toIso8601String());
 
-        app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_url' => self::URL]]);
+        app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_url' => self::URL]], Clients::browser());
 
         self::assertNull($this->row($connection)->metadata_fetched_at);
         self::assertSame([$connection->id], $this->refresher()->dueConnectionIds());
@@ -484,7 +485,7 @@ final class SamlRefreshRuleTest extends TestCase
 
         $this->app?->instance(Freshness::class, $freshness);
 
-        $refused = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $refused = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
 
         self::assertSame([RefreshOutcome::REFUSED, FailureReason::FRESHNESS_REQUIRED], [$refused->outcome, $refused->reason]);
         self::assertSame([FreshnessOperation::CONNECTION_TRUST], array_column($freshness->asked(), 'operation'));
@@ -493,7 +494,7 @@ final class SamlRefreshRuleTest extends TestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        $refreshed = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor());
+        $refreshed = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
         $row       = $this->row($connection);
 
         self::assertSame(RefreshOutcome::REFRESHED, $refreshed->outcome);
@@ -520,11 +521,11 @@ final class SamlRefreshRuleTest extends TestCase
 
         $connection = $this->saml();
 
-        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor())->isRefreshed());
+        self::assertTrue($this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->isRefreshed());
 
         $this->clock->advance(86400 * 365);
 
-        app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => true]]);
+        app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => true]], Clients::browser());
 
         self::assertFalse($this->expiry()->isExpired($this->row($connection)));
         self::assertSame([$connection->id], $this->refresher()->dueConnectionIds());
@@ -556,7 +557,7 @@ final class SamlRefreshRuleTest extends TestCase
      */
     private function anchor(Connection $connection, string $certificate): string
     {
-        self::assertTrue(app(KeyService::class)->trustCertificate(self::TENANT, $connection->id, $certificate, null, KeyUse::METADATA_SIGNING)->isSucceeded());
+        self::assertTrue(app(KeyService::class)->trustCertificate(self::TENANT, $connection->id, $certificate, Clients::browser(), null, KeyUse::METADATA_SIGNING)->isSucceeded());
 
         $id = ConnectionKey::query()->where('connection_id', $connection->id)->where('use', KeyUse::METADATA_SIGNING->value)->latest('id')->value('id');
 

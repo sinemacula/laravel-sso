@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
+use Tests\Integration\Examples\Clients;
 
 /**
  * The example application's provisioning listener (SSO-8.6): a new identity for
@@ -47,7 +48,7 @@ final class ProvisionNewPeople
         $database->beginTransaction();
 
         try {
-            $answer = app(ProvisioningHelper::class)->link($event->grant, $event->result, $person);
+            $answer = app(ProvisioningHelper::class)->link($event->grant, $event->result, $person, Clients::browser());
         } catch (\Throwable $exception) {
             $database->rollBack();
 

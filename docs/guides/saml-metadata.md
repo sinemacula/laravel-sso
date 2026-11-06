@@ -65,17 +65,22 @@ $changes = ['settings' => $proposed->settings()];
 $fetch   = $proposed->fetch(); // null for metadata given as XML
 
 $saved = $fetch === null
-    ? app(ConnectionService::class)->update($tenant->id, $connection->id, $changes, $actor)
-    : app(ImportSaver::class)->save($tenant->id, $connection->id, $changes, $fetch, $actor);
+    ? app(ConnectionService::class)->update($tenant->id, $connection->id, $changes, $client, $actor)
+    : app(ImportSaver::class)->save($tenant->id, $connection->id, $changes, $fetch, $client, $actor);
 
 if (!$saved->isSucceeded()) {
     return back()->withErrors(['metadata' => $saved->reason?->value]);
 }
 
 foreach ($proposed->signingCertificates() as $certificate) {
-    app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $certificate['certificate'], $actor);
+    app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $certificate['certificate'], $client, $actor);
 }
 ```
+
+`$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
+`ClientContext::fromRequest($request)`; work with no request (a console command, a queued job) passes
+`new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
+request itself, and each event it reports carries the client's IP address and user agent.
 
 Each of those asks the freshness contract, as any trust change does: a stale caller's save is refused as
 `freshness_required` and goes back before any certificate is trusted. The proposal never sets the NameID format: choose
@@ -118,7 +123,7 @@ every import that names the connection, and every refresh, must then be signed b
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 
-$trusted = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $actor, KeyUse::METADATA_SIGNING);
+$trusted = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $actor, KeyUse::METADATA_SIGNING);
 ```
 
 The entity must be covered by a signature that verifies with an anchor (its own, or an enclosing aggregate's), and every
@@ -153,11 +158,11 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 
 $updated = app(ConnectionService::class)->update($tenant->id, $connection->id, ['settings' => [
     'metadata_url' => 'https://idp.example.com/metadata.xml',
-]], $actor);
+]], $client, $actor);
 
 // With the provider's or the federation's signing certificate as an anchor,
 // that is all it takes.
-$anchored = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $actor, KeyUse::METADATA_SIGNING);
+$anchored = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $actor, KeyUse::METADATA_SIGNING);
 ```
 
 **Choose what you are trusting.** The two ways of keeping up with a provider's certificates each have a cost:
@@ -258,7 +263,7 @@ deadline from it, and the schedule goes on leaving it alone:
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 
-$result = app(MetadataRefresher::class)->refreshNow($tenant->id, $connection->id, $actor);
+$result = app(MetadataRefresher::class)->refreshNow($tenant->id, $connection->id, $actor, $client);
 
 if ($result->outcome === RefreshOutcome::RATE_LIMITED) {
     return back()->withErrors(['metadata' => "Try again in {$result->retryAfter} seconds."]);

@@ -51,6 +51,7 @@ use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Links\DelegatingLinkStorage;
@@ -266,7 +267,7 @@ final class LinkBranchTest extends LinkingTestCase
 
         $this->app?->instance(Freshness::class, $stale);
 
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $this->connection->id, null, $this->person, null);
+        $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $this->connection->id, Clients::browser(), null, $this->person, null);
 
         self::assertTrue($start->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $start->reason);
@@ -1023,6 +1024,7 @@ final class LinkBranchTest extends LinkingTestCase
             $connectionId ?? $this->connection->id,
             $code,
             $verifier ?? (string) $start->verifier?->reveal(),
+            Clients::browser(),
             $this->person,
         ));
 
@@ -1199,7 +1201,7 @@ final class LinkBranchTest extends LinkingTestCase
      */
     private function hold(IdentityReference $identity, LinkOrigin $origin = LinkOrigin::PROVISIONING, string $subject = VerifyingDriver::SUBJECT): Link
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, $subject), $identity, $origin);
+        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, $subject), $identity, $origin, Clients::browser());
 
         self::assertTrue($creation->isCreated());
 
@@ -1371,7 +1373,7 @@ final class LinkBranchTest extends LinkingTestCase
      */
     private function arrived(): CompletionState
     {
-        return CompletionState::arrived($this->connection->id, new CompletionRequest('GET', 'state=1', []));
+        return CompletionState::arrived($this->connection->id, new CompletionRequest('GET', 'state=1', []), Clients::browser());
     }
 
     /**
@@ -1502,7 +1504,7 @@ final class LinkBranchTest extends LinkingTestCase
         return [
             'occurred_at'                 => $this->clock->now()->utc()->format('Y-m-d\TH:i:s.u\Z'),
             'ip'                          => '203.0.113.7',
-            'user_agent'                  => 'Symfony',
+            'user_agent'                  => Clients::USER_AGENT,
             'connection_id'               => $this->connection->id,
             'connection_tenant_id'        => 'tenant-1',
             'protocol'                    => VerifyingDriver::NAME,

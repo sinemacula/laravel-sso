@@ -35,6 +35,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\RecordsLockOrder;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -119,7 +120,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     public function testASetWritesAndReportsNamesAlone(): void
     {
         $before = Connection::query()->whereKey($this->connection->id)->sole();
-        $result = self::service()->set('tenant-1', $this->connection->id, self::POLICY, new ActingIdentity('App\Models\User', '42'));
+        $result = self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser(), new ActingIdentity('App\Models\User', '42'));
         $after  = Connection::query()->whereKey($this->connection->id)->sole();
         $names  = ['evidence.acr', 'evidence.amr', 'evidence.combinations'];
 
@@ -155,17 +156,20 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
      */
     public function testOnlyWhatChangedIsNamed(): void
     {
-        self::service()->set('tenant-1', $this->connection->id, self::POLICY);
+        self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser());
 
         $this->startRecordingEvents();
 
         $amr = ['amr' => ['pwd', 'otp', 'hwk']] + self::POLICY;
 
-        self::assertSame(['evidence.amr'], self::service()->set('tenant-1', $this->connection->id, $amr)->changedSettings);
+        self::assertSame(['evidence.amr'], self::service()->set('tenant-1', $this->connection->id, $amr, Clients::browser())->changedSettings);
 
         $cut = ['amr' => ['pwd'], 'combinations' => [['amr' => ['pwd']]]];
 
-        self::assertSame(['evidence.acr', 'evidence.amr', 'evidence.combinations'], self::service()->set('tenant-1', $this->connection->id, $cut)->changedSettings);
+        self::assertSame(
+            ['evidence.acr', 'evidence.amr', 'evidence.combinations'],
+            self::service()->set('tenant-1', $this->connection->id, $cut, Clients::browser())->changedSettings,
+        );
         self::assertTrue(SettingRules::isSame($cut, self::service()->get('tenant-1', $this->connection->id)));
         self::assertCount(2, $this->recordedEvents());
     }
@@ -177,11 +181,11 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
      */
     public function testWhatChangedIsNamedAfterWhatDidNot(): void
     {
-        self::service()->set('tenant-1', $this->connection->id, self::POLICY);
+        self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser());
 
         $changed = ['combinations' => [['amr' => ['pwd']]]] + self::POLICY;
 
-        self::assertSame(['evidence.combinations'], self::service()->set('tenant-1', $this->connection->id, $changed)->changedSettings);
+        self::assertSame(['evidence.combinations'], self::service()->set('tenant-1', $this->connection->id, $changed, Clients::browser())->changedSettings);
     }
 
     /**
@@ -192,7 +196,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
      */
     public function testAChangeOfNothingIsUnchanged(): void
     {
-        self::service()->set('tenant-1', $this->connection->id, self::POLICY);
+        self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser());
 
         $this->startRecordingEvents();
 
@@ -204,7 +208,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
 
         foreach ([self::POLICY, $reordered] as $policy) {
 
-            $result = self::service()->set('tenant-1', $this->connection->id, $policy);
+            $result = self::service()->set('tenant-1', $this->connection->id, $policy, Clients::browser());
 
             self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
             self::assertSame([], $result->changedSettings);
@@ -222,9 +226,9 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
      */
     public function testAnEmptyPolicyClearsIt(): void
     {
-        self::service()->set('tenant-1', $this->connection->id, self::POLICY);
+        self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser());
 
-        $result = self::service()->set('tenant-1', $this->connection->id, []);
+        $result = self::service()->set('tenant-1', $this->connection->id, [], Clients::browser());
 
         self::assertSame(['evidence.acr', 'evidence.amr', 'evidence.combinations'], $result->changedSettings);
         self::assertNull(self::column($this->connection->id));
@@ -232,7 +236,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
 
         $this->startRecordingEvents();
 
-        self::assertSame(ConnectionStatus::UNCHANGED, self::service()->set('tenant-1', $this->connection->id, [])->status);
+        self::assertSame(ConnectionStatus::UNCHANGED, self::service()->set('tenant-1', $this->connection->id, [], Clients::browser())->status);
 
         $this->assertEventSequence([]);
     }
@@ -249,7 +253,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
 
         self::assertSame(['other' => true], self::service()->get('tenant-1', $this->connection->id));
 
-        $cleared = self::service()->set('tenant-1', $this->connection->id, []);
+        $cleared = self::service()->set('tenant-1', $this->connection->id, [], Clients::browser());
 
         self::assertSame(['evidence.other'], $cleared->changedSettings);
         self::assertNull(self::column($this->connection->id));
@@ -257,7 +261,10 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
         self::writeColumn($this->connection->id, '5');
 
         self::assertSame([], self::service()->get('tenant-1', $this->connection->id));
-        self::assertSame(['evidence.acr', 'evidence.amr', 'evidence.combinations'], self::service()->set('tenant-1', $this->connection->id, self::POLICY)->changedSettings);
+        self::assertSame(
+            ['evidence.acr', 'evidence.amr', 'evidence.combinations'],
+            self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser())->changedSettings,
+        );
         self::assertTrue(SettingRules::isSame(self::POLICY, self::service()->get('tenant-1', $this->connection->id)));
     }
 
@@ -280,7 +287,10 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
         $this->start();
 
         self::assertSame(LinkState::RESERVED, $link->state);
-        self::assertSame(['evidence.acr', 'evidence.amr', 'evidence.combinations'], self::service()->set('tenant-1', $this->connection->id, self::POLICY)->changedSettings);
+        self::assertSame(
+            ['evidence.acr', 'evidence.amr', 'evidence.combinations'],
+            self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser())->changedSettings,
+        );
 
         self::assertSame($link->id, Link::query()->sole()->id);
         self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
@@ -299,7 +309,13 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     {
         $this->app?->bind(EvidencePolicy::class, ConnectionEvidencePolicy::class);
 
-        app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, LinkOrigin::PROVISIONING);
+        app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            LinkOrigin::PROVISIONING,
+            Clients::browser(),
+        );
 
         $start = $this->start();
 
@@ -309,7 +325,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
 
         $completion = $this->complete();
 
-        self::service()->set('tenant-1', $this->connection->id, self::POLICY);
+        self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser());
 
         self::assertSame(['pwd', 'otp'], $this->admit($completion, $start)->evidence?->methods());
     }
@@ -349,7 +365,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     public function testWhatIsInvalidIsRefused(string $protocol, array $policy, array $violations): void
     {
         $connection = $this->makeConnection(['protocol' => $protocol, 'settings' => [$protocol === 'saml2' ? 'idp_entity_id' : 'issuer' => VerifyingDriver::ISSUER]]);
-        $result     = self::service()->set('tenant-1', $connection->id, $policy);
+        $result     = self::service()->set('tenant-1', $connection->id, $policy, Clients::browser());
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
         self::assertSame(FailureReason::SETTINGS_INVALID, $result->reason);
@@ -381,7 +397,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     #[DataProvider('provideAcceptedMaximumAges')]
     public function testAMaximumAgeUpToTheCeilingIsWritten(int $age): void
     {
-        $result = self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => $age] + self::POLICY);
+        $result = self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => $age] + self::POLICY, Clients::browser());
 
         self::assertTrue($result->isChanged());
         self::assertSame($age, app(EvidenceSettingsService::class)->get('tenant-1', $this->connection->id)['max_age_seconds'] ?? null);
@@ -395,16 +411,16 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
      */
     public function testTheCeilingIsReadAtWriteTime(): void
     {
-        self::assertTrue(self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => 800] + self::POLICY)->isChanged());
+        self::assertTrue(self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => 800] + self::POLICY, Clients::browser())->isChanged());
 
         config()->set('sso.linking.evidence_max_age_seconds', 700);
 
-        $result = self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => 701] + self::POLICY);
+        $result = self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => 701] + self::POLICY, Clients::browser());
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
         self::assertSame([['max_age_seconds', 'not_allowed']], self::violations($result));
         self::assertSame(800, app(EvidenceSettingsService::class)->get('tenant-1', $this->connection->id)['max_age_seconds'] ?? null);
-        self::assertTrue(self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => 700] + self::POLICY)->isChanged());
+        self::assertTrue(self::service()->set('tenant-1', $this->connection->id, ['max_age_seconds' => 700] + self::POLICY, Clients::browser())->isChanged());
     }
 
     /**
@@ -415,7 +431,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     public function testASamlPolicyIsWritten(): void
     {
         $connection = $this->makeConnection(['protocol' => 'saml2', 'settings' => ['idp_entity_id' => VerifyingDriver::ISSUER]]);
-        $result     = self::service()->set('tenant-1', $connection->id, self::SAML_POLICY);
+        $result     = self::service()->set('tenant-1', $connection->id, self::SAML_POLICY, Clients::browser());
 
         self::assertSame(['evidence.authn_context_class_ref', 'evidence.combinations'], $result->changedSettings);
         self::assertTrue(SettingRules::isSame(self::SAML_POLICY, self::service()->get('tenant-1', $connection->id)));
@@ -428,7 +444,12 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
      */
     public function testAViolationNeverEchoesTheValue(): void
     {
-        $result = self::service()->set('tenant-1', $this->connection->id, ['acr' => [self::CLASS_VALUE . "\x01"], 'combinations' => [['acr' => self::CLASS_VALUE]]]);
+        $result = self::service()->set(
+            'tenant-1',
+            $this->connection->id,
+            ['acr' => [self::CLASS_VALUE . "\x01"], 'combinations' => [['acr' => self::CLASS_VALUE]]],
+            Clients::browser(),
+        );
 
         self::assertSame([['acr.0', 'invalid_format'], ['combinations.0.acr', 'not_allowed']], self::violations($result));
         self::assertStringNotContainsString(self::CLASS_VALUE, (string) json_encode($result));
@@ -458,7 +479,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     {
         $this->app?->instance(Freshness::class, FakeFreshness::stale());
 
-        $result = self::service()->set('tenant-1', $this->connection->id, ['amr' => 'not-a-list']);
+        $result = self::service()->set('tenant-1', $this->connection->id, ['amr' => 'not-a-list'], Clients::browser());
 
         self::assertSame(ConnectionStatus::REFUSED, $result->status);
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
@@ -478,7 +499,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     {
         foreach ([['tenant-2', $this->connection->id], ['TENANT-1', $this->connection->id], ['tenant-1', '01jbexampleconnection00000']] as [$tenant, $id]) {
 
-            $result = self::service()->set($tenant, $id, self::POLICY);
+            $result = self::service()->set($tenant, $id, self::POLICY, Clients::browser());
 
             self::assertSame(ConnectionStatus::REFUSED, $result->status);
             self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $result->reason);
@@ -529,7 +550,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
             }
         });
 
-        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, self::service()->set('tenant-1', $id, self::POLICY)->reason);
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, self::service()->set('tenant-1', $id, self::POLICY, Clients::browser())->reason);
 
         $this->assertEventSequence([]);
     }
@@ -562,7 +583,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
             config()->set($feature, false);
         }
 
-        $result = self::service()->set('tenant-1', $connection->id, ['not' => 'judged']);
+        $result = self::service()->set('tenant-1', $connection->id, ['not' => 'judged'], Clients::browser());
 
         self::assertSame(ConnectionStatus::REFUSED, $result->status);
         self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $result->reason);
@@ -582,7 +603,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     {
         $attempts = [
             fn (): mixed => self::service()->get('', $this->connection->id),
-            fn (): mixed => self::service()->set('', $this->connection->id, self::POLICY),
+            fn (): mixed => self::service()->set('', $this->connection->id, self::POLICY, Clients::browser()),
         ];
 
         foreach ($attempts as $attempt) {
@@ -604,8 +625,8 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     {
         $this->captureLogs();
 
-        self::service()->set('tenant-1', $this->connection->id, self::POLICY);
-        self::service()->set('tenant-1', $this->connection->id, ['acr' => [self::CLASS_VALUE . "\x01"]]);
+        self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser());
+        self::service()->set('tenant-1', $this->connection->id, ['acr' => [self::CLASS_VALUE . "\x01"]], Clients::browser());
 
         self::assertSame([], $this->capturedLogRecords());
     }
@@ -624,7 +645,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
 
         try {
             $database->transaction(function (): void {
-                self::assertTrue(self::service()->set('tenant-1', $this->connection->id, self::POLICY)->isChanged());
+                self::assertTrue(self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser())->isChanged());
 
                 throw new \RuntimeException('The caller failed.');
             });
@@ -647,7 +668,13 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
      */
     public function testTheOnlyLockIsTheRowARedemptionLocksFirst(): void
     {
-        app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, LinkOrigin::PROVISIONING);
+        app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            LinkOrigin::PROVISIONING,
+            Clients::browser(),
+        );
 
         $start      = $this->start();
         $completion = $this->complete();
@@ -655,12 +682,12 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
 
         $this->recordLockOrder();
 
-        self::service()->set('tenant-1', $this->connection->id, self::POLICY);
+        self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser());
 
         self::assertSame([$row], $this->lockOrder());
 
-        self::service()->set('tenant-1', $this->connection->id, self::POLICY);
-        self::service()->set('tenant-1', $this->connection->id, ['other' => true]);
+        self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser());
+        self::service()->set('tenant-1', $this->connection->id, ['other' => true], Clients::browser());
 
         self::assertSame([$row, $row, $row], $this->lockOrder());
         self::assertSame(0, $this->enforcementStatements());

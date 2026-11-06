@@ -23,6 +23,7 @@ use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -99,7 +100,7 @@ final class ExpiryNotifierTest extends TestCase
             $seen = ConnectionKey::query()->whereKey($key->id)->sole();
         });
 
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key, Clients::browser()));
 
         self::assertInstanceOf(ConnectionKey::class, $seen);
         self::assertNull($seen->expiry_notified_threshold);
@@ -129,7 +130,7 @@ final class ExpiryNotifierTest extends TestCase
             $statements[] = strtolower($query->sql);
         });
 
-        $this->notifier()->notify($key);
+        $this->notifier()->notify($key, Clients::browser());
 
         $locks = array_values(array_filter($statements, static fn (string $sql): bool => str_contains($sql, 'for update')));
 
@@ -154,7 +155,7 @@ final class ExpiryNotifierTest extends TestCase
             $seen = ConnectionKey::query()->whereKey($key->id)->sole()->expiry_claimed_until;
         });
 
-        $this->notifier()->notify($key);
+        $this->notifier()->notify($key, Clients::browser());
 
         self::assertSame('2026-11-01T12:01:00Z', $seen?->format('Y-m-d\TH:i:s\Z'));
     }
@@ -177,7 +178,7 @@ final class ExpiryNotifierTest extends TestCase
             }
         });
 
-        self::assertSame(ExpiryNotice::FAILED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::FAILED, $this->notifier()->notify($key, Clients::browser()));
 
         $stored = ConnectionKey::query()->whereKey($key->id)->sole();
 
@@ -193,7 +194,7 @@ final class ExpiryNotifierTest extends TestCase
         self::assertSame(['key_id' => $key->id, 'exception' => \RuntimeException::class], $records[0]['context']);
         $this->assertNothingLoggedContains('a secret the listener held');
 
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key, Clients::browser()));
         self::assertSame(2, $calls);
         self::assertSame(1, ConnectionKey::query()->whereKey($key->id)->sole()->expiry_notified_threshold);
     }
@@ -209,17 +210,17 @@ final class ExpiryNotifierTest extends TestCase
     {
         $key = $this->key(self::DAY, ['expiry_claimed_until' => CarbonImmutable::parse(self::NOW)->addSeconds(10)]);
 
-        self::assertSame(ExpiryNotice::CLAIMED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::CLAIMED, $this->notifier()->notify($key, Clients::browser()));
         $this->assertNoEvents();
 
         $this->clock->advance(9);
 
-        self::assertSame(ExpiryNotice::CLAIMED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::CLAIMED, $this->notifier()->notify($key, Clients::browser()));
         $this->assertNoEvents();
 
         $this->clock->advance(1);
 
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key, Clients::browser()));
         $this->assertEventSequence([KeyNearingExpiry::class]);
     }
 
@@ -237,7 +238,7 @@ final class ExpiryNotifierTest extends TestCase
         $this->failStatement('/^update .*expiry_notified_threshold/');
 
         try {
-            $this->notifier()->notify($key);
+            $this->notifier()->notify($key, Clients::browser());
             self::fail('The failure did not propagate.');
         } catch (\Throwable $exception) {
             self::assertTrue(self::isInjectedFailure($exception));
@@ -250,11 +251,11 @@ final class ExpiryNotifierTest extends TestCase
         self::assertNull($stored->expiry_notified_threshold);
         self::assertNotNull($stored->expiry_claimed_until);
 
-        self::assertSame(ExpiryNotice::CLAIMED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::CLAIMED, $this->notifier()->notify($key, Clients::browser()));
 
         $this->clock->advance(300);
 
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key, Clients::browser()));
         $this->assertEventSequence([KeyNearingExpiry::class, KeyNearingExpiry::class]);
     }
 
@@ -270,7 +271,7 @@ final class ExpiryNotifierTest extends TestCase
 
         $this->deadlockStatement('/^update .*expiry_claimed_until/', 2);
 
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key, Clients::browser()));
         self::assertSame(2, $this->databaseFailuresFired());
 
         $other = $this->key(self::DAY);
@@ -278,7 +279,7 @@ final class ExpiryNotifierTest extends TestCase
         $this->deadlockStatement('/^update .*expiry_claimed_until/', 3);
 
         try {
-            $this->notifier()->notify($other);
+            $this->notifier()->notify($other, Clients::browser());
             self::fail('The third deadlock did not propagate.');
         } catch (\Throwable $exception) {
             self::assertTrue(self::isInjectedFailure($exception));
@@ -300,7 +301,7 @@ final class ExpiryNotifierTest extends TestCase
         $this->failStatement('/^update .*expiry_claimed_until/');
 
         try {
-            $this->notifier()->notify($key);
+            $this->notifier()->notify($key, Clients::browser());
             self::fail('The failure did not propagate.');
         } catch (\Throwable $exception) {
             self::assertTrue(self::isInjectedFailure($exception));
@@ -322,20 +323,20 @@ final class ExpiryNotifierTest extends TestCase
 
         ConnectionKey::query()->whereKey($removed->id)->delete();
 
-        self::assertNull($this->notifier()->notify($removed));
+        self::assertNull($this->notifier()->notify($removed, Clients::browser()));
 
         $retired = $this->key(self::DAY);
 
         ConnectionKey::query()->whereKey($retired->id)->update(['state' => KeyState::RETIRING->value, 'retiring_until' => '2026-11-01 12:00:00']);
 
-        self::assertNull($this->notifier()->notify($retired));
+        self::assertNull($this->notifier()->notify($retired, Clients::browser()));
         self::assertNull(ConnectionKey::query()->whereKey($retired->id)->sole()->expiry_claimed_until);
 
         $orphan = $this->key(self::DAY);
 
         Connection::query()->whereKey($this->connection->id)->delete();
 
-        self::assertNull($this->notifier()->notify($orphan));
+        self::assertNull($this->notifier()->notify($orphan, Clients::browser()));
 
         $this->assertNoEvents();
     }
@@ -352,9 +353,9 @@ final class ExpiryNotifierTest extends TestCase
         $open   = $this->key(self::DAY, ['state' => KeyState::RETIRING]);
         $next   = $this->key(self::DAY, ['state' => KeyState::NEXT]);
 
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($within));
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($open));
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($next));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($within, Clients::browser()));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($open, Clients::browser()));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($next, Clients::browser()));
     }
 
     /**
@@ -371,7 +372,7 @@ final class ExpiryNotifierTest extends TestCase
             ConnectionKey::query()->whereKey($key->id)->delete();
         });
 
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key, Clients::browser()));
         self::assertFalse(ConnectionKey::query()->whereKey($key->id)->exists());
     }
 
@@ -387,15 +388,15 @@ final class ExpiryNotifierTest extends TestCase
 
         ConnectionKey::query()->whereKey($read->id)->update(['expiry_notified_threshold' => 1]);
 
-        self::assertSame(ExpiryNotice::ALREADY_NOTIFIED, $this->notifier()->notify($read));
+        self::assertSame(ExpiryNotice::ALREADY_NOTIFIED, $this->notifier()->notify($read, Clients::browser()));
 
         ConnectionKey::query()->whereKey($read->id)->update(['expiry_notified_threshold' => 0]);
 
-        self::assertSame(ExpiryNotice::ALREADY_NOTIFIED, $this->notifier()->notify($read));
+        self::assertSame(ExpiryNotice::ALREADY_NOTIFIED, $this->notifier()->notify($read, Clients::browser()));
 
         ConnectionKey::query()->whereKey($read->id)->update(['expiry_notified_threshold' => 7]);
 
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($read));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($read, Clients::browser()));
 
         $this->assertEventSequence([KeyNearingExpiry::class]);
     }
@@ -412,7 +413,7 @@ final class ExpiryNotifierTest extends TestCase
 
         config()->set('sso.keys.expiry_thresholds', [5, 0]);
 
-        self::assertSame(ExpiryNotice::NOT_DUE, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::NOT_DUE, $this->notifier()->notify($key, Clients::browser()));
         $this->assertNoEvents();
     }
 
@@ -434,7 +435,7 @@ final class ExpiryNotifierTest extends TestCase
             ]);
         });
 
-        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::NOTIFIED, $this->notifier()->notify($key, Clients::browser()));
 
         $stored = ConnectionKey::query()->whereKey($key->id)->sole();
 
@@ -459,7 +460,7 @@ final class ExpiryNotifierTest extends TestCase
             throw new \RuntimeException('down');
         });
 
-        self::assertSame(ExpiryNotice::FAILED, $this->notifier()->notify($key));
+        self::assertSame(ExpiryNotice::FAILED, $this->notifier()->notify($key, Clients::browser()));
         self::assertSame('2026-11-01T13:00:00Z', ConnectionKey::query()->whereKey($key->id)->sole()->expiry_claimed_until?->format('Y-m-d\TH:i:s\Z'));
     }
 

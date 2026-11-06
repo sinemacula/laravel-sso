@@ -91,7 +91,7 @@ still published, one whose record has gone and one whose lookup fails:
 
 <!-- snippet: tests/Integration/Examples/DomainRechecks/DomainRechecksExampleTest.php#recheck-from-code -->
 ```php
-$report = app(DomainRechecker::class)->recheckAll();
+$report = app(DomainRechecker::class)->recheckAll(new ClientContext(null, null)); // no client, as the schedule runs it
 
 self::assertTrue($report->hasLookupFailures());
 self::assertFalse($report->hasResolverThrows());

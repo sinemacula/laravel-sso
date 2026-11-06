@@ -5,12 +5,12 @@ declare(strict_types = 1);
 namespace Tests\Feature\Completion;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionEvents;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
@@ -31,6 +31,7 @@ use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
@@ -124,10 +125,6 @@ final class OidcCompletionEventSequenceTest extends TestCase
 
         $this->app?->instance(Clock::class, $clock);
         $this->app?->instance(Fetcher::class, $this->fetcher);
-        $this->app?->instance('request', Request::create('https://sp.example.test/auth/sso/connections/x/callback', 'GET', server: [
-            'REMOTE_ADDR'     => self::IP,
-            'HTTP_USER_AGENT' => self::USER_AGENT,
-        ]));
 
         config()->set('sso.features.oidc', true);
         config()->set('sso.endpoints.base_url', 'https://sp.example.test');
@@ -525,7 +522,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
         $connection = $this->connection();
         $grant      = $this->granted($connection);
 
-        $result = app(CompletionService::class)->callback($connection->id, new CompletionRequest('GET', $query($grant), []));
+        $result = app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connection->id, new CompletionRequest('GET', $query($grant), []), self::client());
 
         self::assertSame($reason, $result->reason);
 
@@ -634,7 +631,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
      */
     private function receiveCallback(Connection $connection, FakeAuthorization $grant): CompletionResult
     {
-        return app(CompletionService::class)->callback($connection->id, new CompletionRequest('GET', $grant->query(), []));
+        return app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connection->id, new CompletionRequest('GET', $grant->query(), []), self::client());
     }
 
     /**
@@ -667,7 +664,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
      */
     private function startUrl(Connection $connection, Purpose $purpose = Purpose::SIGN_IN, ?IdentityReference $identity = null, ?string $session = null): string
     {
-        $started = app(AuthorizationRequestService::class)->start('web', $purpose, $connection->id, null, $identity, $session);
+        $started = app(AuthorizationRequestService::class)->start('web', $purpose, $connection->id, self::client(), null, $identity, $session);
 
         self::assertTrue($started->isStarted());
 
@@ -720,5 +717,16 @@ final class OidcCompletionEventSequenceTest extends TestCase
     private static function next(): FakeSigningKey
     {
         return self::$next ??= FakeSigningKey::rsa('rsa-2');
+    }
+
+    /**
+     * The client every action of the test is taken for: the browser's IP
+     * address and user agent, which its events carry.
+     *
+     * @return \SineMacula\Laravel\Sso\Http\ClientContext
+     */
+    private static function client(): ClientContext
+    {
+        return new ClientContext(self::IP, self::USER_AGENT);
     }
 }

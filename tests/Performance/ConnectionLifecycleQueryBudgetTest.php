@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 
 /**
@@ -79,7 +80,7 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
 
         config()->set('sso.features.oidc', true);
 
-        $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC);
+        $created = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC);
 
         $this->connection = Connection::query()->whereKey((string) $created->connection?->id)->sole();
         $this->connection->forceFill(['enabled' => true])->save();
@@ -97,8 +98,8 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
      */
     public function testDisablingIsTwoReadsAndFiveWrites(): void
     {
-        $disabled = $this->assertQueryBudget(2, 5, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id));
-        $again    = $this->assertQueryBudget(2, 0, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id));
+        $disabled = $this->assertQueryBudget(2, 5, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser()));
+        $again    = $this->assertQueryBudget(2, 0, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser()));
 
         self::assertSame(ConnectionStatus::DISABLED, $disabled->status);
         self::assertSame(ConnectionStatus::UNCHANGED, $again->status);
@@ -115,7 +116,7 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     {
         $this->makeLinks();
 
-        $result = $this->assertQueryBudget(3, 10, fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->connection->id));
+        $result = $this->assertQueryBudget(3, 10, fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->connection->id, Clients::browser()));
 
         self::assertSame(ConnectionStatus::DELETED, $result->status);
         self::assertSame(0, Link::query()->count());
@@ -174,7 +175,7 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
      */
     private function updateSettings(array $settings): ConnectionResult
     {
-        return $this->connections()->update(self::TENANT, $this->connection->id, ['settings' => $settings]);
+        return $this->connections()->update(self::TENANT, $this->connection->id, ['settings' => $settings], Clients::browser());
     }
 
     /**

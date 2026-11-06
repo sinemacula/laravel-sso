@@ -43,6 +43,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RaceFlows;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -610,7 +611,13 @@ final class RedemptionRollbackTest extends LinkingTestCase
      */
     private function hold(LinkOrigin $origin): Link
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, $origin);
+        $creation = app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            $origin,
+            Clients::browser(),
+        );
 
         self::assertTrue($creation->isCreated());
 
@@ -660,14 +667,22 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * What a redemption is called with.
+     * What a redemption is called with, by the name of each parameter.
      *
      * @param  array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: string, 2: string, 3: ?\SineMacula\Laravel\Sso\Identities\IdentityReference}  $redeeming
-     * @return array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: string, 2: string, 3: string, 4: string, 5: ?\SineMacula\Laravel\Sso\Identities\IdentityReference}
+     * @return array<string, mixed>
      */
     private function redemptionArguments(array $redeeming): array
     {
-        return [$redeeming[0], 'web', $this->connection->id, $redeeming[1], $redeeming[2], $redeeming[3]];
+        return [
+            'purpose'      => $redeeming[0],
+            'application'  => 'web',
+            'connectionId' => $this->connection->id,
+            'code'         => $redeeming[1],
+            'verifier'     => $redeeming[2],
+            'client'       => Clients::browser(),
+            'caller'       => $redeeming[3],
+        ];
     }
 
     /**

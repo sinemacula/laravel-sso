@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshed;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
@@ -27,9 +28,11 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * any other value of the metadata: a refresh names the settings it changed,
  * never their values.
  *
- * It holds the projection and the dispatcher, both of which read the clock, the
- * request and the transaction from the container on each call, so nothing of
- * one refresh is kept for the next (SSO-11.2).
+ * Every method takes the client the action is taken for (`Http\ClientContext`),
+ * whose IP address and user agent the event's context carries; nothing reads
+ * the request being served. It holds the projection and the dispatcher, which
+ * read the clock and the transaction from the container on each call, so
+ * nothing of one refresh is kept for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,15 +65,16 @@ final readonly class MetadataEvents
      * @param  int  $metadataVersion
      * @param  bool  $trustChanged
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function refreshed(Connection $connection, array $changedSettings, int $metadataVersion, bool $trustChanged, ?ActingIdentity $actor): void
+    public function refreshed(Connection $connection, array $changedSettings, int $metadataVersion, bool $trustChanged, ?ActingIdentity $actor, ClientContext $client): void
     {
         $names = array_values(array_unique($changedSettings));
 
-        $this->dispatcher->dispatch(new MetadataRefreshed($this->context($connection, $actor), $names, $metadataVersion, $trustChanged));
+        $this->dispatcher->dispatch(new MetadataRefreshed($this->context($connection, $actor, $client), $names, $metadataVersion, $trustChanged));
     }
 
     /**
@@ -82,13 +86,20 @@ final readonly class MetadataEvents
      * @param  int  $failures
      * @param  ?\Carbon\CarbonImmutable  $nextAttemptAt
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function refreshFailed(Connection $connection, FailureReason $reason, int $failures, ?CarbonImmutable $nextAttemptAt, ?ActingIdentity $actor): void
-    {
-        $this->dispatcher->dispatch(new MetadataRefreshFailed($this->context($connection, $actor), $reason, $failures, $nextAttemptAt?->utc()));
+    public function refreshFailed(
+        Connection $connection,
+        FailureReason $reason,
+        int $failures,
+        ?CarbonImmutable $nextAttemptAt,
+        ?ActingIdentity $actor,
+        ClientContext $client,
+    ): void {
+        $this->dispatcher->dispatch(new MetadataRefreshFailed($this->context($connection, $actor, $client), $reason, $failures, $nextAttemptAt?->utc()));
     }
 
     /**
@@ -97,11 +108,13 @@ final readonly class MetadataEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Events\EventContext
      */
-    private function context(Connection $connection, ?ActingIdentity $actor): EventContext
+    private function context(Connection $connection, ?ActingIdentity $actor, ClientContext $client): EventContext
     {
         return $this->contexts->make(
+            $client,
             connectionId: $connection->id,
             connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,

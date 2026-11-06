@@ -40,6 +40,7 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Concerns\FlowRoutes;
 use Tests\Concerns\UsesUnreliableCache;
+use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
@@ -719,7 +720,7 @@ final class CacheOutageTest extends TestCase
     {
         $connection = $this->flowOidcConnection(self::TENANT, "op-outage-keys-{$run}", self::flowKey('outage'), settings: ['client_authentication' => 'private_key_jwt']);
 
-        app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, KeyType::EC);
+        app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC);
 
         return count((array) $this->sendFlowRequest('GET', "/sso/jwks/{$connection->id}")->assertOk()->json('keys'));
     }

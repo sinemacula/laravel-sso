@@ -37,6 +37,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\MakesPrunableRows;
 use Tests\Concerns\RaceFlows;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 
 /**
  * Races `Pruning\Pruner` against what renews or activates a row it has
@@ -903,7 +904,7 @@ final class PruningRacesTest extends LinkingTestCase
     private function activation(string $code, string $verifier): string
     {
         $answer = self::storageDatabase()->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier, Clients::browser()),
         );
 
         return $answer->isRedeemed() ? self::REDEEMED : 'refused:' . $answer->reason?->value;
@@ -916,7 +917,7 @@ final class PruningRacesTest extends LinkingTestCase
      */
     private function renewal(): string
     {
-        $result = app(DomainService::class)->claim('tenant-1', $this->connection->id, self::PENDING);
+        $result = app(DomainService::class)->claim('tenant-1', $this->connection->id, self::PENDING, Clients::browser());
 
         return $result->isRefused() ? 'refused:' . $result->reason?->value : $result->status->value;
     }
@@ -928,7 +929,7 @@ final class PruningRacesTest extends LinkingTestCase
      */
     private function verification(): string
     {
-        $result = app(DomainService::class)->verify('tenant-1', $this->connection->id, self::PENDING);
+        $result = app(DomainService::class)->verify('tenant-1', $this->connection->id, self::PENDING, Clients::browser());
 
         return $result->isRefused() ? 'refused:' . $result->reason?->value : $result->status->value;
     }

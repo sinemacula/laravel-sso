@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\LinkingDiscovery;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
@@ -26,19 +27,20 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 /**
  * What a completion has established so far (SSO-5.6), handed from each stage to
  * the next in `Enums\CompletionStep`'s order: the connection the response
- * arrived for and what arrived; the connection, read from the write connection;
- * the correlation the driver read; the authorisation request, consumed, with
- * what the driver is given of it and the registered application; the
- * enforcement policy as the locks the completion holds show it; the claims the
- * driver verified, what records them against replay, and the result built from
- * them; the identity the result's link resolved to; the latest end of the
- * application's session the provider's deadline sets; the handoff issued; the
- * receipt of a key rotation the response's own validation made; how the
- * result's link resolved; the candidate a reservation holds, which is never the
- * resolved identity; the domain claim locked for linking; the linking policy
- * version the response was validated under; when the verified response stops
- * being valid, which no continuation extends; and what plain reads found to
- * lock before its locked transaction.
+ * arrived for, what arrived and the client it came from, which every event of
+ * the completion and every count against its client takes; the connection, read
+ * from the write connection; the correlation the driver read; the authorisation
+ * request, consumed, with what the driver is given of it and the registered
+ * application; the enforcement policy as the locks the completion holds show
+ * it; the claims the driver verified, what records them against replay, and the
+ * result built from them; the identity the result's link resolved to; the
+ * latest end of the application's session the provider's deadline sets; the
+ * handoff issued; the receipt of a key rotation the response's own validation
+ * made; how the result's link resolved; the candidate a reservation holds,
+ * which is never the resolved identity; the domain claim locked for linking;
+ * the linking policy version the response was validated under; when the
+ * verified response stops being valid, which no continuation extends; and what
+ * plain reads found to lock before its locked transaction.
  *
  * An unsolicited SAML response handed to re-initiation (SSO-5.8) only ever
  * holds the connection, its correlation and, under the connection's lock, its
@@ -62,6 +64,7 @@ final readonly class CompletionState
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @param  ?\SineMacula\Laravel\Sso\Models\AuthorizationRequest  $authorizationRequest
@@ -91,6 +94,9 @@ final readonly class CompletionState
 
         /** What arrived at the endpoint. */
         public CompletionRequest $request,
+
+        /** The client the response arrived from. */
+        public ClientContext $client,
 
         /** The connection, read from the write connection. */
         public ?Connection $connection = null,
@@ -202,15 +208,16 @@ final readonly class CompletionState
 
     /**
      * The state of a completion that has just arrived at the connection's
-     * endpoint.
+     * endpoint from the client.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return self
      */
-    public static function arrived(string $connectionId, CompletionRequest $request): self
+    public static function arrived(string $connectionId, CompletionRequest $request, ClientContext $client): self
     {
-        return new self($connectionId, $request);
+        return new self($connectionId, $request, $client);
     }
 
     /**

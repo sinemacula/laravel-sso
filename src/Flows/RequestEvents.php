@@ -12,6 +12,7 @@ use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -34,9 +35,11 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * is the only flow identifier either carries (SSO-9.8); neither holds the
  * protocol state, the nonce, a verifier or a challenge (SSO-10.4).
  *
- * It holds the projection and the dispatcher, both of which read the clock, the
- * request and the transaction from the container on each call, so nothing of
- * one request is kept for the next (SSO-11.2).
+ * Every method takes the client the action is taken for (`Http\ClientContext`),
+ * whose IP address and user agent the event's context carries; nothing reads
+ * the request being served. It holds the projection and the dispatcher, which
+ * read the clock and the transaction from the container on each call, so
+ * nothing of one request is kept for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,13 +69,15 @@ final readonly class RequestEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function started(Connection $connection, AuthorizationRequest $request): void
+    public function started(Connection $connection, AuthorizationRequest $request, ClientContext $client): void
     {
         $context = $this->contexts->make(
+            $client,
             connectionId: $connection->id,
             connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,
@@ -95,23 +100,28 @@ final readonly class RequestEvents
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $sessionId
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
      * @return void
      *
      * @throws \InvalidArgumentException
+     *
+     * @SuppressWarnings("php:S107")
      */
     public function failed(
         FailureReason $reason,
         Purpose $purpose,
         ?IdentityReference $identity,
         ?string $sessionId,
+        ClientContext $client,
         ?Application $application = null,
         ?Connection $connection = null,
         ?RequestReference $reference = null,
     ): void {
         $context = $this->contexts->make(
+            $client,
             connectionId: $connection?->id,
             connectionTenantId: $connection?->tenant_id,
             protocol: $connection?->protocol,

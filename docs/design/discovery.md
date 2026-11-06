@@ -35,19 +35,19 @@ domain claims and the predicates they are judged by are in `domains.md` and `dom
 
 ### Starting a flow by email
 
-- `Discovery\DiscoveryService::start($application, $purpose, $email, $codeChallenge, $identity, $sessionId)` (`@api`)
-  answers a `Flows\StartResult`. Called inside a transaction open on the storage connection, it is a `LogicException`
-  before anything else (`StorageConnection::assertNoTransaction()`), as a named start is: a match calls the driver,
-  which may reach the identity provider while the caller's transaction kept the connection's lock (SSO-11.5). Its
-  steps run in this order, and each refusal reports exactly one `FlowFailed(Flow::AUTHORIZATION_REQUEST, reason)` and
-  writes no request:
+- `Discovery\DiscoveryService::start($application, $purpose, $email, $client, $codeChallenge, $identity, $sessionId)`
+  (`@api`), the client an `Http\ClientContext` the application builds from the request, answers a `Flows\StartResult`.
+  Called inside a transaction open on the storage connection, it is a `LogicException` before anything else
+  (`StorageConnection::assertNoTransaction()`), as a named start is: a match calls the driver, which may reach the
+  identity provider while the caller's transaction kept the connection's lock (SSO-11.5). Its steps run in this order,
+  and each refusal reports exactly one `FlowFailed(Flow::AUTHORIZATION_REQUEST, reason)` and writes no request:
   1. the purpose's binding, by the named start's own check (`AuthorizationRequestService::assertBinding()`: `sign_in`
      with no identity and no session, `link` for an identity with no session, `reauthenticate` for an identity on a
      session of 1 to 255 bytes): anything else is an `InvalidArgumentException` with the named start's message, before
      anything is counted, read or reported;
-  2. the attempt, counted with `AttemptSubject::authorizationRequest($ip, $domain)`: the IP address of the request
-     being served (none when no request is bound) and the email's normalised domain (none when it does not normalise),
-     never the email; a full counter is `rate_limited` with its wait;
+  2. the attempt, counted with `AttemptSubject::authorizationRequest($client, $domain)`: the IP address of the
+     `Http\ClientContext` the start is given (none for a client with none) and the email's normalised domain (none when
+     it does not normalise), never the email; a full counter is `rate_limited` with its wait;
   3. `Applications\ApplicationGate::admit()`: `application_not_allowed` for an unknown application and for one the
      policy does not allow, alike;
   4. the application must offer discovery (`discoveryEnabled`) while the `discovery` feature is on, else

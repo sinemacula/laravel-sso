@@ -6,6 +6,7 @@ namespace SineMacula\Laravel\Sso\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Bus\Dispatcher;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Metadata\MetadataSettings;
@@ -59,7 +60,7 @@ final class RefreshMetadataCommand extends Command
     public function handle(MetadataRefresher $refresher, MetadataSettings $settings, Dispatcher $bus): int
     {
         try {
-            $line = $this->option('sync') === true ? self::summary($refresher->refreshDue()) : self::queued($refresher, $settings, $bus);
+            $line = $this->option('sync') === true ? self::summary($refresher->refreshDue(new ClientContext(null, null))) : self::queued($refresher, $settings, $bus);
         } catch (\Throwable $exception) {
             $this->error(sprintf('The metadata refresh stopped on %s.', $exception::class));
 

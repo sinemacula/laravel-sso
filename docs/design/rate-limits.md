@@ -23,8 +23,10 @@ always on, why the counters may live on a connection of their own, and how a ful
   | `metadata`              | Importing or refreshing metadata or a discovery document | `per_connection`             |
   | `domain_check`          | Checking a domain's DNS record                           | `per_connection`             |
 
-- A `null` IP address (a console caller) or email domain (no discovery) is not counted: `AttemptSubject::counted()`
-  leaves it out. The connection of a flow counted by connection is always given.
+- The IP address is the one of the `Http\ClientContext` the action was given (`AttemptSubject::authorizationRequest()`,
+  `completion()` and `redemption()` take the context itself). A `null` IP address (a client with none, as a console
+  command passes) or email domain (no discovery) is not counted: `AttemptSubject::counted()` leaves it out. The
+  connection of a flow counted by connection is always given.
 - Every limit is always on. `RateLimiting\AttemptLimits` reads `sso.rate_limits.<flow>.<scope>` on every call, each
   exactly `['max' => int, 'decay_seconds' => int]`, `max` from 1 to 1000000 and `decay_seconds` from 1 to 86400 (an
   integer, or the canonical decimal string `env()` returns). A limit that is missing, `null` or malformed throws an

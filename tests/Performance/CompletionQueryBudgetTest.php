@@ -9,10 +9,12 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
@@ -23,6 +25,7 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
@@ -90,10 +93,11 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 
@@ -250,7 +254,7 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
 
         $request = new CompletionRequest($method, $state === null ? '' : 'state=' . $state, []);
 
-        return $app->make(CompletionService::class)->callback($connectionId ?? $this->connection->id, $request);
+        return $app->make(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connectionId ?? $this->connection->id, $request, Clients::browser());
     }
 
     /**

@@ -25,6 +25,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\Admission;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\SignInBranch;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
 use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
@@ -37,6 +38,7 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\Fixtures\Results\ExampleResults;
 
@@ -131,7 +133,7 @@ final class SignInBranchTest extends LinkingTestCase
             $recheck = app(HandoffRecheck::class);
             $lock    = $recheck->lock($result->tenantId, $result->connectionId, $result->application);
 
-            return $recheck->recheck($result, new HandoffBinding($identity, $linkId, trustVersion: 0), $lock);
+            return $recheck->recheck($result, new HandoffBinding($identity, $linkId, trustVersion: 0), $lock, Clients::browser());
         });
 
         self::assertSame($expected, $outcome);
@@ -484,7 +486,13 @@ final class SignInBranchTest extends LinkingTestCase
      */
     private function linkTheSubject(): void
     {
-        app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $this->person, LinkOrigin::PROVISIONING);
+        app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $this->person,
+            LinkOrigin::PROVISIONING,
+            Clients::browser(),
+        );
     }
 
     /**
@@ -514,7 +522,7 @@ final class SignInBranchTest extends LinkingTestCase
 
             $recheck = app(HandoffRecheck::class);
 
-            return $recheck->admit($result, $binding, $recheck->lock($result->tenantId, $result->connectionId, $result->application));
+            return $recheck->admit($result, $binding, $recheck->lock($result->tenantId, $result->connectionId, $result->application), Clients::browser());
         });
     }
 
@@ -542,10 +550,11 @@ final class SignInBranchTest extends LinkingTestCase
              * Answer the resolution.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 

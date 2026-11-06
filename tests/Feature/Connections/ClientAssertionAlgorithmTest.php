@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Protocols\Oidc\ClientAssertionAlgorithm;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -236,7 +237,7 @@ final class ClientAssertionAlgorithmTest extends TestCase
     public function testAKeyAddedMustFitThePinnedAlgorithm(?string $algorithm, KeyType $type, bool $fits): void
     {
         $connection = $this->connection($algorithm === null ? [] : [self::SETTING => $algorithm]);
-        $result     = app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, $type);
+        $result     = app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), $type);
 
         self::assertSame($fits, $result->isSucceeded());
         self::assertSame($fits ? 1 : 0, ConnectionKey::query()->where('connection_id', $connection->id)->count());
@@ -300,7 +301,7 @@ final class ClientAssertionAlgorithmTest extends TestCase
             }
         });
 
-        $result = app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, KeyType::RSA);
+        $result = app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::RSA);
 
         self::assertEquals([new SettingViolation('key_type', ViolationCode::NOT_ALLOWED)], $result->violations);
         self::assertSame(0, ConnectionKey::query()->where('connection_id', $connection->id)->count());
@@ -327,7 +328,7 @@ final class ClientAssertionAlgorithmTest extends TestCase
      */
     private function update(Connection $connection, ?string $algorithm): ConnectionResult
     {
-        return app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => [self::SETTING => $algorithm]]);
+        return app(ConnectionService::class)->update(self::TENANT, $connection->id, ['settings' => [self::SETTING => $algorithm]], Clients::browser());
     }
 
     /**

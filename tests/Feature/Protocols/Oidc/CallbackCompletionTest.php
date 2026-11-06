@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\Completion;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
@@ -36,6 +37,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -550,7 +552,13 @@ final class CallbackCompletionTest extends TestCase
     {
         $connection ??= $this->connection;
 
-        return app(CallbackCompletion::class)->complete($connection, OidcOptions::of($connection), new CompletionRequest('GET', $query, []), $this->consumed($consumed));
+        return app(CallbackCompletion::class)->complete(
+            $connection,
+            OidcOptions::of($connection),
+            new CompletionRequest('GET', $query, []),
+            $this->consumed($consumed),
+            Clients::browser(),
+        );
     }
 
     /**
@@ -641,10 +649,11 @@ final class CallbackCompletionTest extends TestCase
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
              * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse  $tokens
              * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\IdTokenValidation
              */
             #[\Override]
-            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed): IdTokenValidation
+            public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed, ClientContext $client): IdTokenValidation
             {
                 unset($connection, $options, $consumed);
 

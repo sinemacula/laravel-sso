@@ -81,7 +81,7 @@ final readonly class ReauthenticationBranch implements PurposeBranch
     #[\Override]
     public function judge(RedemptionContext $context): Judgement
     {
-        $now = $this->linker->resolve($context->result);
+        $now = $this->linker->resolve($context->result, $context->client);
 
         return Judgement::of(match (true) {
             $now->isSuspended()                                               => RecheckOutcome::LINK_SUSPENDED,

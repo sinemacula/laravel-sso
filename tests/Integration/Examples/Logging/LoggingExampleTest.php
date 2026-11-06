@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -21,6 +22,7 @@ use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -124,7 +126,7 @@ final class LoggingExampleTest extends ExampleTestCase
         $connectionId = $this->makeOidcConnection($provider);
         $start        = $this->startFlow(Purpose::SIGN_IN, $connectionId);
         $query        = $provider->authorize($start)->errorQuery('access_denied', 'The user cancelled the sign-in.');
-        $result       = app(CompletionService::class)->callback($connectionId, new CompletionRequest('GET', $query, []));
+        $result       = app(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connectionId, new CompletionRequest('GET', $query, []), Clients::browser());
         $redirect     = HandoffRedirect::from(app(CompletionResponses::class)->from($result, 'GET'));
 
         self::assertSame(FailureReason::PROVIDER_ERROR->value, $redirect->error);

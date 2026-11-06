@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
+use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
@@ -47,6 +48,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesEnforcement;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 
 /**
  * Query budgets for whole flows through the real orchestration (SSO-5.1,
@@ -354,7 +356,7 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
         $redemption = $app->make(HandoffRedemption::class);
 
         DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => $redemption->admit(Purpose::SIGN_IN, 'web', $connection->id, 'a-value-that-creates-the-counter', 'a-verifier'),
+            static fn (): RedemptionResult => $redemption->admit(Purpose::SIGN_IN, 'web', $connection->id, 'a-value-that-creates-the-counter', 'a-verifier', Clients::browser()),
         );
     }
 
@@ -370,7 +372,7 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connection->id);
+        return $app->make(AuthorizationRequestService::class)->start('web', Purpose::SIGN_IN, $connection->id, Clients::browser());
     }
 
     /**
@@ -383,7 +385,7 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(DiscoveryService::class)->start('discovering', Purpose::SIGN_IN, self::EMAIL);
+        return $app->make(DiscoveryService::class)->start('discovering', Purpose::SIGN_IN, self::EMAIL, Clients::browser());
     }
 
     /**
@@ -398,7 +400,7 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(CompletionService::class)->callback($connection->id, new CompletionRequest('GET', $query, []));
+        return $app->make(CompletionService::class)->complete(CompletionEndpoint::CALLBACK, $connection->id, new CompletionRequest('GET', $query, []), Clients::browser());
     }
 
     /**
@@ -413,7 +415,7 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(CompletionService::class)->assertionConsumerService($connection->id, $request);
+        return $app->make(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $connection->id, $request, Clients::browser());
     }
 
     /**
@@ -435,7 +437,7 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
         $verifier   = (string) $start->verifier?->reveal();
 
         return DB::connection(StorageConnection::name())->transaction(
-            static fn (): RedemptionResult => $redemption->admit(Purpose::SIGN_IN, 'web', $connection->id, $code, $verifier),
+            static fn (): RedemptionResult => $redemption->admit(Purpose::SIGN_IN, 'web', $connection->id, $code, $verifier, Clients::browser()),
         );
     }
 

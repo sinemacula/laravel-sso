@@ -38,6 +38,7 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RaceFlows;
 use Tests\Feature\Linking\LinkingTestCase;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -262,7 +263,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
         $this->startRecordingEvents();
         $this->armFailure($verb, $table);
 
-        self::assertInjectedFailure(fn (): mixed => app(EnforcementService::class)->update(self::TENANT, true, [$this->connection->id, $second->id]));
+        self::assertInjectedFailure(fn (): mixed => app(EnforcementService::class)->update(self::TENANT, true, [$this->connection->id, $second->id], Clients::browser()));
 
         self::assertSame($before, $this->stored());
         self::assertSame(1, self::storageDatabase()->table(self::REVOKED)->count());
@@ -303,7 +304,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
 
         $this->armFailure($verb, $table, $occurrence);
 
-        self::assertInjectedFailure(static fn (): mixed => app(DomainRechecker::class)->recheck($claim));
+        self::assertInjectedFailure(static fn (): mixed => app(DomainRechecker::class)->recheck($claim, Clients::browser()));
 
         self::assertSame(1, $this->databaseFailuresFired());
 
@@ -355,7 +356,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
         });
 
         try {
-            app(DomainRechecker::class)->recheck($claim);
+            app(DomainRechecker::class)->recheck($claim, Clients::browser());
 
             self::fail('The lapse went on.');
         } catch (\RuntimeException $exception) {
@@ -466,7 +467,12 @@ final class AdministrationRollbackTest extends LinkingTestCase
         $this->makeHandoffCode($changing);
 
         $before = $this->stored();
-        $change = fn (): mixed => app(ConnectionService::class)->update(self::TENANT, $changing->id, ['settings' => ['issuer' => 'https://idp.example.com/moved']]);
+        $change = fn (): mixed => app(ConnectionService::class)->update(
+            self::TENANT,
+            $changing->id,
+            ['settings' => ['issuer' => 'https://idp.example.com/moved']],
+            Clients::browser(),
+        );
 
         $this->armFailure($verb, $table, $occurrence);
 
@@ -515,10 +521,10 @@ final class AdministrationRollbackTest extends LinkingTestCase
         $id = $this->connection->id;
 
         return match ($change) {
-            self::DISABLE  => app(ConnectionLifecycle::class)->disable(self::TENANT, $id),
-            self::DELETE   => app(ConnectionLifecycle::class)->delete(self::TENANT, $id),
-            self::ENFORCE  => app(EnforcementService::class)->update(self::TENANT, true, [$id]),
-            self::DISTRUST => app(KeyService::class)->distrustCertificate(self::TENANT, $id, $this->certificate),
+            self::DISABLE  => app(ConnectionLifecycle::class)->disable(self::TENANT, $id, Clients::browser()),
+            self::DELETE   => app(ConnectionLifecycle::class)->delete(self::TENANT, $id, Clients::browser()),
+            self::ENFORCE  => app(EnforcementService::class)->update(self::TENANT, true, [$id], Clients::browser()),
+            self::DISTRUST => app(KeyService::class)->distrustCertificate(self::TENANT, $id, $this->certificate, Clients::browser()),
             default        => throw new \LogicException(sprintf('No change is named [%s].', $change)),
         };
     }

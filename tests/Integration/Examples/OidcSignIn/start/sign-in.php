@@ -16,9 +16,10 @@ declare(strict_types = 1);
  * @copyright   2026 Sine Macula Limited
  */
 
-/** @var array{connection: string, code_challenge: ?string} $input */
+/** @var array{connection: string, code_challenge: ?string, client: \SineMacula\Laravel\Sso\Http\ClientContext} $input */
 $connectionId  = $input['connection'];
 $codeChallenge = $input['code_challenge'];
+$client        = $input['client'];
 
 // @snippet-start oidc-start-sign-in
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
@@ -28,6 +29,7 @@ $result = app(AuthorizationRequestService::class)->start(
     application: 'web',
     purpose: Purpose::SIGN_IN,
     connectionId: $connectionId,
+    client: $client,
     codeChallenge: $codeChallenge,
 );
 

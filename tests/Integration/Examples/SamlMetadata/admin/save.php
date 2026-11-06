@@ -18,6 +18,8 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\SamlMetadata;
 
+use Tests\Integration\Examples\Clients;
+
 /**
  * @var array{
  *     tenant: \Tests\Integration\Examples\SamlMetadata\Tenant,
@@ -31,6 +33,7 @@ $connection = $input['connection'];
 $proposed   = $input['proposed'];
 $actor      = $input['actor'];
 
+$client = Clients::browser();
 // @snippet-start saml-metadata-save
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\ImportSaver;
@@ -40,15 +43,15 @@ $changes = ['settings' => $proposed->settings()];
 $fetch   = $proposed->fetch(); // null for metadata given as XML
 
 $saved = $fetch === null
-    ? app(ConnectionService::class)->update($tenant->id, $connection->id, $changes, $actor)
-    : app(ImportSaver::class)->save($tenant->id, $connection->id, $changes, $fetch, $actor);
+    ? app(ConnectionService::class)->update($tenant->id, $connection->id, $changes, $client, $actor)
+    : app(ImportSaver::class)->save($tenant->id, $connection->id, $changes, $fetch, $client, $actor);
 
 if (!$saved->isSucceeded()) {
     return back()->withErrors(['metadata' => $saved->reason?->value]);
 }
 
 foreach ($proposed->signingCertificates() as $certificate) {
-    app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $certificate['certificate'], $actor);
+    app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $certificate['certificate'], $client, $actor);
 }
 // @snippet-end saml-metadata-save
 return $saved;

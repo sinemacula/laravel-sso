@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Domains\Enums\RecheckFailure;
 use SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
@@ -66,11 +67,13 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
  * extends to void the domain's open link reservations.
  *
  * It asks no freshness and takes no rate-limit attempt: it is a system job,
- * with no caller and no tenant. A database error, or anything else thrown but
- * by the resolver, propagates (SSO-11.4) and stops the run. It holds the
- * finder, the resolver, the settings, the clock, the reporter, the withdrawal
- * and the logger, none of which keeps anything of one run for the next
- * (SSO-11.2); resolve it per run.
+ * with no caller and no tenant. It takes the client its events carry as an
+ * `Http\ClientContext` and reads no request: the console command and the
+ * schedule pass `new ClientContext(null, null)`. A database error, or anything
+ * else thrown but by the resolver, propagates (SSO-11.4) and stops the run. It
+ * holds the finder, the resolver, the settings, the clock, the reporter, the
+ * withdrawal and the logger, none of which keeps anything of one run for the
+ * next (SSO-11.2); resolve it per run.
  *
  * @api
  *
@@ -127,13 +130,14 @@ final readonly class DomainRechecker
      * Check every verified claim not changed since the run began, least
      * recently confirmed first.
      *
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\RecheckReport
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function recheckAll(): RecheckReport
+    public function recheckAll(ClientContext $client): RecheckReport
     {
         $startedAt = $this->clock->now();
         $entries   = [];
@@ -144,7 +148,7 @@ final readonly class DomainRechecker
             $chunk = self::chunkAfter($startedAt, $after);
 
             foreach ($chunk as $claim) {
-                $entries[] = $this->recheck($claim);
+                $entries[] = $this->recheck($claim, $client);
             }
 
             $after = $chunk === [] ? null : $chunk[count($chunk) - 1];
@@ -159,13 +163,14 @@ final readonly class DomainRechecker
      * that throws is contained: the lease is released and nothing else written.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\RecheckEntry
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function recheck(Domain $claim): RecheckEntry
+    public function recheck(Domain $claim, ClientContext $client): RecheckEntry
     {
         $lease = $this->writeLease($claim);
 
@@ -179,7 +184,7 @@ final readonly class DomainRechecker
             return $this->resolverThrew($claim, $lease, $lookup);
         }
 
-        return $this->transaction(fn (): RecheckEntry => $this->settle($claim, $lease, $lookup));
+        return $this->transaction(fn (): RecheckEntry => $this->settle($claim, $lease, $lookup, $client));
     }
 
     /**
@@ -318,12 +323,13 @@ final readonly class DomainRechecker
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \Carbon\CarbonImmutable  $lease
      * @param  ?\SineMacula\Laravel\Sso\Domains\DnsLookup  $lookup
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\RecheckEntry
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function settle(Domain $claim, CarbonImmutable $lease, ?DnsLookup $lookup): RecheckEntry
+    private function settle(Domain $claim, CarbonImmutable $lease, ?DnsLookup $lookup, ClientContext $client): RecheckEntry
     {
         $connection = self::lockConnection($claim);
         $locked     = $connection === null ? null : $this->domains->find($connection, $claim->domain, true);
@@ -334,11 +340,11 @@ final readonly class DomainRechecker
         }
 
         return match (true) {
-            self::isPastGrace($locked, $now)               => $this->lapse($connection, $locked, $now),
+            self::isPastGrace($locked, $now)               => $this->lapse($connection, $locked, $now, $client),
             $lookup === null                               => RecheckEntry::of($claim, RecheckOutcome::SKIPPED),
-            $lookup->isLookupFailed()                      => $this->lookupFailed($connection, $locked),
-            $lookup->contains($locked->verification_token) => $this->confirm($connection, $locked, $now),
-            default                                        => $this->recordGone($connection, $locked, self::failureOf($lookup), $now),
+            $lookup->isLookupFailed()                      => $this->lookupFailed($connection, $locked, $client),
+            $lookup->contains($locked->verification_token) => $this->confirm($connection, $locked, $now, $client),
+            default                                        => $this->recordGone($connection, $locked, self::failureOf($lookup), $now, $client),
         };
     }
 
@@ -349,11 +355,12 @@ final readonly class DomainRechecker
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $locked
      * @param  \Carbon\CarbonImmutable  $now
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\RecheckEntry
      *
      * @throws \LogicException
      */
-    private function confirm(Connection $connection, Domain $locked, CarbonImmutable $now): RecheckEntry
+    private function confirm(Connection $connection, Domain $locked, CarbonImmutable $now, ClientContext $client): RecheckEntry
     {
         $wasSuspended = $locked->linking_suspended_at !== null;
 
@@ -365,7 +372,7 @@ final readonly class DomainRechecker
         ])->save();
 
         if ($wasSuspended) {
-            $this->events->restored($connection, $locked);
+            $this->events->restored($connection, $locked, $client);
         }
 
         return RecheckEntry::of($locked, $wasSuspended ? RecheckOutcome::RESTORED : RecheckOutcome::CONFIRMED);
@@ -381,11 +388,12 @@ final readonly class DomainRechecker
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $locked
      * @param  \SineMacula\Laravel\Sso\Domains\Enums\RecheckFailure  $failure
      * @param  \Carbon\CarbonImmutable  $now
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\RecheckEntry
      *
      * @throws \InvalidArgumentException
      */
-    private function recordGone(Connection $connection, Domain $locked, RecheckFailure $failure, CarbonImmutable $now): RecheckEntry
+    private function recordGone(Connection $connection, Domain $locked, RecheckFailure $failure, CarbonImmutable $now, ClientContext $client): RecheckEntry
     {
         $wasSuspended = $locked->linking_suspended_at !== null;
 
@@ -400,10 +408,10 @@ final readonly class DomainRechecker
 
         $locked->forceFill(['recheck_leased_until' => null])->save();
 
-        $this->events->recheckFailed($connection, $locked, $failure);
+        $this->events->recheckFailed($connection, $locked, $failure, $client);
 
         if (self::isPastGrace($locked, $now)) {
-            return $this->lapse($connection, $locked, $now);
+            return $this->lapse($connection, $locked, $now, $client);
         }
 
         return RecheckEntry::of($locked, $wasSuspended ? RecheckOutcome::STILL_FAILING : RecheckOutcome::SUSPENDED);
@@ -415,13 +423,14 @@ final readonly class DomainRechecker
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $locked
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\RecheckEntry
      */
-    private function lookupFailed(Connection $connection, Domain $locked): RecheckEntry
+    private function lookupFailed(Connection $connection, Domain $locked, ClientContext $client): RecheckEntry
     {
         $locked->forceFill(['recheck_leased_until' => null])->save();
 
-        $this->events->recheckFailed($connection, $locked, RecheckFailure::LOOKUP_FAILED);
+        $this->events->recheckFailed($connection, $locked, RecheckFailure::LOOKUP_FAILED, $client);
 
         return RecheckEntry::of($locked, RecheckOutcome::LOOKUP_FAILED);
     }
@@ -435,9 +444,10 @@ final readonly class DomainRechecker
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $locked
      * @param  \Carbon\CarbonImmutable  $now
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Domains\RecheckEntry
      */
-    private function lapse(Connection $connection, Domain $locked, CarbonImmutable $now): RecheckEntry
+    private function lapse(Connection $connection, Domain $locked, CarbonImmutable $now, ClientContext $client): RecheckEntry
     {
         $this->withdrawal->linkingWithdrawn($connection, $locked);
 
@@ -451,7 +461,7 @@ final readonly class DomainRechecker
             'recheck_leased_until' => null,
         ])->save();
 
-        $this->events->lapsed($connection, $locked);
+        $this->events->lapsed($connection, $locked, $client);
 
         return RecheckEntry::of($locked, RecheckOutcome::LAPSED);
     }

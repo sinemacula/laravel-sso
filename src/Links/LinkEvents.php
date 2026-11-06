@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Events\LinkRemoved;
 use SineMacula\Laravel\Sso\Events\LinkSuspended;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -34,8 +35,10 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * transaction that made it, after the write (and, for a removal, after the
  * revocation), once; never for a refusal.
  *
- * It holds the projection and the dispatcher, so nothing of one request is kept
- * for the next (SSO-11.2).
+ * Every method takes the client the action is taken for (`Http\ClientContext`),
+ * whose IP address and user agent the event's context carries; nothing reads
+ * the request being served. It holds the projection and the dispatcher, so
+ * nothing of one request is kept for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,6 +69,7 @@ final readonly class LinkEvents
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -80,12 +84,14 @@ final readonly class LinkEvents
         SsoConnection $connection,
         IdentityReference $identity,
         LinkOrigin $origin,
+        ClientContext $client,
         ?ActingIdentity $actor = null,
         ?string $application = null,
         ?Purpose $purpose = null,
         ?RequestReference $reference = null,
     ): void {
         $context = $this->contexts->make(
+            $client,
             connectionId: $connection->getConnectionId(),
             connectionTenantId: $connection->getTenantId(),
             protocol: $connection->getProtocol(),
@@ -106,14 +112,16 @@ final readonly class LinkEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function removed(Connection $connection, IdentityReference $identity, ?ActingIdentity $actor = null): void
+    public function removed(Connection $connection, IdentityReference $identity, ClientContext $client, ?ActingIdentity $actor = null): void
     {
         $context = $this->contexts->make(
+            $client,
             connectionId: $connection->id,
             connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,
@@ -137,15 +145,17 @@ final readonly class LinkEvents
      * @param  string  $linkId
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Flows\RequestReference  $reference
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function activated(Connection $connection, IdentityReference $identity, string $linkId, string $application, RequestReference $reference): void
+    public function activated(Connection $connection, IdentityReference $identity, string $linkId, string $application, RequestReference $reference, ClientContext $client): void
     {
-        $this->created($connection, $identity, LinkOrigin::VERIFIED_DOMAIN, null, $application, Purpose::SIGN_IN, $reference);
+        $this->created($connection, $identity, LinkOrigin::VERIFIED_DOMAIN, $client, null, $application, Purpose::SIGN_IN, $reference);
 
         $context = $this->contexts->make(
+            $client,
             connectionId: $connection->id,
             connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,
@@ -164,15 +174,17 @@ final readonly class LinkEvents
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function confirmed(SsoConnection $connection, IdentityReference $identity, ?string $application = null, ?RequestReference $reference = null): void
+    public function confirmed(SsoConnection $connection, IdentityReference $identity, ClientContext $client, ?string $application = null, ?RequestReference $reference = null): void
     {
         $context = $this->contexts->make(
+            $client,
             connectionId: $connection->getConnectionId(),
             connectionTenantId: $connection->getTenantId(),
             protocol: $connection->getProtocol(),
@@ -193,13 +205,15 @@ final readonly class LinkEvents
      * @param  string  $tenantId
      * @param  string  $protocol
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function suspended(string $connectionId, string $tenantId, string $protocol, IdentityReference $identity): void
+    public function suspended(string $connectionId, string $tenantId, string $protocol, IdentityReference $identity, ClientContext $client): void
     {
         $context = $this->contexts->make(
+            $client,
             connectionId: $connectionId,
             connectionTenantId: $tenantId,
             protocol: $protocol,

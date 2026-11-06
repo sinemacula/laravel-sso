@@ -42,6 +42,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\ComparesIdentitiesWithoutCase;
 use Tests\Concerns\RecordsLockOrder;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -115,7 +116,7 @@ final class LinkConfirmationTest extends LinkingTestCase
         self::assertSame(LinkState::ACTIVE, $kept->state);
         self::assertSame([], array_values(array_filter($this->recordedEvents(), static fn (object $event): bool => $event instanceof LinkConfirmed)));
 
-        self::assertSame(1, $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2')));
+        self::assertSame(1, $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser())));
         self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
     }
 
@@ -398,7 +399,7 @@ final class LinkConfirmationTest extends LinkingTestCase
 
         $this->confirmation->fromLinks = static fn (array $ids): LinkConfirmationVerdict => $ids === [] ? LinkConfirmationVerdict::INDEPENDENT : LinkConfirmationVerdict::DEPENDENT;
 
-        self::assertTrue(app(LinkService::class)->remove($this->person, $first->id)->isRemoved());
+        self::assertTrue(app(LinkService::class)->remove($this->person, $first->id, Clients::browser())->isRemoved());
 
         $this->verifying->claims = self::claimsOf(self::SECOND_SUBJECT);
 
@@ -447,7 +448,7 @@ final class LinkConfirmationTest extends LinkingTestCase
 
         $this->confirmation->verdict = LinkConfirmationVerdict::DEPENDENT;
 
-        self::assertTrue(app(LinkService::class)->remove($this->person, $first->id)->isRemoved());
+        self::assertTrue(app(LinkService::class)->remove($this->person, $first->id, Clients::browser())->isRemoved());
         self::assertNotNull(IdentityGuard::query()->where('identity_hash', IdentityLock::digest($this->person))->sole()->domain_linked_at);
 
         $this->verifying->claims = self::claimsOf(self::SECOND_SUBJECT);
@@ -473,7 +474,7 @@ final class LinkConfirmationTest extends LinkingTestCase
         $first  = $this->linkByDomain();
         $marked = IdentityGuard::query()->sole()->domain_linked_at?->toIso8601String();
 
-        self::assertTrue(app(LinkService::class)->remove($this->person, $first->id)->isRemoved());
+        self::assertTrue(app(LinkService::class)->remove($this->person, $first->id, Clients::browser())->isRemoved());
 
         $this->clock->advance(60);
 
@@ -732,7 +733,7 @@ final class LinkConfirmationTest extends LinkingTestCase
      */
     private function redeemStandalone(?string $code, ?string $verifier): RedemptionResult
     {
-        return app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, (string) $code, (string) $verifier, $this->person);
+        return app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, (string) $code, (string) $verifier, Clients::browser(), $this->person);
     }
 
     /**

@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -132,7 +133,7 @@ final class OidcTrustResetTest extends TestCase
         $code       = $this->makeHandoffCode($connection);
         $before     = self::state($this->row($connection));
 
-        $result = $this->service()->update(self::TENANT, $connection->id, ['settings' => $settings]);
+        $result = $this->service()->update(self::TENANT, $connection->id, ['settings' => $settings], Clients::browser());
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
 
@@ -160,12 +161,15 @@ final class OidcTrustResetTest extends TestCase
         $connection = $this->connection();
         $before     = self::state($this->row($connection));
 
-        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => false]])->status);
+        self::assertSame(
+            ConnectionStatus::UPDATED,
+            $this->service()->update(self::TENANT, $connection->id, ['settings' => ['metadata_refresh' => false]], Clients::browser())->status,
+        );
         self::assertSame($before['metadata_fetched_at'], self::state($this->row($connection))['metadata_fetched_at']);
 
         $moved = ['settings' => ['token_endpoint' => 'https://new.example.test/token']];
 
-        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $connection->id, $moved)->status);
+        self::assertSame(ConnectionStatus::UPDATED, $this->service()->update(self::TENANT, $connection->id, $moved, Clients::browser())->status);
 
         $after = self::state($this->row($connection));
 
@@ -184,7 +188,7 @@ final class OidcTrustResetTest extends TestCase
         $connection = $this->connection();
         $before     = self::state($this->row($connection));
 
-        $result = $this->service()->update(self::TENANT, $connection->id, ['settings' => ['issuer' => self::ISSUER, 'jwks_uri' => self::ISSUER . '/jwks']]);
+        $result = $this->service()->update(self::TENANT, $connection->id, ['settings' => ['issuer' => self::ISSUER, 'jwks_uri' => self::ISSUER . '/jwks']], Clients::browser());
 
         self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
         self::assertSame($before, self::state($this->row($connection)));
@@ -200,7 +204,7 @@ final class OidcTrustResetTest extends TestCase
         $connection = $this->connection();
         $before     = self::state($this->row($connection));
 
-        $result = $this->service()->update(self::TENANT, $connection->id, ['settings' => ['issuer' => 'http://new.example.test']]);
+        $result = $this->service()->update(self::TENANT, $connection->id, ['settings' => ['issuer' => 'http://new.example.test']], Clients::browser());
 
         self::assertSame(ConnectionStatus::INVALID, $result->status);
         self::assertSame($before, self::state($this->row($connection)));
@@ -218,7 +222,7 @@ final class OidcTrustResetTest extends TestCase
         $connection = $this->connection();
         $before     = self::state($this->row($connection));
 
-        $result = $this->service()->update(self::TENANT, $connection->id, ['settings' => ['jwks_uri' => 'https://new.example.test/jwks']]);
+        $result = $this->service()->update(self::TENANT, $connection->id, ['settings' => ['jwks_uri' => 'https://new.example.test/jwks']], Clients::browser());
 
         self::assertSame([ConnectionStatus::REFUSED, FailureReason::FRESHNESS_REQUIRED], [$result->status, $result->reason]);
         self::assertSame($before, self::state($this->row($connection)));
@@ -237,12 +241,12 @@ final class OidcTrustResetTest extends TestCase
         $before     = self::state($this->row($connection));
         $changes    = ['settings' => ['issuer' => 'https://new.example.test']];
 
-        $refused = $this->service()->update(self::TENANT, $connection->id, $changes);
+        $refused = $this->service()->update(self::TENANT, $connection->id, $changes, Clients::browser());
 
         self::assertSame([ConnectionStatus::REFUSED, FailureReason::CONNECTION_HAS_LINKS], [$refused->status, $refused->reason]);
         self::assertSame($before, self::state($this->row($connection)));
 
-        $migrated = app(SubjectMigration::class)->migrate(self::TENANT, $connection->id, $changes, [], [$link->id]);
+        $migrated = app(SubjectMigration::class)->migrate(self::TENANT, $connection->id, $changes, [], [$link->id], Clients::browser());
 
         self::assertSame(ConnectionStatus::MIGRATED, $migrated->status);
         self::assertSame([
@@ -278,11 +282,11 @@ final class OidcTrustResetTest extends TestCase
         $token      = CompactToken::parse(JwsSigner::sign(['alg' => 'RS256', 'kid' => 'rsa-1'], ['sub' => 'a'], self::key()), 16384);
 
         self::assertInstanceOf(CompactToken::class, $token);
-        self::assertSame(KeySelectionOutcome::FOUND, app(ProviderKeys::class)->select($connection, $token, $allowed)->outcome);
+        self::assertSame(KeySelectionOutcome::FOUND, app(ProviderKeys::class)->select($connection, $token, $allowed, Clients::browser())->outcome);
 
-        $this->service()->update(self::TENANT, $connection->id, ['settings' => ['jwks_uri' => $provider->endpoint('jwks')]]);
+        $this->service()->update(self::TENANT, $connection->id, ['settings' => ['jwks_uri' => $provider->endpoint('jwks')]], Clients::browser());
 
-        self::assertSame(KeySelectionOutcome::UNKNOWN, app(ProviderKeys::class)->select($connection, $token, $allowed)->outcome);
+        self::assertSame(KeySelectionOutcome::UNKNOWN, app(ProviderKeys::class)->select($connection, $token, $allowed, Clients::browser())->outcome);
         self::assertSame([$provider->endpoint('jwks')], array_map(static fn (FetchRequest $request): string => $request->url, $fetcher->requests()));
     }
 

@@ -17,6 +17,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\StartingDriver;
 
 /**
@@ -164,7 +165,7 @@ final class DiscoveryQueryBudgetTest extends PerformanceContractTestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(DiscoveryService::class)->start($application, Purpose::SIGN_IN, $email);
+        return $app->make(DiscoveryService::class)->start($application, Purpose::SIGN_IN, $email, Clients::browser());
     }
 
     /**

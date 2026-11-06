@@ -41,6 +41,7 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
 use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -502,7 +503,13 @@ final class ReauthenticationEventSequenceTest extends LinkingTestCase
      */
     private function hold(?IdentityReference $identity = null, LinkOrigin $origin = LinkOrigin::PROVISIONING): Link
     {
-        $creation = app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT), $identity ?? $this->person, $origin);
+        $creation = app(LinkStore::class)->create(
+            $this->connection,
+            new LinkSubject(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT),
+            $identity ?? $this->person,
+            $origin,
+            Clients::browser(),
+        );
 
         self::assertTrue($creation->isCreated());
 
@@ -536,7 +543,7 @@ final class ReauthenticationEventSequenceTest extends LinkingTestCase
         $code     = (string) $completion->handoff?->code->reveal();
         $verifier = (string) $start->verifier?->reveal();
 
-        return app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier);
+        return app(HandoffRedemption::class)->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, $verifier, Clients::browser());
     }
 
     /**
@@ -605,7 +612,7 @@ final class ReauthenticationEventSequenceTest extends LinkingTestCase
         return [
             'occurred_at'                 => self::OCCURRED_AT,
             'ip'                          => '203.0.113.7',
-            'user_agent'                  => 'Symfony',
+            'user_agent'                  => Clients::USER_AGENT,
             'connection_id'               => $this->connection->id,
             'connection_tenant_id'        => 'tenant-1',
             'protocol'                    => VerifyingDriver::NAME,
@@ -635,7 +642,7 @@ final class ReauthenticationEventSequenceTest extends LinkingTestCase
         return [
             'occurred_at'                 => self::OCCURRED_AT,
             'ip'                          => '203.0.113.7',
-            'user_agent'                  => 'Symfony',
+            'user_agent'                  => Clients::USER_AGENT,
             'connection_id'               => $this->connection->id,
             'connection_tenant_id'        => 'tenant-1',
             'protocol'                    => VerifyingDriver::NAME,

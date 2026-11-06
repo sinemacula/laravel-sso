@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
@@ -99,10 +100,13 @@ final class ProviderKeysTest extends TestCase
     {
         $connection = $this->connection(self::stored([self::key()]));
 
-        $found = $this->keys()->select($connection, self::token('rsa-1'), self::rs256());
+        $found = $this->keys()->select($connection, self::token('rsa-1'), self::rs256(), Clients::browser());
 
         self::assertSame([KeySelectionOutcome::FOUND, 'rsa-1'], [$found->outcome, $found->key?->keyId()]);
-        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select(new IdentifiedConnection($connection->id), self::token('rsa-1'), self::rs256())->outcome);
+        self::assertSame(
+            KeySelectionOutcome::FOUND,
+            $this->keys()->select(new IdentifiedConnection($connection->id), self::token('rsa-1'), self::rs256(), Clients::browser())->outcome,
+        );
         self::assertSame([], $this->capturedLogRecords());
 
         $this->fetcher->assertNothingFetched();
@@ -117,7 +121,7 @@ final class ProviderKeysTest extends TestCase
     {
         $gone = new IdentifiedConnection('01jbgoneconnection00000000');
 
-        self::assertSame(KeySelectionOutcome::OVERTAKEN, $this->keys()->select($gone, self::token('rsa-1'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::OVERTAKEN, $this->keys()->select($gone, self::token('rsa-1'), self::rs256(), Clients::browser())->outcome);
         self::assertSame([], $this->capturedLogRecords());
 
         $this->fetcher->assertNothingFetched();
@@ -154,7 +158,7 @@ final class ProviderKeysTest extends TestCase
         $parsed     = CompactToken::parse($token(), 16384);
 
         self::assertInstanceOf(CompactToken::class, $parsed);
-        self::assertSame(KeySelectionOutcome::REFUSED, $this->keys()->select($connection, $parsed, AlgorithmAllowList::of($allowed))->outcome);
+        self::assertSame(KeySelectionOutcome::REFUSED, $this->keys()->select($connection, $parsed, AlgorithmAllowList::of($allowed), Clients::browser())->outcome);
 
         $this->fetcher->assertNothingFetched();
     }
@@ -171,7 +175,7 @@ final class ProviderKeysTest extends TestCase
 
         $this->provider->publish(self::next());
 
-        $found = $this->keys()->select($connection, self::token('rsa-2'), self::rs256());
+        $found = $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), Clients::browser());
 
         self::assertSame([KeySelectionOutcome::FOUND, 'rsa-2'], [$found->outcome, $found->key?->keyId()]);
         self::assertCount(1, $this->fetcher->requests());
@@ -194,7 +198,7 @@ final class ProviderKeysTest extends TestCase
 
         $this->provider->unpublish('rsa-1')->publish(self::key()->withKid(null));
 
-        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('other'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('other'), self::rs256(), Clients::browser())->outcome);
         self::assertCount(1, $this->fetcher->requests());
     }
 
@@ -229,7 +233,7 @@ final class ProviderKeysTest extends TestCase
             $this->provider->publish(self::next());
         }
 
-        self::assertSame($outcome, $this->keys()->select($connection, self::token(null), self::rs256())->outcome);
+        self::assertSame($outcome, $this->keys()->select($connection, self::token(null), self::rs256(), Clients::browser())->outcome);
         self::assertCount(1, $this->fetcher->requests());
     }
 
@@ -244,8 +248,8 @@ final class ProviderKeysTest extends TestCase
         $one = $this->connection(self::stored([self::key()]));
         $two = $this->connection(self::stored([self::key(), self::next()]));
 
-        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($one, self::token(null), self::rs256())->outcome);
-        self::assertSame(KeySelectionOutcome::REFUSED, $this->keys()->select($two, self::token(null), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($one, self::token(null), self::rs256(), Clients::browser())->outcome);
+        self::assertSame(KeySelectionOutcome::REFUSED, $this->keys()->select($two, self::token(null), self::rs256(), Clients::browser())->outcome);
 
         $this->fetcher->assertNothingFetched();
     }
@@ -284,7 +288,7 @@ final class ProviderKeysTest extends TestCase
 
         $this->provider->respond('jwks', $response);
 
-        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), Clients::browser())->outcome);
         self::assertSame([[$level, $message, $context]], $this->logged());
 
         $this->assertNothingLoggedContains('op.example.test', 'detail', self::modulusOf(self::key()));
@@ -309,7 +313,7 @@ final class ProviderKeysTest extends TestCase
             return FakeTokenEndpoint::json(200, $this->provider->jwks());
         });
 
-        $found = $this->keys()->select($connection, self::token('rsa-2'), self::rs256());
+        $found = $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), Clients::browser());
 
         self::assertSame([KeySelectionOutcome::FOUND, 'rsa-2'], [$found->outcome, $found->key?->keyId()]);
         self::assertSame([['warning', 'sso.oidc.jwks_refetch_conflict', ['reason' => 'metadata_conflict', 'fetch_status' => 'fetched']]], $this->logged());
@@ -333,7 +337,7 @@ final class ProviderKeysTest extends TestCase
             return FakeTokenEndpoint::json(200, $this->provider->jwks());
         });
 
-        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), Clients::browser())->outcome);
     }
 
     /**
@@ -358,7 +362,7 @@ final class ProviderKeysTest extends TestCase
             return FakeTokenEndpoint::json(200, $this->provider->jwks());
         });
 
-        $overtaken = $this->keys()->select($changed, self::token('rsa-2'), self::rs256());
+        $overtaken = $this->keys()->select($changed, self::token('rsa-2'), self::rs256(), Clients::browser());
 
         self::assertSame([KeySelectionOutcome::OVERTAKEN, null, true, false], [$overtaken->outcome, $overtaken->key, $overtaken->isOvertaken(), $overtaken->isFound()]);
 
@@ -370,7 +374,7 @@ final class ProviderKeysTest extends TestCase
             return FakeTokenEndpoint::json(200, $this->provider->jwks());
         });
 
-        self::assertSame(KeySelectionOutcome::OVERTAKEN, $this->keys()->select($deleted, self::token('rsa-2'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::OVERTAKEN, $this->keys()->select($deleted, self::token('rsa-2'), self::rs256(), Clients::browser())->outcome);
 
         $winner = self::stored([self::next()]);
 
@@ -382,7 +386,7 @@ final class ProviderKeysTest extends TestCase
             return FakeTokenEndpoint::json(200, $this->provider->jwks());
         });
 
-        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($found, self::token('rsa-2'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($found, self::token('rsa-2'), self::rs256(), Clients::browser())->outcome);
     }
 
     /**
@@ -395,7 +399,7 @@ final class ProviderKeysTest extends TestCase
     {
         $connection = $this->connection(self::stored([self::key()]), ['jwks_refetch_at' => $this->clock()->now()->addSecond()]);
 
-        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), Clients::browser())->outcome);
         self::assertSame([], $this->logged());
 
         $this->fetcher->assertNothingFetched();
@@ -416,11 +420,11 @@ final class ProviderKeysTest extends TestCase
 
         $this->provider->publish(self::next());
 
-        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('other-0'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('other-0'), self::rs256(), Clients::browser())->outcome);
         self::assertSame(['sso.oidc.jwks_refetch_refreshed'], array_column($this->logged(), 1));
 
         foreach (['other-1', 'other-2', 'other-3'] as $kid) {
-            self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token($kid), self::rs256())->outcome);
+            self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token($kid), self::rs256(), Clients::browser())->outcome);
         }
 
         self::assertCount(1, $this->logged());
@@ -429,7 +433,7 @@ final class ProviderKeysTest extends TestCase
 
         $clock->advance(300);
 
-        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('other-4'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('other-4'), self::rs256(), Clients::browser())->outcome);
         self::assertSame([
             ['info', 'sso.oidc.jwks_refetch_refreshed', ['reason' => null, 'fetch_status' => 'fetched']],
             ['info', 'sso.oidc.jwks_refetch_suppressed', ['suppressed' => 3, 'at_most' => 100]],
@@ -448,7 +452,7 @@ final class ProviderKeysTest extends TestCase
     {
         $connection = $this->connection(self::stored([self::key()]), ['jwks_refetch_suppressed' => 7]);
 
-        $this->keys()->select($connection, self::token('secret-kid-value'), self::rs256());
+        $this->keys()->select($connection, self::token('secret-kid-value'), self::rs256(), Clients::browser());
 
         $logged = json_encode($this->logged(), JSON_THROW_ON_ERROR);
 
@@ -458,7 +462,7 @@ final class ProviderKeysTest extends TestCase
 
         $this->clock()->advance(300);
 
-        $this->keys()->select($connection, self::token('secret-kid-value'), self::rs256());
+        $this->keys()->select($connection, self::token('secret-kid-value'), self::rs256(), Clients::browser());
 
         self::assertSame(['sso.oidc.jwks_refetch_refreshed', 'sso.oidc.jwks_refetch_suppressed', 'sso.oidc.jwks_refetch_refreshed'], array_column($this->logged(), 1));
     }
@@ -505,7 +509,7 @@ final class ProviderKeysTest extends TestCase
             Connection::query()->whereKey($connection->id)->update(['updated_at' => $connection->updated_at, ...$change]);
         });
 
-        self::assertSame($outcome, $this->keys()->select($connection, self::token('rsa-2'), self::rs256())->outcome);
+        self::assertSame($outcome, $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), Clients::browser())->outcome);
         self::assertSame([], $this->logged());
 
         $this->fetcher->assertNothingFetched();
@@ -526,7 +530,7 @@ final class ProviderKeysTest extends TestCase
             Connection::query()->whereKey($connection->id)->update(['trust_version' => 9, 'jwks' => self::stored([self::key(), self::next()])]);
         });
 
-        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($connection, self::token('rsa-2'), self::rs256())->outcome);
+        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), Clients::browser())->outcome);
     }
 
     /**
@@ -546,16 +550,16 @@ final class ProviderKeysTest extends TestCase
             return true;
         };
 
-        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), null, $no)->outcome);
+        self::assertSame(KeySelectionOutcome::UNKNOWN, $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), Clients::browser(), null, $no)->outcome);
         self::assertSame(1, $asked);
         self::assertNull($connection->refresh()->jwks_refetch_at);
 
         $this->fetcher->assertNothingFetched();
 
-        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($connection, self::token('rsa-1'), self::rs256(), null, $no)->outcome);
+        self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($connection, self::token('rsa-1'), self::rs256(), Clients::browser(), null, $no)->outcome);
         $psOnly = AlgorithmAllowList::of(['PS256']);
 
-        self::assertSame(KeySelectionOutcome::REFUSED, $this->keys()->select($connection, self::token('rsa-2'), $psOnly, null, $no)->outcome);
+        self::assertSame(KeySelectionOutcome::REFUSED, $this->keys()->select($connection, self::token('rsa-2'), $psOnly, Clients::browser(), null, $no)->outcome);
         self::assertSame(1, $asked);
     }
 
@@ -575,9 +579,9 @@ final class ProviderKeysTest extends TestCase
         $database->beginTransaction();
 
         try {
-            self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($connection, self::token('rsa-1'), self::rs256())->outcome);
+            self::assertSame(KeySelectionOutcome::FOUND, $this->keys()->select($connection, self::token('rsa-1'), self::rs256(), Clients::browser())->outcome);
 
-            $this->keys()->select($connection, self::token('rsa-2'), self::rs256());
+            $this->keys()->select($connection, self::token('rsa-2'), self::rs256(), Clients::browser());
 
             self::fail('A refetch ran inside a transaction.');
         } catch (\LogicException $exception) {

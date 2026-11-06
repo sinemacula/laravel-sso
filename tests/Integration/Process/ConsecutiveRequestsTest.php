@@ -32,6 +32,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Concerns\FlowRoutes;
 use Tests\Concerns\RunsLongLivedApplication;
+use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
@@ -342,10 +343,10 @@ final class ConsecutiveRequestsTest extends TestCase
 
             $helper = app(ProvisioningHelper::class);
 
-            $attempts[] = $helper->link($grantA, $event->result, $identityA)->status;
-            $attempts[] = $helper->link($grantA, $resultA, $identityA)->status;
+            $attempts[] = $helper->link($grantA, $event->result, $identityA, Clients::browser())->status;
+            $attempts[] = $helper->link($grantA, $resultA, $identityA, Clients::browser())->status;
             $usable     = $event->grant->isUsable();
-            $linked     = $helper->link($event->grant, $event->result, $identityB)->isCreated();
+            $linked     = $helper->link($event->grant, $event->result, $identityB, Clients::browser())->isCreated();
         };
 
         Event::listen(ResultUnlinked::class, $listener);
@@ -388,7 +389,7 @@ final class ConsecutiveRequestsTest extends TestCase
             $results[] = $event->result;
 
             if ($linkFirst) {
-                self::assertTrue(app(ProvisioningHelper::class)->link($event->grant, $event->result, $identity)->isCreated());
+                self::assertTrue(app(ProvisioningHelper::class)->link($event->grant, $event->result, $identity, Clients::browser())->isCreated());
             }
 
             $linkFirst = false;
@@ -401,7 +402,7 @@ final class ConsecutiveRequestsTest extends TestCase
 
         foreach ($grants as $index => $grant) {
             self::assertFalse($grant->isUsable());
-            self::assertSame(ProvisioningStatus::GRANT_INVALID, app(ProvisioningHelper::class)->link($grant, $results[$index], $identity)->status);
+            self::assertSame(ProvisioningStatus::GRANT_INVALID, app(ProvisioningHelper::class)->link($grant, $results[$index], $identity, Clients::browser())->status);
         }
 
         self::assertSame(1, Link::query()->useWritePdo()->where('identity_id', $identity->id)->count());
@@ -444,7 +445,7 @@ final class ConsecutiveRequestsTest extends TestCase
         self::assertInstanceOf(ProvisioningGrant::class, $held);
         self::assertInstanceOf(VerifiedResult::class, $result);
         self::assertFalse($held->isUsable());
-        self::assertSame(ProvisioningStatus::GRANT_INVALID, app(ProvisioningHelper::class)->link($held, $result, $identity)->status);
+        self::assertSame(ProvisioningStatus::GRANT_INVALID, app(ProvisioningHelper::class)->link($held, $result, $identity, Clients::browser())->status);
         self::assertSame(0, Link::query()->useWritePdo()->where('identity_id', $identity->id)->count());
         self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
         self::assertSame(self::TENANT_B, $this->signInThroughB()['tenant']);
@@ -500,7 +501,12 @@ final class ConsecutiveRequestsTest extends TestCase
 
             $grant = ProvisioningGrant::issue($event->result, $request->id, $event->grant->verifiedUntil(), $receipt);
 
-            $forged[]    = app(ProvisioningHelper::class)->link($grant, $event->result, new IdentityReference('App\Models\User', 'identity-forged-consecutive'))->status;
+            $forged[] = app(ProvisioningHelper::class)->link(
+                $grant,
+                $event->result,
+                new IdentityReference('App\Models\User', 'identity-forged-consecutive'),
+                Clients::browser(),
+            )->status;
             $untouched[] = $event->grant->isUsable();
         };
 

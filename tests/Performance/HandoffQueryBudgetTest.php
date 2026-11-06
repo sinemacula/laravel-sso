@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -33,6 +34,7 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Links\ExampleLinks;
@@ -99,10 +101,11 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
              * One identity for every result.
              *
              * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
+             * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
              * @return \SineMacula\Laravel\Sso\Links\LinkResolution
              */
             #[\Override]
-            public function resolve(VerifiedResult $result): LinkResolution
+            public function resolve(VerifiedResult $result, ClientContext $client): LinkResolution
             {
                 unset($result);
 
@@ -352,7 +355,7 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
         $caller     = new IdentityReference('App\Models\User', '42');
 
         return DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => $redemption->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER, $caller),
+            fn (): RedemptionResult => $redemption->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser(), $caller),
         );
     }
 

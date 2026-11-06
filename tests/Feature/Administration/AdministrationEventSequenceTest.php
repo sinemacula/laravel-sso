@@ -30,6 +30,7 @@ use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Protocols\ExampleDriver;
@@ -149,7 +150,7 @@ final class AdministrationEventSequenceTest extends TestCase
                 'scopes'         => ['openid', 'email'],
                 'token_endpoint' => 'https://idp.example.com/oauth/token',
             ],
-        ], $this->actor);
+        ], Clients::browser(), $this->actor);
 
         $this->assertEventSequence([ConnectionUpdated::class]);
 
@@ -176,8 +177,8 @@ final class AdministrationEventSequenceTest extends TestCase
 
         $this->startRecordingEvents();
 
-        $this->connections()->update(self::TENANT, $id, ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth/token']], $this->actor);
-        $this->connections()->update(self::TENANT, $id, ['settings' => ['client_secret' => self::ROTATED_SECRET]], $this->actor);
+        $this->connections()->update(self::TENANT, $id, ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth/token']], Clients::browser(), $this->actor);
+        $this->connections()->update(self::TENANT, $id, ['settings' => ['client_secret' => self::ROTATED_SECRET]], Clients::browser(), $this->actor);
 
         $this->assertEventSequence([ConnectionUpdated::class, ConnectionUpdated::class]);
 
@@ -203,7 +204,7 @@ final class AdministrationEventSequenceTest extends TestCase
         $result = $this->connections()->update(self::TENANT, $id, [
             'display_name' => 'Acme',
             'settings'     => ['token_endpoint' => self::OIDC['token_endpoint'], 'scopes' => ['openid', 'email', 'profile']],
-        ], $this->actor);
+        ], Clients::browser(), $this->actor);
 
         self::assertSame(ConnectionStatus::UNCHANGED, $result->status);
         $this->assertNoEvents();
@@ -221,14 +222,14 @@ final class AdministrationEventSequenceTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertSame(ConnectionStatus::ENABLED, $this->connections()->enable(self::TENANT, $id, $this->actor)->status);
+        self::assertSame(ConnectionStatus::ENABLED, $this->connections()->enable(self::TENANT, $id, Clients::browser(), $this->actor)->status);
 
         $this->assertEventSequence([ConnectionEnabled::class]);
         $this->assertReportedFor($this->recordedEvents()[0], $id, 'oidc');
 
         $this->startRecordingEvents();
 
-        self::assertSame(ConnectionStatus::UNCHANGED, $this->connections()->enable(self::TENANT, $id, $this->actor)->status);
+        self::assertSame(ConnectionStatus::UNCHANGED, $this->connections()->enable(self::TENANT, $id, Clients::browser(), $this->actor)->status);
 
         $this->assertNoEvents();
     }
@@ -290,7 +291,7 @@ final class AdministrationEventSequenceTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertTrue($this->keys()->makeCurrent(self::TENANT, $id, $next->id, $this->actor)->isSucceeded());
+        self::assertTrue($this->keys()->makeCurrent(self::TENANT, $id, $next->id, Clients::browser(), $this->actor)->isSucceeded());
 
         $this->assertEventSequence([KeyMadeCurrent::class]);
 
@@ -302,7 +303,7 @@ final class AdministrationEventSequenceTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertTrue($this->keys()->retire(self::TENANT, $id, $current->id, $this->actor)->isSucceeded());
+        self::assertTrue($this->keys()->retire(self::TENANT, $id, $current->id, Clients::browser(), $this->actor)->isSucceeded());
 
         $this->assertEventSequence([KeyRetired::class]);
 
@@ -325,7 +326,7 @@ final class AdministrationEventSequenceTest extends TestCase
 
         $this->startRecordingEvents();
 
-        $trusted = $this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(30), $this->actor)->key;
+        $trusted = $this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(30), Clients::browser(), $this->actor)->key;
 
         self::assertInstanceOf(KeySummary::class, $trusted);
 
@@ -341,7 +342,7 @@ final class AdministrationEventSequenceTest extends TestCase
 
         $this->startRecordingEvents();
 
-        self::assertTrue($this->keys()->distrustCertificate(self::TENANT, $id, $trusted->id, $this->actor)->isSucceeded());
+        self::assertTrue($this->keys()->distrustCertificate(self::TENANT, $id, $trusted->id, Clients::browser(), $this->actor)->isSucceeded());
 
         $this->assertEventSequence([KeyRetired::class]);
 
@@ -366,12 +367,13 @@ final class AdministrationEventSequenceTest extends TestCase
             self::TENANT,
             'example',
             'Example',
+            Clients::browser(),
             ['issuer' => 'https://idp.example.com', 'api_secret' => 'example-api-secret'],
             actor: $this->actor,
         );
         $id = (string) $created->connection?->id;
 
-        $this->connections()->update(self::TENANT, $id, ['settings' => ['api_secret' => 'rotated-api-secret']], $this->actor);
+        $this->connections()->update(self::TENANT, $id, ['settings' => ['api_secret' => 'rotated-api-secret']], Clients::browser(), $this->actor);
 
         $this->assertEventSequence([ConnectionCreated::class, ConnectionUpdated::class]);
 
@@ -429,7 +431,7 @@ final class AdministrationEventSequenceTest extends TestCase
         $saml    = $this->createSaml();
         $current = $this->addNext($saml);
         $next    = $this->addNext($saml);
-        $trusted = $this->keys()->trustCertificate(self::TENANT, $saml, Certificates::distinct(31), $this->actor)->key;
+        $trusted = $this->keys()->trustCertificate(self::TENANT, $saml, Certificates::distinct(31), Clients::browser(), $this->actor)->key;
 
         self::assertInstanceOf(KeySummary::class, $trusted);
 
@@ -484,25 +486,39 @@ final class AdministrationEventSequenceTest extends TestCase
     private function connectionRefusals(string $oidc): array
     {
         return [
-            'stale create' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', 'Second', self::OIDC, actor: $this->actor),
+            'stale create' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, actor: $this->actor),
             'stale update' => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $oidc,
                 ['settings' => ['token_endpoint' => 'https://idp.example.com/oauth/token']],
+                Clients::browser(),
                 $this->actor,
             ),
-            'stale enable'       => fn (): ConnectionResult => $this->connections()->enable(self::TENANT, $oidc, $this->actor),
-            'unknown connection' => fn (): ConnectionResult => $this->connections()->update(self::TENANT, self::UNKNOWN, ['display_name' => 'Renamed'], $this->actor),
-            'another tenant'     => fn (): ConnectionResult => $this->connections()->enable(self::OTHER_TENANT, $oidc, $this->actor),
-            'invalid creation'   => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', '   ', self::OIDC, actor: $this->actor),
-            'invalid update'     => fn (): ConnectionResult => $this->connections()->update(
+            'stale enable'       => fn (): ConnectionResult => $this->connections()->enable(self::TENANT, $oidc, Clients::browser(), $this->actor),
+            'unknown connection' => fn (): ConnectionResult => $this->connections()->update(
+                self::TENANT,
+                self::UNKNOWN,
+                ['display_name' => 'Renamed'],
+                Clients::browser(),
+                $this->actor,
+            ),
+            'another tenant'   => fn (): ConnectionResult => $this->connections()->enable(self::OTHER_TENANT, $oidc, Clients::browser(), $this->actor),
+            'invalid creation' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', '   ', Clients::browser(), self::OIDC, actor: $this->actor),
+            'invalid update'   => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $oidc,
                 ['settings' => ['token_endpoint' => 'not a url']],
+                Clients::browser(),
                 $this->actor,
             ),
-            'unregistered protocol' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'unregistered', 'Acme', actor: $this->actor),
-            'protocol switched off' => fn (): ConnectionResult => $this->connections()->update(self::TENANT, $oidc, ['display_name' => 'Renamed'], $this->actor),
+            'unregistered protocol' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'unregistered', 'Acme', Clients::browser(), actor: $this->actor),
+            'protocol switched off' => fn (): ConnectionResult => $this->connections()->update(
+                self::TENANT,
+                $oidc,
+                ['display_name' => 'Renamed'],
+                Clients::browser(),
+                $this->actor,
+            ),
         ];
     }
 
@@ -520,17 +536,36 @@ final class AdministrationEventSequenceTest extends TestCase
     private function keyRefusals(string $oidc, string $saml, string $current, string $next, string $trusted): array
     {
         return [
-            'stale add next'               => fn (): KeyResult => $this->keys()->addNext(self::TENANT, $oidc, KeyUse::CLIENT_ASSERTION, KeyType::EC, $this->actor),
-            'stale make current'           => fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $saml, $next, $this->actor),
-            'stale retire'                 => fn (): KeyResult => $this->keys()->retire(self::TENANT, $saml, $next, $this->actor),
-            'stale trust'                  => fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $saml, Certificates::distinct(32), $this->actor),
-            'stale distrust'               => fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $saml, $trusted, $this->actor),
-            'key of an unknown connection' => fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, self::UNKNOWN, $next, $this->actor),
-            'unknown key'                  => fn (): KeyResult => $this->keys()->retire(self::TENANT, $saml, self::UNKNOWN, $this->actor),
-            'own key distrusted'           => fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $saml, $current, $this->actor),
-            'certificate trusted twice'    => fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $saml, Certificates::distinct(31), $this->actor),
-            'second next key'              => fn (): KeyResult => $this->keys()->addNext(self::TENANT, $saml, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor),
-            'current key retired'          => fn (): KeyResult => $this->keys()->retire(self::TENANT, $saml, $current, $this->actor),
+            'stale add next' => fn (): KeyResult => $this->keys()->addNext(
+                self::TENANT,
+                $oidc,
+                KeyUse::CLIENT_ASSERTION,
+                Clients::browser(),
+                KeyType::EC,
+                $this->actor,
+            ),
+            'stale make current' => fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $saml, $next, Clients::browser(), $this->actor),
+            'stale retire'       => fn (): KeyResult => $this->keys()->retire(self::TENANT, $saml, $next, Clients::browser(), $this->actor),
+            'stale trust'        => fn (): KeyResult => $this->keys()->trustCertificate(
+                self::TENANT,
+                $saml,
+                Certificates::distinct(32),
+                Clients::browser(),
+                $this->actor,
+            ),
+            'stale distrust'               => fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $saml, $trusted, Clients::browser(), $this->actor),
+            'key of an unknown connection' => fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, self::UNKNOWN, $next, Clients::browser(), $this->actor),
+            'unknown key'                  => fn (): KeyResult => $this->keys()->retire(self::TENANT, $saml, self::UNKNOWN, Clients::browser(), $this->actor),
+            'own key distrusted'           => fn (): KeyResult => $this->keys()->distrustCertificate(self::TENANT, $saml, $current, Clients::browser(), $this->actor),
+            'certificate trusted twice'    => fn (): KeyResult => $this->keys()->trustCertificate(
+                self::TENANT,
+                $saml,
+                Certificates::distinct(31),
+                Clients::browser(),
+                $this->actor,
+            ),
+            'second next key'     => fn (): KeyResult => $this->keys()->addNext(self::TENANT, $saml, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor),
+            'current key retired' => fn (): KeyResult => $this->keys()->retire(self::TENANT, $saml, $current, Clients::browser(), $this->actor),
         ];
     }
 
@@ -568,7 +603,7 @@ final class AdministrationEventSequenceTest extends TestCase
      */
     private function createOidc(): string
     {
-        $result = $this->connections()->create(self::TENANT, 'oidc', 'Acme', self::OIDC + ['client_secret' => self::SECRET], actor: $this->actor);
+        $result = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC + ['client_secret' => self::SECRET], actor: $this->actor);
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
 
@@ -582,7 +617,7 @@ final class AdministrationEventSequenceTest extends TestCase
      */
     private function createSaml(): string
     {
-        $result = $this->connections()->create(self::TENANT, 'saml2', 'Acme', self::SAML, actor: $this->actor);
+        $result = $this->connections()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML, actor: $this->actor);
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
 
@@ -597,7 +632,7 @@ final class AdministrationEventSequenceTest extends TestCase
      */
     private function addNext(string $connectionId): KeySummary
     {
-        $key = $this->keys()->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, KeyType::RSA, $this->actor)->key;
+        $key = $this->keys()->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor)->key;
 
         self::assertInstanceOf(KeySummary::class, $key);
 

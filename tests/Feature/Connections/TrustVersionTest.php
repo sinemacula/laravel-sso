@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\UsesConnections;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
@@ -88,14 +89,14 @@ final class TrustVersionTest extends TestCase
      */
     public function testATrustChangeOfTheSettingsRaisesIt(): void
     {
-        $created    = $this->connections()->create(self::TENANT, 'saml2', 'Example', ['sso_url' => 'https://idp.example.com/sso']);
+        $created    = $this->connections()->create(self::TENANT, 'saml2', 'Example', Clients::browser(), ['sso_url' => 'https://idp.example.com/sso']);
         $connection = Connection::query()->whereKey((string) $created->connection?->id)->sole();
 
-        $this->connections()->update(self::TENANT, $connection->id, ['settings' => ['force_authn' => true]]);
+        $this->connections()->update(self::TENANT, $connection->id, ['settings' => ['force_authn' => true]], Clients::browser());
 
         self::assertSame(0, self::trustVersion($connection));
 
-        $this->connections()->update(self::TENANT, $connection->id, ['settings' => ['sso_url' => 'https://idp.example.com/login']]);
+        $this->connections()->update(self::TENANT, $connection->id, ['settings' => ['sso_url' => 'https://idp.example.com/login']], Clients::browser());
 
         self::assertSame(1, self::trustVersion($connection));
     }
@@ -110,16 +111,16 @@ final class TrustVersionTest extends TestCase
     {
         $connection = $this->makeConnection();
 
-        self::assertTrue($this->connections()->enable(self::TENANT, $connection->id)->isSucceeded());
+        self::assertTrue($this->connections()->enable(self::TENANT, $connection->id, Clients::browser())->isSucceeded());
         self::assertSame(1, self::trustVersion($connection));
 
-        $this->connections()->enable(self::TENANT, $connection->id);
+        $this->connections()->enable(self::TENANT, $connection->id, Clients::browser());
         self::assertSame(1, self::trustVersion($connection));
 
-        self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id)->isSucceeded());
+        self::assertTrue(app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id, Clients::browser())->isSucceeded());
         self::assertSame(2, self::trustVersion($connection));
 
-        app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id);
+        app(ConnectionLifecycle::class)->disable(self::TENANT, $connection->id, Clients::browser());
         self::assertSame(2, self::trustVersion($connection));
     }
 

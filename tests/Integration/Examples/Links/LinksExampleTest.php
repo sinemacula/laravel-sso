@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkService;
@@ -35,6 +36,7 @@ use SineMacula\Laravel\Sso\Links\NoLinks;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use Tests\Integration\Examples\Application\ExampleDirectory;
+use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
@@ -169,10 +171,11 @@ final class LinksExampleTest extends ExampleTestCase
         $user         = $this->user;
         $connectionId = $this->connectionId;
 
+        $client = Clients::browser();
         // @snippet-start links-start
         $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
 
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, null, $identity);
+        $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, $client, null, $identity);
         // @snippet-end links-start
         self::assertTrue($start->isStarted());
         self::assertNotNull($start->navigation);
@@ -180,7 +183,7 @@ final class LinksExampleTest extends ExampleTestCase
 
         $this->freshness->staleFor(FreshnessOperation::LINK_CREATE);
 
-        $stale = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, null, $identity);
+        $stale = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, Clients::browser(), null, $identity);
 
         self::assertTrue($stale->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $stale->reason);
@@ -214,6 +217,7 @@ final class LinksExampleTest extends ExampleTestCase
             $request->string('connection')->toString(),
             $request->string('code')->toString(),
             $request->string('verifier')->toString(),
+            ClientContext::fromRequest($request),
             $caller,
         );
         // @snippet-end links-redeem
@@ -363,6 +367,7 @@ final class LinksExampleTest extends ExampleTestCase
         $otherLinkId = (string) $this->linkSubject('subject-42', $other)->linkId;
         $user        = $this->user;
 
+        $client = Clients::browser();
         // @snippet-start links-list-remove
         $links  = app(LinkService::class);
         $caller = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
@@ -370,7 +375,7 @@ final class LinksExampleTest extends ExampleTestCase
         $mine = $links->list('me', $caller);                            // list<LinkSummary>, oldest first
         $some = $links->list(new IdentityReference(User::class, '42')); // another identity's, for administrators
 
-        $result = $links->remove('me', $linkId, $caller, new ActingIdentity($user->getMorphClass(), (string) $user->getKey()));
+        $result = $links->remove('me', $linkId, $client, $caller, new ActingIdentity($user->getMorphClass(), (string) $user->getKey()));
         // @snippet-end links-list-remove
         self::assertSame([$linkId], self::idsOf($mine));
         self::assertSame([$otherLinkId], self::idsOf($some));
@@ -380,12 +385,12 @@ final class LinksExampleTest extends ExampleTestCase
         self::assertSame([], $links->list('me', $caller));
 
         // Another identity's link answers as a link that does not exist
-        self::assertSame(FailureReason::LINK_NOT_FOUND, $links->remove('me', $otherLinkId, $caller)->reason);
-        self::assertSame(FailureReason::LINK_NOT_FOUND, $links->remove('me', $linkId, $caller)->reason);
+        self::assertSame(FailureReason::LINK_NOT_FOUND, $links->remove('me', $otherLinkId, Clients::browser(), $caller)->reason);
+        self::assertSame(FailureReason::LINK_NOT_FOUND, $links->remove('me', $linkId, Clients::browser(), $caller)->reason);
 
         $this->freshness->staleFor(FreshnessOperation::LINK_REMOVE);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $links->remove($other, $otherLinkId)->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $links->remove($other, $otherLinkId, Clients::browser())->reason);
         self::assertSame([$otherLinkId], $this->linkIds($other));
 
         $this->expectException(\InvalidArgumentException::class);
@@ -454,18 +459,18 @@ final class LinksExampleTest extends ExampleTestCase
 
         $directory->add($this->identity(), 'person@example.com', self::TENANT, $this->clock->now()->subDays(2));
 
-        $claimed = app(DomainService::class)->claim(self::TENANT, $this->connectionId, 'example.com')->domain;
+        $claimed = app(DomainService::class)->claim(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->domain;
 
         self::assertNotNull($claimed);
 
         $this->dns->publishes($claimed);
 
-        self::assertSame(DomainStatus::VERIFIED, app(DomainService::class)->verify(self::TENANT, $this->connectionId, 'example.com')->status);
+        self::assertSame(DomainStatus::VERIFIED, app(DomainService::class)->verify(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->status);
         self::assertTrue(app(LinkingPolicyService::class)->change(self::TENANT, $this->connectionId, [
             'enabled'      => true,
             'issuer_class' => 'single_organization',
             'acknowledged' => true,
-        ])->isChanged());
+        ], Clients::browser())->isChanged());
 
         $withEmail = static fn (FakeIdToken $token): FakeIdToken => $token->with('email', 'person@example.com')->with('email_verified', true);
         $start     = $this->startFlow(Purpose::SIGN_IN, $this->connectionId);

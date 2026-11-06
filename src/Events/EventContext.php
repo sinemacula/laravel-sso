@@ -67,10 +67,10 @@ final readonly class EventContext implements Arrayable
         /** When the event was built, from the package's clock. */
         public CarbonImmutable $occurredAt,
 
-        /** IP address of the client of the request being served. */
+        /** IP address of the client the action was taken for. */
         public ?string $ip = null,
 
-        /** User agent of the client of the request being served, length capped. */
+        /** User agent of the client the action was taken for, length capped. */
         public ?string $userAgent = null,
 
         /** Id of the connection the event concerns. */

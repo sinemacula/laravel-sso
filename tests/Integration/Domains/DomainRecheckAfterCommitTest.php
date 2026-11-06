@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesDomains;
+use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
@@ -92,7 +93,7 @@ final class DomainRecheckAfterCommitTest extends TestCase
 
         $database->beginTransaction();
 
-        $report = $this->rechecker()->recheckAll();
+        $report = $this->rechecker()->recheckAll(Clients::browser());
 
         $database->rollBack();
 
@@ -129,7 +130,7 @@ final class DomainRecheckAfterCommitTest extends TestCase
 
         DB::connection(StorageConnection::name())->transaction(function () use ($rechecker): void {
 
-            $report = $rechecker->recheckAll();
+            $report = $rechecker->recheckAll(Clients::browser());
 
             self::assertSame(1, $report->count(RecheckOutcome::LAPSED));
             self::assertSame(1, $report->count(RecheckOutcome::SUSPENDED));

@@ -10,6 +10,7 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens\AccessTokenHash;
@@ -117,6 +118,7 @@ readonly class IdTokenValidator
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse  $tokens
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
+     * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\IdTokenValidation
      *
      * @throws \InvalidArgumentException
@@ -124,7 +126,7 @@ readonly class IdTokenValidator
      * @throws \Random\RandomException
      * @throws \Throwable
      */
-    public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed): IdTokenValidation
+    public function validate(SsoConnection $connection, OidcOptions $options, TokenResponse $tokens, ConsumedRequest $consumed, ClientContext $client): IdTokenValidation
     {
         $token = CompactToken::parse($tokens->idToken(), $this->limits->maxIdTokenBytes());
 
@@ -133,7 +135,7 @@ readonly class IdTokenValidator
         }
 
         $allowed   = $options->algorithms();
-        $selection = $this->keys->select($connection, $token, $allowed, $consumed, fn (): bool => $this->claimsRefusal($options, $tokens, $token, $consumed) !== null);
+        $selection = $this->keys->select($connection, $token, $allowed, $client, $consumed, fn (): bool => $this->claimsRefusal($options, $tokens, $token, $consumed) !== null);
         $reason    = $this->signatureRefusal($selection, $token, $allowed) ?? $this->claimsRefusal($options, $tokens, $token, $consumed);
 
         return $reason === null ? IdTokenValidation::validated(self::validated($token), $selection->receipt) : IdTokenValidation::refused($reason);
