@@ -24,19 +24,19 @@ use Tests\Integration\Examples\Clients;
  *     tenant: \Tests\Integration\Examples\SamlMetadata\Tenant,
  *     connection: \SineMacula\Laravel\Sso\Connections\ConnectionSummary,
  *     anchor: string,
- *     actor: \SineMacula\Laravel\Sso\Administration\ActingIdentity
+ *     caller: \SineMacula\Laravel\Sso\Identities\Caller
  * } $input
  */
 $tenant     = $input['tenant'];
 $connection = $input['connection'];
 $anchor     = $input['anchor'];
-$actor      = $input['actor'];
+$caller     = $input['caller'];
 
 $client = Clients::browser();
 // @snippet-start saml-metadata-anchor
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 
-$trusted = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $actor, KeyUse::METADATA_SIGNING);
+$trusted = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $caller, KeyUse::METADATA_SIGNING);
 // @snippet-end saml-metadata-anchor
 return $trusted;

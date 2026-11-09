@@ -6,13 +6,13 @@ namespace Tests\Feature\Administration;
 
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\EnforcementEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Events\EnforcementChanged;
 use SineMacula\Laravel\Sso\Events\ExemptionUsed;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesEnforcement;
@@ -63,7 +63,12 @@ final class EnforcementEventsTest extends TestCase
     {
         $row = $this->makeEnforcement(['enabled' => true, 'connection_ids' => ['c-2', 'c-1'], 'version' => '01jbversion000000000000002']);
 
-        app(EnforcementEvents::class)->changed($row, '01jbversion000000000000001', new ActingIdentity('App\Models\User', '42'), new ClientContext('203.0.113.7', 'Example/1.0'));
+        app(EnforcementEvents::class)->changed(
+            $row,
+            '01jbversion000000000000001',
+            new Caller(new IdentityReference('App\Models\User', '42')),
+            new ClientContext('203.0.113.7', 'Example/1.0'),
+        );
 
         $this->assertEventSequence([EnforcementChanged::class]);
 

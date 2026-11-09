@@ -32,6 +32,7 @@ use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
@@ -664,7 +665,14 @@ final class OidcCompletionEventSequenceTest extends TestCase
      */
     private function startUrl(Connection $connection, Purpose $purpose = Purpose::SIGN_IN, ?IdentityReference $identity = null, ?string $session = null): string
     {
-        $started = app(AuthorizationRequestService::class)->start('web', $purpose, $connection->id, self::client(), null, $identity, $session);
+        $started = app(AuthorizationRequestService::class)->start(
+            'web',
+            $purpose,
+            $connection->id,
+            self::client(),
+            null,
+            $identity === null ? null : new Caller($identity, $session),
+        );
 
         self::assertTrue($started->isStarted());
 

@@ -33,16 +33,19 @@ enforcement events" below; the metadata and link events arrive with their parts 
   `retiring`, or `null` when there was none.
 - Every event is built by `Administration\AdministrationEvents`, one method per event, and its context through the one
   projection, `Events\EventContexts::make()` (see `event-model.md`), from four facts only: the connection's id, its
-  tenant (`connectionTenantId`), its protocol (`saml2`, `oidc` or a registered driver's name), and the acting identity
-  as the application passed it (`actingIdentityMorphClass`, `actingIdentityId`). The time comes from `Contracts\Clock`
-  and the client (`ip`, `userAgent`) from the `Http\ClientContext` the helper was given: each change takes one, after
-  its required values, and a console command passes `new ClientContext(null, null)`. Every other field of the context is
-  `null`: an administration change has no flow, so no `requestReference`, `application` or `purpose`, and no identity,
-  principal, session or method.
-- The acting identity is an `Administration\ActingIdentity`: a type and an id, each a non-empty opaque string (under
-  `laravel-iam`, the identity's morph class and key, as `laravel-authentication`'s events give them). Each helper takes
-  it as an optional last argument; without one, the context's acting identity is `null`. Who may manage a connection is
-  the application's authorisation, never the package's: the event reports who did.
+  tenant (`connectionTenantId`), its protocol (`saml2`, `oidc` or a registered driver's name), and the acting identity:
+  the identity of the caller the application passed (`actingIdentityMorphClass`, `actingIdentityId`). The time comes
+  from `Contracts\Clock` and the client (`ip`, `userAgent`) from the `Http\ClientContext` the helper was given: each
+  change takes one, after its required values, and a console command passes `new ClientContext(null, null)`. Every other
+  field of the context is `null`: an administration change has no flow, so no `requestReference`, `application` or
+  `purpose`, and no identity, principal, session or method.
+- The acting identity is the identity of the change's caller, an `Identities\Caller`: an `IdentityReference`, a type
+  and an id, each 1 to 255 bytes (under `laravel-iam`, the identity's morph class and key, as
+  `laravel-authentication`'s events give them), and the session it is on, which the freshness contract judges and no
+  event carries. Each helper takes the caller as an optional argument after the client, and gives the same caller to
+  freshness and to the event; without one, freshness is asked for no caller and the context's acting identity is
+  `null`. Who may manage a connection is the application's authorisation, never the package's: the event reports who
+  did.
 - Who dispatches each event, and when:
 
   | Event                | Dispatched by                                                | When                                                                    |
@@ -136,10 +139,11 @@ enforcement events" below; the metadata and link events arrive with their parts 
 ## Success Path
 
 1. The application's administration screen authorises its user, then calls a helper with the tenant, the connection and
-   an `ActingIdentity` for that user.
-2. The helper finds the connection, validates what it was given and asks the freshness contract.
+   a `Caller` for that user on their session.
+2. The helper finds the connection, validates what it was given and asks the freshness contract for that caller.
 3. In one transaction on the storage connection it writes, then calls `AdministrationEvents`, which builds the event's
-   context from the connection and the acting identity and hands the event to the after-commit dispatcher.
+   context from the connection and the caller's identity, as the acting identity, and hands the event to the
+   after-commit dispatcher.
 4. The transaction commits, and the event reaches every listener on its class and on `SsoEvent`; an audit trail records
    `$event->context()->toArray()` with the event's own fields, and a queued listener receives it through the queue.
 5. On a schedule, the application calls `ExpiryReport::report()`; each key or certificate nearing its end of validity is
@@ -157,8 +161,8 @@ enforcement events" below; the metadata and link events arrive with their parts 
 - `KeyRetired` names a row that no longer exists: it is reported with the row as read before the delete.
 - Disabling a disabled connection asks for freshness and reports nothing. Deleting a connection reports one
   `ConnectionDeleted` and no event for each of the links, domains, keys, requests or handoff codes deleted with it.
-- An `ActingIdentity` with an empty type or id is the application's mistake: an `InvalidArgumentException` before any
-  helper runs.
+- A caller whose identity has an empty or overlong type or id, or whose session id is empty or longer than 255 bytes, is
+  the application's mistake: an `InvalidArgumentException` before any helper runs.
 - `ExpiryReport::report()` given 0, a negative number or more than 365 days throws an `InvalidArgumentException`,
   `An expiry report looks 1 to 365 days ahead.`, before anything is read; a malformed `sso.keys.expiry_thresholds`
   fails closed with `KeySettings`' exception naming the key. Called twice, it lists the same rows twice and warns only
@@ -167,8 +171,8 @@ enforcement events" below; the metadata and link events arrive with their parts 
 
 ## Implementation Anchors
 
-- `src/Administration/AdministrationEvents.php`, `src/Administration/ActingIdentity.php`,
-  `src/Administration/DomainEvents.php`, `src/Administration/EnforcementEvents.php`.
+- `src/Administration/AdministrationEvents.php`, `src/Identities/Caller.php`, `src/Administration/DomainEvents.php`,
+  `src/Administration/EnforcementEvents.php`.
 - `src/Events/ConnectionCreated.php`, `ConnectionUpdated.php`, `ConnectionEnabled.php`, `ConnectionDisabled.php`,
   `ConnectionDeleted.php`, `KeyAdded.php`, `KeyMadeCurrent.php`, `KeyRetired.php`, `KeyNearingExpiry.php`.
 - `src/Events/EventContexts.php`, `src/Events/AfterCommitDispatcher.php`: the projection and the dispatch.
@@ -187,8 +191,9 @@ enforcement events" below; the metadata and link events arrive with their parts 
   `testEachHoldsExactlyItsDeclaredProperties`, `testConnectionUpdatedHoldsAListOfNamesOnly`.
 - `tests/Feature/Administration/AdministrationEventsTest.php`
   `testReportsEachConnectionChange`, `testAnUpdateThatChangedNothingReportsNothing`, `testReportsEachKeyChange`,
-  `testAKeyWithNoEndOfValidityIsNeverNearingExpiry`, `testReportsOnlyOnceTheChangeCommits`,
-  `testAnActingIdentityNeedsATypeAndAnId`.
+  `testAKeyWithNoEndOfValidityIsNeverNearingExpiry`, `testReportsOnlyOnceTheChangeCommits`.
+- `tests/Feature/Administration/FreshnessConventionTest.php` `testTheCallerAskedAboutIsTheOneTheEventNames`.
+- `tests/Unit/Identities/CallerTest.php` `testRefusesAMalformedSessionId`.
 - `tests/Feature/Administration/AdministrationEventSequenceTest.php`
   `testCreatingReportsConnectionCreated`, `testAnUpdateNamesExactlyWhatChangedInOrder`,
   `testAnUpdateOfOneSettingNamesItAlone`, `testAnUpdateChangingNothingReportsNothing`,

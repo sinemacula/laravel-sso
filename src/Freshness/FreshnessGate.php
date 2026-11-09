@@ -8,11 +8,13 @@ use Illuminate\Contracts\Container\Container;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
 
 /**
  * What every operation SSO-2.12 lists calls before it writes: it reads the
  * operation's maximum age from `MaximumAges` and asks the bound `Freshness`
- * contract with the operation's stable name and that age (SSO-2.12).
+ * contract with the operation's stable name, that age and the caller the action
+ * is taken for, `null` when there is none (SSO-2.12).
  *
  * The contract is resolved from the container on each call, never held, so a
  * binding made per request or swapped in a test is the one asked, and nothing
@@ -45,32 +47,36 @@ final readonly class FreshnessGate
     ) {}
 
     /**
-     * Ask the freshness contract about the operation, with its maximum age.
+     * Ask the freshness contract about the operation, with its maximum age, for
+     * the caller.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    public function check(FreshnessOperation $operation): FreshnessOutcome
+    public function check(FreshnessOperation $operation, ?Caller $caller): FreshnessOutcome
     {
         $maxAge = $this->maximumAges->for($operation);
 
-        return $this->container->make(Freshness::class)->check($operation, $maxAge);
+        return $this->container->make(Freshness::class)->check($operation, $maxAge, $caller);
     }
 
     /**
      * Ask about each operation once, in the order given, and answer `stale` at
-     * the first that is; `fresh` when every one is, or none is given.
+     * the first that is; `fresh` when every one is, or none is given. Each is
+     * asked for the caller.
      *
      * @param  list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation>  $operations
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    public function checkAll(array $operations): FreshnessOutcome
+    public function checkAll(array $operations, ?Caller $caller): FreshnessOutcome
     {
         $asked = [];
 
@@ -82,7 +88,7 @@ final readonly class FreshnessGate
 
             $asked[$operation->value] = true;
 
-            if (!$this->check($operation)->isFresh()) {
+            if (!$this->check($operation, $caller)->isFresh()) {
                 return FreshnessOutcome::STALE;
             }
         }

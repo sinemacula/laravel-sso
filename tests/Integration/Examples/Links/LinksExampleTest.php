@@ -10,7 +10,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
 use SineMacula\Laravel\Sso\Contracts\LinkEmailMatcher;
 use SineMacula\Laravel\Sso\Contracts\Linker;
@@ -27,6 +26,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkService;
@@ -170,20 +170,23 @@ final class LinksExampleTest extends ExampleTestCase
     {
         $user         = $this->user;
         $connectionId = $this->connectionId;
+        $request      = $this->request('/account/sso/link/start');
 
         $client = Clients::browser();
         // @snippet-start links-start
-        $identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
+        // The signed-in user, on the session freshness judges
+        $caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
 
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, $client, null, $identity);
+        $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, $client, null, $caller);
         // @snippet-end links-start
         self::assertTrue($start->isStarted());
         self::assertNotNull($start->navigation);
         $this->freshness->assertAsked(FreshnessOperation::LINK_CREATE);
+        self::assertContains($caller, array_column($this->freshness->asked(), 'caller'));
 
         $this->freshness->staleFor(FreshnessOperation::LINK_CREATE);
 
-        $stale = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, Clients::browser(), null, $identity);
+        $stale = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, Clients::browser(), null, $caller);
 
         self::assertTrue($stale->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $stale->reason);
@@ -202,14 +205,15 @@ final class LinksExampleTest extends ExampleTestCase
         $user     = $this->user;
         $start    = $this->startFlow(Purpose::LINK, $this->connectionId, $this->identity());
         $redirect = $this->respondAtProvider($this->provider, $this->connectionId, $start);
-        $request  = Request::create('/account/sso/link', 'POST', [
+        $request  = $this->request('/account/sso/link', [
             'connection' => $this->connectionId,
             'code'       => $redirect->code(),
             'verifier'   => self::verifierOf($start),
         ]);
 
         // @snippet-start links-redeem
-        $caller = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
+        // The signed-in user, on the session freshness and confirmation judge
+        $caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
 
         $result = app(HandoffRedemption::class)->redeem(
             Purpose::LINK,
@@ -222,8 +226,8 @@ final class LinksExampleTest extends ExampleTestCase
         );
         // @snippet-end links-redeem
         self::assertTrue($result->isRedeemed());
-        self::assertEquals($caller, $result->linkedIdentity);
-        self::assertSame([$result->linkId], $this->linkIds($caller));
+        self::assertEquals($caller->identity, $result->linkedIdentity);
+        self::assertSame([$result->linkId], $this->linkIds($caller->identity));
     }
 
     /**
@@ -366,16 +370,17 @@ final class LinksExampleTest extends ExampleTestCase
 
         $otherLinkId = (string) $this->linkSubject('subject-42', $other)->linkId;
         $user        = $this->user;
+        $request     = $this->request('/account/sso/links');
 
         $client = Clients::browser();
         // @snippet-start links-list-remove
         $links  = app(LinkService::class);
-        $caller = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
+        $caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
 
         $mine = $links->list('me', $caller);                            // list<LinkSummary>, oldest first
         $some = $links->list(new IdentityReference(User::class, '42')); // another identity's, for administrators
 
-        $result = $links->remove('me', $linkId, $client, $caller, new ActingIdentity($user->getMorphClass(), (string) $user->getKey()));
+        $result = $links->remove('me', $linkId, $client, $caller); // freshness judges the caller, who is named as acting
         // @snippet-end links-list-remove
         self::assertSame([$linkId], self::idsOf($mine));
         self::assertSame([$otherLinkId], self::idsOf($some));
@@ -435,7 +440,24 @@ final class LinksExampleTest extends ExampleTestCase
         $asserted = static fn (FakeIdToken $token): FakeIdToken => $token->with('sub', $subject);
         $redirect = $this->respondAtProvider($this->provider, $this->connectionId, $start, $asserted);
 
-        return $this->redeemLink($this->connectionId, $redirect, $start, $identity);
+        return $this->redeemLink($this->connectionId, $redirect, $start, $identity, app(Session::class)->getId());
+    }
+
+    /**
+     * A request to the path, with the input given, on the application's
+     * session.
+     *
+     * @param  string  $path
+     * @param  array<string, string>  $input
+     * @return \Illuminate\Http\Request
+     */
+    private function request(string $path, array $input = []): Request
+    {
+        $request = Request::create($path, 'POST', $input);
+
+        $request->setLaravelSession(app(Session::class));
+
+        return $request;
     }
 
     /**

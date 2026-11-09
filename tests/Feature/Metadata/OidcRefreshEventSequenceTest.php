@@ -7,7 +7,6 @@ namespace Tests\Feature\Metadata;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
@@ -21,6 +20,8 @@ use SineMacula\Laravel\Sso\Events\MetadataRefreshed;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Metadata\DiscoveryImporter;
 use SineMacula\Laravel\Sso\Metadata\JwksRefetcher;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
@@ -96,8 +97,8 @@ final class OidcRefreshEventSequenceTest extends TestCase
     /** @var \SineMacula\Laravel\Sso\Models\Connection The connection refreshed. */
     private Connection $connection;
 
-    /** @var \SineMacula\Laravel\Sso\Administration\ActingIdentity The administrator who asks. */
-    private ActingIdentity $actor;
+    /** @var \SineMacula\Laravel\Sso\Identities\Caller The administrator who asks. */
+    private Caller $actor;
 
     /**
      * Bind a fixed clock, a fake fetcher serving the provider and a request,
@@ -113,7 +114,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
 
         $this->fetcher  = new FakeFetcher;
         $this->provider = (new FakeOpenIdProvider(self::ISSUER, self::key()))->serve($this->fetcher);
-        $this->actor    = new ActingIdentity('App\Models\User', '42');
+        $this->actor    = new Caller(new IdentityReference('App\Models\User', '42'));
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Fetcher::class, $this->fetcher);

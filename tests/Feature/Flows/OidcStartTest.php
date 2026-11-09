@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
@@ -827,7 +828,14 @@ final class OidcStartTest extends TestCase
         ?IdentityReference $identity = null,
         ?string $session = null,
     ): StartResult {
-        return app(AuthorizationRequestService::class)->start('web', $purpose, $connection->id, self::client(), $challenge, $identity, $session);
+        return app(AuthorizationRequestService::class)->start(
+            'web',
+            $purpose,
+            $connection->id,
+            self::client(),
+            $challenge,
+            $identity === null ? null : new Caller($identity, $session),
+        );
     }
 
     /**

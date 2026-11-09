@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
@@ -25,6 +24,8 @@ use SineMacula\Laravel\Sso\Events\KeyMadeCurrent;
 use SineMacula\Laravel\Sso\Events\KeyRetired;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyStatus;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
@@ -87,8 +88,8 @@ final class KeyServiceTest extends TestCase
     /** @var \SineMacula\Laravel\Sso\Models\Connection The tenant's SAML connection. */
     private Connection $connection;
 
-    /** @var \SineMacula\Laravel\Sso\Administration\ActingIdentity Who makes each change. */
-    private ActingIdentity $actor;
+    /** @var \SineMacula\Laravel\Sso\Identities\Caller Who makes each change. */
+    private Caller $actor;
 
     /**
      * Bind a fixed clock and a recording freshness contract, create the tables
@@ -103,7 +104,7 @@ final class KeyServiceTest extends TestCase
 
         $this->clock     = new FixedClock('2026-11-01T09:30:00Z');
         $this->freshness = new RecordingFreshness;
-        $this->actor     = new ActingIdentity('App\Models\User', '42');
+        $this->actor     = new Caller(new IdentityReference('App\Models\User', '42'));
 
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(Freshness::class, $this->freshness);
@@ -420,8 +421,9 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A caller whose authentication is not fresh enough is refused with
-     * `freshness_required`: nothing is written and nothing is reported.
+     * A caller whose authentication is not fresh enough, asked about as given,
+     * is refused with `freshness_required`: nothing is written and nothing is
+     * reported.
      *
      * @param  string  $operation
      * @return void
@@ -442,6 +444,7 @@ final class KeyServiceTest extends TestCase
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
         self::assertNull($result->key);
         self::assertCount(1, $this->freshness->asked());
+        self::assertSame([$this->actor], $this->freshness->callers());
         self::assertSame($before, $this->rows());
         $this->assertNoEvents();
     }

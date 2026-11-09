@@ -14,7 +14,7 @@ bytes, both from your own authentication and never from the request, with the PK
 
 <!-- snippet: tests/Integration/Examples/Reauthenticating/ReauthenticatingExampleTest.php#reauthenticating-start -->
 ```php
-$start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $codeChallenge, $identity, $sessionId);
+$start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $codeChallenge, new Caller($identity, $sessionId));
 ```
 
 `$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with

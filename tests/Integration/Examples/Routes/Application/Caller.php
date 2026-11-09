@@ -6,13 +6,15 @@ namespace Tests\Integration\Examples\Routes\Application;
 
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Request;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
+use SineMacula\Laravel\Sso\Identities\Caller as SsoCaller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
  * Who the example application's request is authenticated as, in the package's
- * terms (SSO-12.5): the identity, the acting identity a management change
- * records, the tenant the caller is active in and the session it is on.
+ * terms (SSO-12.5): the caller (`Identities\Caller`), its identity on the
+ * session it authenticated with, which freshness and the link confirmation
+ * judge and a management change names as acting; the tenant the caller is
+ * active in; and the session it is on.
  *
  * Each comes from the application's own authentication, never from the request
  * body: a `link` or `reauthenticate` start, a link redemption and every
@@ -31,33 +33,19 @@ final class Caller
     private function __construct() {}
 
     /**
-     * The identity the request is authenticated as.
+     * The caller the request is authenticated as: the identity, on the session
+     * it authenticated with.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \SineMacula\Laravel\Sso\Identities\IdentityReference
+     * @return \SineMacula\Laravel\Sso\Identities\Caller
      *
      * @throws \Illuminate\Auth\AuthenticationException
      */
-    public static function identity(Request $request): IdentityReference
+    public static function of(Request $request): SsoCaller
     {
         $user = self::user($request);
 
-        return new IdentityReference(User::TYPE, $user->id);
-    }
-
-    /**
-     * The acting identity a management change records.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \SineMacula\Laravel\Sso\Administration\ActingIdentity
-     *
-     * @throws \Illuminate\Auth\AuthenticationException
-     */
-    public static function actor(Request $request): ActingIdentity
-    {
-        $user = self::user($request);
-
-        return new ActingIdentity(User::TYPE, $user->id);
+        return new SsoCaller(new IdentityReference(User::TYPE, $user->id), $user->sessionId);
     }
 
     /**

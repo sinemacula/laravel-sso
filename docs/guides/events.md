@@ -231,9 +231,9 @@ none holds a handoff code, a verifier, protocol state, a subject, a mapped attri
 
 `AuthorizationRequestStarted`'s context names the connection, its tenant and protocol, the application, the purpose and
 the request's public reference, with the identity a `link` or `reauthenticate` was started for and the session of a
-`reauthenticate`. A refused start's `FlowFailed` names the purpose, the identity and session your application gave, and
-as much more as the start had established: the application once admitted, the connection once found, the reference
-once made.
+`reauthenticate`. A refused start's `FlowFailed` names the purpose, the identity of the caller your application gave
+and, for a `reauthenticate`, its session (a `link` gives its session to freshness alone), and as much more as the start
+had established: the application once admitted, the connection once found, the reference once made.
 
 A completion that issues a code reports `ResultVerified` then `HandoffIssued`; one refused after its response verified
 reports `ResultVerified` then `FlowFailed`; one refused before reports `FlowFailed` alone. `ResultVerified` at
@@ -330,17 +330,18 @@ or `lookup_failed`, which changes nothing. No domain event carries the verificat
 
 ### The acting identity
 
-Each helper takes the identity making the change as its last argument, a
-`SineMacula\Laravel\Sso\Administration\ActingIdentity` of a type and an id as your application knows them; under
-`laravel-iam`, the identity's morph class and key. It reaches the context as `acting_identity_morph_class` and
-`acting_identity_id`, and is `null` when you pass none. The package never decides who may make a change: authorise the
-user first, then pass them so the event says who did. Here `$connections` is the `ConnectionService`:
+Each helper takes the caller making the change after the client, a `SineMacula\Laravel\Sso\Identities\Caller`: an
+identity of a type and an id as your application knows them (under `laravel-iam`, the identity's morph class and key)
+and the session they are on. The same caller is the one the [freshness contract](freshness.md#the-caller) judges and the
+one the event names: its identity reaches the context as `acting_identity_morph_class` and `acting_identity_id`, and is
+`null` when you pass none, and its session is never carried. The package never decides who may make a change:
+authorise the user first, then pass them so the event says who did. Here `$connections` is the `ConnectionService`:
 
 <!-- snippet: tests/Integration/Examples/Events/EventsExampleTest.php#acting-identity -->
 ```php
-$actor = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
+$caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
 
-$updated = $connections->update($tenantId, $connectionId, ['settings' => ['token_endpoint' => $url]], $client, $actor);
+$updated = $connections->update($tenantId, $connectionId, ['settings' => ['token_endpoint' => $url]], $client, $caller);
 ```
 
 `$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
@@ -348,9 +349,9 @@ $updated = $connections->update($tenantId, $connectionId, ['settings' => ['token
 `new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
 request itself, and each event it reports carries the client's IP address and user agent.
 
-The `ConnectionUpdated` it reports names `token_endpoint` in `changedSettings`, and the user as the acting identity. An
-`ActingIdentity` with an empty type or id is an `InvalidArgumentException`, and a change the helper refuses, such as one
-to another tenant's connection (`connection_not_found`), reports nothing.
+The `ConnectionUpdated` it reports names `token_endpoint` in `changedSettings`, and the user as the acting identity. A
+caller with an empty type, id or session id is an `InvalidArgumentException`, and a change the helper refuses, such as
+one to another tenant's connection (`connection_not_found`), reports nothing.
 
 ### Recording an audit trail
 

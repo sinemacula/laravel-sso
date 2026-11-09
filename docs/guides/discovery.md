@@ -85,7 +85,7 @@ Route::post('/auth/sso/discovery', static function (Request $request, DiscoveryS
 ```
 
 Always send `headers()` with the body: every answer carries `Cache-Control: no-store`, and a rate limited one
-`Retry-After`. The purposes, the identity and the session work exactly as they do for a named start, and come from your
+`Retry-After`. The purposes and the caller work exactly as they do for a named start, and the caller comes from your
 own authentication, never from the request body.
 
 ## The answer
@@ -163,8 +163,8 @@ Limits](rate-limits.md).
 
 - A match reports `AuthorizationRequestStarted`, as a named start does.
 - A miss reports exactly one `FlowFailed` with `flow` `authorization_request` and `reason` `discovery_no_match`. Its
-  context names the application and the purpose (and the identity and session of a `link` or `reauthenticate`), never
-  the email, its domain or a connection.
+  context names the application and the purpose (and the caller's identity of a `link` or `reauthenticate`, and the
+  session of a `reauthenticate`), never the email, its domain or a connection.
 - Every refusal reports exactly one `FlowFailed` with its reason.
 
 No event or log carries the email address or its domain. See [Events](events.md).

@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\EnforcementEvents;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -26,6 +25,8 @@ use SineMacula\Laravel\Sso\Events\EnforcementChanged;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
@@ -79,8 +80,8 @@ final class EnforcementServiceTest extends TestCase
     /** @var \Tests\Fixtures\Enforcement\RecordingRevocation The revocation the helper calls. */
     private RecordingRevocation $revocation;
 
-    /** @var \SineMacula\Laravel\Sso\Administration\ActingIdentity Who makes each change. */
-    private ActingIdentity $actor;
+    /** @var \SineMacula\Laravel\Sso\Identities\Caller Who makes each change. */
+    private Caller $actor;
 
     /** @var \SineMacula\Laravel\Sso\Models\Connection An enabled connection of the tenant that has completed a sign-in. */
     private Connection $completed;
@@ -103,7 +104,7 @@ final class EnforcementServiceTest extends TestCase
         $this->clock      = new FixedClock('2026-11-01T09:30:00Z');
         $this->freshness  = new RecordingFreshness;
         $this->revocation = new RecordingRevocation;
-        $this->actor      = new ActingIdentity('App\Models\User', '42');
+        $this->actor      = new Caller(new IdentityReference('App\Models\User', '42'));
 
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(Freshness::class, $this->freshness);

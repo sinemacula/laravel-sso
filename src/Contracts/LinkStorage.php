@@ -4,10 +4,10 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Contracts;
 
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkCreation;
@@ -68,7 +68,7 @@ interface LinkStorage extends Linker
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
@@ -82,7 +82,7 @@ interface LinkStorage extends Linker
         IdentityReference $identity,
         LinkOrigin $origin,
         ClientContext $client,
-        ?ActingIdentity $actor = null,
+        ?Caller $caller = null,
         ?string $application = null,
         ?Purpose $purpose = null,
         ?RequestReference $reference = null,

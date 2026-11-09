@@ -4,8 +4,8 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Metadata;
 
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
@@ -113,11 +113,11 @@ abstract readonly class MetadataSource
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \SineMacula\Laravel\Sso\Metadata\FetchedMetadata  $fetched
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \Throwable
      */
-    abstract public function write(RefreshClaim $claim, FetchedMetadata $fetched, ?ActingIdentity $actor, ClientContext $client): RefreshResult;
+    abstract public function write(RefreshClaim $claim, FetchedMetadata $fetched, ?Caller $caller, ClientContext $client): RefreshResult;
 }

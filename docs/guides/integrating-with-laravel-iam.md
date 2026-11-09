@@ -109,7 +109,7 @@ package's default or binds the application's own.
 | `Freshness`                | `Freshness\RefusingFreshness`                 | authentication's freshness check, with the package's maximum age as the caller's requirement ([Freshness](#freshness))                                             | AUTH-3.11               |
 | `HandoffIssuer`            | `Handoffs\DatabaseHandoffStore`               | the default, always ([Handoff codes](#handoff-codes-are-this-packages))                                                                                            | AUTH-3.10 (reconciled)  |
 | `HostResolver`             | `Fetching\SystemHostResolver`                 | the default, or the application's bounded resolver                                                                                                                 | None                    |
-| `LinkConfirmation`         | `Linking\RefusingLinkConfirmation`            | judged from the current session's provenance and proofs ([Linking](#linking-by-a-verified-domain-and-confirmation))                                                | None (reads AUTH-6.1)   |
+| `LinkConfirmation`         | `Linking\RefusingLinkConfirmation`            | judged from the given caller's session's provenance and proofs ([Linking](#linking-by-a-verified-domain-and-confirmation))                                         | None (reads AUTH-6.1)   |
 | `LinkEligibility`          | `Linking\RefusingLinkEligibility`             | the identity's membership of the connection's tenant                                                                                                               | None (reads AUTH-2.x)   |
 | `LinkEmailMatcher`         | `Linking\NoEmailMatches`                      | the identity's verified email, through authentication's identifier normaliser                                                                                      | AUTH-3.1                |
 | `LinkLimit`                | `Links\OneLinkPerConnection`                  | the default, or the application's                                                                                                                                  | None                    |
@@ -267,7 +267,8 @@ The package runs this block in its examples against stand-ins for both, since it
 ### Link
 
 A `link` creates a link and no session, so it is the one purpose redeemed through the standalone `redeem()`, with no
-transaction open. It needs the caller the application has authenticated, as an `IdentityReference`:
+transaction open. It needs the caller the application has authenticated, as an `Identities\Caller`: the identity and
+the session it is on:
 
 <!-- snippet: tests/Integration/Examples/IntegratingWithLaravelIam/RedeemingByPurposeExampleTest.php#iam-link -->
 ```php
@@ -275,11 +276,12 @@ $redemption = app(HandoffRedemption::class)
     ->redeem(Purpose::LINK, $application, $connectionId, $code, $verifier, $client, $caller);
 ```
 
-The caller comes from authentication's current session, never from the request body. The package asks freshness
-(`sso.link.create`), eligibility, the link's continuity and, for an identity that holds or held a verified domain link,
-`LinkConfirmation`, then creates or confirms the link and commits before it answers. `isAdmitted()` is false, and
-nothing written afterwards is protected by it. FEATURES' SSO-9.9 routes a `link` through authentication's link
-redemption first; with the codes this package's, no sibling call is needed.
+The caller comes from authentication's current session, never from the request body: the authenticated identity and
+that session's id. The package checks its identity against the one the code is bound to, then asks freshness
+(`sso.link.create`) and, for an identity that holds or held a verified domain link, `LinkConfirmation` for that caller
+as given, with eligibility and the link's continuity, then creates or confirms the link and commits before it answers.
+`isAdmitted()` is false, and nothing written afterwards is protected by it. FEATURES' SSO-9.9 routes a `link` through
+authentication's link redemption first; with the codes this package's, no sibling call is needed.
 
 ### Reauthenticate: one renewal
 
@@ -451,8 +453,12 @@ The adapter binds `Contracts\Freshness` to authentication's freshness check (AUT
 - the package's `$maxAgeSeconds` is passed on as the caller's requirement's maximum age, and the stricter of it and any
   freshness the application configures for the name applies, so the package's requirement holds where the application
   configures none;
-- `fresh` only when authentication answers fresh for the caller of the request being served; with no caller (a queued
-  job, a console command) or any doubt, `stale`.
+- the caller is the one the package gives, an `Identities\Caller`: the identity and, when the application supplied one,
+  its session. The adapter judges that caller and session, never the request or job being served: `fresh` only when
+  authentication answers fresh for that session of that identity; with no caller (a scheduled job, a console command),
+  no session, a session that is not the caller's, or any doubt, `stale`;
+- every helper that asks takes that caller after the client, and the administration events name its identity as the
+  acting identity, never its session.
 
 Freshness renewed through a verified domain link, or through its connection, is not the person's independent
 confirmation of that link ([Linking](#linking-by-a-verified-domain-and-confirmation)).
@@ -493,10 +499,13 @@ Each contract the admission asks is asked under the package's locks; the adapter
   the application implements (IAM-7.4), never by `laravel-authorization`.
 - **`LinkEligibility`.** For the `link` purpose: whether the identity may link through the connection, for example only
   as a member of its tenant. Under `laravel-iam` the same membership contract answers it (IAM-7.4).
-- **`LinkConfirmation`.** `independent` only when the current session was not established through a link that had
-  verified domain provenance when it was established, and its freshness was not renewed through one or through that
-  link's connection. A password or a passkey the person holds is independent. The session's recorded link provenance
-  (`sso.link_provenance` below) is what tells; `dependent` whenever it cannot tell.
+- **`LinkConfirmation`.** `judge()` is given the caller the redemption is made for, an `Identities\Caller`, and judges
+  that caller's session, never the request being served. `independent` only when that session was not established
+  through a link that had verified domain provenance when it was established, and its freshness was not renewed through
+  one or through that link's connection. A password or a passkey the person holds is independent. The session's
+  recorded link provenance (`sso.link_provenance` below) is what tells; `dependent` whenever it cannot tell, including
+  for a caller with no session and a session it cannot tie to the caller's identity or guard until the redeemer
+  commits.
 
 ## Provisioning
 

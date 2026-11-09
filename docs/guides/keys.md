@@ -49,14 +49,15 @@ downtime takes four steps.
 ### 1. Add the first key
 
 It is generated, with a self-signed certificate for the connection, and made current at once, since the connection has
-none. Name who is acting with a `SineMacula\Laravel\Sso\Administration\ActingIdentity`, for an Eloquent user its morph
-class and key, which the key events carry; the use and the type are the enums
+none. Give the caller making the change, a `SineMacula\Laravel\Sso\Identities\Caller`: their identity, for an
+Eloquent user its morph class and key, which the key events carry as the acting identity, and the session they are on,
+which the [freshness contract](freshness.md#the-caller) judges; the use and the type are the enums
 `SineMacula\Laravel\Sso\Keys\Enums\KeyUse` and `SineMacula\Laravel\Sso\Keys\Enums\KeyType`:
 
 <!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-add-first -->
 ```php
-$actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
-$result = $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, $client, KeyType::RSA, $actor);
+$caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
+$result = $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, $client, KeyType::RSA, $caller);
 
 $state = $result->key?->state; // KeyState::CURRENT
 ```
@@ -81,7 +82,7 @@ Once the identity provider has the new key:
 
 <!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-make-current -->
 ```php
-$result = $keys->makeCurrent($tenantId, $connectionId, $nextKeyId, $client, $actor);
+$result = $keys->makeCurrent($tenantId, $connectionId, $nextKeyId, $client, $caller);
 
 $current  = $result->key;      // the new current key
 $previous = $result->previous; // the old one, now retiring, with retiringUntil set
@@ -97,7 +98,7 @@ Once the overlap has ended:
 
 <!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-retire -->
 ```php
-$result = $keys->retire($tenantId, $connectionId, $oldKeyId, $client, $actor);
+$result = $keys->retire($tenantId, $connectionId, $oldKeyId, $client, $caller);
 ```
 
 A `next` key you no longer want can be retired the same way. The current key is never retired (`key_state_conflict`):
@@ -114,10 +115,10 @@ remove the old one:
 
 <!-- snippet: tests/Integration/Examples/Keys/KeysExampleTest.php#keys-trust-certificate -->
 ```php
-$result = $keys->trustCertificate($tenantId, $connectionId, $certificatePem, $client, $actor);
+$result = $keys->trustCertificate($tenantId, $connectionId, $certificatePem, $client, $caller);
 
 // Later, once the identity provider signs with the new certificate
-$removed = $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, $client, $actor);
+$removed = $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, $client, $caller);
 ```
 
 A certificate is refused with `settings_invalid` and one violation at `certificate`:

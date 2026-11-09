@@ -27,6 +27,7 @@ use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffEvents;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
 use SineMacula\Laravel\Sso\Linking\RefusingLinkEligibility;
@@ -451,7 +452,7 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
         try {
             DB::connection(StorageConnection::name())->transaction(function () use ($code, $verifier, $reason): void {
 
-                $answer = app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person);
+                $answer = app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), new Caller($this->person));
 
                 self::assertSame($reason, $answer->reason);
 

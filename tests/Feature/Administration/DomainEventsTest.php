@@ -7,7 +7,6 @@ namespace Tests\Feature\Administration;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\DomainEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
@@ -20,6 +19,8 @@ use SineMacula\Laravel\Sso\Events\DomainRemoved;
 use SineMacula\Laravel\Sso\Events\DomainRestored;
 use SineMacula\Laravel\Sso\Events\DomainVerified;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
@@ -79,7 +80,7 @@ final class DomainEventsTest extends TestCase
         $connection = $this->makeConnection(['protocol' => 'saml2']);
         $pending    = $this->makeDomain($connection, 'example.com');
         $verified   = $this->makeDomain($connection, 'example.org', ['state' => DomainState::VERIFIED]);
-        $actor      = new ActingIdentity('App\Models\User', '42');
+        $actor      = new Caller(new IdentityReference('App\Models\User', '42'));
         $events     = app(DomainEvents::class);
 
         $events->claimed($connection, $pending, $actor, self::client());

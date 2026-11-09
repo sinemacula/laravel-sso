@@ -5,13 +5,13 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Connections;
 
 use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Metadata\SamlRefreshRule;
 use SineMacula\Laravel\Sso\Metadata\ValidatedFetch;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -102,7 +102,7 @@ final readonly class ImportSaver
      * @param  array<string, mixed>  $changes
      * @param  \SineMacula\Laravel\Sso\Metadata\ValidatedFetch  $fetch
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \InvalidArgumentException
@@ -114,9 +114,9 @@ final readonly class ImportSaver
         #[\SensitiveParameter] array $changes,
         ValidatedFetch $fetch,
         ClientContext $client,
-        ?ActingIdentity $actor = null,
+        ?Caller $caller = null,
     ): ConnectionResult {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $connectionId, $changes, $fetch, $client, $actor): ConnectionResult {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $connectionId, $changes, $fetch, $client, $caller): ConnectionResult {
 
             $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -124,14 +124,14 @@ final readonly class ImportSaver
                 return ConnectionResult::refused($locked === null ? FailureReason::CONNECTION_NOT_FOUND : FailureReason::PROTOCOL_UNAVAILABLE);
             }
 
-            if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST)->isFresh()) {
+            if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
                 return ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
             }
 
-            $result = $this->connections->changeLocked($locked, $changes, $client, $actor);
+            $result = $this->connections->changeLocked($locked, $changes, $client, $caller);
 
             if ($result->isSucceeded()) {
-                $this->stamped($locked, $fetch, $result, $actor, $client);
+                $this->stamped($locked, $fetch, $result, $caller, $client);
             }
 
             return $result;
@@ -145,13 +145,13 @@ final readonly class ImportSaver
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Metadata\ValidatedFetch  $fetch
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionResult  $result
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    private function stamped(Connection $locked, ValidatedFetch $fetch, ConnectionResult $result, ?ActingIdentity $actor, ClientContext $client): void
+    private function stamped(Connection $locked, ValidatedFetch $fetch, ConnectionResult $result, ?Caller $caller, ClientContext $client): void
     {
         $holds = SamlRefreshRule::holdsDeadline($locked);
 
@@ -161,6 +161,6 @@ final readonly class ImportSaver
 
         $locked->save();
 
-        $this->events->connectionUpdated($locked, $result->isChanged() || !$renewed ? [] : ['metadata_fetched_at'], $actor, $client);
+        $this->events->connectionUpdated($locked, $result->isChanged() || !$renewed ? [] : ['metadata_fetched_at'], $caller, $client);
     }
 }

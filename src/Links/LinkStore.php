@@ -8,7 +8,6 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionFinder;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\LinkLimit;
@@ -20,6 +19,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
@@ -274,7 +274,7 @@ final readonly class LinkStore implements LinkStorage
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
@@ -293,13 +293,13 @@ final readonly class LinkStore implements LinkStorage
         IdentityReference $identity,
         LinkOrigin $origin,
         ClientContext $client,
-        ?ActingIdentity $actor = null,
+        ?Caller $caller = null,
         ?string $application = null,
         ?Purpose $purpose = null,
         ?RequestReference $reference = null,
     ): LinkCreation {
-        $report = function (Connection $locked) use ($identity, $origin, $client, $actor, $application, $purpose, $reference): void {
-            $this->events->created($locked, $identity, $origin, $client, $actor, $application, $purpose, $reference);
+        $report = function (Connection $locked) use ($identity, $origin, $client, $caller, $application, $purpose, $reference): void {
+            $this->events->created($locked, $identity, $origin, $client, $caller, $application, $purpose, $reference);
         };
 
         return DB::connection(StorageConnection::name())->transaction(function () use ($connection, $subject, $identity, $origin, $report): LinkCreation {

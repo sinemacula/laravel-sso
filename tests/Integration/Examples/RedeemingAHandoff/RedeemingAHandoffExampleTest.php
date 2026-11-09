@@ -12,6 +12,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkService;
 use SineMacula\Laravel\Sso\Links\LinkSummary;
@@ -93,7 +94,7 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
 
         self::assertTrue($refused['result']->isRefused());
         self::assertSame(FailureReason::IDENTITY_MISMATCH, $refused['result']->reason);
-        self::assertSame(FailureReason::REPLAYED, self::linkAt($refused['input'], $this->person)->reason);
+        self::assertSame(FailureReason::REPLAYED, self::linkAt($refused['input'], new Caller($this->person, 'session-1'))->reason);
         self::assertSame([], $this->linksOf($this->person));
 
         $linked = $this->linkAsCaller($this->person, $this->person)['result'];
@@ -200,7 +201,7 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
         $start = $this->startFlow(Purpose::LINK, $this->connectionId, $identity);
         $input = ['connection' => $this->connectionId, 'code' => $this->codeFor($start), 'verifier' => self::verifierOf($start)];
 
-        return ['input' => $input, 'result' => self::linkAt($input, $caller)];
+        return ['input' => $input, 'result' => self::linkAt($input, new Caller($caller, 'session-1'))];
     }
 
     /**
@@ -246,13 +247,13 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
 
     /**
      * The application's `link` endpoint, given its input and the caller it
-     * authenticated.
+     * authenticated, on its session.
      *
      * @param  array{connection: string, code: string, verifier: string}  $input
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      */
-    private static function linkAt(array $input, IdentityReference $caller): RedemptionResult
+    private static function linkAt(array $input, Caller $caller): RedemptionResult
     {
         return require __DIR__ . '/redemptions/link.php';
     }

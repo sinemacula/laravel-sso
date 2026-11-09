@@ -18,13 +18,14 @@ $domains = app(DomainService::class);
 
 ## Claiming a domain
 
-Name who is acting with a `SineMacula\Laravel\Sso\Administration\ActingIdentity`, for an Eloquent user its morph class
-and key, which the `DomainClaimed` event carries:
+Give the caller making the change, a `SineMacula\Laravel\Sso\Identities\Caller`: their identity, for an Eloquent user
+its morph class and key, which the `DomainClaimed` event carries as the acting identity, and the session they are on,
+which the [freshness contract](freshness.md#the-caller) judges:
 
 <!-- snippet: tests/Integration/Examples/Domains/DomainsExampleTest.php#domain-claim -->
 ```php
-$actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
-$result = $domains->claim($tenantId, $connectionId, 'Example.COM', $client, $actor);
+$caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
+$result = $domains->claim($tenantId, $connectionId, 'Example.COM', $client, $caller);
 
 // A successful claim carries the domain; a refusal carries none
 $record = $result->domain?->recordName;          // _sso-verification.example.com
@@ -61,7 +62,7 @@ afterwards gives it a new token.
 
 <!-- snippet: tests/Integration/Examples/Domains/DomainsExampleTest.php#domain-verify -->
 ```php
-$result = $domains->verify($tenantId, $connectionId, 'example.com', $client, $actor);
+$result = $domains->verify($tenantId, $connectionId, 'example.com', $client, $caller);
 ```
 
 The package looks the TXT record up and verifies the domain only when one of the records at the name is exactly the
@@ -85,7 +86,7 @@ and counts from its new verification time.
 ```php
 $domain  = $domains->get($tenantId, $connectionId, 'example.com');            // ?DomainSummary
 $listed  = $domains->list($tenantId, $connectionId);                          // ?list<DomainSummary>, oldest first
-$removed = $domains->remove($tenantId, $connectionId, 'example.com', $client, $actor); // in any state
+$removed = $domains->remove($tenantId, $connectionId, 'example.com', $client, $caller); // in any state
 ```
 
 Removing a verified domain stops it routing discovery and allowing linking at once, and frees it for another

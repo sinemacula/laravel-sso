@@ -7,7 +7,6 @@ namespace Tests\Feature\Administration;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\DomainEvents;
 use SineMacula\Laravel\Sso\Administration\EnforcementEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -19,6 +18,7 @@ use SineMacula\Laravel\Sso\Events\DomainRecheckFailed;
 use SineMacula\Laravel\Sso\Events\DomainRestored;
 use SineMacula\Laravel\Sso\Events\EnforcementChanged;
 use SineMacula\Laravel\Sso\Events\ExemptionUsed;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
@@ -111,7 +111,7 @@ final class DomainAndEnforcementEventsTest extends TestCase
     {
         $row = $this->makeEnforcement(['enabled' => true, 'connection_ids' => ['c-2', 'c-1', 'c-2'], 'version' => '01jbversion000000000000002']);
 
-        $this->reporter(EnforcementEvents::class)->changed($row, '01jbversion000000000000001', new ActingIdentity('App\Models\User', '42'), Clients::browser());
+        $this->reporter(EnforcementEvents::class)->changed($row, '01jbversion000000000000001', new Caller(new IdentityReference('App\Models\User', '42')), Clients::browser());
 
         $this->assertEventSequence([EnforcementChanged::class]);
 

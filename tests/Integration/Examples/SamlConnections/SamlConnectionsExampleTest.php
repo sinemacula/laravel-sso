@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\SamlConnections;
 
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
@@ -13,6 +12,7 @@ use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -53,8 +53,8 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     /** @var \Tests\Integration\Examples\SamlConnections\Tenant The tenant whose connection is set up. */
     private Tenant $tenant;
 
-    /** @var \SineMacula\Laravel\Sso\Administration\ActingIdentity The administrator setting it up. */
-    private ActingIdentity $actor;
+    /** @var \SineMacula\Laravel\Sso\Identities\Caller The administrator setting it up. */
+    private Caller $caller;
 
     /**
      * Make the tenant and the administrator acting for it.
@@ -67,7 +67,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
         parent::setUp();
 
         $this->tenant = new Tenant(self::TENANT);
-        $this->actor  = new ActingIdentity('App\Models\User', '42');
+        $this->caller = new Caller(new IdentityReference('App\Models\User', '42'));
     }
 
     /**
@@ -148,10 +148,10 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
         $keys         = app(KeyService::class);
 
         foreach ([KeyUse::SP_SIGNING, KeyUse::SP_ENCRYPTION] as $use) {
-            self::assertSame([['key_type', 'not_allowed']], self::violationsOf($keys->addNext(self::TENANT, $connectionId, $use, Clients::browser(), KeyType::EC, $this->actor)));
+            self::assertSame([['key_type', 'not_allowed']], self::violationsOf($keys->addNext(self::TENANT, $connectionId, $use, Clients::browser(), KeyType::EC, $this->caller)));
         }
 
-        $trusted = $keys->trustCertificate(self::TENANT, $connectionId, self::ellipticCurveCertificate(), Clients::browser(), $this->actor);
+        $trusted = $keys->trustCertificate(self::TENANT, $connectionId, self::ellipticCurveCertificate(), Clients::browser(), $this->caller);
 
         self::assertSame([['certificate', 'unsupported']], self::violationsOf($trusted));
         self::assertSame([], $keys->keys(self::TENANT, $connectionId));
@@ -219,7 +219,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
      */
     private function perform(string $step, array $input = []): mixed
     {
-        return self::atStep($step, ['tenant' => $this->tenant, 'actor' => $this->actor, ...$input]);
+        return self::atStep($step, ['tenant' => $this->tenant, 'caller' => $this->caller, ...$input]);
     }
 
     /**

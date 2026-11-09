@@ -10,15 +10,17 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Freshness\RefusingFreshness;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\TestCase;
 
 /**
  * Feature tests for the freshness gate: it asks the bound contract with the
- * operation and its configured maximum age, resolves the contract and reads the
- * age on each call, fails closed on a malformed age before the contract is
- * asked, and asks about several operations once each, in order, stopping at the
- * first `stale`.
+ * operation, its configured maximum age and the caller, resolves the contract
+ * and reads the age on each call, fails closed on a malformed age before the
+ * contract is asked, and asks about several operations once each, in order,
+ * stopping at the first `stale`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,23 +31,25 @@ use Tests\TestCase;
 final class FreshnessGateTest extends TestCase
 {
     /**
-     * The bound contract is asked with the operation and the age configured for
-     * it, and its answer is the gate's.
+     * The bound contract is asked with the operation, the age configured for it
+     * and the caller as given, with its session, or none; and its answer is the
+     * gate's.
      *
      * @return void
      */
     public function testAsksTheBoundContractWithTheConfiguredAge(): void
     {
         $freshness = $this->bind(FakeFreshness::fresh()->staleFor(FreshnessOperation::CONNECTION_DELETE));
+        $caller    = new Caller(new IdentityReference('App\Models\User', '42'), 'session-1');
 
         config()->set('sso.freshness.max_age_seconds.connection_trust', 120);
 
-        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->check(FreshnessOperation::CONNECTION_TRUST));
-        self::assertSame(FreshnessOutcome::STALE, $this->gate()->check(FreshnessOperation::CONNECTION_DELETE));
+        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->check(FreshnessOperation::CONNECTION_TRUST, $caller));
+        self::assertSame(FreshnessOutcome::STALE, $this->gate()->check(FreshnessOperation::CONNECTION_DELETE, null));
 
         self::assertSame([
-            ['operation' => FreshnessOperation::CONNECTION_TRUST, 'max_age_seconds' => 120],
-            ['operation' => FreshnessOperation::CONNECTION_DELETE, 'max_age_seconds' => 300],
+            ['operation' => FreshnessOperation::CONNECTION_TRUST, 'max_age_seconds' => 120, 'caller' => $caller],
+            ['operation' => FreshnessOperation::CONNECTION_DELETE, 'max_age_seconds' => 300, 'caller' => null],
         ], $freshness->asked());
     }
 
@@ -63,7 +67,7 @@ final class FreshnessGateTest extends TestCase
         }
 
         foreach (FreshnessOperation::cases() as $index => $operation) {
-            self::assertSame(FreshnessOutcome::FRESH, $this->gate()->check($operation));
+            self::assertSame(FreshnessOutcome::FRESH, $this->gate()->check($operation, null));
 
             $freshness->assertAsked($operation, 100 + $index);
         }
@@ -82,15 +86,15 @@ final class FreshnessGateTest extends TestCase
     {
         $gate = $this->gate();
 
-        self::assertSame(FreshnessOutcome::STALE, $gate->check(FreshnessOperation::LINK_CREATE));
+        self::assertSame(FreshnessOutcome::STALE, $gate->check(FreshnessOperation::LINK_CREATE, null));
 
         $first = $this->bind(FakeFreshness::fresh());
 
-        self::assertSame(FreshnessOutcome::FRESH, $gate->check(FreshnessOperation::LINK_CREATE));
+        self::assertSame(FreshnessOutcome::FRESH, $gate->check(FreshnessOperation::LINK_CREATE, null));
 
         $second = $this->bind(FakeFreshness::stale());
 
-        self::assertSame(FreshnessOutcome::STALE, $gate->check(FreshnessOperation::LINK_REMOVE));
+        self::assertSame(FreshnessOutcome::STALE, $gate->check(FreshnessOperation::LINK_REMOVE, null));
 
         $first->assertAskedExactly([FreshnessOperation::LINK_CREATE]);
         $second->assertAskedExactly([FreshnessOperation::LINK_REMOVE]);
@@ -109,11 +113,11 @@ final class FreshnessGateTest extends TestCase
 
         config()->set('sso.freshness.max_age_seconds.keys_rotate', 600);
 
-        $gate->check(FreshnessOperation::KEYS_ROTATE);
+        $gate->check(FreshnessOperation::KEYS_ROTATE, null);
 
         config()->set('sso.freshness.max_age_seconds.keys_rotate', 60);
 
-        $gate->check(FreshnessOperation::KEYS_ROTATE);
+        $gate->check(FreshnessOperation::KEYS_ROTATE, null);
 
         self::assertSame([600, 60], array_column($freshness->asked(), 'max_age_seconds'));
     }
@@ -131,7 +135,7 @@ final class FreshnessGateTest extends TestCase
         config()->set('sso.freshness.max_age_seconds.domain_claim', 0);
 
         try {
-            $this->gate()->check(FreshnessOperation::DOMAIN_CLAIM);
+            $this->gate()->check(FreshnessOperation::DOMAIN_CLAIM, null);
             self::fail('A malformed age was asked with.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('sso.freshness.max_age_seconds.domain_claim must be an integer from 1 to 3600.', $exception->getMessage());
@@ -153,10 +157,25 @@ final class FreshnessGateTest extends TestCase
 
         config()->set('sso.freshness.max_age_seconds.connection_idp_initiated', 90);
 
-        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->checkAll($operations));
+        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->checkAll($operations, null));
 
         $freshness->assertAskedExactly($operations);
         $freshness->assertAsked(FreshnessOperation::CONNECTION_IDP_INITIATED, 90);
+    }
+
+    /**
+     * `checkAll()` asks about each operation for the one caller given.
+     *
+     * @return void
+     */
+    public function testCheckAllAsksEachOperationForTheCaller(): void
+    {
+        $freshness = $this->bind(FakeFreshness::fresh());
+        $caller    = new Caller(new IdentityReference('App\Models\User', '42'), 'session-1');
+
+        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->checkAll([FreshnessOperation::CONNECTION_TRUST, FreshnessOperation::CONNECTION_ENABLE], $caller));
+
+        self::assertSame([$caller, $caller], array_column($freshness->asked(), 'caller'));
     }
 
     /**
@@ -175,7 +194,7 @@ final class FreshnessGateTest extends TestCase
             FreshnessOperation::CONNECTION_TRUST,
             FreshnessOperation::KEYS_ROTATE,
             FreshnessOperation::CONNECTION_TRUST,
-        ]);
+        ], null);
 
         self::assertSame(FreshnessOutcome::FRESH, $answer);
 
@@ -191,7 +210,7 @@ final class FreshnessGateTest extends TestCase
     {
         $freshness = $this->bind(FakeFreshness::fresh());
 
-        $this->gate()->checkAll([FreshnessOperation::KEYS_ROTATE, FreshnessOperation::KEYS_ROTATE, FreshnessOperation::CONNECTION_TRUST]);
+        $this->gate()->checkAll([FreshnessOperation::KEYS_ROTATE, FreshnessOperation::KEYS_ROTATE, FreshnessOperation::CONNECTION_TRUST], null);
 
         $freshness->assertAskedExactly([FreshnessOperation::KEYS_ROTATE, FreshnessOperation::CONNECTION_TRUST]);
     }
@@ -211,7 +230,7 @@ final class FreshnessGateTest extends TestCase
             FreshnessOperation::CONNECTION_IDP_INITIATED,
             FreshnessOperation::CONNECTION_ENABLE,
             FreshnessOperation::KEYS_ROTATE,
-        ]);
+        ], null);
 
         self::assertSame(FreshnessOutcome::STALE, $answer);
 
@@ -227,7 +246,7 @@ final class FreshnessGateTest extends TestCase
     {
         $freshness = $this->bind(FakeFreshness::stale());
 
-        self::assertSame(FreshnessOutcome::STALE, $this->gate()->checkAll(FreshnessOperation::cases()));
+        self::assertSame(FreshnessOutcome::STALE, $this->gate()->checkAll(FreshnessOperation::cases(), null));
 
         $freshness->assertAskedExactly([FreshnessOperation::CONNECTION_TRUST]);
     }
@@ -241,11 +260,11 @@ final class FreshnessGateTest extends TestCase
     public function testCheckAllOfNoOperationIsFresh(): void
     {
         self::assertInstanceOf(RefusingFreshness::class, $this->app?->make(Freshness::class));
-        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->checkAll([]));
+        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->checkAll([], null));
 
         $freshness = $this->bind(FakeFreshness::stale());
 
-        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->checkAll([]));
+        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->checkAll([], null));
 
         $freshness->assertNotAsked();
     }
@@ -263,7 +282,7 @@ final class FreshnessGateTest extends TestCase
         config()->set('sso.freshness.max_age_seconds.domain_verify', 'five minutes');
 
         try {
-            $this->gate()->checkAll([FreshnessOperation::DOMAIN_CLAIM, FreshnessOperation::DOMAIN_VERIFY, FreshnessOperation::DOMAIN_REMOVE]);
+            $this->gate()->checkAll([FreshnessOperation::DOMAIN_CLAIM, FreshnessOperation::DOMAIN_VERIFY, FreshnessOperation::DOMAIN_REMOVE], null);
             self::fail('A malformed age was asked with.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('sso.freshness.max_age_seconds.domain_verify must be an integer from 1 to 3600.', $exception->getMessage());

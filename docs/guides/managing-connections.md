@@ -40,9 +40,10 @@ that fills in what is the same for every organisation using the provider:
 <!-- snippet: tests/Integration/Examples/ManagingConnections/admin/create.php#connections-create -->
 
 ```php
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 $result = $connections->create(
     tenantId: $tenant->id,
@@ -54,7 +55,7 @@ $result = $connections->create(
         'client_secret' => $request->input('client_secret'),
     ],
     preset: 'google',
-    actor: new ActingIdentity($user->getMorphClass(), (string) $user->getKey()),
+    caller: new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId()),
 );
 
 if ($result->isInvalid()) {
@@ -68,7 +69,9 @@ What you give replaces what the preset fills in, setting by setting, and every c
 entered by hand. A setting or mapping target given as `null` is not set. The connection may be saved incomplete: it is
 never used until its settings are complete and it is enabled.
 
-The acting identity is optional; when given, it is carried on the event the change reports.
+The caller is optional, an `Identities\Caller` of the user and the session they are on: the
+[freshness contract](freshness.md#the-caller) judges it, and the event the change reports names its identity as the
+acting identity. With none, freshness is asked for no caller, which a contract that judges callers answers `stale`.
 
 ## Updating a connection
 
@@ -81,7 +84,7 @@ $result = $connections->update($tenant->id, $connectionId, [
     'display_name'      => 'Acme SSO',
     'settings'          => ['token_endpoint' => 'https://idp.acme.example/oauth2/token', 'userinfo_endpoint' => null],
     'attribute_mapping' => ['department' => 'dept', 'groups' => null],
-], $client, $actor);
+], $client, $caller);
 ```
 
 `$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
@@ -171,7 +174,7 @@ and `createdAt` and `updatedAt` in UTC. A secret is never returned: `secrets` sa
 <!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-enable -->
 
 ```php
-$result = $connections->enable($tenant->id, $connectionId, $client, $actor);
+$result = $connections->enable($tenant->id, $connectionId, $client, $caller);
 ```
 
 Enabling asks the freshness contract with `sso.connection.enable`, every time, then enables the connection and reports
@@ -183,7 +186,7 @@ complete; it is used only once they are.
 <!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-disable -->
 
 ```php
-$result = $lifecycle->disable($tenant->id, $connectionId, $client, $actor);
+$result = $lifecycle->disable($tenant->id, $connectionId, $client, $caller);
 ```
 
 Disabling asks the freshness contract with `sso.connection.disable`, every time, then, in one transaction: turns the
@@ -197,7 +200,7 @@ domains, links and keys are kept, so enabling it again restores it. Disabling a 
 <!-- snippet: tests/Integration/Examples/ManagingConnections/ManagingConnectionsExampleTest.php#connections-delete -->
 
 ```php
-$result = $lifecycle->delete($tenant->id, $connectionId, $client, $actor);
+$result = $lifecycle->delete($tenant->id, $connectionId, $client, $caller);
 ```
 
 Deleting asks the freshness contract with `sso.connection.delete`, then, in one transaction: withdraws what depends on
@@ -222,7 +225,7 @@ $issuer = 'https://login.acme.example';
 $result = $migration->migrate($tenant->id, $connectionId, ['settings' => ['issuer' => $issuer]], [
     $linkId      => ['00u1a2b3c4', null, $issuer], // the new subject, no NameID format, the new issuer
     $otherLinkId => ['E-1042', null, $issuer],
-], [$leaverLinkId, $formerContractorLinkId], $client, $actor); // the links to remove
+], [$leaverLinkId, $formerContractorLinkId], $client, $caller); // the links to remove
 ```
 
 Each relink is a list: the subject, then optionally the SAML NameID format and the issuer. A format left out or `null`

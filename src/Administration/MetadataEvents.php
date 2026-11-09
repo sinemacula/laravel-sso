@@ -12,14 +12,15 @@ use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshed;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
  * Reports a refresh of a connection's metadata (SSO-2.8, SSO-10.3): each method
  * builds the event's context through the one projection
  * (`Events\EventContexts`), from the connection's id, tenant and protocol and
- * the acting identity of the administrator who asked for the refresh, `null`
- * for a scheduled one (SSO-10.4), and hands the event to
+ * the identity of the caller who asked for the refresh, as the acting identity,
+ * `null` for a scheduled one (SSO-10.4), and hands the event to
  * `Events\AfterCommitDispatcher`, so it reaches listeners once the refresh's
  * transaction commits and never when it rolls back (SSO-10.5).
  *
@@ -64,17 +65,17 @@ final readonly class MetadataEvents
      * @param  list<string>  $changedSettings
      * @param  int  $metadataVersion
      * @param  bool  $trustChanged
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function refreshed(Connection $connection, array $changedSettings, int $metadataVersion, bool $trustChanged, ?ActingIdentity $actor, ClientContext $client): void
+    public function refreshed(Connection $connection, array $changedSettings, int $metadataVersion, bool $trustChanged, ?Caller $caller, ClientContext $client): void
     {
         $names = array_values(array_unique($changedSettings));
 
-        $this->dispatcher->dispatch(new MetadataRefreshed($this->context($connection, $actor, $client), $names, $metadataVersion, $trustChanged));
+        $this->dispatcher->dispatch(new MetadataRefreshed($this->context($connection, $caller, $client), $names, $metadataVersion, $trustChanged));
     }
 
     /**
@@ -85,21 +86,15 @@ final readonly class MetadataEvents
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  int  $failures
      * @param  ?\Carbon\CarbonImmutable  $nextAttemptAt
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function refreshFailed(
-        Connection $connection,
-        FailureReason $reason,
-        int $failures,
-        ?CarbonImmutable $nextAttemptAt,
-        ?ActingIdentity $actor,
-        ClientContext $client,
-    ): void {
-        $this->dispatcher->dispatch(new MetadataRefreshFailed($this->context($connection, $actor, $client), $reason, $failures, $nextAttemptAt?->utc()));
+    public function refreshFailed(Connection $connection, FailureReason $reason, int $failures, ?CarbonImmutable $nextAttemptAt, ?Caller $caller, ClientContext $client): void
+    {
+        $this->dispatcher->dispatch(new MetadataRefreshFailed($this->context($connection, $caller, $client), $reason, $failures, $nextAttemptAt?->utc()));
     }
 
     /**
@@ -107,19 +102,19 @@ final readonly class MetadataEvents
      * identity or by none.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Events\EventContext
      */
-    private function context(Connection $connection, ?ActingIdentity $actor, ClientContext $client): EventContext
+    private function context(Connection $connection, ?Caller $caller, ClientContext $client): EventContext
     {
         return $this->contexts->make(
             $client,
             connectionId: $connection->id,
             connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,
-            actingIdentityMorphClass: $actor?->type,
-            actingIdentityId: $actor?->id,
+            actingIdentityMorphClass: $caller?->identity->type,
+            actingIdentityId: $caller?->identity->id,
         );
     }
 }

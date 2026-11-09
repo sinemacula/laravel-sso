@@ -83,17 +83,16 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   its claim); the job calls `refreshQueued()`, which reads the connection again and is `skipped` when it is gone, no
   longer refreshes or is no longer due. `--sync` refreshes them in the command instead (`refreshDue()`). The job and the
   command each pass `new ClientContext(null, null)`, built where the work starts, so their events carry no IP address or
-  user agent; `refreshNow()` takes the administrator's client after the acting identity. `refreshNow()` refreshes the
-  tenant's connection whatever its backoff, its `metadata_refresh` setting or `sso.features.metadata_refresh`, and
-  whether it has expired or not, so it recovers a connection the schedule does not: it asks only
-  `MetadataSource::isRefreshable()`, that what it fetches is a URL the package may fetch, and that its protocol is
-  available (`connection_not_found` for another tenant's, `feature_disabled` for a protocol switched off or nothing to
-  fetch, with nothing fetched), for the `ActingIdentity` it requires. Where the schedule would not refresh the
-  connection (its setting or the feature off, or a SAML connection that has not opted in) it first asks
-  `sso.connection.trust` freshness, and `stale` is `freshness_required`. It then counts the attempt against
-  `AttemptSubject::metadata()` (the import's limit, `sso.rate_limits.metadata`): past it, `rate_limited` with
-  `retryAfter`, before anything is claimed or fetched. Every entry refuses to run inside a transaction on the storage
-  connection (`StorageConnection::assertNoTransaction()`).
+  user agent; `refreshNow()` takes the administrator's client after their caller. `refreshNow()` refreshes the tenant's
+  connection whatever its backoff, its `metadata_refresh` setting or `sso.features.metadata_refresh`, and whether it has
+  expired or not, so it recovers a connection the schedule does not: it asks only `MetadataSource::isRefreshable()`,
+  that what it fetches is a URL the package may fetch, and that its protocol is available (`connection_not_found` for
+  another tenant's, `feature_disabled` for a protocol switched off or nothing to fetch, with nothing fetched), for the
+  `Identities\Caller` it requires. Where the schedule would not refresh the connection (its setting or the feature off,
+  or a SAML connection that has not opted in) it first asks `sso.connection.trust` freshness for that caller, and
+  `stale` is `freshness_required`. It then counts the attempt against `AttemptSubject::metadata()` (the import's limit,
+  `sso.rate_limits.metadata`): past it, `rate_limited` with `retryAfter`, before anything is claimed or fetched. Every
+  entry refuses to run inside a transaction on the storage connection (`StorageConnection::assertNoTransaction()`).
 - The machinery is protocol-agnostic. `Metadata\MetadataRefresher` lists the due connections of every protocol that
   has a source (`Metadata\MetadataSources`: `SamlMetadataSource` for `saml2`, `OidcMetadataSource` for `oidc`; a
   protocol an application registered has none and never refreshes), asks the connection's source whether it refreshes,
@@ -182,9 +181,9 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   from a fetch that could go stale, and the first fetch of each resource starts its clock. The expired last good
   settings stay stored, for diagnosis, until a scheduled or administrator's refresh succeeds. A callback never recovers
   a connection: the driver refuses it before anything is fetched.
-- Events (`Administration\MetadataEvents`) are built through the one context projection, with the acting identity of
-  the administrator who asked or none for a scheduled run, and dispatched after the transaction commits, never on a
-  rollback. None holds a certificate, a URL or any value of the metadata.
+- Events (`Administration\MetadataEvents`) are built through the one context projection, with the identity of the
+  administrator's caller who asked as the acting identity, or none for a scheduled run, and dispatched after the
+  transaction commits, never on a rollback. None holds a certificate, a URL or any value of the metadata.
 - A scheduled refresh asks no freshness: it is a system job an administrator set up, with freshness, by saving the
   `metadata_url` or issuer, the anchor or `metadata_refresh`. An administrator's refresh asks none where the schedule
   would refresh the connection too, since it writes no more than the schedule would; it is rate limited and names the

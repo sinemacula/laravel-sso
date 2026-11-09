@@ -8,7 +8,6 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
@@ -19,6 +18,8 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainStatus;
 use SineMacula\Laravel\Sso\Events\DomainClaimed;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
@@ -91,10 +92,11 @@ final class DomainsExampleTest extends ExampleTestCase
         // @snippet-start domain-service
         $domains = app(DomainService::class);
         // @snippet-end domain-service
-        $client = Clients::browser();
+        $client  = Clients::browser();
+        $request = self::requestOnSession('/admin/sso/domains');
         // @snippet-start domain-claim
-        $actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
-        $result = $domains->claim($tenantId, $connectionId, 'Example.COM', $client, $actor);
+        $caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
+        $result = $domains->claim($tenantId, $connectionId, 'Example.COM', $client, $caller);
 
         // A successful claim carries the domain; a refusal carries none
         $record = $result->domain?->recordName;          // _sso-verification.example.com
@@ -165,7 +167,7 @@ final class DomainsExampleTest extends ExampleTestCase
     {
         $this->instance(Freshness::class, FakeFreshness::stale());
 
-        $result = app(DomainService::class)->claim(self::TENANT, $this->connectionId, 'example.com', Clients::browser(), $this->actor());
+        $result = app(DomainService::class)->claim(self::TENANT, $this->connectionId, 'example.com', Clients::browser(), $this->caller());
 
         self::assertSame(DomainStatus::REFUSED, $result->status);
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
@@ -183,31 +185,31 @@ final class DomainsExampleTest extends ExampleTestCase
     {
         $tenantId     = self::TENANT;
         $connectionId = $this->connectionId;
-        $actor        = $this->actor();
+        $caller       = $this->caller();
         $domains      = app(DomainService::class);
         $claimed      = $this->claimed($domains, 'example.com');
 
         $this->dns->absent($claimed->recordName);
 
-        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $actor)->reason);
+        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $caller)->reason);
 
         $this->dns->found($claimed->recordName, 'not-the-token');
 
-        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $actor)->reason);
+        self::assertSame(FailureReason::DOMAIN_RECORD_NOT_FOUND, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $caller)->reason);
 
         $this->dns->failing($claimed->recordName);
 
-        self::assertSame(FailureReason::DOMAIN_LOOKUP_FAILED, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $actor)->reason);
+        self::assertSame(FailureReason::DOMAIN_LOOKUP_FAILED, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $caller)->reason);
 
         $this->dns->found($claimed->recordName, 'v=spf1 -all', $claimed->verificationToken());
 
         $client = Clients::browser();
         // @snippet-start domain-verify
-        $result = $domains->verify($tenantId, $connectionId, 'example.com', $client, $actor);
+        $result = $domains->verify($tenantId, $connectionId, 'example.com', $client, $caller);
         // @snippet-end domain-verify
         self::assertSame(DomainStatus::VERIFIED, $result->status);
         self::assertTrue($result->domain?->isVerified());
-        self::assertSame(DomainStatus::UNCHANGED, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $actor)->status);
+        self::assertSame(DomainStatus::UNCHANGED, $domains->verify($tenantId, $connectionId, 'example.com', Clients::browser(), $caller)->status);
 
         $this->dns->assertLookedUp($claimed->recordName, 4);
     }
@@ -247,7 +249,7 @@ final class DomainsExampleTest extends ExampleTestCase
     {
         $tenantId     = self::TENANT;
         $connectionId = $this->connectionId;
-        $actor        = $this->actor();
+        $caller       = $this->caller();
         $domains      = app(DomainService::class);
         $other        = $this->makeOidcConnection(new FakeOpenIdProvider('https://other-op.example.test', clock: $this->clock));
 
@@ -263,7 +265,7 @@ final class DomainsExampleTest extends ExampleTestCase
         // @snippet-start domain-read-remove
         $domain  = $domains->get($tenantId, $connectionId, 'example.com');            // ?DomainSummary
         $listed  = $domains->list($tenantId, $connectionId);                          // ?list<DomainSummary>, oldest first
-        $removed = $domains->remove($tenantId, $connectionId, 'example.com', $client, $actor); // in any state
+        $removed = $domains->remove($tenantId, $connectionId, 'example.com', $client, $caller); // in any state
         // @snippet-end domain-read-remove
         self::assertTrue($domain?->isVerified());
         self::assertSame(['example.com', 'example.org'], self::namesOf($listed));
@@ -365,11 +367,11 @@ final class DomainsExampleTest extends ExampleTestCase
     /**
      * The administrator as the package records who acted.
      *
-     * @return \SineMacula\Laravel\Sso\Administration\ActingIdentity
+     * @return \SineMacula\Laravel\Sso\Identities\Caller
      */
-    private function actor(): ActingIdentity
+    private function caller(): Caller
     {
-        return new ActingIdentity($this->user->getMorphClass(), (string) $this->user->getKey());
+        return new Caller(new IdentityReference($this->user->getMorphClass(), (string) $this->user->getKey()));
     }
 
     /**

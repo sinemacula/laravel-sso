@@ -9,13 +9,15 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
 
 /**
- * An application's freshness contract, which judges its caller as a real one
- * does: `fresh` only when the caller authenticated no more than the maximum age
- * ago, by the package's clock, and `stale` otherwise, with no caller included.
- * `Testing\FakeFreshness` answers what it is told; this one reads a time, so a
- * test can pin the boundary of the age the package asks with.
+ * An application's freshness contract, which judges the caller it is given as a
+ * real one does: `fresh` only when the caller authenticated no more than the
+ * maximum age ago, by the package's clock, and `stale` otherwise, with no
+ * caller included. `Testing\FakeFreshness` answers what it is told; this one
+ * reads a time, so a test can pin the boundary of the age the package asks
+ * with.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,14 +48,15 @@ final class ApplicationFreshness implements Freshness
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  int  $maxAgeSeconds
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
      */
     #[\Override]
-    public function check(FreshnessOperation $operation, int $maxAgeSeconds): FreshnessOutcome
+    public function check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller $caller): FreshnessOutcome
     {
         $this->asked[] = [$operation, $maxAgeSeconds];
 
-        if ($this->authenticatedAt === null || $this->authenticatedAt->addSeconds($maxAgeSeconds) < $this->clock->now()) {
+        if ($caller === null || $this->authenticatedAt === null || $this->authenticatedAt->addSeconds($maxAgeSeconds) < $this->clock->now()) {
             return FreshnessOutcome::STALE;
         }
 

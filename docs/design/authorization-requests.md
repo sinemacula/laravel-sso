@@ -13,16 +13,16 @@ the race. The tables, the value types and the completion they feed are in `flows
 
 ### Starting a flow
 
-- `Flows\AuthorizationRequestService::start($application, $purpose, $connectionId, $client, $codeChallenge, $identity, $sessionId)`,
+- `Flows\AuthorizationRequestService::start($application, $purpose, $connectionId, $client, $codeChallenge, $caller)`,
   the client an `Http\ClientContext` the application builds from the request, answers a `Flows\StartResult`: `started`
   (reference, navigation, the generated verifier or none), `refused` (reason) or `rate_limited` (`retryAfter`). Called
   inside a transaction open on the storage connection, it is a `LogicException` before anything else
   (`StorageConnection::assertNoTransaction()`): the driver it calls may reach the identity provider, and the caller's
   transaction would keep the connection's lock all the while (SSO-11.5). Its steps run in this order, and each refusal
   reports exactly one `FlowFailed(Flow::AUTHORIZATION_REQUEST, reason)` and writes nothing:
-  1. the purpose's binding: `sign_in` with no identity and no session, `link` for an identity with no session,
-     `reauthenticate` for an identity on a session of 1 to 255 bytes (`MAX_SESSION_ID_LENGTH`). Anything else is
-     application code's mistake, an `InvalidArgumentException` naming the purpose's binding, before anything is counted
+  1. the purpose's caller (`Identities\Caller`, whose session id is 1 to 255 bytes when given): `sign_in` with no
+     caller, `link` for a caller, on a session or not, `reauthenticate` for a caller on a session. Anything else is
+     application code's mistake, an `InvalidArgumentException` naming the purpose's caller, before anything is counted
      or reported;
   2. the attempt, counted with `AttemptSubject::authorizationRequest()` against the IP address of the
      `Http\ClientContext` the start is given (none for a client with none, as a console command passes): a full limit is
@@ -35,8 +35,10 @@ the race. The tables, the value types and the completion they feed are in `flows
      (`ProtocolManager::isUsable()`: disabled, its protocol switched off, or incomplete), is `connection_unavailable`.
      When the application offers discovery (`discoveryEnabled` and the `discovery` feature on) the failure is still
      reported, but the answer is `fallback()`: `started`, in a start's shape, leading to the application's fallback;
-  6. a `link` asks `Freshness\FreshnessGate` with `sso.link.create` (SSO-2.12), else `freshness_required`;
-  7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing($identity, $sessionId, $connection)`, else
+  6. a `link` asks `Freshness\FreshnessGate` with `sso.link.create` (SSO-2.12) for its caller, with the session it gave,
+     else `freshness_required`;
+  7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing()` with the caller's identity and session and
+     the connection, else
      `session_ineligible` for anything but `signed_in` (SSO-5.10); the default answers `not_signed_in` (steps 6 and 7
      are `Flows\StartEligibility::refusal()`);
   8. the connection's `trust_version`, as step 5 read it, is captured; `Flows\ProtocolState::generate()`, then the
@@ -59,9 +61,10 @@ the race. The tables, the value types and the completion they feed are in `flows
   `saml_request_id` as the driver's `Start` gave them; `code_verifier`, the PKCE verifier encrypted through
   `Contracts\SecretEncrypter`; `handoff_challenge`, the client's challenge or the generated verifier's; `trust_version`,
   the connection's as the start read it, which the completion compares with the connection's at consumption, before
-  anything is validated or a provider called, and again under its lock (`completion.md`); `identity_type`,
-  `identity_id` and `session_id` as given; and `expires_at`, now plus `FlowSettings::requestTtlSeconds()` (60 to 900,
-  default 600).
+  anything is validated or a provider called, and again under its lock (`completion.md`); `identity_type` and
+  `identity_id`, the caller's identity, and `session_id`, its session for a `reauthenticate` alone
+  (`Purpose::bindsSession()`): a `link` gives its caller's session to freshness and stores none; and `expires_at`, now
+  plus `FlowSettings::requestTtlSeconds()` (60 to 900, default 600).
 - `begin()` (steps 1, 4 and 6 to 11, for an application already admitted and a connection already found) and
   `fallback($application, $challengeGiven)` (a fresh reference, the fallback's `Navigation::toApplication()`, a fresh
   verifier unless a challenge was given, nothing stored or reported) are public for discovery and `@internal`.
@@ -113,9 +116,9 @@ the race. The tables, the value types and the completion they feed are in `flows
 
 - `Flows\RequestEvents` builds every context through `Events\EventContexts` and dispatches after commit.
   `AuthorizationRequestStarted` names the connection, its tenant and protocol, the application, the purpose, the
-  `request_reference`, and the identity and session given. A `FlowFailed` names the purpose, identity and session given,
-  and what the start had established: the application once admitted, the connection once found, the reference once
-  generated. An application name that was not admitted is never reported.
+  `request_reference`, and the identity and session stored. A `FlowFailed` names the purpose, the caller's identity and,
+  for a `reauthenticate`, its session, and what the start had established: the application once admitted, the connection
+  once found, the reference once generated. An application name that was not admitted is never reported.
 - The public reference is the only flow identifier either carries (SSO-9.8): never the state, the nonce, a verifier, a
   challenge, a digest or a SAML request id.
 

@@ -6,7 +6,6 @@ namespace Tests\Feature\Links;
 
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Events\LinkActivated;
@@ -17,6 +16,7 @@ use SineMacula\Laravel\Sso\Events\LinkSuspended;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkEvents;
@@ -84,7 +84,7 @@ final class LinkEventsTest extends TestCase
         $events     = app(LinkEvents::class);
 
         $events->created($connection, $identity, LinkOrigin::LINK_PURPOSE, self::client(), null, 'web', Purpose::LINK, $reference);
-        $events->created($connection, $identity, LinkOrigin::MIGRATION, self::client(), new ActingIdentity('App\Models\Admin', '3'));
+        $events->created($connection, $identity, LinkOrigin::MIGRATION, self::client(), new Caller(new IdentityReference('App\Models\Admin', '3')));
 
         $this->assertEventSequence([LinkCreated::class, LinkCreated::class]);
 
@@ -114,7 +114,7 @@ final class LinkEventsTest extends TestCase
     {
         $connection = $this->makeConnection();
 
-        app(LinkEvents::class)->removed($connection, new IdentityReference('App\Models\User', '7'), self::client(), new ActingIdentity('App\Models\Admin', '3'));
+        app(LinkEvents::class)->removed($connection, new IdentityReference('App\Models\User', '7'), self::client(), new Caller(new IdentityReference('App\Models\Admin', '3')));
 
         $this->assertEventSequence([LinkRemoved::class]);
 

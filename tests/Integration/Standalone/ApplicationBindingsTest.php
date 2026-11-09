@@ -61,6 +61,7 @@ use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\SignInBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
 use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
@@ -536,20 +537,23 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         $connection = $this->flowSamlConnection(self::TENANT, 'idp-freshness');
         $lifecycle  = app(ConnectionLifecycle::class);
         $now        = CarbonImmutable::parse(self::FLOW_NOW);
+        $caller     = new Caller(new IdentityReference('App\Models\User', 'administrator-1'), 'session-1');
 
         $this->app?->instance(Freshness::class, $freshness);
+
+        $freshness->authenticatedAt = $now;
 
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $lifecycle->disable(self::TENANT, $connection->id, Clients::browser())->reason);
 
         $freshness->authenticatedAt = $now->subSeconds(121);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $lifecycle->disable(self::TENANT, $connection->id, Clients::browser())->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $lifecycle->disable(self::TENANT, $connection->id, Clients::browser(), $caller)->reason);
         self::assertTrue(Connection::query()->whereKey($connection->id)->sole()->enabled);
         $this->assertNoEvents();
 
         $freshness->authenticatedAt = $now->subSeconds(120);
 
-        self::assertSame(ConnectionStatus::DISABLED, $lifecycle->disable(self::TENANT, $connection->id, Clients::browser())->status);
+        self::assertSame(ConnectionStatus::DISABLED, $lifecycle->disable(self::TENANT, $connection->id, Clients::browser(), $caller)->status);
         self::assertSame(array_fill(0, 3, [FreshnessOperation::CONNECTION_DISABLE, 120]), $freshness->asked);
         $this->assertEventSequence([ConnectionDisabled::class]);
         $this->assertOnlyRebound(Freshness::class);

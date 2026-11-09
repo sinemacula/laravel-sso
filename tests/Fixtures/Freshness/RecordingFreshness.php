@@ -7,6 +7,7 @@ namespace Tests\Fixtures\Freshness;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
 
 /**
  * A freshness contract for the management helpers' tests: it answers the
@@ -29,6 +30,9 @@ final class RecordingFreshness implements Freshness
     /** @var list<array{0: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation, 1: int}> Each operation asked about, with its maximum age, in order. */
     private array $asked = [];
 
+    /** @var list<?\SineMacula\Laravel\Sso\Identities\Caller> The caller each question was asked for, in order. */
+    private array $callers = [];
+
     /**
      * Constructor.
      *
@@ -41,17 +45,19 @@ final class RecordingFreshness implements Freshness
     ) {}
 
     /**
-     * Record the operation and its maximum age, run `onCheck` once if it is
-     * set, and answer the outcome set.
+     * Record the operation, its maximum age and the caller, run `onCheck` once
+     * if it is set, and answer the outcome set.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  int  $maxAgeSeconds
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
      */
     #[\Override]
-    public function check(FreshnessOperation $operation, int $maxAgeSeconds): FreshnessOutcome
+    public function check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller $caller): FreshnessOutcome
     {
-        $this->asked[] = [$operation, $maxAgeSeconds];
+        $this->asked[]   = [$operation, $maxAgeSeconds];
+        $this->callers[] = $caller;
 
         $onCheck       = $this->onCheck;
         $this->onCheck = null;
@@ -86,6 +92,17 @@ final class RecordingFreshness implements Freshness
     }
 
     /**
+     * The caller each question since the last reset was asked for, in order;
+     * `null` for none.
+     *
+     * @return list<?\SineMacula\Laravel\Sso\Identities\Caller>
+     */
+    public function callers(): array
+    {
+        return $this->callers;
+    }
+
+    /**
      * Each operation asked about since the last reset, in order.
      *
      * @return list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation>
@@ -102,6 +119,7 @@ final class RecordingFreshness implements Freshness
      */
     public function reset(): void
     {
-        $this->asked = [];
+        $this->asked   = [];
+        $this->callers = [];
     }
 }

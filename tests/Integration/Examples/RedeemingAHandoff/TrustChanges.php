@@ -5,10 +5,11 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\RedeemingAHandoff;
 
 use PHPUnit\Framework\Assert;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
@@ -125,7 +126,12 @@ final readonly class TrustChanges
 
         $this->fetcher->respond(self::METADATA_URL, FetchResult::fetched(200, [], $rotated->metadata()->toXml()));
 
-        $refreshed = app(MetadataRefresher::class)->refreshNow($this->tenantId, $this->connectionId, new ActingIdentity('App\Models\User', 'admin-1'), Clients::browser());
+        $refreshed = app(MetadataRefresher::class)->refreshNow(
+            $this->tenantId,
+            $this->connectionId,
+            new Caller(new IdentityReference('App\Models\User', 'admin-1')),
+            Clients::browser(),
+        );
 
         Assert::assertSame(RefreshOutcome::REFRESHED, $refreshed->outcome);
 

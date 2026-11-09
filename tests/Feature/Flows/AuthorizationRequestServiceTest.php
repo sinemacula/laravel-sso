@@ -33,6 +33,7 @@ use SineMacula\Laravel\Sso\Flows\Verifier;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -339,43 +340,37 @@ final class AuthorizationRequestServiceTest extends TestCase
     /**
      * Each misbound start and its message.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: bool, 2: ?string, 3: string}>
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: ?\SineMacula\Laravel\Sso\Identities\Caller, 2: string}>
      */
     public static function misboundStarts(): iterable
     {
-        $signIn = 'A `sign_in` flow is started with no identity and no session.';
-        $link   = 'A `link` flow is started for an identity, with no session.';
-        $reauth = 'A `reauthenticate` flow is started for an identity, on a session.';
-        $length = 'A session id is 1 to 255 bytes.';
+        $signIn = 'A `sign_in` flow is started with no caller.';
+        $link   = 'A `link` flow is started for a caller.';
+        $reauth = 'A `reauthenticate` flow is started for a caller, on a session.';
 
-        yield 'sign_in with an identity' => [Purpose::SIGN_IN, true, null, $signIn];
-        yield 'sign_in with a session' => [Purpose::SIGN_IN, false, 'session-1', $signIn];
-        yield 'link without an identity' => [Purpose::LINK, false, null, $link];
-        yield 'link with a session' => [Purpose::LINK, true, 'session-1', $link];
-        yield 'reauthenticate without an identity' => [Purpose::REAUTHENTICATE, false, 'session-1', $reauth];
-        yield 'reauthenticate without a session' => [Purpose::REAUTHENTICATE, true, null, $reauth];
-        yield 'an empty session id' => [Purpose::REAUTHENTICATE, true, '', $length];
-        yield 'a session id of 256 bytes' => [Purpose::REAUTHENTICATE, true, str_repeat('s', 256), $length];
+        yield 'sign_in with a caller' => [Purpose::SIGN_IN, new Caller(self::identity()), $signIn];
+        yield 'sign_in with a caller on a session' => [Purpose::SIGN_IN, new Caller(self::identity(), 'session-1'), $signIn];
+        yield 'link without a caller' => [Purpose::LINK, null, $link];
+        yield 'reauthenticate without a caller' => [Purpose::REAUTHENTICATE, null, $reauth];
+        yield 'reauthenticate without a session' => [Purpose::REAUTHENTICATE, new Caller(self::identity()), $reauth];
     }
 
     /**
-     * An identity or a session that does not fit the purpose, and a session id
-     * the request cannot keep, are application code's mistakes, refused before
-     * anything is counted or asked.
+     * A caller that does not fit the purpose is application code's mistake,
+     * refused before anything is counted or asked.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
-     * @param  bool  $withIdentity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  string  $message
      * @return void
      */
     #[DataProvider('misboundStarts')]
-    public function testAMisboundStartIsAnInvalidArgument(Purpose $purpose, bool $withIdentity, ?string $sessionId, string $message): void
+    public function testAMisboundStartIsAnInvalidArgument(Purpose $purpose, ?Caller $caller, string $message): void
     {
         config()->set('sso.rate_limits.authorization_request.per_ip', ['max' => 1, 'decay_seconds' => 60]);
 
         try {
-            $this->startFlow(purpose: $purpose, identity: $withIdentity ? self::identity() : null, sessionId: $sessionId);
+            $this->startFlow(purpose: $purpose, caller: $caller);
             self::fail('A misbound start was accepted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame($message, $exception->getMessage());
@@ -600,7 +595,7 @@ final class AuthorizationRequestServiceTest extends TestCase
 
     /**
      * A `link` from a stale caller is refused, the freshness contract asked
-     * `sso.link.create` once, and the driver never asked.
+     * `sso.link.create` once, for the caller, and the driver never asked.
      *
      * @return void
      */
@@ -608,9 +603,12 @@ final class AuthorizationRequestServiceTest extends TestCase
     {
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $this->assertRefused(FailureReason::FRESHNESS_REQUIRED, $this->startFlow(purpose: Purpose::LINK, identity: self::identity()));
+        $caller = new Caller(self::identity());
+
+        $this->assertRefused(FailureReason::FRESHNESS_REQUIRED, $this->startFlow(purpose: Purpose::LINK, caller: $caller));
 
         self::assertSame([FreshnessOperation::LINK_CREATE], $this->freshness->operations());
+        self::assertSame([$caller], $this->freshness->callers());
         self::assertSame([], $this->driver->starts());
     }
 
@@ -626,7 +624,7 @@ final class AuthorizationRequestServiceTest extends TestCase
 
         self::assertSame([], $this->freshness->operations());
 
-        $result = $this->startFlow(purpose: Purpose::LINK, identity: self::identity());
+        $result = $this->startFlow(purpose: Purpose::LINK, caller: new Caller(self::identity()));
         $row    = AuthorizationRequest::query()->where('reference', $result->reference?->value)->sole();
 
         self::assertTrue($result->isStarted());
@@ -637,13 +635,37 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
+     * A `link` caller on a session gives that session to the freshness
+     * contract, as given, and the request binds the caller's identity alone:
+     * the session is not stored; stale for that session, the start is refused.
+     *
+     * @return void
+     */
+    public function testALinkGivesItsCallersSessionToFreshnessAlone(): void
+    {
+        $caller = new Caller(self::identity(), 'session-1');
+        $result = $this->startFlow(purpose: Purpose::LINK, caller: $caller);
+        $row    = AuthorizationRequest::query()->where('reference', $result->reference?->value)->sole();
+
+        self::assertTrue($result->isStarted());
+        self::assertSame([$caller], $this->freshness->callers());
+        self::assertSame('session-1', $this->freshness->callers()[0]->sessionId);
+        self::assertSame(['App\Models\User', '42', null], [$row->identity_type, $row->identity_id, $row->session_id]);
+
+        $this->freshness->answer(FreshnessOutcome::STALE);
+
+        $this->assertRefused(FailureReason::FRESHNESS_REQUIRED, $this->startFlow(purpose: Purpose::LINK, caller: $caller), 1);
+        self::assertSame([$caller, $caller], $this->freshness->callers());
+    }
+
+    /**
      * A `reauthenticate` is refused by default: the package keeps no sessions.
      *
      * @return void
      */
     public function testAReauthenticationIsRefusedByDefault(): void
     {
-        $this->assertRefused(FailureReason::SESSION_INELIGIBLE, $this->startFlow(purpose: Purpose::REAUTHENTICATE, identity: self::identity(), sessionId: 'session-1'));
+        $this->assertRefused(FailureReason::SESSION_INELIGIBLE, $this->startFlow(purpose: Purpose::REAUTHENTICATE, caller: new Caller(self::identity(), 'session-1')));
 
         self::assertSame([], $this->driver->starts());
     }
@@ -719,13 +741,13 @@ final class AuthorizationRequestServiceTest extends TestCase
         $identity = self::identity();
         $session  = str_repeat('s', 255);
 
-        $this->assertRefused(FailureReason::SESSION_INELIGIBLE, $this->startFlow(purpose: Purpose::REAUTHENTICATE, identity: $identity, sessionId: $session));
+        $this->assertRefused(FailureReason::SESSION_INELIGIBLE, $this->startFlow(purpose: Purpose::REAUTHENTICATE, caller: new Caller($identity, $session)));
 
         self::assertSame([], $this->driver->starts());
 
         $sessions->standing = SessionStanding::SIGNED_IN;
 
-        $result = $this->startFlow(purpose: Purpose::REAUTHENTICATE, identity: $identity, sessionId: $session);
+        $result = $this->startFlow(purpose: Purpose::REAUTHENTICATE, caller: new Caller($identity, $session));
         $row    = self::onlyRequest();
 
         self::assertTrue($result->isStarted());
@@ -894,11 +916,11 @@ final class AuthorizationRequestServiceTest extends TestCase
 
         $connection->setAttribute('settings', ['claims' => ['a' => ['x' => 2, 'y' => 1], 'b' => 1], 'scopes' => ['email', 'openid'], 'issuer' => 'https://idp.example.com']);
 
-        $this->assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->service()->begin($application, Purpose::SIGN_IN, $connection, null, null, null, Clients::browser()));
+        $this->assertRefused(FailureReason::CONNECTION_UNAVAILABLE, $this->service()->begin($application, Purpose::SIGN_IN, $connection, null, null, Clients::browser()));
 
         $connection->setAttribute('settings', ['claims' => ['a' => ['x' => 2, 'y' => 1], 'b' => 1], 'scopes' => ['openid', 'email'], 'issuer' => 'https://idp.example.com']);
 
-        self::assertTrue($this->service()->begin($application, Purpose::SIGN_IN, $connection, null, null, null, Clients::browser())->isStarted());
+        self::assertTrue($this->service()->begin($application, Purpose::SIGN_IN, $connection, null, null, Clients::browser())->isStarted());
         self::assertSame(1, AuthorizationRequest::query()->count());
     }
 
@@ -936,18 +958,18 @@ final class AuthorizationRequestServiceTest extends TestCase
         $application = self::application('web');
 
         try {
-            $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, null, self::identity(), null, Clients::browser());
+            $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, null, new Caller(self::identity()), Clients::browser());
             self::fail('A misbound begin was accepted.');
         } catch (\InvalidArgumentException $exception) {
-            self::assertSame('A `sign_in` flow is started with no identity and no session.', $exception->getMessage());
+            self::assertSame('A `sign_in` flow is started with no caller.', $exception->getMessage());
         }
 
         $this->assertRefused(
             FailureReason::CHALLENGE_INVALID,
-            $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, 'not-a-challenge', null, null, Clients::browser()),
+            $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, 'not-a-challenge', null, Clients::browser()),
         );
 
-        $started = $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, null, null, null, Clients::browser());
+        $started = $this->service()->begin($application, Purpose::SIGN_IN, $this->connection, null, null, Clients::browser());
 
         self::assertTrue($started->isStarted());
         self::assertSame($started->reference?->value, self::onlyRequest()->reference);
@@ -1020,8 +1042,7 @@ final class AuthorizationRequestServiceTest extends TestCase
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?string  $connectionId
      * @param  ?string  $codeChallenge
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \InvalidArgumentException
@@ -1032,10 +1053,9 @@ final class AuthorizationRequestServiceTest extends TestCase
         Purpose $purpose = Purpose::SIGN_IN,
         ?string $connectionId = null,
         ?string $codeChallenge = null,
-        ?IdentityReference $identity = null,
-        ?string $sessionId = null,
+        ?Caller $caller = null,
     ): StartResult {
-        return $this->service()->start($application, $purpose, $connectionId ?? $this->connection->id, $this->client, $codeChallenge, $identity, $sessionId);
+        return $this->service()->start($application, $purpose, $connectionId ?? $this->connection->id, $this->client, $codeChallenge, $caller);
     }
 
     /**

@@ -86,7 +86,7 @@ final readonly class SsoConnectionController
             settings: $input['settings']                  ?? [],
             attributeMapping: $input['attribute_mapping'] ?? [],
             preset: $input['preset']                      ?? null,
-            actor: Caller::actor($request),
+            caller: Caller::of($request),
         );
 
         return Answers::of($result, 201);
@@ -130,7 +130,7 @@ final readonly class SsoConnectionController
         /** @var array<string, mixed> $changes */
         $changes = $request->only(['display_name', 'settings', 'attribute_mapping']);
 
-        return Answers::of($this->connections->update(Caller::tenantId($request), $connection, $changes, Clients::browser(), Caller::actor($request)));
+        return Answers::of($this->connections->update(Caller::tenantId($request), $connection, $changes, Clients::browser(), Caller::of($request)));
     }
 
     /**
@@ -144,7 +144,7 @@ final readonly class SsoConnectionController
      */
     public function enable(Request $request, string $connection): JsonResponse
     {
-        return Answers::of($this->connections->enable(Caller::tenantId($request), $connection, Clients::browser(), Caller::actor($request)));
+        return Answers::of($this->connections->enable(Caller::tenantId($request), $connection, Clients::browser(), Caller::of($request)));
     }
 
     /**
@@ -159,7 +159,7 @@ final readonly class SsoConnectionController
      */
     public function disable(Request $request, string $connection): JsonResponse
     {
-        return Answers::of($this->lifecycle->disable(Caller::tenantId($request), $connection, Clients::browser(), Caller::actor($request)));
+        return Answers::of($this->lifecycle->disable(Caller::tenantId($request), $connection, Clients::browser(), Caller::of($request)));
     }
 
     /**
@@ -173,6 +173,6 @@ final readonly class SsoConnectionController
      */
     public function destroy(Request $request, string $connection): JsonResponse
     {
-        return Answers::of($this->lifecycle->delete(Caller::tenantId($request), $connection, Clients::browser(), Caller::actor($request)));
+        return Answers::of($this->lifecycle->delete(Caller::tenantId($request), $connection, Clients::browser(), Caller::of($request)));
     }
 }

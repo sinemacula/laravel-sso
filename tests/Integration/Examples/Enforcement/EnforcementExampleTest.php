@@ -8,7 +8,6 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
@@ -20,6 +19,7 @@ use SineMacula\Laravel\Sso\Events\EnforcementChanged;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\ExemptionUsed;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkService;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
@@ -177,14 +177,15 @@ final class EnforcementExampleTest extends ExampleTestCase
         // @snippet-start enforcement-service
         $enforcement = app(EnforcementService::class);
         // @snippet-end enforcement-service
-        $client = Clients::browser();
+        $client  = Clients::browser();
+        $request = self::requestOnSession('/admin/sso/enforcement');
         // @snippet-start enforcement-update
         $result = $enforcement->update(
             $tenant->id,
             true,
             [$connectionId],
             $client,
-            new ActingIdentity($user->getMorphClass(), (string) $user->getKey()),
+            new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId()),
         );
 
         self::assertSame(EnforcementStatus::UPDATED, $result->status);

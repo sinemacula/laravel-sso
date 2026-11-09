@@ -24,19 +24,19 @@ use Tests\Integration\Examples\Clients;
  * @var array{
  *     tenant: \Tests\Integration\Examples\SamlMetadata\Tenant,
  *     connection: \SineMacula\Laravel\Sso\Connections\ConnectionSummary,
- *     actor: \SineMacula\Laravel\Sso\Administration\ActingIdentity
+ *     caller: \SineMacula\Laravel\Sso\Identities\Caller
  * } $input
  */
 $tenant     = $input['tenant'];
 $connection = $input['connection'];
-$actor      = $input['actor'];
+$caller     = $input['caller'];
 
 $client = Clients::browser();
 // @snippet-start saml-metadata-refresh-now
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 
-$result = app(MetadataRefresher::class)->refreshNow($tenant->id, $connection->id, $actor, $client);
+$result = app(MetadataRefresher::class)->refreshNow($tenant->id, $connection->id, $caller, $client);
 
 if ($result->outcome === RefreshOutcome::RATE_LIMITED) {
     return back()->withErrors(['metadata' => "Try again in {$result->retryAfter} seconds."]);

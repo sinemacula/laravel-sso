@@ -7,13 +7,14 @@ namespace Tests\Feature\Administration;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\MetadataEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshed;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Fixtures\FixedClock;
@@ -69,7 +70,7 @@ final class MetadataEventsTest extends TestCase
             ['sso_url', 'sso_url', 'idp_signing_certificates'],
             4,
             true,
-            new ActingIdentity('App\Models\User', '42'),
+            new Caller(new IdentityReference('App\Models\User', '42')),
             new ClientContext('203.0.113.7', 'Example/1.0'),
         );
 
@@ -136,7 +137,7 @@ final class MetadataEventsTest extends TestCase
             FailureReason::METADATA_CONFLICT,
             0,
             null,
-            new ActingIdentity('App\Models\User', '42'),
+            new Caller(new IdentityReference('App\Models\User', '42')),
             new ClientContext('203.0.113.7', 'Example/1.0'),
         );
 

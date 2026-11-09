@@ -25,7 +25,7 @@ use Tests\Integration\Examples\Clients;
 
 /**
  * @var array{connection: string, code: string, verifier: string} $input
- * @var \SineMacula\Laravel\Sso\Identities\IdentityReference $caller
+ * @var \SineMacula\Laravel\Sso\Identities\Caller $caller
  */
 $connectionId = $input['connection'];
 $code         = $input['code'];

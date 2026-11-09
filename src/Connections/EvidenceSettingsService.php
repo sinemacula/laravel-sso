@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Connections;
 
 use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -13,6 +12,7 @@ use SineMacula\Laravel\Sso\Evidence\EvidenceRules;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Linking\LinkingSettings;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -120,24 +120,24 @@ final readonly class EvidenceSettingsService
      * @param  string  $connectionId
      * @param  array<array-key, mixed>  $policy
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function set(string $tenantId, string $connectionId, #[\SensitiveParameter] array $policy, ClientContext $client, ?ActingIdentity $actor = null): ConnectionResult
+    public function set(string $tenantId, string $connectionId, #[\SensitiveParameter] array $policy, ClientContext $client, ?Caller $caller = null): ConnectionResult
     {
         if ($this->finder->find($tenantId, $connectionId) === null) {
             return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
         }
 
-        if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST)->isFresh()) {
+        if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
             return ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
-        return DB::connection(StorageConnection::name())->transaction(fn (): ConnectionResult => $this->setLocked($tenantId, $connectionId, $policy, $actor, $client));
+        return DB::connection(StorageConnection::name())->transaction(fn (): ConnectionResult => $this->setLocked($tenantId, $connectionId, $policy, $caller, $client));
     }
 
     /**
@@ -188,7 +188,7 @@ final readonly class EvidenceSettingsService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  array<array-key, mixed>  $policy
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -196,7 +196,7 @@ final readonly class EvidenceSettingsService
      * @throws \LogicException
      * @throws \UnexpectedValueException
      */
-    private function setLocked(string $tenantId, string $connectionId, #[\SensitiveParameter] array $policy, ?ActingIdentity $actor, ClientContext $client): ConnectionResult
+    private function setLocked(string $tenantId, string $connectionId, #[\SensitiveParameter] array $policy, ?Caller $caller, ClientContext $client): ConnectionResult
     {
         $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -206,7 +206,7 @@ final readonly class EvidenceSettingsService
 
         $violations = EvidenceRules::violations($policy, $locked->protocol, $this->settings->evidenceMaxAgeSeconds());
 
-        return $violations === [] ? $this->written($locked, $policy, $actor, $client) : ConnectionResult::invalid($violations);
+        return $violations === [] ? $this->written($locked, $policy, $caller, $client) : ConnectionResult::invalid($violations);
     }
 
     /**
@@ -214,7 +214,7 @@ final readonly class EvidenceSettingsService
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<array-key, mixed>  $policy
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -222,7 +222,7 @@ final readonly class EvidenceSettingsService
      * @throws \LogicException
      * @throws \UnexpectedValueException
      */
-    private function written(Connection $locked, #[\SensitiveParameter] array $policy, ?ActingIdentity $actor, ClientContext $client): ConnectionResult
+    private function written(Connection $locked, #[\SensitiveParameter] array $policy, ?Caller $caller, ClientContext $client): ConnectionResult
     {
         $names = self::changedNames(self::stored($locked), $policy);
 
@@ -232,7 +232,7 @@ final readonly class EvidenceSettingsService
 
         $locked->forceFill(['evidence_policy' => $policy === [] ? null : $policy])->save();
 
-        $this->events->connectionUpdated($locked, $names, $actor, $client);
+        $this->events->connectionUpdated($locked, $names, $caller, $client);
 
         return ConnectionResult::updated($this->summary($locked), $names);
     }

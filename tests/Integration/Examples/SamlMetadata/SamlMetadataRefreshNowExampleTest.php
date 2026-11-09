@@ -139,6 +139,6 @@ final class SamlMetadataRefreshNowExampleTest extends SamlMetadataExampleTestCas
      */
     private function refreshNow(): mixed
     {
-        return self::atEndpoint('refresh', ['tenant' => $this->tenant, 'connection' => $this->connection, 'actor' => self::actor()]);
+        return self::atEndpoint('refresh', ['tenant' => $this->tenant, 'connection' => $this->connection, 'caller' => self::caller()]);
     }
 }

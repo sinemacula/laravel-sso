@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestEvents;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
@@ -97,8 +98,9 @@ final class RequestEventsTest extends TestCase
 
     /**
      * A start refused once everything was established is reported once under
-     * the start's flow, with the application, the connection, the reference and
-     * the client.
+     * the start's flow, with the application, the connection, the reference,
+     * the client and the caller's identity; a `link` binds no session, so the
+     * session its caller gave is not reported.
      *
      * @return void
      *
@@ -109,13 +111,12 @@ final class RequestEventsTest extends TestCase
         $connection  = $this->makeConnection();
         $application = Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']);
         $reference   = RequestReference::generate();
-        $identity    = new IdentityReference('App\Models\User', '7');
+        $caller      = new Caller(new IdentityReference('App\Models\User', '7'), 'session-1');
 
         app(RequestEvents::class)->failed(
             FailureReason::FRESHNESS_REQUIRED,
             Purpose::LINK,
-            $identity,
-            null,
+            $caller,
             new ClientContext('203.0.113.7', 'Example/1.0'),
             $application,
             $connection,
@@ -139,6 +140,24 @@ final class RequestEventsTest extends TestCase
                 $context->identityId,
             ],
         );
+        self::assertNull($context->sessionId);
+    }
+
+    /**
+     * A `reauthenticate` refused is reported with its caller's identity and the
+     * session it is bound to.
+     *
+     * @return void
+     */
+    public function testReportsTheSessionOfARefusedReauthentication(): void
+    {
+        $caller = new Caller(new IdentityReference('App\Models\User', '7'), 'session-1');
+
+        app(RequestEvents::class)->failed(FailureReason::SESSION_INELIGIBLE, Purpose::REAUTHENTICATE, $caller, new ClientContext(null, null));
+
+        $context = $this->assertExactlyOneFailure(Flow::AUTHORIZATION_REQUEST, FailureReason::SESSION_INELIGIBLE)->context();
+
+        self::assertSame(['App\Models\User', '7', 'session-1'], [$context->identityMorphClass, $context->identityId, $context->sessionId]);
     }
 
     /**
@@ -150,7 +169,7 @@ final class RequestEventsTest extends TestCase
      */
     public function testReportsAnEarlyRefusalForNoClient(): void
     {
-        app(RequestEvents::class)->failed(FailureReason::RATE_LIMITED, Purpose::SIGN_IN, null, null, new ClientContext(null, null));
+        app(RequestEvents::class)->failed(FailureReason::RATE_LIMITED, Purpose::SIGN_IN, null, new ClientContext(null, null));
 
         $context = $this->assertExactlyOneFailure(Flow::AUTHORIZATION_REQUEST, FailureReason::RATE_LIMITED)->context();
 

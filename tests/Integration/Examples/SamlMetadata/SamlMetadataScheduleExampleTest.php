@@ -281,7 +281,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
             'tenant'     => $this->tenant,
             'connection' => $this->connection,
             'anchor'     => $this->federation->certificate(),
-            'actor'      => self::actor(),
+            'caller'     => self::caller(),
         ]);
 
         self::assertIsArray($results);

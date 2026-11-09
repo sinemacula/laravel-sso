@@ -4,6 +4,9 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples;
 
+use Illuminate\Http\Request;
+use Illuminate\Session\ArraySessionHandler;
+use Illuminate\Session\Store;
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
@@ -22,6 +25,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -201,7 +205,14 @@ abstract class ExampleTestCase extends TestCase
      */
     protected function startFlow(Purpose $purpose, string $connectionId, ?IdentityReference $identity = null, ?string $sessionId = null): StartResult
     {
-        return app(AuthorizationRequestService::class)->start(self::APPLICATION, $purpose, $connectionId, Clients::browser(), null, $identity, $sessionId);
+        return app(AuthorizationRequestService::class)->start(
+            self::APPLICATION,
+            $purpose,
+            $connectionId,
+            Clients::browser(),
+            null,
+            $identity === null ? null : new Caller($identity, $sessionId),
+        );
     }
 
     /**
@@ -246,18 +257,25 @@ abstract class ExampleTestCase extends TestCase
 
     /**
      * Redeem a `link` code alone, as the caller the application has
-     * authenticated: a `link` writes no session, so it needs no transaction of
-     * the application's.
+     * authenticated, on the session given: a `link` writes no session, so it
+     * needs no transaction of the application's.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Testing\HandoffRedirect  $redirect
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  string  $sessionId
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      */
-    protected function redeemLink(string $connectionId, HandoffRedirect $redirect, StartResult $start, IdentityReference $caller): RedemptionResult
-    {
+    protected function redeemLink(
+        string $connectionId,
+        HandoffRedirect $redirect,
+        StartResult $start,
+        IdentityReference $identity,
+        string $sessionId = 'session-1',
+    ): RedemptionResult {
         $client = Clients::browser();
+        $caller = new Caller($identity, $sessionId); // the signed-in person and their session
         // @snippet-start redeem-link
         return app(HandoffRedemption::class)->redeem(Purpose::LINK, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start), $client, $caller);
         // @snippet-end redeem-link
@@ -349,6 +367,22 @@ abstract class ExampleTestCase extends TestCase
         $start = $this->startFlow(Purpose::SIGN_IN, $connectionId);
 
         return $this->admitSignIn($connectionId, $this->respondAtProvider($provider, $connectionId, $start), $start, $sessionId);
+    }
+
+    /**
+     * A request the application has authenticated, to the path given, on a
+     * session of its own, as an administration screen serves one.
+     *
+     * @param  string  $path
+     * @return \Illuminate\Http\Request
+     */
+    protected static function requestOnSession(string $path = '/admin'): Request
+    {
+        $request = Request::create($path, 'POST');
+
+        $request->setLaravelSession(new Store('example_session', new ArraySessionHandler(120)));
+
+        return $request;
     }
 
     /**

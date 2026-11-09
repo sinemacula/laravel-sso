@@ -4,21 +4,20 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\Freshness;
 
-use Illuminate\Contracts\Container\Container;
-use Illuminate\Http\Request;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
 
 /**
- * The example application's freshness contract (SSO-2.12): the caller of the
- * request being served is fresh for an operation when they authenticated no
- * more than its maximum age ago, read from the Unix timestamp the application's
- * sign-in stores in the session or, on a request with no session, the
- * `auth_time` of the verified token its middleware puts on the request. It
- * judges the age by the package's clock, so a test can move it, and holds
- * nothing of one request for the next.
+ * The example application's freshness contract (SSO-2.12): the caller it is
+ * given is fresh for an operation when the session they are on authenticated no
+ * more than its maximum age ago, as the application's sign-in recorded it for
+ * that caller's identity. No caller, a caller with no session and a session
+ * that is not the caller's are stale. It judges the age by the package's clock,
+ * so a test can move it, reads nothing from the request being served and holds
+ * nothing of one call for the next.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,15 +28,15 @@ final readonly class RecentSignInFreshness implements Freshness
 {
     // @snippet-start recent-sign-in-freshness
     /**
-     * Take the container and the package's clock.
+     * Take the application's record of sign-ins and the package's clock.
      *
-     * @param  \Illuminate\Contracts\Container\Container  $container
+     * @param  \Tests\Integration\Examples\Freshness\SignInTimes  $signIns
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      */
     public function __construct(
 
-        /** The container the request being served is resolved from. */
-        private Container $container,
+        /** When each session last authenticated, as the sign-in recorded it. */
+        private SignInTimes $signIns,
 
         /** The package's clock, which a test can move. */
         private Clock $clock,
@@ -48,27 +47,25 @@ final readonly class RecentSignInFreshness implements Freshness
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  int  $maxAgeSeconds
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
      */
     #[\Override]
-    public function check(FreshnessOperation $operation, int $maxAgeSeconds): FreshnessOutcome
+    public function check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller $caller): FreshnessOutcome
     {
         // Every operation is judged alike: a stricter policy would match on
         // the operation's stable name, $operation->value
         unset($operation);
 
-        // The request being served, resolved on each call and never held
-        $request = $this->container->make(Request::class);
-
-        if ($request->user() === null) {
+        // No caller, or one on no session, cannot be judged
+        if ($caller?->sessionId === null) {
             return FreshnessOutcome::STALE;
         }
 
-        $authenticatedAt = $request->hasSession()
-            ? $request->session()->get('auth.authenticated_at')
-            : $request->attributes->get('auth_time');
+        // The caller's own session, never the request being served
+        $authenticatedAt = $this->signIns->authenticatedAt($caller->identity, $caller->sessionId);
 
-        if (!is_int($authenticatedAt)) {
+        if ($authenticatedAt === null) {
             return FreshnessOutcome::STALE;
         }
 

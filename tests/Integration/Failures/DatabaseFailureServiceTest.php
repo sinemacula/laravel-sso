@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Flows\RequestConsumption;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -412,7 +413,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
             $code,
             $verifier,
             Clients::browser(),
-            $this->person,
+            new Caller($this->person),
         );
 
         $this->assertServerError($redeem);

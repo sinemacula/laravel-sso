@@ -72,7 +72,7 @@ final readonly class SsoLinkController
             $input['code'],
             $input['verifier'],
             ClientContext::fromRequest($request),
-            Caller::identity($request),
+            Caller::of($request),
         );
 
         return match (true) {
@@ -94,7 +94,7 @@ final readonly class SsoLinkController
     public function index(Request $request): JsonResponse
     {
         // @snippet-start route-links
-        return response()->json($this->links->list('me', Caller::identity($request)), 200, Answers::NO_STORE);
+        return response()->json($this->links->list('me', Caller::of($request)), 200, Answers::NO_STORE);
         // @snippet-end route-links
     }
 
@@ -110,7 +110,7 @@ final readonly class SsoLinkController
     public function destroy(Request $request, string $link): JsonResponse
     {
         // @snippet-start route-link-remove
-        $result = $this->links->remove('me', $link, ClientContext::fromRequest($request), Caller::identity($request), Caller::actor($request));
+        $result = $this->links->remove('me', $link, ClientContext::fromRequest($request), Caller::of($request));
 
         return Answers::of($result, 200);
         // @snippet-end route-link-remove

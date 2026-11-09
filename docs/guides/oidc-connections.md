@@ -91,7 +91,7 @@ use SineMacula\Laravel\Sso\Connections\ImportSaver;
 
 $result = app(ImportSaver::class)->save($tenant->id, $connection->id, [
     'settings' => [...$proposed->settings(), 'client_id' => $clientId, 'client_secret' => $secret],
-], $proposed->fetch(), $client, $actor);
+], $proposed->fetch(), $client, $caller);
 ```
 
 `$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with

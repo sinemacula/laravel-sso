@@ -223,7 +223,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
             'tenant'     => $this->tenant,
             'connection' => $this->connection,
             'anchor'     => $federation->certificate(),
-            'actor'      => self::actor(),
+            'caller'     => self::caller(),
         ]);
 
         self::assertInstanceOf(KeyResult::class, $anchored);
@@ -314,7 +314,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
             'tenant'     => $this->tenant,
             'connection' => $this->connection,
             'proposed'   => $proposed,
-            'actor'      => self::actor(),
+            'caller'     => self::caller(),
         ]);
     }
 }

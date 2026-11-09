@@ -16,7 +16,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Http\ClientContext;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\Navigation;
@@ -38,10 +38,10 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * `start()` goes in a fixed order, and every refusal reports exactly one
  * `FlowFailed` (`Flow::AUTHORIZATION_REQUEST`) and writes nothing:
  *
- * 1. the purpose's binding is checked: `sign_in` with no identity and no
- *    session, `link` for an identity with no session, `reauthenticate` for an
- *    identity on a session of 1 to 255 bytes; anything else is application
- *    code's mistake, an `InvalidArgumentException`, before anything else;
+ * 1. the purpose's caller (`Identities\Caller`) is checked: `sign_in` with no
+ *    caller, `link` for a caller, on a session or not, `reauthenticate` for a
+ *    caller on a session; anything else is application code's mistake, an
+ *    `InvalidArgumentException`, before anything else;
  * 2. the start is counted against the client's IP address (SSO-11.8), and a
  *    full limit is `rate_limited` with its wait;
  * 3. the application is admitted (`Applications\ApplicationGate`), else
@@ -53,11 +53,12 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  *    tenant; an unknown or unusable one is `connection_unavailable`, answered
  *    with the application's discovery fallback, in the same shape as a start,
  *    when the application offers discovery (SSO-3.5);
- * 6. a `link` asks the freshness contract (`sso.link.create`), else
- *    `freshness_required` (SSO-2.12);
+ * 6. a `link` asks the freshness contract (`sso.link.create`) for its caller,
+ *    with the session given, else `freshness_required` (SSO-2.12);
  * 7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing()`
- *    whether the identity is signed in through the connection on the session,
- *    else `session_ineligible` (SSO-5.10); that alone, since the exact link is
+ *    whether the caller's identity is signed in through the connection on its
+ *    session, else `session_ineligible` (SSO-5.10); that alone, since the exact
+ *    link is
  *    judged at redemption, under the session's lock;
  * 8. the connection's trust version, as step 5 read it, is captured, the
  *    protocol state is generated (`ProtocolState`) and the driver asked to
@@ -65,8 +66,9 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  *    with the driver's reason;
  * 9. the request is stored through its model in a transaction on the storage
  *    connection: the digests of the state and the nonce, never either; the PKCE
- *    verifier encrypted; the challenge; the identity and the session; the trust
- *    version captured; and an expiry of `FlowSettings::requestTtlSeconds()`;
+ *    verifier encrypted; the challenge; the caller's identity and, for a
+ *    `reauthenticate` alone, its session; the trust version captured; and an
+ *    expiry of `FlowSettings::requestTtlSeconds()`;
  *    the transaction first locks the connection's row, and a connection gone,
  *    changed in its switch, settings or secrets, or whose trust version is no
  *    longer the one captured (a certificate removed, say, which voided the
@@ -99,9 +101,6 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  */
 final readonly class AuthorizationRequestService
 {
-    /** @var int The longest session id a request keeps, in bytes. */
-    public const int MAX_SESSION_ID_LENGTH = 255;
-
     /** @var string Why a start called inside a transaction on the storage connection is refused. */
     private const string INSIDE_TRANSACTION = 'A start runs outside any transaction on the package\'s storage connection: it calls the protocol driver.';
 
@@ -147,45 +146,39 @@ final readonly class AuthorizationRequestService
     /**
      * Start a flow for the application and the purpose through the connection,
      * for the client, with the client's S256 challenge, or with a verifier the
-     * package generates when none is given; for the identity a `link` or a
-     * `reauthenticate` is started for, on the session a `reauthenticate` is.
+     * package generates when none is given; for the caller a `link` or a
+     * `reauthenticate` is started for, on the session a `reauthenticate` is
+     * bound to. A `link` stores its caller's identity and gives the session,
+     * when given, to freshness alone.
      *
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $codeChallenge
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function start(
-        string $application,
-        Purpose $purpose,
-        string $connectionId,
-        ClientContext $client,
-        ?string $codeChallenge = null,
-        ?IdentityReference $identity = null,
-        ?string $sessionId = null,
-    ): StartResult {
+    public function start(string $application, Purpose $purpose, string $connectionId, ClientContext $client, ?string $codeChallenge = null, ?Caller $caller = null): StartResult
+    {
         StorageConnection::assertNoTransaction(self::INSIDE_TRANSACTION);
-        self::assertBinding($purpose, $identity, $sessionId);
+        self::assertBinding($purpose, $caller);
 
         // A client with no IP address counts against none.
         $attempt = $this->limiter->attempt(AttemptSubject::authorizationRequest($client));
 
         if ($attempt->retryAfter !== null) {
 
-            $this->events->failed(FailureReason::RATE_LIMITED, $purpose, $identity, $sessionId, $client);
+            $this->events->failed(FailureReason::RATE_LIMITED, $purpose, $caller, $client);
 
             return StartResult::rateLimited($attempt->retryAfter);
         }
 
-        return $this->admit($application, $purpose, $connectionId, $codeChallenge, $identity, $sessionId, $client);
+        return $this->admit($application, $purpose, $connectionId, $codeChallenge, $caller, $client);
     }
 
     /**
@@ -199,8 +192,7 @@ final readonly class AuthorizationRequestService
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?string  $codeChallenge
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
@@ -209,24 +201,17 @@ final readonly class AuthorizationRequestService
      *
      * @internal
      */
-    public function begin(
-        Application $application,
-        Purpose $purpose,
-        Connection $connection,
-        ?string $codeChallenge,
-        ?IdentityReference $identity,
-        ?string $sessionId,
-        ClientContext $client,
-    ): StartResult {
-        self::assertBinding($purpose, $identity, $sessionId);
+    public function begin(Application $application, Purpose $purpose, Connection $connection, ?string $codeChallenge, ?Caller $caller, ClientContext $client): StartResult
+    {
+        self::assertBinding($purpose, $caller);
 
-        $reason = self::isChallenge($codeChallenge) ? $this->eligibility->refusal($purpose, $connection, $identity, $sessionId) : FailureReason::CHALLENGE_INVALID;
+        $reason = self::isChallenge($codeChallenge) ? $this->eligibility->refusal($purpose, $connection, $caller) : FailureReason::CHALLENGE_INVALID;
 
         if ($reason !== null) {
-            return $this->refuse($reason, $purpose, $identity, $sessionId, $client, $application, $connection);
+            return $this->refuse($reason, $purpose, $caller, $client, $application, $connection);
         }
 
-        return $this->launch($application, $purpose, $connection, $codeChallenge, $identity, $sessionId, $client);
+        return $this->launch($application, $purpose, $connection, $codeChallenge, $caller, $client);
     }
 
     /**
@@ -283,36 +268,29 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Refuse an identity or a session that does not fit the purpose, and a
-     * session id the request cannot keep: application code's mistake. Discovery
-     * asks it too, before it counts the attempt.
+     * Refuse a caller that does not fit the purpose: application code's
+     * mistake. A `sign_in` is started for no caller, a `link` for a caller,
+     * whose session, when given, freshness judges, and a `reauthenticate` for a
+     * caller on a session. Discovery asks it too, before it counts the attempt.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return void
      *
      * @throws \InvalidArgumentException
      *
      * @internal
      */
-    public static function assertBinding(Purpose $purpose, ?IdentityReference $identity, ?string $sessionId): void
+    public static function assertBinding(Purpose $purpose, ?Caller $caller): void
     {
-        $required = match ($purpose) {
-            Purpose::SIGN_IN        => [false, false, 'with no identity and no session'],
-            Purpose::LINK           => [true, false, 'for an identity, with no session'],
-            Purpose::REAUTHENTICATE => [true, true, 'for an identity, on a session'],
+        [$fits, $rule] = match ($purpose) {
+            Purpose::SIGN_IN        => [$caller === null, 'with no caller'],
+            Purpose::LINK           => [$caller !== null, 'for a caller'],
+            Purpose::REAUTHENTICATE => [$caller?->sessionId !== null, 'for a caller, on a session'],
         };
 
-        if ([$identity !== null, $sessionId !== null] !== [$required[0], $required[1]]) {
-            throw new \InvalidArgumentException(sprintf('A `%s` flow is started %s.', $purpose->value, $required[2]));
-        }
-
-        // No session is no session id to judge, so it counts as one byte.
-        $length = $sessionId === null ? 1 : strlen($sessionId);
-
-        if ($length < 1 || $length > self::MAX_SESSION_ID_LENGTH) {
-            throw new \InvalidArgumentException(sprintf('A session id is 1 to %d bytes.', self::MAX_SESSION_ID_LENGTH));
+        if (!$fits) {
+            throw new \InvalidArgumentException(sprintf('A `%s` flow is started %s.', $purpose->value, $rule));
         }
     }
 
@@ -339,33 +317,25 @@ final readonly class AuthorizationRequestService
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $connectionId
      * @param  ?string  $codeChallenge
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \Throwable
      */
-    private function admit(
-        string $name,
-        Purpose $purpose,
-        string $connectionId,
-        ?string $codeChallenge,
-        ?IdentityReference $identity,
-        ?string $sessionId,
-        ClientContext $client,
-    ): StartResult {
+    private function admit(string $name, Purpose $purpose, string $connectionId, ?string $codeChallenge, ?Caller $caller, ClientContext $client): StartResult
+    {
         $application = $this->gate->admit($name)->application;
 
         if ($application === null) {
-            return $this->refuse(FailureReason::APPLICATION_NOT_ALLOWED, $purpose, $identity, $sessionId, $client);
+            return $this->refuse(FailureReason::APPLICATION_NOT_ALLOWED, $purpose, $caller, $client);
         }
 
         if (!self::isChallenge($codeChallenge)) {
-            return $this->refuse(FailureReason::CHALLENGE_INVALID, $purpose, $identity, $sessionId, $client, $application);
+            return $this->refuse(FailureReason::CHALLENGE_INVALID, $purpose, $caller, $client, $application);
         }
 
-        return $this->locate($application, $purpose, $connectionId, $codeChallenge, $identity, $sessionId, $client);
+        return $this->locate($application, $purpose, $connectionId, $codeChallenge, $caller, $client);
     }
 
     /**
@@ -377,29 +347,21 @@ final readonly class AuthorizationRequestService
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $connectionId
      * @param  ?string  $codeChallenge
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \Throwable
      */
-    private function locate(
-        Application $application,
-        Purpose $purpose,
-        string $connectionId,
-        ?string $codeChallenge,
-        ?IdentityReference $identity,
-        ?string $sessionId,
-        ClientContext $client,
-    ): StartResult {
+    private function locate(Application $application, Purpose $purpose, string $connectionId, ?string $codeChallenge, ?Caller $caller, ClientContext $client): StartResult
+    {
         $connection = $this->find($connectionId);
 
         if ($connection === null || !$this->protocols->isUsable($connection)) {
-            return $this->unavailable($application, $purpose, $codeChallenge, $identity, $sessionId, $connection, $client);
+            return $this->unavailable($application, $purpose, $codeChallenge, $caller, $connection, $client);
         }
 
-        return $this->begin($application, $purpose, $connection, $codeChallenge, $identity, $sessionId, $client);
+        return $this->begin($application, $purpose, $connection, $codeChallenge, $caller, $client);
     }
 
     /**
@@ -410,8 +372,7 @@ final readonly class AuthorizationRequestService
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?string  $codeChallenge
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
@@ -427,13 +388,12 @@ final readonly class AuthorizationRequestService
         Application $application,
         Purpose $purpose,
         ?string $codeChallenge,
-        ?IdentityReference $identity,
-        ?string $sessionId,
+        ?Caller $caller,
         ?Connection $connection,
         ClientContext $client,
         ?RequestReference $reference = null,
     ): StartResult {
-        $this->events->failed(FailureReason::CONNECTION_UNAVAILABLE, $purpose, $identity, $sessionId, $client, $application, $connection, $reference);
+        $this->events->failed(FailureReason::CONNECTION_UNAVAILABLE, $purpose, $caller, $client, $application, $connection, $reference);
 
         return self::offersDiscovery($application) ? $this->fallback($application, $codeChallenge !== null) : StartResult::refused(FailureReason::CONNECTION_UNAVAILABLE);
     }
@@ -445,22 +405,14 @@ final readonly class AuthorizationRequestService
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?string  $codeChallenge
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \Throwable
      */
-    private function launch(
-        Application $application,
-        Purpose $purpose,
-        Connection $connection,
-        ?string $codeChallenge,
-        ?IdentityReference $identity,
-        ?string $sessionId,
-        ClientContext $client,
-    ): StartResult {
+    private function launch(Application $application, Purpose $purpose, Connection $connection, ?string $codeChallenge, ?Caller $caller, ClientContext $client): StartResult
+    {
         [$verifier, $challenge] = self::challenge($codeChallenge);
 
         $trustVersion = $connection->trust_version;
@@ -470,7 +422,7 @@ final readonly class AuthorizationRequestService
         $start        = $this->protocols->protocol($connection->protocol)->start($connection, $request);
 
         if ($start->navigation === null) {
-            return $this->refuse($start->reason ?? FailureReason::CONNECTION_UNAVAILABLE, $purpose, $identity, $sessionId, $client, $application, $connection, $reference);
+            return $this->refuse($start->reason ?? FailureReason::CONNECTION_UNAVAILABLE, $purpose, $caller, $client, $application, $connection, $reference);
         }
 
         $stored = $this->store($connection, [
@@ -486,14 +438,14 @@ final readonly class AuthorizationRequestService
             'saml_request_id'   => $start->samlRequestId,
             'handoff_challenge' => $challenge,
             'trust_version'     => $trustVersion,
-            'identity_type'     => $identity?->type,
-            'identity_id'       => $identity?->id,
-            'session_id'        => $sessionId,
+            'identity_type'     => $caller?->identity->type,
+            'identity_id'       => $caller?->identity->id,
+            'session_id'        => $purpose->bindsSession() ? $caller?->sessionId : null,
             'expires_at'        => $this->clock->now()->addSeconds($this->settings->requestTtlSeconds()),
         ], $client);
 
         if (!$stored) {
-            return $this->unavailable($application, $purpose, $codeChallenge, $identity, $sessionId, $connection, $client, $reference);
+            return $this->unavailable($application, $purpose, $codeChallenge, $caller, $connection, $client, $reference);
         }
 
         return StartResult::started($reference, $start->navigation, $verifier);
@@ -583,8 +535,7 @@ final readonly class AuthorizationRequestService
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -598,8 +549,7 @@ final readonly class AuthorizationRequestService
     private function refuse(
         FailureReason $reason,
         Purpose $purpose,
-        ?IdentityReference $identity,
-        ?string $sessionId,
+        ?Caller $caller,
         ClientContext $client,
         ?Application $application = null,
         ?Connection $connection = null,
@@ -607,7 +557,7 @@ final readonly class AuthorizationRequestService
     ): StartResult {
         $result = StartResult::refused($reason);
 
-        $this->events->failed($reason, $purpose, $identity, $sessionId, $client, $application, $connection, $reference);
+        $this->events->failed($reason, $purpose, $caller, $client, $application, $connection, $reference);
 
         return $result;
     }

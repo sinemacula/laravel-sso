@@ -8,7 +8,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ViewErrorBag;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\ConnectionSummary;
@@ -18,6 +17,8 @@ use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Metadata\DiscoveryImporter;
 use SineMacula\Laravel\Sso\Metadata\ProposedOidcSettings;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
@@ -47,7 +48,7 @@ use Tests\Integration\Examples\ExampleTestCase;
  *     proposed: \SineMacula\Laravel\Sso\Metadata\ProposedOidcSettings,
  *     client_id: string,
  *     secret: string,
- *     actor: \SineMacula\Laravel\Sso\Administration\ActingIdentity
+ *     caller: \SineMacula\Laravel\Sso\Identities\Caller
  * }
  *
  * @internal
@@ -296,7 +297,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
             'proposed'   => $proposed,
             'client_id'  => self::CLIENT_ID,
             'secret'     => self::CLIENT_SECRET,
-            'actor'      => new ActingIdentity('App\Models\User', '42'),
+            'caller'     => new Caller(new IdentityReference('App\Models\User', '42')),
         ]);
 
         self::assertInstanceOf(ConnectionResult::class, $result);

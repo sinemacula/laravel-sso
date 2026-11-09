@@ -67,8 +67,8 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   before the locks and again under them, so it must answer in a transaction-safe way: from state that does not change
   under the transaction, or with a current read.
 - `Enforcement\EnforcementService` (`@api`, resolved per request) is the one helper that changes a rule. `get()` answers
-  an `EnforcementSummary` from the write connection. `update($tenantId, $enabled, $connectionIds, $client, $actor)` goes
-  in a fixed order, and every refusal writes, revokes and reports nothing:
+  an `EnforcementSummary` from the write connection. `update($tenantId, $enabled, $connectionIds, $client, $caller)`
+  goes in a fixed order, and every refusal writes, revokes and reports nothing:
   1. the feature switch: off is `refused` with `feature_disabled`;
   2. the ids, validated as a whole: each a string of 1 to 26 bytes (`connection_ids.<n>` `invalid_type` or
      `invalid_format`, `<n>` its position in the list given), de-duplicated silently, at most
@@ -131,7 +131,7 @@ transaction; and the gate an adapter calls before refusing a session it could ex
 ## Success Path
 
 1. An administrator enables a connection and signs in through it once, which sets `has_completed_sign_in`.
-2. The administration screen calls `update($tenantId, true, [$connectionId], $client, $actor)`: the id is the tenant's,
+2. The administration screen calls `update($tenantId, true, [$connectionId], $client, $caller)`: the id is the tenant's,
    the connection has completed a sign-in, freshness answers `fresh`, and in one transaction the row is written with a
    new version, the revocation removes the sessions the rule no longer allows, and `EnforcementChanged` is queued.
 3. The transaction commits; the change and the revocation become visible together, and the event reaches listeners.

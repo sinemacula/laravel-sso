@@ -65,7 +65,7 @@ $result = app(LinkingPolicyService::class)->change($tenantId, $connectionId, [
     'issuer_class'       => 'shared', // or single_organization, acknowledged
     'organization_claim' => 'hd',
     'organization_value' => $organization,
-], $client, $actor);
+], $client, $caller);
 
 if ($result->isInvalid()) {
     // Each violation names a setting and a code, never the value given

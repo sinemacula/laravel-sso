@@ -6,13 +6,13 @@ namespace SineMacula\Laravel\Sso\Links;
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
@@ -24,9 +24,11 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  * call it for which identity is the application's authorisation, never the
  * package's.
  *
- * The identity is a reference, or the string `me` for the caller the
- * application passes; `me` without a caller, or any other string, is an
- * `InvalidArgumentException`.
+ * The identity is a reference, or the string `me` for the identity of the
+ * caller the application passes (`Identities\Caller`); `me` without a caller,
+ * or any other string, is an `InvalidArgumentException`. A removal's caller is
+ * also the one freshness judges and the one `LinkRemoved` names as acting,
+ * whether it removes its own link or another identity's.
  *
  * `list()` answers the identity's links in every connection, of every tenant,
  * oldest first (by creation time, then id), read on the write connection
@@ -40,8 +42,8 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  *    connection. A link that does not exist and another identity's are both
  *    `link_not_found`, so nothing is revealed of links that are not the
  *    identity's.
- * 2. The freshness contract is asked with `sso.link.remove` and its maximum
- *    age: `stale` is `freshness_required`.
+ * 2. The freshness contract is asked with `sso.link.remove`, its maximum age
+ *    and the caller: `stale` is `freshness_required`.
  * 3. In one transaction on the storage connection (a savepoint inside the
  *    caller's): the link's connection is locked, then the link is read again
  *    locked, and is `link_not_found` when it has gone or now names another
@@ -94,12 +96,12 @@ final readonly class LinkService
      * The identity's links, oldest first.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference|string  $identity
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return list<\SineMacula\Laravel\Sso\Links\LinkSummary>
      *
      * @throws \InvalidArgumentException
      */
-    public function list(IdentityReference|string $identity, ?IdentityReference $caller = null): array
+    public function list(IdentityReference|string $identity, ?Caller $caller = null): array
     {
         $reference = self::identity($identity, $caller);
 
@@ -117,19 +119,18 @@ final readonly class LinkService
 
     /**
      * Remove the identity's link with the id, and revoke the identity's
-     * sessions established through its connection.
+     * sessions established through its connection, for the caller.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference|string  $identity
      * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Links\LinkResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    public function remove(IdentityReference|string $identity, string $linkId, ClientContext $client, ?IdentityReference $caller = null, ?ActingIdentity $actor = null): LinkResult
+    public function remove(IdentityReference|string $identity, string $linkId, ClientContext $client, ?Caller $caller = null): LinkResult
     {
         $reference = self::identity($identity, $caller);
         $link      = self::owned($linkId, $reference, false);
@@ -138,11 +139,11 @@ final readonly class LinkService
             return LinkResult::refused(FailureReason::LINK_NOT_FOUND);
         }
 
-        if (!$this->freshness->check(FreshnessOperation::LINK_REMOVE)->isFresh()) {
+        if (!$this->freshness->check(FreshnessOperation::LINK_REMOVE, $caller)->isFresh()) {
             return LinkResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
-        return DB::connection(StorageConnection::name())->transaction(fn (): LinkResult => $this->delete($link, $reference, $actor, $client));
+        return DB::connection(StorageConnection::name())->transaction(fn (): LinkResult => $this->delete($link, $reference, $caller, $client));
     }
 
     /**
@@ -152,14 +153,14 @@ final readonly class LinkService
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $found
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Links\LinkResult
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    private function delete(Link $found, IdentityReference $identity, ?ActingIdentity $actor, ClientContext $client): LinkResult
+    private function delete(Link $found, IdentityReference $identity, ?Caller $caller, ClientContext $client): LinkResult
     {
         $connection = Connection::query()->useWritePdo()->whereKey($found->connection_id)->lockForUpdate()->first();
 
@@ -179,7 +180,7 @@ final readonly class LinkService
 
         $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($connection->tenant_id, $connection->id, $identity, $locked->id));
 
-        $this->events->removed($connection, $identity, $client, $actor);
+        $this->events->removed($connection, $identity, $client, $caller);
 
         return LinkResult::removed(LinkSummary::of($locked, $connection));
     }
@@ -252,21 +253,21 @@ final readonly class LinkService
     }
 
     /**
-     * The identity named: the reference given, or the caller for `me`.
+     * The identity named: the reference given, or the caller's for `me`.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference|string  $identity
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Identities\IdentityReference
      *
      * @throws \InvalidArgumentException
      */
-    private static function identity(IdentityReference|string $identity, ?IdentityReference $caller): IdentityReference
+    private static function identity(IdentityReference|string $identity, ?Caller $caller): IdentityReference
     {
         return match (true) {
             $identity instanceof IdentityReference => $identity,
             $identity !== self::ME                 => throw new \InvalidArgumentException(sprintf('An identity is a reference, or [%s] for the caller.', self::ME)),
             $caller === null                       => throw new \InvalidArgumentException(sprintf('The identity [%s] names the caller, and no caller was given.', self::ME)),
-            default                                => $caller,
+            default                                => $caller->identity,
         };
     }
 }

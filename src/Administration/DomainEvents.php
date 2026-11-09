@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Events\DomainVerified;
 use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 
@@ -24,9 +25,10 @@ use SineMacula\Laravel\Sso\Models\Domain;
  * verified and removed by the management helpers, and a failed recheck, a
  * restoration and a lapse by the scheduled check. Each method builds the
  * event's context through the one projection (`Events\EventContexts`), from the
- * connection's id, tenant and protocol and the acting identity when there is
- * one, and hands the event to `Events\AfterCommitDispatcher`, so it reaches
- * listeners once the change commits and never when it rolls back (SSO-10.5).
+ * connection's id, tenant and protocol and, when there is a caller, its
+ * identity as the acting identity, and hands the event to
+ * `Events\AfterCommitDispatcher`, so it reaches listeners once the change
+ * commits and never when it rolls back (SSO-10.5).
  *
  * The caller reports inside the transaction that made the change, after the
  * write, once per change; never for a refusal or a no-op. No event carries the
@@ -65,17 +67,19 @@ final readonly class DomainEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \LogicException
      */
-    public function claimed(Connection $connection, Domain $domain, ?ActingIdentity $actor, ClientContext $client): void
+    public function claimed(Connection $connection, Domain $domain, ?Caller $caller, ClientContext $client): void
     {
         $expiresAt = $domain->pending_expires_at ?? throw new \LogicException('A claimed domain has a pending expiry.');
 
-        $this->dispatcher->dispatch(new DomainClaimed($this->context($connection, $actor, $client), $domain->id, $domain->domain, DomainStanding::lookupName($domain), $expiresAt));
+        $context = $this->context($connection, $caller, $client);
+
+        $this->dispatcher->dispatch(new DomainClaimed($context, $domain->id, $domain->domain, DomainStanding::lookupName($domain), $expiresAt));
     }
 
     /**
@@ -83,17 +87,17 @@ final readonly class DomainEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \LogicException
      */
-    public function verified(Connection $connection, Domain $domain, ?ActingIdentity $actor, ClientContext $client): void
+    public function verified(Connection $connection, Domain $domain, ?Caller $caller, ClientContext $client): void
     {
         $verifiedAt = $domain->verified_at ?? throw new \LogicException('A verified domain has a verification time.');
 
-        $this->dispatcher->dispatch(new DomainVerified($this->context($connection, $actor, $client), $domain->id, $domain->domain, $verifiedAt));
+        $this->dispatcher->dispatch(new DomainVerified($this->context($connection, $caller, $client), $domain->id, $domain->domain, $verifiedAt));
     }
 
     /**
@@ -150,13 +154,13 @@ final readonly class DomainEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
-    public function removed(Connection $connection, Domain $domain, ?ActingIdentity $actor, ClientContext $client): void
+    public function removed(Connection $connection, Domain $domain, ?Caller $caller, ClientContext $client): void
     {
-        $this->dispatcher->dispatch(new DomainRemoved($this->context($connection, $actor, $client), $domain->id, $domain->domain, $domain->state));
+        $this->dispatcher->dispatch(new DomainRemoved($this->context($connection, $caller, $client), $domain->id, $domain->domain, $domain->state));
     }
 
     /**
@@ -164,19 +168,19 @@ final readonly class DomainEvents
      * identity when there is one.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Events\EventContext
      */
-    private function context(Connection $connection, ?ActingIdentity $actor, ClientContext $client): EventContext
+    private function context(Connection $connection, ?Caller $caller, ClientContext $client): EventContext
     {
         return $this->contexts->make(
             $client,
             connectionId: $connection->id,
             connectionTenantId: $connection->tenant_id,
             protocol: $connection->protocol,
-            actingIdentityMorphClass: $actor?->type,
-            actingIdentityId: $actor?->id,
+            actingIdentityMorphClass: $caller?->identity->type,
+            actingIdentityId: $caller?->identity->id,
         );
     }
 }

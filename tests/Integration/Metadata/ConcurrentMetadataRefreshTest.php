@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\CompletionState;
 use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
@@ -28,6 +27,7 @@ use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -927,10 +927,10 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     /**
      * The administrator who asks for a refresh now.
      *
-     * @return \SineMacula\Laravel\Sso\Administration\ActingIdentity
+     * @return \SineMacula\Laravel\Sso\Identities\Caller
      */
-    private static function actor(): ActingIdentity
+    private static function actor(): Caller
     {
-        return new ActingIdentity('App\Models\User', '42');
+        return new Caller(new IdentityReference('App\Models\User', '42'));
     }
 }

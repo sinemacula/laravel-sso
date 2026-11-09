@@ -109,10 +109,13 @@ independent proof. So that removing the link first changes nothing, activating a
 on the identity's guard (`IdentityLock::recordDomainLink()`), which nothing clears; a `link` redemption reads it by a
 locking read once it holds the guard (`HandoffRecheck::lock()`, carried as `RecheckLock::$domainLinkHeld`), and an
 identity that has ever held such a link asks the contract even when none remains, with the ids of those it holds now,
-possibly none. The contract answers by how the session was established: through a link that had verified domain
-provenance then, whether held now, removed or confirmed since, is `dependent`. A subject migration that keeps a link's
-provenance needs no stamp, since only an activation ever gives it. The default answers `dependent`, so someone whose
-only credential is that link cannot confirm it until they hold another. Removal is not the only way out:
+possibly none. The contract is given the caller the redemption is made for (`Identities\Caller`), forwarded as the
+application gave it after its identity is compared with the bound one, and judges that caller's session, never the
+request being served: a caller with no session, or a session it cannot tie to the caller's identity or guard through the
+redeemer's commit, is `dependent`. It answers by how the session was established: through a link that had verified
+domain provenance then, whether held now, removed or confirmed since, is `dependent`. A subject migration that keeps a
+link's provenance needs no stamp, since only an activation ever gives it. The default answers `dependent`, so someone
+whose only credential is that link cannot confirm it until they hold another. Removal is not the only way out:
 application-controlled recovery, or a credential established independently of the provider, qualifies. Removing the link
 does not turn its surviving session into independent authentication, so credential enrolment and recovery must preserve
 that distinction. `Linking\LinkConfirmationGate` reads those links by a locking read in id order, under the identity's
@@ -278,7 +281,8 @@ reservation carries the version it was made under.
   `LinkStorageBindingTest.php`, `tests/Integration/Linking/ConcurrentReservationTest.php`,
   `ConcurrentActivationTest.php`, `ConcurrentScopeWideningTest.php`.
 - `tests/Feature/Linking/LinkConfirmationTest.php`, `IssuerChangeTest.php`, `RealProtocolLinkingTest.php`,
-  `tests/Unit/Linking/LinkConfirmationContractTest.php`.
+  `tests/Unit/Linking/LinkConfirmationContractTest.php`, `RefusingLinkConfirmationTest.php`,
+  `LinkConfirmationGateTest.php`.
 - `tests/Feature/Linking/LinkBranchTest.php`, `LinkAdmissionTest.php`, `LinkPurposeEventSequenceTest.php`,
   `tests/Integration/Linking/ConcurrentConfirmingLinkTest.php`.
 - `tests/Feature/Linking/ReauthenticationBranchTest.php`, `ReauthenticationEventSequenceTest.php`,

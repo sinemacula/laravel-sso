@@ -8,11 +8,18 @@ each, the default that refuses, and the gate every listed mutation calls before 
 
 ## Invariants
 
-- There is one contract: `Contracts\Freshness::check(FreshnessOperation $operation, int $maxAgeSeconds)`, answering a
-  `Freshness\Enums\FreshnessOutcome`, `fresh` or `stale` (`isFresh()` is true for `fresh` alone). It answers `fresh`
-  only when the caller of the request or job being served authenticated no more than `$maxAgeSeconds` ago, and `stale`
-  otherwise, including when there is no caller it can judge (a queued job, a console command). An error it cannot
-  answer through propagates as a server error; it never answers `fresh` when it cannot tell.
+- There is one contract: `Contracts\Freshness::check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller
+  $caller)`, answering a `Freshness\Enums\FreshnessOutcome`, `fresh` or `stale` (`isFresh()` is true for `fresh`
+  alone). The caller is the one the action is taken for, as the application gave it (`Identities\Caller`: the identity
+  and, when supplied, the session it is on); the implementation judges that caller and its session, never the request
+  or job being served. It answers `fresh` only when that caller authenticated no more than `$maxAgeSeconds` ago, and
+  `stale` otherwise, including for no caller (a scheduled job, a console command) and for a caller it cannot judge
+  (one with no session when it judges sessions). An error it cannot answer through propagates as a server error; it
+  never answers `fresh` when it cannot tell.
+- A caller (`Identities\Caller`, `@api`) is an `IdentityReference` and an optional session id of 1 to 255 bytes
+  (`Caller::MAX_SESSION_ID_LENGTH`); an empty or longer one is an `InvalidArgumentException`. `null` where a caller is
+  taken means no authenticated person, and a caller with no session means none was supplied, never "the current
+  session": the package reads no request, job or session to find one.
 - The operations are `Freshness\Enums\FreshnessOperation`, twelve cases whose values are the stable names of the
   operations SSO-2.12 lists, in this order: `sso.connection.trust`, `sso.connection.enable`,
   `sso.connection.disable`, `sso.connection.delete`, `sso.connection.idp_initiated`, `sso.keys.rotate`,
@@ -34,12 +41,19 @@ each, the default that refuses, and the gate every listed mutation calls before 
   provider registers keeps its binding, and one bound afterwards replaces the default.
 - Every operation SSO-2.12 lists asks through `Freshness\FreshnessGate`, never the contract directly.
   `FreshnessGate::check()` reads the operation's maximum age first, then resolves the contract from the container and
-  asks it with the operation and that age. `checkAll()` asks about each operation of a change that is several at once
-  (a trust change that also turns IdP-initiated sign-in on, say) once each, in the order given, and answers `stale` at
-  the first that is, asking about none after it; with no operation it answers `fresh` and asks nothing.
+  asks it with the operation, that age and the caller it was given. `checkAll()` asks about each operation of a change
+  that is several at once (a trust change that also turns IdP-initiated sign-in on, say) once each, in the order given,
+  and answers `stale` at the first that is, asking about none after it, each for the one caller given; with no operation
+  it answers `fresh` and asks nothing.
 - The contract is resolved on each call and the age read on each call, so a binding made per request or swapped in a
   test is the one asked, and nothing of one caller is kept for the next (SSO-11.2). An implementation the application
-  binds reads its caller from the request or job being served on each call and keeps nothing of one for the next.
+  binds judges the caller each call is given and keeps nothing of one for the next.
+- Every action that asks takes its caller as a plain value (`?Caller $caller`, after the client) and gives that same
+  caller to the gate; an administration change's event names the caller's identity as the acting identity and never
+  carries its session. A `link` start gives its caller, with the session it gave, to freshness and binds the identity
+  alone; a `link` redemption gives the caller it was made for. Scheduled and console work passes no caller: a metadata
+  refresh the schedule or the queue makes asks no freshness at all, and an administrator's `refreshNow()` requires its
+  caller.
 - Every mutation follows one order: find what it changes on the write connection; validate what it was given; ask the
   gate with each operation the change is; then write, in one transaction on the storage connection, reporting through
   `Administration\AdministrationEvents` inside it. A change's operations come from the settings it touches
@@ -55,8 +69,8 @@ each, the default that refuses, and the gate every listed mutation calls before 
   misspelt key would leave the operation meant at its default), and each age is read as `MaximumAges::for()` reads it,
   one problem per malformed age in the order of the operations.
 - `Testing\FakeFreshness` is a public test double (`@api`): it answers `fresh` unless built `stale()` or told with
-  `staleFor()` which operations alone answer `stale`, records every question with its maximum age, and asserts what
-  was asked. It holds its state per instance and never belongs in production.
+  `staleFor()` which operations alone answer `stale`, records every question with its maximum age and caller, and
+  asserts what was asked. It holds its state per instance and never belongs in production.
 
 ## Success Path
 
@@ -64,8 +78,9 @@ each, the default that refuses, and the gate every listed mutation calls before 
    contract first; `laravel-iam` binds `laravel-authentication`'s freshness check (AUTH-3.11), passing the maximum age
    on as the caller's requirement.
 2. A management helper finds the connection (and the key) on the write connection, and validates what it was given.
-3. It asks `FreshnessGate::check()` with the one operation the change is, or `checkAll()` with each; the gate reads
-   each maximum age from `sso.freshness.max_age_seconds`, resolves the bound contract and asks it.
+3. It asks `FreshnessGate::check()` with the one operation the change is, or `checkAll()` with each, for the caller it
+   was given; the gate reads each maximum age from `sso.freshness.max_age_seconds`, resolves the bound contract and
+   asks it with that caller.
 4. On `fresh`, the helper writes in one transaction on the storage connection and reports the change inside it; the
    event is dispatched once the transaction commits.
 
@@ -91,7 +106,7 @@ each, the default that refuses, and the gate every listed mutation calls before 
 
 ## Implementation Anchors
 
-- `src/Contracts/Freshness.php`.
+- `src/Contracts/Freshness.php`, `src/Identities/Caller.php`.
 - `src/Freshness/Enums/FreshnessOperation.php`, `src/Freshness/Enums/FreshnessOutcome.php`.
 - `src/Freshness/RefusingFreshness.php`, `src/Freshness/MaximumAges.php`, `src/Freshness/FreshnessGate.php`,
   `src/Freshness/FreshnessCheck.php`.
@@ -108,13 +123,17 @@ each, the default that refuses, and the gate every listed mutation calls before 
   `testTheShippedBlockHasEveryKeyAndNoOther`.
 - `tests/Unit/Freshness/Enums/FreshnessOutcomeTest.php` `testTheOutcomesAreFreshAndStale`, `testOnlyFreshIsFresh`.
 - `tests/Unit/Freshness/RefusingFreshnessTest.php` `testRefusesTheOperationAtEveryAge`.
+- `tests/Unit/Identities/CallerTest.php` `testKeepsTheIdentityAndTheSessionGiven`, `testRefusesAMalformedSessionId`.
 - `tests/Unit/Testing/FakeFreshnessTest.php`.
 - `tests/Feature/Freshness/MaximumAgesTest.php` `testAnUnsetAgeIsTheDefault`, `testEachOperationReadsItsOwnKey`,
   `testReadsTheAgeOnEachCall`, `testAcceptsEachAge`, `testRefusesEachMalformedAge`.
 - `tests/Feature/Freshness/FreshnessGateTest.php` `testAsksTheBoundContractWithTheConfiguredAge`,
   `testResolvesTheContractOnEachCall`, `testAMalformedAgeThrowsBeforeTheContractIsAsked`,
-  `testCheckAllAsksInTheOrderGiven`, `testCheckAllAsksAboutEachOperationOnce`, `testCheckAllStopsAtTheFirstStale`,
-  `testCheckAllOfNoOperationIsFresh`, `testCheckAllThrowsAtAMalformedAge`.
+  `testCheckAllAsksInTheOrderGiven`, `testCheckAllAsksEachOperationForTheCaller`,
+  `testCheckAllAsksAboutEachOperationOnce`, `testCheckAllStopsAtTheFirstStale`, `testCheckAllOfNoOperationIsFresh`,
+  `testCheckAllThrowsAtAMalformedAge`.
+- `tests/Feature/Administration/FreshnessConventionTest.php` `testAFreshCallerIsAskedExactlyItsOperations`,
+  `testTheCallerAskedAboutIsTheOneTheEventNames`.
 - `tests/Feature/Freshness/FreshnessCheckTest.php` `testAppliesOnlyWhileThePackageIsInUse`,
   `testReportsABlockThatIsNotAnArray`, `testReportsAnUnknownOperation`, `testReportsEachAgeOutOfRange`,
   `testReportsTheShapeBeforeTheAges`.
@@ -133,6 +152,6 @@ each, the default that refuses, and the gate every listed mutation calls before 
   `configKey()` derives a key.
 - A change to an age's default, bounds, key or message, or to when `[freshness]` applies or what it reports.
 - A mutation that writes before asking the gate, asks the contract directly, or reports on a refusal.
-- A change to the `Freshness` contract or its outcomes, to the default or how it is bound, or to whether the gate
-  resolves the contract on each call.
+- A change to the `Freshness` contract, its caller or its outcomes, to the default or how it is bound, or to whether the
+  gate resolves the contract on each call.
 - A change to what `FakeFreshness` answers, records or asserts.

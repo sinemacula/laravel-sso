@@ -6,7 +6,6 @@ namespace Tests\Feature\Administration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
@@ -21,6 +20,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\KeyAdded;
 use SineMacula\Laravel\Sso\Events\KeyMadeCurrent;
 use SineMacula\Laravel\Sso\Events\KeyRetired;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -88,8 +89,8 @@ final class AdministrationEventSequenceTest extends TestCase
         'sso_url'       => 'https://idp.example.com/sso',
     ];
 
-    /** @var \SineMacula\Laravel\Sso\Administration\ActingIdentity Who makes each change. */
-    private ActingIdentity $actor;
+    /** @var \SineMacula\Laravel\Sso\Identities\Caller Who makes each change. */
+    private Caller $actor;
 
     /**
      * Bind a fixed clock and a freshness contract that answers `fresh`, turn
@@ -102,7 +103,7 @@ final class AdministrationEventSequenceTest extends TestCase
     {
         parent::setUp();
 
-        $this->actor = new ActingIdentity('App\Models\User', '42');
+        $this->actor = new Caller(new IdentityReference('App\Models\User', '42'));
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
@@ -369,7 +370,7 @@ final class AdministrationEventSequenceTest extends TestCase
             'Example',
             Clients::browser(),
             ['issuer' => 'https://idp.example.com', 'api_secret' => 'example-api-secret'],
-            actor: $this->actor,
+            caller: $this->actor,
         );
         $id = (string) $created->connection?->id;
 
@@ -486,7 +487,7 @@ final class AdministrationEventSequenceTest extends TestCase
     private function connectionRefusals(string $oidc): array
     {
         return [
-            'stale create' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, actor: $this->actor),
+            'stale create' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, caller: $this->actor),
             'stale update' => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $oidc,
@@ -503,7 +504,7 @@ final class AdministrationEventSequenceTest extends TestCase
                 $this->actor,
             ),
             'another tenant'   => fn (): ConnectionResult => $this->connections()->enable(self::OTHER_TENANT, $oidc, Clients::browser(), $this->actor),
-            'invalid creation' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', '   ', Clients::browser(), self::OIDC, actor: $this->actor),
+            'invalid creation' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', '   ', Clients::browser(), self::OIDC, caller: $this->actor),
             'invalid update'   => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $oidc,
@@ -511,7 +512,7 @@ final class AdministrationEventSequenceTest extends TestCase
                 Clients::browser(),
                 $this->actor,
             ),
-            'unregistered protocol' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'unregistered', 'Acme', Clients::browser(), actor: $this->actor),
+            'unregistered protocol' => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'unregistered', 'Acme', Clients::browser(), caller: $this->actor),
             'protocol switched off' => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $oidc,
@@ -603,7 +604,7 @@ final class AdministrationEventSequenceTest extends TestCase
      */
     private function createOidc(): string
     {
-        $result = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC + ['client_secret' => self::SECRET], actor: $this->actor);
+        $result = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC + ['client_secret' => self::SECRET], caller: $this->actor);
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
 
@@ -617,7 +618,7 @@ final class AdministrationEventSequenceTest extends TestCase
      */
     private function createSaml(): string
     {
-        $result = $this->connections()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML, actor: $this->actor);
+        $result = $this->connections()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML, caller: $this->actor);
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
 

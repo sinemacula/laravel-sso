@@ -41,6 +41,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\ReauthenticationBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
@@ -346,7 +347,14 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     {
         self::assertInstanceOf(NoReauthenticationSessions::class, app(ReauthenticationSessions::class));
 
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $this->connection->id, Clients::browser(), null, $this->person, self::SESSION);
+        $start = app(AuthorizationRequestService::class)->start(
+            'web',
+            Purpose::REAUTHENTICATE,
+            $this->connection->id,
+            Clients::browser(),
+            null,
+            new Caller($this->person, self::SESSION),
+        );
 
         self::assertSame(FailureReason::SESSION_INELIGIBLE, $start->reason);
         self::assertSame(0, AuthorizationRequest::query()->count());
@@ -381,7 +389,14 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         $this->tableSession(self::SESSION, $link->id, [$column => $value]);
         $this->startRecordingEvents();
 
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $this->connection->id, Clients::browser(), null, $this->person, self::SESSION);
+        $start = app(AuthorizationRequestService::class)->start(
+            'web',
+            Purpose::REAUTHENTICATE,
+            $this->connection->id,
+            Clients::browser(),
+            null,
+            new Caller($this->person, self::SESSION),
+        );
 
         self::assertSame(FailureReason::SESSION_INELIGIBLE, $start->reason);
         self::assertSame(0, AuthorizationRequest::query()->count());

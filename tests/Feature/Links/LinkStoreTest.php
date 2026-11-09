@@ -8,7 +8,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\LinkLimit;
@@ -18,6 +17,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\LinkCreated;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkCreationStatus;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
@@ -524,7 +524,7 @@ final class LinkStoreTest extends TestCase
             $this->identity,
             LinkOrigin::LINK_PURPOSE,
             Clients::browser(),
-            new ActingIdentity('App\Models\User', '42'),
+            new Caller(new IdentityReference('App\Models\User', '42')),
             'web',
             Purpose::LINK,
             RequestReference::fromString(ExampleResults::REFERENCE),

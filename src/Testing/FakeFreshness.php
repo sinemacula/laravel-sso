@@ -8,12 +8,13 @@ use PHPUnit\Framework\Assert;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
 
 /**
  * A freshness contract for tests that answers what the test gave it and records
- * every operation it is asked about, with the maximum age asked for, so a test
- * of a management helper neither authenticates a caller nor depends on the
- * default, which refuses every operation (SSO-2.12).
+ * every operation it is asked about, with the maximum age and the caller asked
+ * for, so a test of a management helper neither authenticates a caller nor
+ * depends on the default, which refuses every operation (SSO-2.12).
  *
  * Bind it in place of the package's contract with
  * `$this->app->instance(Freshness::class, $fake = FakeFreshness::fresh())`, run
@@ -21,8 +22,9 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
  * operation unless built with `FakeFreshness::stale()`, or told with
  * `staleFor()` which operations alone answer `stale`. It holds its answers and
  * what it was asked per instance, so a test that binds a new one starts afresh.
- * It judges no caller and never belongs in production: an application binds a
- * contract that reads its caller's authentication instead.
+ * It judges no caller, answering the same for none, and never belongs in
+ * production: an application binds a contract that judges the caller it is
+ * given instead.
  *
  * @api
  *
@@ -34,7 +36,7 @@ final class FakeFreshness implements Freshness
     /** @var array<string, \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation> The operations that answer `stale` whatever the outcome, by name. */
     private array $staleOperations = [];
 
-    /** @var list<array{operation: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation, max_age_seconds: int}> Every question asked, in the order it was asked. */
+    /** @var list<array{operation: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation, max_age_seconds: int, caller: ?\SineMacula\Laravel\Sso\Identities\Caller}> Every question asked, in the order it was asked. */
     private array $asked = [];
 
     /**
@@ -92,21 +94,22 @@ final class FakeFreshness implements Freshness
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  int  $maxAgeSeconds
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
      */
     #[\Override]
-    public function check(FreshnessOperation $operation, int $maxAgeSeconds): FreshnessOutcome
+    public function check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller $caller): FreshnessOutcome
     {
-        $this->asked[] = ['operation' => $operation, 'max_age_seconds' => $maxAgeSeconds];
+        $this->asked[] = ['operation' => $operation, 'max_age_seconds' => $maxAgeSeconds, 'caller' => $caller];
 
         return isset($this->staleOperations[$operation->value]) ? FreshnessOutcome::STALE : $this->outcome;
     }
 
     /**
-     * Every question asked, in order: the operation and the maximum age, in
-     * seconds, it was asked with.
+     * Every question asked, in order: the operation, the maximum age, in
+     * seconds, and the caller, `null` for none, it was asked with.
      *
-     * @return list<array{operation: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation, max_age_seconds: int}>
+     * @return list<array{operation: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation, max_age_seconds: int, caller: ?\SineMacula\Laravel\Sso\Identities\Caller}>
      */
     public function asked(): array
     {

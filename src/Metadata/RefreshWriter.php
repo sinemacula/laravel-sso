@@ -6,12 +6,12 @@ namespace SineMacula\Laravel\Sso\Metadata;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\MetadataEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
@@ -85,20 +85,20 @@ final readonly class RefreshWriter
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\Connection): array<string, mixed>  $lockedTrust
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\Connection): \SineMacula\Laravel\Sso\Metadata\RefreshResult  $work
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \Throwable
      */
-    public function locked(RefreshClaim $claim, \Closure $lockedTrust, \Closure $work, ?ActingIdentity $actor, ClientContext $client): RefreshResult
+    public function locked(RefreshClaim $claim, \Closure $lockedTrust, \Closure $work, ?Caller $caller, ClientContext $client): RefreshResult
     {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($claim, $lockedTrust, $work, $actor, $client): RefreshResult {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($claim, $lockedTrust, $work, $caller, $client): RefreshResult {
 
             $locked = self::lockedConnection($claim);
 
             if ($locked === null || !self::isUnchanged($locked, $claim) || $lockedTrust($locked) !== $claim->trusted) {
-                return $this->conflict($claim, $locked, $actor, $client);
+                return $this->conflict($claim, $locked, $caller, $client);
             }
 
             return $work($locked);
@@ -112,13 +112,13 @@ final readonly class RefreshWriter
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      */
-    public function failed(Connection $locked, FailureReason $reason, ?ActingIdentity $actor, ClientContext $client): RefreshResult
+    public function failed(Connection $locked, FailureReason $reason, ?Caller $caller, ClientContext $client): RefreshResult
     {
         $failures = $locked->metadata_refresh_failures + 1;
         $next     = $this->clock->now()->addSeconds($this->settings->backoffSeconds($failures));
@@ -130,7 +130,7 @@ final readonly class RefreshWriter
             'metadata_claim_token'      => null,
         ])->save();
 
-        $this->events->refreshFailed($locked, $reason, $failures, $next, $actor, $client);
+        $this->events->refreshFailed($locked, $reason, $failures, $next, $caller, $client);
 
         return RefreshResult::failed($locked->id, $reason, $failures, $next);
     }
@@ -188,15 +188,15 @@ final readonly class RefreshWriter
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  list<string>  $changed
      * @param  bool  $trustChanged
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      */
-    public function refreshed(Connection $locked, array $changed, bool $trustChanged, ?ActingIdentity $actor, ClientContext $client): RefreshResult
+    public function refreshed(Connection $locked, array $changed, bool $trustChanged, ?Caller $caller, ClientContext $client): RefreshResult
     {
-        $this->events->refreshed($locked, $changed, $locked->metadata_version, $trustChanged, $actor, $client);
+        $this->events->refreshed($locked, $changed, $locked->metadata_version, $trustChanged, $caller, $client);
 
         return RefreshResult::refreshed($locked->id, $changed, $locked->metadata_version, $trustChanged);
     }
@@ -208,16 +208,16 @@ final readonly class RefreshWriter
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $locked
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      */
-    private function conflict(RefreshClaim $claim, ?Connection $locked, ?ActingIdentity $actor, ClientContext $client): RefreshResult
+    private function conflict(RefreshClaim $claim, ?Connection $locked, ?Caller $caller, ClientContext $client): RefreshResult
     {
         if ($locked !== null) {
-            $this->events->refreshFailed($locked, FailureReason::METADATA_CONFLICT, $locked->metadata_refresh_failures, $locked->metadata_refresh_at, $actor, $client);
+            $this->events->refreshFailed($locked, FailureReason::METADATA_CONFLICT, $locked->metadata_refresh_failures, $locked->metadata_refresh_at, $caller, $client);
         }
 
         return RefreshResult::conflict($claim->connection->id);

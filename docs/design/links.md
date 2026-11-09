@@ -67,7 +67,7 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   `RevocationScope::identityLink($tenantId, $connectionId, $identity, $linkId)`, reason `scope_widened`, inside the
   transaction. A revocation that throws rolls the change back. Without the application taking part, nothing can suspend
   a link between two checks (`docs/guides/linking-by-domain.md`).
-- `LinkStore::create($connection, $subject, $identity, $origin, $client, $actor, $application, $purpose, $reference)`
+- `LinkStore::create($connection, $subject, $identity, $origin, $client, $caller, $application, $purpose, $reference)`
   runs in one transaction on the storage connection (a savepoint inside the caller's), in this order:
   1. the connection's row is read again locked through `Connections\ConnectionFinder::findForUpdate()`, which
      serialises every creation in the connection; a connection that does not exist (or is not the tenant's the model
@@ -101,16 +101,18 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   and `isRefused()`. A refusal wrote and reported nothing, and never says which identity holds a subject.
 - `Links\LinkService` (`@api`, resolved per request) takes an identity as an `IdentityReference` or the string `me`,
   which names the caller passed; `me` without a caller, or any other string, is an `InvalidArgumentException`.
-  - `list($identity, $caller)` answers the identity's `LinkSummary`s in every connection of every tenant (SSO-1.5),
+  - `list($identity, $caller)`, the identity a reference or `me` for the identity of the `Identities\Caller` given,
+    answers the identity's `LinkSummary`s in every connection of every tenant (SSO-1.5),
     read on the write connection, the identity compared byte for byte, ordered by `created_at` then `id`; a link whose
     connection no longer exists is left out.
-  - `remove($identity, $linkId, $client, $caller, $actor)`, in this order, a refusal deleting, revoking and reporting
-    nothing:
+  - `remove($identity, $linkId, $client, $caller)`, in this order, a refusal deleting, revoking and reporting nothing;
+    the one caller resolves `me`, is the one freshness judges and is the acting identity `LinkRemoved` names, whether
+    it removes its own link or another identity's:
     1. the identity is resolved;
     2. the link is found by its id and the identity (a plain read on the write connection); a missing link and another
        identity's are both `link_not_found`, so nothing is revealed;
-    3. `Freshness\FreshnessGate::check(FreshnessOperation::LINK_REMOVE)` (`sso.link.remove`, SSO-2.12); `stale` is
-       `freshness_required`;
+    3. `Freshness\FreshnessGate::check(FreshnessOperation::LINK_REMOVE, $caller)` (`sso.link.remove`, SSO-2.12); `stale`
+       is `freshness_required`;
     4. one transaction on the storage connection: the link's connection row is locked, then the link is read again
        locked (gone, reassigned to another identity or orphaned is `link_not_found`), deleted through the model,
        `Contracts\SessionRevocation::revoke(RevocationScope::identityInConnection($tenantId, $connectionId,
@@ -147,7 +149,7 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
 3. A later `sign_in` result through the same connection with the same issuer, format and subject resolves to the
    identity, and the link's last use is stamped.
 4. The identity's account screen lists its links with `list('me', $caller)` and removes one with
-   `remove('me', $id, $caller, $actor)`; the identity's sessions through that connection are revoked with the delete,
+   `remove('me', $id, $client, $caller)`; the identity's sessions through that connection are revoked with the delete,
    and `LinkRemoved` is reported.
 
 ## Failure / Edge Cases

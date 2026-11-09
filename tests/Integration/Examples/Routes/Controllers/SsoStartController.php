@@ -93,7 +93,7 @@ final readonly class SsoStartController
             $input['connection'],
             ClientContext::fromRequest($request),
             $input['code_challenge'] ?? null,
-            Caller::identity($request),
+            Caller::of($request),
         );
         // @snippet-end route-start-link
         return self::answer($result);
@@ -120,8 +120,7 @@ final readonly class SsoStartController
             $input['connection'],
             ClientContext::fromRequest($request),
             $input['code_challenge'] ?? null,
-            Caller::identity($request),
-            Caller::sessionId($request),
+            Caller::of($request),
         );
         // @snippet-end route-start-reauthenticate
         return self::answer($result);

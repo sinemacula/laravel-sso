@@ -6,15 +6,17 @@ namespace Tests\Integration\Examples\Links;
 
 use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 
 /**
  * The example application's link confirmation (SSO-8.8): the caller confirms a
  * link of verified domain provenance only from a session that no such link
- * established or renewed, such as one their password established. It answers by
- * how the request's session was established, as recorded when it was admitted,
- * never by which links remain.
+ * established or renewed, such as one their password established. It judges the
+ * session the caller it is given is on, never the request being served, by how
+ * that session was established, as recorded when it was admitted, never by
+ * which links remain; a caller with no session, or on a session that is not
+ * their own, is dependent.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,20 +38,21 @@ final readonly class PasswordSessionsConfirm implements LinkConfirmation
 
     // @snippet-start links-confirmation
     /**
-     * Whether the caller's current session is independent of the links.
+     * Whether the caller's session is independent of the links.
      *
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  list<string>  $domainLinkIds
      * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict
      */
     #[\Override]
-    public function judge(IdentityReference $identity, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict
+    public function judge(Caller $caller, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict
     {
         unset($connection);
 
-        // Locked under your session writers' guard until the redeemer commits
-        $session = $this->sessions->currentLocked($identity);
+        // The caller's own session, none without one, locked under your session
+        // writers' guard until the redeemer commits
+        $session = $this->sessions->lockedFor($caller);
 
         // Neither established through a link of verified domain provenance,
         // held now or before, as recorded when the session was admitted, nor

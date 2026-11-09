@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
 use SineMacula\Laravel\Sso\Linking\LinkingCheck;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
@@ -252,7 +253,7 @@ final class LinkStorageBindingTest extends LinkingTestCase
             (string) $completion->handoff?->code->reveal(),
             (string) $start->verifier?->reveal(),
             Clients::browser(),
-            $this->person,
+            new Caller($this->person),
         );
 
         self::assertTrue($answer->isRedeemed());

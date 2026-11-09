@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Links;
 
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Events\AfterCommitDispatcher;
 use SineMacula\Laravel\Sso\Events\EventContexts;
@@ -16,6 +15,7 @@ use SineMacula\Laravel\Sso\Events\LinkSuspended;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -24,10 +24,11 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * Reports a link created, removed, activated, confirmed or suspended (SSO-8.4,
  * SSO-8.8, SSO-10.3): each method builds the event's context through the one
  * projection (`Events\EventContexts`), from the connection's id, tenant and
- * protocol, the identity the link associates and the acting identity the
- * application passed, and hands the event to `Events\AfterCommitDispatcher`, so
- * it reaches listeners once the transaction on the storage connection commits,
- * and never when it rolls back (SSO-10.5).
+ * protocol, the identity the link associates and, as the acting identity, the
+ * identity of the caller the application passed (`Identities\Caller`; its
+ * session is never carried), and hands the event to
+ * `Events\AfterCommitDispatcher`, so it reaches listeners once the transaction
+ * on the storage connection commits, and never when it rolls back (SSO-10.5).
  *
  * A creation made by a flow adds its application, its purpose and the request's
  * public reference, the only flow identifier an event carries (SSO-9.8).
@@ -70,7 +71,7 @@ final readonly class LinkEvents
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
@@ -85,7 +86,7 @@ final readonly class LinkEvents
         IdentityReference $identity,
         LinkOrigin $origin,
         ClientContext $client,
-        ?ActingIdentity $actor = null,
+        ?Caller $caller = null,
         ?string $application = null,
         ?Purpose $purpose = null,
         ?RequestReference $reference = null,
@@ -100,8 +101,8 @@ final readonly class LinkEvents
             requestReference: $reference?->value,
             identityMorphClass: $identity->type,
             identityId: $identity->id,
-            actingIdentityMorphClass: $actor?->type,
-            actingIdentityId: $actor?->id,
+            actingIdentityMorphClass: $caller?->identity->type,
+            actingIdentityId: $caller?->identity->id,
         );
 
         $this->dispatcher->dispatch(new LinkCreated($context, $origin));
@@ -113,12 +114,12 @@ final readonly class LinkEvents
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function removed(Connection $connection, IdentityReference $identity, ClientContext $client, ?ActingIdentity $actor = null): void
+    public function removed(Connection $connection, IdentityReference $identity, ClientContext $client, ?Caller $caller = null): void
     {
         $context = $this->contexts->make(
             $client,
@@ -127,8 +128,8 @@ final readonly class LinkEvents
             protocol: $connection->protocol,
             identityMorphClass: $identity->type,
             identityId: $identity->id,
-            actingIdentityMorphClass: $actor?->type,
-            actingIdentityId: $actor?->id,
+            actingIdentityMorphClass: $caller?->identity->type,
+            actingIdentityId: $caller?->identity->id,
         );
 
         $this->dispatcher->dispatch(new LinkRemoved($context));

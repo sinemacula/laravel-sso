@@ -73,13 +73,15 @@ which) or `link_limit_reached`, with nothing written.
 A `link` flow attaches a subject to an identity your application has already authenticated: an account screen's "connect
 your identity provider" button, say. It is the only way besides a verified domain that a result ever attaches to an
 existing identity (SSO-8.5). It creates no session. Start it for the user your application has authenticated, here
-`$user`:
+`$user`, as an `Identities\Caller` with the session they are on: the [freshness contract](freshness.md#the-caller)
+judges that session, and the flow is bound to the identity alone:
 
 <!-- snippet: tests/Integration/Examples/Links/LinksExampleTest.php#links-start -->
 ```php
-$identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
+// The signed-in user, on the session freshness judges
+$caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
 
-$start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, $client, null, $identity);
+$start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $connectionId, $client, null, $caller);
 ```
 
 `$client` is the `Http\ClientContext` of the request the call is made for, which your controller builds with
@@ -88,11 +90,14 @@ $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $c
 request itself, and each event it reports carries the client's IP address and user agent.
 
 The flow then goes as any other does, and its handoff code is redeemed at an endpoint of your own that gives the caller
-it has authenticated, `$user` again, never an identity the request names:
+it has authenticated, `$user` again on their session, never an identity the request names. Its identity must be the
+one the flow was started for, byte for byte; the caller as you give it, with its session, is the one freshness and the
+link confirmation judge:
 
 <!-- snippet: tests/Integration/Examples/Links/LinksExampleTest.php#links-redeem -->
 ```php
-$caller = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
+// The signed-in user, on the session freshness and confirmation judge
+$caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
 
 $result = app(HandoffRedemption::class)->redeem(
     Purpose::LINK,
@@ -194,31 +199,36 @@ has held one, and never clears it, so removing the link and then linking from th
 too. The ids given are those of the links held now, which can be none. The default refuses everyone, so bind your own
 before anyone can confirm. A `link` of an identity that has never held such a link never asks it.
 
-Answer by how the current session was established, not by which links remain: through any link that had verified
-domain provenance at the time, given, removed since or confirmed since, it is `dependent`. So record, when you admit a
+`judge()` is given the caller the redemption is made for, an `Identities\Caller`: the identity the code is bound to and
+the session you passed with it. Judge that session, never the request being served, and answer by how it was
+established, not by which links remain: through any link that had verified domain provenance at the time, given,
+removed since or confirmed since, it is `dependent`. A caller with no session, and a session you cannot tie to the
+caller's identity or guard until the redeemer commits, are `dependent` too. So record, when you admit a
 session from a redemption, whether the link it stood on (`$result->linkId`) had that provenance then: an admitted
 `sign_in` answers it as `$result->provenance?->linkProvenance`, `LinkOrigin::VERIFIED_DOMAIN` for such a link.
 
-Here `PasswordSessionsConfirm` implements `Contracts\LinkConfirmation`, reading the request's session from your own
-session store (`$this->sessions`, given to its constructor), which recorded that when the session was admitted:
+Here `PasswordSessionsConfirm` implements `Contracts\LinkConfirmation`, reading the caller's session, by its id and the
+caller's identity, from your own session store (`$this->sessions`, given to its constructor), which recorded that when
+the session was admitted:
 
 <!-- snippet: tests/Integration/Examples/Links/PasswordSessionsConfirm.php#links-confirmation -->
 ```php
 /**
- * Whether the caller's current session is independent of the links.
+ * Whether the caller's session is independent of the links.
  *
- * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+ * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
  * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
  * @param  list<string>  $domainLinkIds
  * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict
  */
 #[\Override]
-public function judge(IdentityReference $identity, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict
+public function judge(Caller $caller, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict
 {
     unset($connection);
 
-    // Locked under your session writers' guard until the redeemer commits
-    $session = $this->sessions->currentLocked($identity);
+    // The caller's own session, none without one, locked under your session
+    // writers' guard until the redeemer commits
+    $session = $this->sessions->lockedFor($caller);
 
     // Neither established through a link of verified domain provenance,
     // held now or before, as recorded when the session was admitted, nor
@@ -231,7 +241,8 @@ public function judge(IdentityReference $identity, SsoConnection $connection, ar
 }
 ```
 
-Bind it in a service provider's `register()`, scoped, since it reads the request's session:
+Bind it in a service provider's `register()`, scoped, since the session store it is given records the request's
+session:
 
 <!-- snippet: tests/Integration/Examples/Links/AppServiceProvider.php#links-confirmation-binding -->
 ```php
@@ -305,16 +316,19 @@ administration screens. Who may list or remove whose links is your application's
 <!-- snippet: tests/Integration/Examples/Links/LinksExampleTest.php#links-list-remove -->
 ```php
 $links  = app(LinkService::class);
-$caller = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
+$caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
 
 $mine = $links->list('me', $caller);                            // list<LinkSummary>, oldest first
 $some = $links->list(new IdentityReference(User::class, '42')); // another identity's, for administrators
 
-$result = $links->remove('me', $linkId, $client, $caller, new ActingIdentity($user->getMorphClass(), (string) $user->getKey()));
+$result = $links->remove('me', $linkId, $client, $caller); // freshness judges the caller, who is named as acting
 ```
 
-The identity is an `IdentityReference`, or `'me'` for the caller you pass. `'me'` without a caller, or any other
-string, throws an `InvalidArgumentException`.
+The identity is an `IdentityReference`, or `'me'` for the identity of the caller you pass, an `Identities\Caller` of the
+signed-in user and the session they are on. `'me'` without a caller, or any other string, throws an
+`InvalidArgumentException`. A removal's caller is also the one the freshness contract judges and the one `LinkRemoved`
+names as acting, whether they remove their own link or, as an administrator, another identity's named by its
+reference.
 
 Each `LinkSummary` holds the link's id, its connection with the connection's tenant and protocol, the issuer, the
 `NameID` format, its state (`active`, `reserved` or `suspended`), whether a verified domain made it and has not been
@@ -359,7 +373,7 @@ leaves existing sessions untouched.
 | `LinkSuspended` | A link on a verified domain was found outside its tenant, and stored as suspended                   |
 
 Each is dispatched after the transaction commits, never when it rolls back, and names the connection, its tenant and
-protocol, the identity, and the acting identity you passed; a link made or confirmed by a flow also names the
-application, the purpose and the request's public reference. None carries the subject or an email address. A refused
-creation or removal reports nothing of its own, and a refused `link` reports one `FlowFailed`, whose context names the
-identity the flow was started for, never the identity holding the subject.
+protocol, the identity, and the identity of the caller you passed as the acting identity; a link made or confirmed by a
+flow also names the application, the purpose and the request's public reference. None carries the subject or an email
+address. A refused creation or removal reports nothing of its own, and a refused `link` reports one `FlowFailed`, whose
+context names the identity the flow was started for, never the identity holding the subject.

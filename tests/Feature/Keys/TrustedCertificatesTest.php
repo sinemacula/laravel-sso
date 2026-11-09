@@ -7,7 +7,6 @@ namespace Tests\Feature\Keys;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -15,6 +14,8 @@ use SineMacula\Laravel\Sso\Events\KeyAdded;
 use SineMacula\Laravel\Sso\Events\KeyRetired;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\CertificateInspector;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyStatus;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
@@ -338,8 +339,14 @@ final class TrustedCertificatesTest extends TestCase
         $this->freshness->reset();
         $this->startRecordingEvents();
 
-        $result = $this->keys()->distrustCertificate(self::TENANT, $this->connection->id, $first->id, Clients::browser(), new ActingIdentity('App\Models\User', '42'));
-        $key    = self::summaryOf($result);
+        $result = $this->keys()->distrustCertificate(
+            self::TENANT,
+            $this->connection->id,
+            $first->id,
+            Clients::browser(),
+            new Caller(new IdentityReference('App\Models\User', '42')),
+        );
+        $key = self::summaryOf($result);
 
         self::assertSame(KeyStatus::DISTRUSTED, $result->status);
         self::assertSame($first->id, $key->id);

@@ -6,7 +6,6 @@ namespace Tests\Feature\Linking;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
@@ -16,6 +15,8 @@ use SineMacula\Laravel\Sso\Events\ConnectionDisabled;
 use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\DomainLinkEligibility;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -209,7 +210,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     public function testAChangeWritesAndReportsNamesAlone(): void
     {
         $connection = $this->plain();
-        $actor      = new ActingIdentity('App\Models\User', '42');
+        $actor      = new Caller(new IdentityReference('App\Models\User', '42'));
 
         $result = self::service()->change('tenant-1', $connection->id, [
             'enabled'            => true,

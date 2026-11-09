@@ -3,9 +3,10 @@
 Before each change that could widen or redirect access to a tenant, or destroy it (trusting a new certificate, enabling
 a connection, claiming a domain, turning enforcement on, linking an identity), the package asks whether the caller
 authenticated recently enough. It asks one contract, `SineMacula\Laravel\Sso\Contracts\Freshness`, with the operation's
-stable name and the maximum age of the caller's authentication that operation requires, in seconds. Only a `fresh`
-answer lets the change write; on `stale` the helper writes nothing, reports nothing, and answers the failure reason
-`freshness_required`, so your application can ask the caller to authenticate again and retry.
+stable name, the maximum age of the caller's authentication that operation requires, in seconds, and the caller the
+change is made for. Only a `fresh` answer lets the change write; on `stale` the helper writes nothing, reports nothing,
+and answers the failure reason `freshness_required`, so your application can ask the caller to authenticate again and
+retry.
 
 ## Why the default refuses
 
@@ -68,31 +69,48 @@ released, so a policy keyed on them keeps working across upgrades.
 A change that is several operations at once (a trust change that also turns IdP-initiated sign-in on) asks about each,
 once, and is refused at the first that is `stale`.
 
+## The caller
+
+Every change that asks takes the caller it is made for as its own argument, an `Identities\Caller`: the identity your
+application authenticated and, when you supply it, the session they are on, an opaque id of 1 to 255 bytes (anything
+else is an `InvalidArgumentException`). The package passes that same caller to the contract, and names its identity
+as the acting identity on the event the change reports; the session is never carried by an event. Build it where your
+controller reads the request:
+
+```text
+new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId())
+```
+
+No caller (`null`, the default) means no authenticated person, as for a scheduled job or a console command, and a
+caller with no session means you supplied none, never "the current session". The package never reads the request, the
+job or the session itself.
+
 ## Binding your own contract
 
-Implement `Contracts\Freshness` and bind it in a service provider. `check()` is given the operation and its maximum
-age; answer `fresh` only when the caller of the request or job being served authenticated no more than that many
-seconds ago, and `stale` otherwise, including when there is no caller you can judge (a queued job, a console command).
-Never answer `fresh` when you cannot tell; let an error you cannot answer through propagate.
+Implement `Contracts\Freshness` and bind it in a service provider. `check()` is given the operation, its maximum age
+and the caller; answer `fresh` only when that caller, on the session given, authenticated no more than that many
+seconds ago, and `stale` otherwise, including for no caller and for a caller you cannot judge (one with no session,
+when you judge sessions, or a session that is not theirs). Judge the caller you are given, never the request or job
+being served. Never answer `fresh` when you cannot tell; let an error you cannot answer through propagate.
 
 This one, `RecentSignInFreshness`, a `final readonly` class implementing `Contracts\Freshness`, reads the time the
-caller last authenticated (a Unix timestamp your sign-in stores in the session, or the `auth_time` of a verified token
-that your middleware puts on the request) and compares its age with the maximum age. It takes Laravel's
-`Illuminate\Contracts\Container\Container`, to resolve the `Illuminate\Http\Request` being served, and the package's
-`Contracts\Clock`, so tests can move the time it reads, and answers a `Freshness\Enums\FreshnessOutcome`:
+caller's session last authenticated, a Unix timestamp your sign-in records against the session and its identity (here
+`SignInTimes`, standing in for your sessions table), and compares its age with the maximum age. It takes that record
+and the package's `Contracts\Clock`, so tests can move the time it reads, and answers a
+`Freshness\Enums\FreshnessOutcome`:
 
 <!-- snippet: tests/Integration/Examples/Freshness/RecentSignInFreshness.php#recent-sign-in-freshness -->
 ```php
 /**
- * Take the container and the package's clock.
+ * Take the application's record of sign-ins and the package's clock.
  *
- * @param  \Illuminate\Contracts\Container\Container  $container
+ * @param  \Tests\Integration\Examples\Freshness\SignInTimes  $signIns
  * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
  */
 public function __construct(
 
-    /** The container the request being served is resolved from. */
-    private Container $container,
+    /** When each session last authenticated, as the sign-in recorded it. */
+    private SignInTimes $signIns,
 
     /** The package's clock, which a test can move. */
     private Clock $clock,
@@ -103,27 +121,25 @@ public function __construct(
  *
  * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
  * @param  int  $maxAgeSeconds
+ * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
  * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
  */
 #[\Override]
-public function check(FreshnessOperation $operation, int $maxAgeSeconds): FreshnessOutcome
+public function check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller $caller): FreshnessOutcome
 {
     // Every operation is judged alike: a stricter policy would match on
     // the operation's stable name, $operation->value
     unset($operation);
 
-    // The request being served, resolved on each call and never held
-    $request = $this->container->make(Request::class);
-
-    if ($request->user() === null) {
+    // No caller, or one on no session, cannot be judged
+    if ($caller?->sessionId === null) {
         return FreshnessOutcome::STALE;
     }
 
-    $authenticatedAt = $request->hasSession()
-        ? $request->session()->get('auth.authenticated_at')
-        : $request->attributes->get('auth_time');
+    // The caller's own session, never the request being served
+    $authenticatedAt = $this->signIns->authenticatedAt($caller->identity, $caller->sessionId);
 
-    if (!is_int($authenticatedAt)) {
+    if ($authenticatedAt === null) {
         return FreshnessOutcome::STALE;
     }
 
@@ -142,9 +158,9 @@ $this->app->singleton(Freshness::class, RecentSignInFreshness::class);
 
 One bound in a provider that registers before the package's is kept; one bound later replaces the default as any later
 binding does. The package resolves the contract on every question, so a contract bound with `scoped()` is rebuilt for
-each request. Whichever you choose, under Octane or a queue worker it must read the caller afresh on each call and keep
-nothing of one request or job for the next, as the example does by resolving the request each time. A timestamp in the
-future, or one your application cannot vouch for, is `stale`. If you key a stricter policy on the operation (asking
+each request. Whichever you choose, under Octane or a queue worker it judges the caller each call is given and keeps
+nothing of one request or job for the next. A timestamp in the future, or one your application cannot vouch for, is
+`stale`. If you key a stricter policy on the operation (asking
 for a second factor before `sso.connection.trust`, say), match on its stable name, never on its position.
 
 ## The order every change follows
@@ -156,8 +172,8 @@ for fresh authentication inside a transaction your application opened is safe: n
 ## Testing with `FakeFreshness`
 
 `SineMacula\Laravel\Sso\Testing\FakeFreshness` answers what your test tells it and records every question with its
-maximum age. Bind it in place of the contract, run the change, then assert what was asked. Here it answers `stale` for
-deleting alone, so a connection is enabled and its deletion is refused:
+maximum age and caller. Bind it in place of the contract, run the change, then assert what was asked. Here it answers
+`stale` for deleting alone, so a connection is enabled and its deletion is refused:
 
 <!-- snippet: tests/Integration/Examples/Freshness/FreshnessExampleTest.php#fake-freshness -->
 ```php
@@ -182,7 +198,7 @@ request itself, and each event it reports carries the client's IP address and us
 | `new FakeFreshness(FreshnessOutcome $outcome = FreshnessOutcome::FRESH)` | Answers the outcome given for every operation                                                   |
 | `FakeFreshness::fresh()`, `FakeFreshness::stale()`                       | Answers `fresh`, or `stale`, for every operation                                                |
 | `staleFor(FreshnessOperation ...$operations)`                            | Answers `stale` for the operations given and `fresh` for every other; a later call adds to them |
-| `asked()`                                                                | Every question, in order, as `['operation' => ..., 'max_age_seconds' => ...]`                   |
+| `asked()`                                                                | Every question, in order, as `['operation' => ..., 'max_age_seconds' => ..., 'caller' => ...]`  |
 | `assertAsked(FreshnessOperation $operation, ?int $maxAgeSeconds = null)` | Fails unless the operation was asked about, with the maximum age when one is given              |
 | `assertAskedExactly(array $operations)`                                  | Fails unless exactly those operations were asked about, in that order                           |
 | `assertNotAsked(?FreshnessOperation $operation = null)`                  | Fails if the operation was asked about or, with none given, if anything was                     |

@@ -6,7 +6,6 @@ namespace SineMacula\Laravel\Sso\Connections;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Config\Enums\Feature;
 use SineMacula\Laravel\Sso\Config\Features;
@@ -17,6 +16,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Linking\DomainLinkEligibility;
 use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 use SineMacula\Laravel\Sso\Links\ReservationWithdrawal;
@@ -222,24 +222,24 @@ final readonly class LinkingPolicyService
      * @param  string  $connectionId
      * @param  array<array-key, mixed>  $changes
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Throwable
      */
-    public function change(string $tenantId, string $connectionId, #[\SensitiveParameter] array $changes, ClientContext $client, ?ActingIdentity $actor = null): ConnectionResult
+    public function change(string $tenantId, string $connectionId, #[\SensitiveParameter] array $changes, ClientContext $client, ?Caller $caller = null): ConnectionResult
     {
         if ($this->finder->find($tenantId, $connectionId) === null) {
             return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
         }
 
-        if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST)->isFresh()) {
+        if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
             return ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
-        return DB::connection(StorageConnection::name())->transaction(fn (): ConnectionResult => $this->changeLocked($tenantId, $connectionId, $changes, $actor, $client));
+        return DB::connection(StorageConnection::name())->transaction(fn (): ConnectionResult => $this->changeLocked($tenantId, $connectionId, $changes, $caller, $client));
     }
 
     /**
@@ -433,7 +433,7 @@ final readonly class LinkingPolicyService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  array<array-key, mixed>  $changes
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -441,7 +441,7 @@ final readonly class LinkingPolicyService
      * @throws \LogicException
      * @throws \UnexpectedValueException
      */
-    private function changeLocked(string $tenantId, string $connectionId, #[\SensitiveParameter] array $changes, ?ActingIdentity $actor, ClientContext $client): ConnectionResult
+    private function changeLocked(string $tenantId, string $connectionId, #[\SensitiveParameter] array $changes, ?Caller $caller, ClientContext $client): ConnectionResult
     {
         $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -457,7 +457,7 @@ final readonly class LinkingPolicyService
             $violations = $this->requirements($locked, $merged);
         }
 
-        return $violations === [] ? $this->written($locked, $current, $merged, $actor, $client) : ConnectionResult::invalid($violations);
+        return $violations === [] ? $this->written($locked, $current, $merged, $caller, $client) : ConnectionResult::invalid($violations);
     }
 
     /**
@@ -512,7 +512,7 @@ final readonly class LinkingPolicyService
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, bool|int|string|null>  $current
      * @param  array<string, mixed>  $merged
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -520,7 +520,7 @@ final readonly class LinkingPolicyService
      * @throws \LogicException
      * @throws \UnexpectedValueException
      */
-    private function written(Connection $locked, array $current, #[\SensitiveParameter] array $merged, ?ActingIdentity $actor, ClientContext $client): ConnectionResult
+    private function written(Connection $locked, array $current, #[\SensitiveParameter] array $merged, ?Caller $caller, ClientContext $client): ConnectionResult
     {
         $names = self::changedNames($current, $merged);
 
@@ -542,7 +542,7 @@ final readonly class LinkingPolicyService
 
         ReservationWithdrawal::ofConnection($locked);
 
-        $this->events->connectionUpdated($locked, $names, $actor, $client);
+        $this->events->connectionUpdated($locked, $names, $caller, $client);
 
         return ConnectionResult::updated($this->summary($locked), $names);
     }

@@ -6,7 +6,7 @@ namespace Tests\Fixtures\Linking;
 
 use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 
 /**
@@ -22,6 +22,9 @@ final class ScriptedLinkConfirmation implements LinkConfirmation
 {
     /** @var list<array{0: string, 1: string, 2: list<string>}> Every question asked: the identity's id, the connection's id and the links. */
     public array $asked = [];
+
+    /** @var list<\SineMacula\Laravel\Sso\Identities\Caller> The caller of every question, as given. */
+    public array $callers = [];
 
     /** @var ?\Throwable What it throws instead of answering. */
     public ?\Throwable $failure = null;
@@ -47,7 +50,7 @@ final class ScriptedLinkConfirmation implements LinkConfirmation
      * Answer the verdict queued, from the links given, or set, or throw the
      * failure set.
      *
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  list<string>  $domainLinkIds
      * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict
@@ -55,9 +58,10 @@ final class ScriptedLinkConfirmation implements LinkConfirmation
      * @throws \Throwable
      */
     #[\Override]
-    public function judge(IdentityReference $identity, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict
+    public function judge(Caller $caller, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict
     {
-        $this->asked[] = [$identity->id, $connection->getConnectionId(), $domainLinkIds];
+        $this->asked[]   = [$caller->identity->id, $connection->getConnectionId(), $domainLinkIds];
+        $this->callers[] = $caller;
 
         if ($this->failure !== null) {
             throw $this->failure;

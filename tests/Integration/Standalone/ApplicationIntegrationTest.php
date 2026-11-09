@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
@@ -37,6 +36,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
 use SineMacula\Laravel\Sso\Linking\ReservationActivation;
@@ -336,7 +336,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
 
         $satisfying = $this->connectionOver(self::SAML, 'enforced');
         $outside    = $this->connectionOver(self::OIDC, 'outside');
-        $actor      = new ActingIdentity('App\Models\User', 'administrator-1');
+        $actor      = new Caller(new IdentityReference('App\Models\User', 'administrator-1'));
 
         $this->linkAndSignIn($satisfying, 'session-satisfying');
         $this->linkAndSignIn($outside, 'session-outside');
@@ -365,7 +365,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
         self::assertSame([$satisfying->id], $changed->connectionIds);
         self::assertNull($changed->previousVersion);
         self::assertSame(self::TENANT, $changed->context->connectionTenantId);
-        self::assertSame($actor->id, $changed->context->actingIdentityId);
+        self::assertSame($actor->identity->id, $changed->context->actingIdentityId);
 
         $this->startRecordingEvents();
 
@@ -607,14 +607,15 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     private function verifyTheDomain(Connection $connection): void
     {
         $domains = app(DomainService::class);
-        $claimed = $domains->claim(self::TENANT, $connection->id, 'example.com', Clients::browser());
+        $caller  = self::administrator();
+        $claimed = $domains->claim(self::TENANT, $connection->id, 'example.com', Clients::browser(), $caller);
 
         self::assertSame(DomainStatus::CLAIMED, $claimed->status);
         self::assertNotNull($claimed->domain);
 
         $this->seams->dns->publishes($claimed->domain);
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $connection->id, 'example.com', Clients::browser())->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $connection->id, 'example.com', Clients::browser(), $caller)->status);
 
         $this->seams->dns->assertLookedUp($claimed->domain->recordName, 1);
     }
@@ -636,7 +637,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
             'issuer_class' => 'single_organization',
             'acknowledged' => true,
             ...$attribute,
-        ], Clients::browser());
+        ], Clients::browser(), self::administrator());
 
         self::assertTrue($changed->isChanged());
     }
@@ -706,5 +707,16 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
                 self::assertStringNotContainsString($value, $record, $event::class . ' carries what must not leave a flow.');
             }
         }
+    }
+
+    /**
+     * The administrator the application has authenticated, on their session,
+     * whom its freshness contract judges.
+     *
+     * @return \SineMacula\Laravel\Sso\Identities\Caller
+     */
+    private static function administrator(): Caller
+    {
+        return new Caller(new IdentityReference('App\Models\User', 'administrator-1'), 'session-1');
     }
 }

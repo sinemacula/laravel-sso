@@ -36,6 +36,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -1293,7 +1294,7 @@ final class HandoffRedemptionTest extends TestCase
             $code,
             self::VERIFIER,
             Clients::browser(),
-            new IdentityReference('App\Models\User', '7'),
+            new Caller(new IdentityReference('App\Models\User', '7')),
         );
 
         self::assertTrue($refused->isRefused());
@@ -1363,7 +1364,7 @@ final class HandoffRedemptionTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        $caller = $purpose === Purpose::LINK ? new IdentityReference('App\Models\User', '7') : null;
+        $caller = $purpose === Purpose::LINK ? new Caller(new IdentityReference('App\Models\User', '7')) : null;
 
         $redemption = $app->make(HandoffRedemption::class);
         $connection = $connectionId ?? $this->connection->id;

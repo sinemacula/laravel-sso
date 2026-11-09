@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\ReauthenticationBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -309,7 +310,15 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
         $redemption = $app->make(HandoffRedemption::class);
 
         return DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => $redemption->admit(Purpose::REAUTHENTICATE, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser(), $this->identity),
+            fn (): RedemptionResult => $redemption->admit(
+                Purpose::REAUTHENTICATE,
+                'web',
+                $this->connection->id,
+                $code,
+                self::VERIFIER,
+                Clients::browser(),
+                new Caller($this->identity),
+            ),
         );
     }
 }

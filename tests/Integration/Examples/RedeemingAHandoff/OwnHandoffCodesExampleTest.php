@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkService;
 use SineMacula\Laravel\Sso\Links\LinkSummary;
@@ -148,10 +149,18 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     {
         $start   = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
         $code    = $this->codeFor($start);
-        $package = app(HandoffRedemption::class)->redeem(Purpose::LINK, self::APPLICATION, $this->connectionId, $code, self::verifierOf($start), Clients::browser(), $this->person);
+        $package = app(HandoffRedemption::class)->redeem(
+            Purpose::LINK,
+            self::APPLICATION,
+            $this->connectionId,
+            $code,
+            self::verifierOf($start),
+            Clients::browser(),
+            new Caller($this->person),
+        );
 
         self::assertSame(FailureReason::HANDOFF_UNKNOWN, $package->reason);
-        self::assertNull(self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), $this->person));
+        self::assertNull(self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), new Caller($this->person)));
 
         $links = $this->linksOf($this->person);
 
@@ -185,13 +194,16 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
      */
     public function testTheApplicationsOwnChecksRefuseAndSpendTheCode(): void
     {
-        self::assertSame(FailureReason::HANDOFF_UNKNOWN, self::redemptions()->redeem(Purpose::LINK, 'not-a-code', 'not-a-verifier', Clients::browser(), $this->person));
+        self::assertSame(FailureReason::HANDOFF_UNKNOWN, self::redemptions()->redeem(Purpose::LINK, 'not-a-code', 'not-a-verifier', Clients::browser(), new Caller($this->person)));
 
         $start = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
         $code  = $this->codeFor($start);
 
-        self::assertSame(FailureReason::VERIFIER_MISMATCH, self::redemptions()->redeem(Purpose::LINK, $code, Verifier::generate()->reveal(), Clients::browser(), $this->person));
-        self::assertSame(FailureReason::REPLAYED, self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), $this->person));
+        self::assertSame(
+            FailureReason::VERIFIER_MISMATCH,
+            self::redemptions()->redeem(Purpose::LINK, $code, Verifier::generate()->reveal(), Clients::browser(), new Caller($this->person)),
+        );
+        self::assertSame(FailureReason::REPLAYED, self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), new Caller($this->person)));
 
         $start = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
         $code  = $this->codeFor($start);
@@ -203,7 +215,10 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
 
         $this->clock->advance(61);
 
-        self::assertSame(FailureReason::HANDOFF_EXPIRED, self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), $this->person));
+        self::assertSame(
+            FailureReason::HANDOFF_EXPIRED,
+            self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), new Caller($this->person)),
+        );
         self::assertSame([], $this->linksOf($this->person));
     }
 
@@ -224,13 +239,16 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
         $code        = $this->codeFor($start);
         $someoneElse = new IdentityReference('App\Models\User', 'person-2');
 
-        self::assertSame(FailureReason::IDENTITY_MISMATCH, self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), $someoneElse));
-        self::assertSame(FailureReason::REPLAYED, self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), $this->person));
+        self::assertSame(
+            FailureReason::IDENTITY_MISMATCH,
+            self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), new Caller($someoneElse)),
+        );
+        self::assertSame(FailureReason::REPLAYED, self::redemptions()->redeem(Purpose::LINK, $code, self::verifierOf($start), Clients::browser(), new Caller($this->person)));
         self::assertSame([], $this->linksOf($this->person));
 
         $start = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
 
-        self::assertNull(self::redemptions()->redeem(Purpose::LINK, $this->codeFor($start), self::verifierOf($start), Clients::browser(), $this->person));
+        self::assertNull(self::redemptions()->redeem(Purpose::LINK, $this->codeFor($start), self::verifierOf($start), Clients::browser(), new Caller($this->person)));
 
         $start = $this->startFlow(Purpose::SIGN_IN, $this->connectionId);
         $code  = $this->codeFor($start);
@@ -319,7 +337,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     {
         $start = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
 
-        self::assertNull(self::redemptions()->redeem(Purpose::LINK, $this->codeFor($start), self::verifierOf($start), Clients::browser(), $this->person));
+        self::assertNull(self::redemptions()->redeem(Purpose::LINK, $this->codeFor($start), self::verifierOf($start), Clients::browser(), new Caller($this->person)));
 
         $start = $this->startFlow(Purpose::SIGN_IN, $this->connectionId);
         $code  = app(OwnHandoffCodes::class)->find($this->codeFor($start));
@@ -459,7 +477,13 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
         $start        = $this->startFlow(Purpose::LINK, $connectionId, $this->person);
 
         self::assertNull(
-            self::redemptions()->redeem(Purpose::LINK, $this->respondAtProvider($idp, $connectionId, $start)->code(), self::verifierOf($start), Clients::browser(), $this->person),
+            self::redemptions()->redeem(
+                Purpose::LINK,
+                $this->respondAtProvider($idp, $connectionId, $start)->code(),
+                self::verifierOf($start),
+                Clients::browser(),
+                new Caller($this->person),
+            ),
         );
 
         return [$idp, $connectionId];

@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Flows\ConsumptionResult;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestConsumption;
 use SineMacula\Laravel\Sso\Flows\StartResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -201,7 +202,14 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(AuthorizationRequestService::class)->start($application, $purpose, $connectionId ?? $this->connection->id, Clients::browser(), null, $identity);
+        return $app->make(AuthorizationRequestService::class)->start(
+            $application,
+            $purpose,
+            $connectionId ?? $this->connection->id,
+            Clients::browser(),
+            null,
+            $identity === null ? null : new Caller($identity),
+        );
     }
 
     /**

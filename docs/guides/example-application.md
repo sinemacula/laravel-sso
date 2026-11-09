@@ -9,7 +9,9 @@ The code below is not a sketch. It is the package's executable example, in `test
 `RouteLayoutExampleTest` runs over HTTP on the shared example harness of [Testing](testing.md), so what this guide shows
 is what the package does. Its controllers call the package's public helpers alone. `Caller`, `SignIns`, `Answers`,
 `ConnectionTenants` and `User` are the example application's own: replace them with your authentication, sessions and
-tenancy.
+tenancy. `Caller::of($request)` builds the package's `Identities\Caller` from your authentication: the signed-in
+identity on the session it authenticated with, which the freshness and link confirmation contracts judge and a
+management change's event names as acting.
 
 ## The routes
 
@@ -34,10 +36,9 @@ tenancy.
 
 This differs from the sketch in SSO-12.5 in one respect, on purpose: that sketch starts every flow at one endpoint
 whose body names the purpose. Here each purpose has its own endpoint, which fixes it server side, so a `link` or a
-`reauthenticate` start sits behind your authentication and takes its identity and session from it, and a body can never
-turn a sign-in into something else. Under `laravel-iam`, `POST /api/auth/sessions` and the re-authentication redemption
-are `laravel-authentication`'s routes, and its adapter calls the package (see
-[Under `laravel-iam`](#under-laravel-iam)).
+`reauthenticate` start sits behind your authentication and takes its caller from it, and a body can never turn a sign-in
+into something else. Under `laravel-iam`, `POST /api/auth/sessions` and the re-authentication redemption are
+`laravel-authentication`'s routes, and its adapter calls the package (see [Under `laravel-iam`](#under-laravel-iam)).
 
 ## The base URL and the API prefix
 
@@ -147,8 +148,8 @@ $result = isset($input['email'])
     : $this->requests->start($input['application'], Purpose::SIGN_IN, $input['connection'] ?? '', ClientContext::fromRequest($request), $challenge);
 ```
 
-A link and a re-authentication take the caller's identity, and a re-authentication the caller's session, from the
-authentication:
+A link and a re-authentication take the caller, its identity on its session, from the authentication: a
+re-authentication is bound to both, and a link to the identity alone, its session given to freshness:
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoStartController.php#route-start-link -->
 ```php
@@ -160,7 +161,7 @@ $result = $this->requests->start(
     $input['connection'],
     ClientContext::fromRequest($request),
     $input['code_challenge'] ?? null,
-    Caller::identity($request),
+    Caller::of($request),
 );
 ```
 
@@ -174,8 +175,7 @@ $result = $this->requests->start(
     $input['connection'],
     ClientContext::fromRequest($request),
     $input['code_challenge'] ?? null,
-    Caller::identity($request),
-    Caller::sessionId($request),
+    Caller::of($request),
 );
 ```
 
@@ -346,7 +346,7 @@ $result = $this->redemptions->redeem(
     $input['code'],
     $input['verifier'],
     ClientContext::fromRequest($request),
-    Caller::identity($request),
+    Caller::of($request),
 );
 
 return match (true) {
@@ -362,18 +362,19 @@ now. Never sign anyone in from its result. The caller lists their own links, and
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoLinkController.php#route-links -->
 ```php
-return response()->json($this->links->list('me', Caller::identity($request)), 200, Answers::NO_STORE);
+return response()->json($this->links->list('me', Caller::of($request)), 200, Answers::NO_STORE);
 ```
 
 <!-- snippet: tests/Integration/Examples/Routes/Controllers/SsoLinkController.php#route-link-remove -->
 ```php
-$result = $this->links->remove('me', $link, ClientContext::fromRequest($request), Caller::identity($request), Caller::actor($request));
+$result = $this->links->remove('me', $link, ClientContext::fromRequest($request), Caller::of($request));
 
 return Answers::of($result, 200);
 ```
 
 Passing `'me'` with the caller limits the removal to the caller's links, and a link of anyone else answers as unknown.
-A removal asks the freshness contract and revokes the identity's sessions through the connection; see
+A removal asks the freshness contract for the caller, names it as acting and revokes the identity's sessions through
+the connection; see
 [Links](links.md).
 
 ## Re-authenticating
@@ -485,7 +486,7 @@ $result = $this->connections->create(
     settings: $input['settings']                  ?? [],
     attributeMapping: $input['attribute_mapping'] ?? [],
     preset: $input['preset']                      ?? null,
-    actor: Caller::actor($request),
+    caller: Caller::of($request),
 );
 
 return Answers::of($result, 201);
@@ -506,7 +507,7 @@ return response()->json($summary, 200, Answers::NO_STORE);
 ```php
 /** @var array{domain: string} $input */
 $input  = Validator::validate($request->all(), ['domain' => ['required', 'string', 'max:253']]);
-$result = $this->domains->claim(Caller::tenantId($request), $connection, $input['domain'], ClientContext::fromRequest($request), Caller::actor($request));
+$result = $this->domains->claim(Caller::tenantId($request), $connection, $input['domain'], ClientContext::fromRequest($request), Caller::of($request));
 
 // The token is shown to the administrator to publish, and never logged
 $record = $result->domain === null ? null : ['name' => $result->domain->recordName, 'value' => $result->domain->verificationToken()];

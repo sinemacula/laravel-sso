@@ -26,7 +26,7 @@ use Tests\Integration\Examples\Clients;
  *     proposed: \SineMacula\Laravel\Sso\Metadata\ProposedOidcSettings,
  *     client_id: string,
  *     secret: string,
- *     actor: \SineMacula\Laravel\Sso\Administration\ActingIdentity
+ *     caller: \SineMacula\Laravel\Sso\Identities\Caller
  * } $input
  */
 $tenant     = $input['tenant'];
@@ -34,7 +34,7 @@ $connection = $input['connection'];
 $proposed   = $input['proposed'];
 $clientId   = $input['client_id'];
 $secret     = $input['secret'];
-$actor      = $input['actor'];
+$caller     = $input['caller'];
 
 $client = Clients::browser();
 // @snippet-start oidc-connections-save
@@ -42,6 +42,6 @@ use SineMacula\Laravel\Sso\Connections\ImportSaver;
 
 $result = app(ImportSaver::class)->save($tenant->id, $connection->id, [
     'settings' => [...$proposed->settings(), 'client_id' => $clientId, 'client_secret' => $secret],
-], $proposed->fetch(), $client, $actor);
+], $proposed->fetch(), $client, $caller);
 // @snippet-end oidc-connections-save
 return $result;

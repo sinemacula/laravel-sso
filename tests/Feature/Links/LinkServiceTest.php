@@ -11,7 +11,6 @@ use Illuminate\Database\Query\Grammars\SQLiteGrammar;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
@@ -20,6 +19,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\LinkRemoved;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
@@ -165,8 +165,8 @@ final class LinkServiceTest extends TestCase
 
         $other = new IdentityReference('user', '2');
 
-        self::assertSame([$mine->id], self::ids($this->service()->list('me', $this->identity)));
-        self::assertSame([$theirs->id], self::ids($this->service()->list($other, $this->identity)));
+        self::assertSame([$mine->id], self::ids($this->service()->list('me', new Caller($this->identity))));
+        self::assertSame([$theirs->id], self::ids($this->service()->list($other, new Caller($this->identity))));
         self::assertSame([], $this->service()->list(new IdentityReference('user', '3')));
     }
 
@@ -205,13 +205,13 @@ final class LinkServiceTest extends TestCase
     /**
      * Rows of `[identity, caller, message]`: an identity that names no one.
      *
-     * @return iterable<string, array{string, ?\SineMacula\Laravel\Sso\Identities\IdentityReference, string}>
+     * @return iterable<string, array{string, ?\SineMacula\Laravel\Sso\Identities\Caller, string}>
      */
     public static function provideUnnamed(): iterable
     {
         yield '`me` without a caller' => ['me', null, 'The identity [me] names the caller, and no caller was given.'];
-        yield 'another string' => ['you', new IdentityReference('user', '1'), 'An identity is a reference, or [me] for the caller.'];
-        yield '`me` in upper case' => ['ME', new IdentityReference('user', '1'), 'An identity is a reference, or [me] for the caller.'];
+        yield 'another string' => ['you', new Caller(new IdentityReference('user', '1')), 'An identity is a reference, or [me] for the caller.'];
+        yield '`me` in upper case' => ['ME', new Caller(new IdentityReference('user', '1')), 'An identity is a reference, or [me] for the caller.'];
         yield 'an empty string' => ['', null, 'An identity is a reference, or [me] for the caller.'];
     }
 
@@ -219,12 +219,12 @@ final class LinkServiceTest extends TestCase
      * Listing for an identity that names no one is an invalid argument.
      *
      * @param  string  $identity
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  string  $message
      * @return void
      */
     #[DataProvider('provideUnnamed')]
-    public function testListingForNoOneIsRefused(string $identity, ?IdentityReference $caller, string $message): void
+    public function testListingForNoOneIsRefused(string $identity, ?Caller $caller, string $message): void
     {
         $this->expectExceptionObject(new \InvalidArgumentException($message));
 
@@ -236,14 +236,14 @@ final class LinkServiceTest extends TestCase
      * nothing asked or removed.
      *
      * @param  string  $identity
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  string  $message
      * @return void
      *
      * @throws \Throwable
      */
     #[DataProvider('provideUnnamed')]
-    public function testRemovingForNoOneIsRefused(string $identity, ?IdentityReference $caller, string $message): void
+    public function testRemovingForNoOneIsRefused(string $identity, ?Caller $caller, string $message): void
     {
         $link = $this->makeLink($this->connection);
 
@@ -259,17 +259,20 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * A removal deletes the link, asks freshness once, revokes the identity's
-     * sessions through the connection inside the transaction, reports it once,
-     * and answers the link as it was. Removing the last link is allowed.
+     * A removal of another identity's link deletes the link, asks freshness
+     * once, for the caller, revokes the identity's sessions through the
+     * connection inside the transaction, reports it once, naming the same
+     * caller as acting, and answers the link as it was. Removing the last link
+     * is allowed.
      *
      * @return void
      */
     public function testRemovesTheLinkRevokesAndReports(): void
     {
-        $link = $this->makeLink($this->connection, 'subject-1', ['last_used_at' => CarbonImmutable::parse('2026-11-01T09:00:00Z')]);
+        $link   = $this->makeLink($this->connection, 'subject-1', ['last_used_at' => CarbonImmutable::parse('2026-11-01T09:00:00Z')]);
+        $caller = new Caller(new IdentityReference('App\Models\User', '42'), 'session-1');
 
-        $result = $this->service()->remove($this->identity, $link->id, Clients::browser(), null, new ActingIdentity('App\Models\User', '42'));
+        $result = $this->service()->remove($this->identity, $link->id, Clients::browser(), $caller);
 
         self::assertTrue($result->isRemoved());
         self::assertSame([
@@ -291,6 +294,7 @@ final class LinkServiceTest extends TestCase
 
         self::assertSame(0, Link::query()->count());
         self::assertSame([[FreshnessOperation::LINK_REMOVE, 300]], $this->freshness->asked());
+        self::assertSame([$caller], $this->freshness->callers());
 
         $calls = $this->revocation->calls();
 
@@ -335,21 +339,22 @@ final class LinkServiceTest extends TestCase
         $link   = $this->makeLink($this->connection, 'subject-1');
         $before = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
 
-        self::assertTrue($this->service()->remove($this->identity, $link->id, Clients::browser(), null, new ActingIdentity('App\Models\User', '42'))->isRemoved());
+        self::assertTrue($this->service()->remove($this->identity, $link->id, Clients::browser(), new Caller(new IdentityReference('App\Models\User', '42')))->isRemoved());
         self::assertSame($before + 1, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
     }
 
     /**
-     * `me` removes the caller's link, and with no acting identity the event
-     * names none.
+     * `me` removes the caller's link, freshness is asked for that caller, and
+     * the event names it as acting.
      *
      * @return void
      */
     public function testMeRemovesTheCallersLink(): void
     {
-        $link = $this->makeLink($this->connection);
+        $link   = $this->makeLink($this->connection);
+        $caller = new Caller($this->identity, 'session-1');
 
-        $result = $this->service()->remove('me', $link->id, Clients::browser(), $this->identity);
+        $result = $this->service()->remove('me', $link->id, Clients::browser(), $caller);
 
         self::assertTrue($result->isRemoved());
         self::assertSame($link->id, $result->link?->id);
@@ -357,8 +362,27 @@ final class LinkServiceTest extends TestCase
 
         $context = $this->recordedEvents()[0]->context();
 
-        self::assertNull($context->actingIdentityMorphClass);
-        self::assertNull($context->actingIdentityId);
+        self::assertSame([$caller], $this->freshness->callers());
+        self::assertSame(['user', '1'], [$context->actingIdentityMorphClass, $context->actingIdentityId]);
+        self::assertNull($context->sessionId);
+    }
+
+    /**
+     * With no caller, a removal of a named identity's link asks freshness for
+     * none, which the default and any contract that judges callers answer
+     * `stale`, and nothing is removed.
+     *
+     * @return void
+     */
+    public function testNoCallerIsAskedAboutAsNone(): void
+    {
+        $link = $this->makeLink($this->connection);
+
+        $this->freshness->answer(FreshnessOutcome::STALE);
+
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $this->service()->remove($this->identity, $link->id, Clients::browser())->reason);
+        self::assertSame([null], $this->freshness->callers());
+        self::assertSame(1, Link::query()->count());
     }
 
     /**

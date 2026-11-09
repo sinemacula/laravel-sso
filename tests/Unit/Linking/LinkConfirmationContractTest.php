@@ -6,15 +6,14 @@ namespace Tests\Unit\Linking;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 use SineMacula\Laravel\Sso\Linking\RefusingLinkConfirmation;
-use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Unit tests for the link confirmation contract's default and its verdict: the
- * default never counts a caller's authentication as independent.
+ * Unit tests for the link confirmation contract's binding and its verdict: the
+ * package binds the default, which `RefusingLinkConfirmationTest` covers, and
+ * only `independent` counts.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -33,22 +32,6 @@ final class LinkConfirmationContractTest extends TestCase
     public function testTheDefaultBindingRefuses(): void
     {
         self::assertInstanceOf(RefusingLinkConfirmation::class, app(LinkConfirmation::class));
-    }
-
-    /**
-     * The default answers `dependent` for anyone, through any connection.
-     *
-     * @return void
-     */
-    public function testTheDefaultAnswersDependent(): void
-    {
-        $contract = new RefusingLinkConfirmation;
-
-        $person = new IdentityReference('App\Models\User', '7');
-        $admin  = new IdentityReference('App\Models\Admin', 'root');
-
-        self::assertSame(LinkConfirmationVerdict::DEPENDENT, $contract->judge($person, new ExampleConnection, ['link-1']));
-        self::assertSame(LinkConfirmationVerdict::DEPENDENT, $contract->judge($admin, new ExampleConnection('oidc'), ['link-1', 'link-2']));
     }
 
     /**

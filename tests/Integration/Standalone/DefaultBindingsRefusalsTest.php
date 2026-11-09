@@ -41,6 +41,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\RefusingFreshness;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
@@ -576,7 +577,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
         $this->app?->instance(Linker::class, new NoLinks);
 
         try {
-            app(HandoffRedemption::class)->redeem(Purpose::LINK, self::FLOW_APPLICATION, $connection->id, $code, $start['verifier'], Clients::browser(), $this->person);
+            app(HandoffRedemption::class)->redeem(Purpose::LINK, self::FLOW_APPLICATION, $connection->id, $code, $start['verifier'], Clients::browser(), new Caller($this->person));
 
             self::fail('A link was redeemed over a linker that would ignore it.');
         } catch (\LogicException $exception) {
@@ -598,7 +599,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
                 $code,
                 $start['verifier'],
                 Clients::browser(),
-                $this->person,
+                new Caller($this->person),
             )->isRedeemed(),
         );
         self::assertSame($this->person->id, Link::query()->sole()->identity_id);
