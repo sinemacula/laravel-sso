@@ -1,9 +1,17 @@
 # Secrets
 
-The package stores two kinds of secret: a connection's client secret (OIDC) and the private keys it signs and decrypts
-with (SAML, and OIDC's `private_key_jwt`). Both are encrypted at rest through
-`SineMacula\Laravel\Sso\Contracts\SecretEncrypter`, are never returned once set, and never reach a log, an exception or
-an event.
+The package stores four kinds of secret, each encrypted at rest through
+`SineMacula\Laravel\Sso\Contracts\SecretEncrypter`:
+
+- a connection's client secret (OIDC);
+- the private keys a connection signs and decrypts with (SAML, and OIDC's `private_key_jwt`);
+- the PKCE verifier the package uses with the identity provider, held on each authorisation request until the flow
+  completes or expires (never the client's own verifier, of which only the S256 challenge is kept);
+- the verified result each handoff code carries until it is redeemed or expires, since it holds personal data.
+
+The first two are long-lived and never returned once set; the last two live no longer than an authorisation request
+(`sso.authorization_requests.ttl_seconds`, 600 seconds by default) and a handoff code (each application's
+`handoff_ttl_seconds`, at most 300 seconds). None of them reaches a log, an exception or an event.
 
 ## The default encrypter
 
@@ -33,10 +41,11 @@ stored secrets:
 2. Deploy and restart every worker (`php artisan octane:reload`, `php artisan queue:restart`), so each one builds
    Laravel's encrypter with the new keys. Stored secrets still decrypt under the old key; anything encrypted from now
    on uses the new one.
-3. Optionally re-encrypt the stored secrets under the new key (setting a secret again encrypts it under the current
-   key).
-4. Remove the old key from `APP_PREVIOUS_KEYS` only once no secret is stored under it; one that still is then fails to
-   decrypt.
+3. Optionally re-encrypt the stored client secrets and private keys under the new key (setting a secret again encrypts
+   it under the current key). The verifiers and handoff results need nothing: each expires within its lifetime.
+4. Remove the old key from `APP_PREVIOUS_KEYS` only once no secret is stored under it, and no sooner than the longest
+   authorisation request or handoff code lifetime after the deploy; a secret still stored under it then fails to
+   decrypt, and a flow or a code still in flight fails.
 
 ## Binding a key management service
 
@@ -96,8 +105,9 @@ Your encrypter must:
 - hold nothing of one request or job for the next: bind it `scoped`, or as a singleton only if it keeps no state.
 
 The configuration check only resolves your encrypter; it never calls it, so a check makes no request to your key
-management service. Switching an existing installation to another encrypter means re-encrypting what is stored: the new
-encrypter cannot decrypt what the old one encrypted.
+management service. Switching an existing installation to another encrypter means re-encrypting the client secrets and
+private keys stored: the new encrypter cannot decrypt what the old one encrypted. The flows and handoff codes in flight
+at the switch fail, and the person signs in again.
 
 ## What a read returns
 

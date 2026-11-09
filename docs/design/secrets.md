@@ -2,10 +2,10 @@
 
 ## Purpose
 
-This note describes how the package keeps the secrets it stores (client secrets and private keys) encrypted at rest,
-what a read of one returns instead of the secret, how a secret in memory is kept out of logs, exceptions, events,
-queues and caches, and the rule that every secret, verifier, code and digest is compared in constant time (SSO-2.5,
-SSO-11.9).
+This note describes how the package keeps the secrets it stores (client secrets, private keys, the PKCE verifier it uses
+with the identity provider and the verified result a handoff code carries) encrypted at rest, what a read of one returns
+instead of the secret, how a secret in memory is kept out of logs, exceptions, events, queues and caches, and the rule
+that every secret, verifier, code and digest is compared in constant time (SSO-2.5, SSO-11.9).
 
 ## Invariants
 
