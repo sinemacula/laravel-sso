@@ -407,9 +407,9 @@ Mapped values are profile data, never what selects the identity a sign-in belong
 - each value is cut to `sso.mapping.max_value_length` characters (1024 by default);
 - a list keeps at most `sso.mapping.max_values` strings (100 by default), in order, anything else dropped;
 - `email`, `given_name`, `family_name` and `display_name` take one value, the first of a list;
-- `groups` is always a list, passed on as the provider sent it, for your application to interpret. Under `laravel-iam`
-  the provisioning listener maps groups to grants at provisioning, and re-syncing them at later sign-ins is your
-  application's opt-in (IAM-7.2); this package never changes anything because of them.
+- `groups` is always a list, passed on as the provider sent it, for your application to interpret; this package never
+  changes anything because of them. When `laravel-iam`'s group mapping is bound, its provisioning listener maps groups
+  to grants at provisioning, and re-syncing them at later sign-ins is your application's opt-in (IAM-7.2).
 
 | Key                         | Default | Range                                  | Env                            |
 |-----------------------------|---------|----------------------------------------|--------------------------------|
