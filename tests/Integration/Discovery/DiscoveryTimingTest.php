@@ -196,7 +196,7 @@ final class DiscoveryTimingTest extends TestCase
             $this->service()->start('discovering', Purpose::LINK, 'someone@example.com', Clients::browser());
             self::fail('A misbound start was accepted.');
         } catch (\InvalidArgumentException $exception) {
-            self::assertSame('A `link` flow is started for an identity, with no session.', $exception->getMessage());
+            self::assertSame('A `link` flow is started for a caller.', $exception->getMessage());
         }
 
         self::assertLessThan(1000 * self::NANOSECONDS_PER_MILLISECOND, (int) hrtime(true) - $startedAt);
