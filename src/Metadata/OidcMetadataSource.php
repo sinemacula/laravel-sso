@@ -6,13 +6,13 @@ namespace SineMacula\Laravel\Sso\Metadata;
 
 use Carbon\CarbonImmutable;
 use Psr\Log\LoggerInterface;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
 use SineMacula\Laravel\Sso\Connections\SettingRules;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList;
@@ -225,31 +225,31 @@ final readonly class OidcMetadataSource extends MetadataSource
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \SineMacula\Laravel\Sso\Metadata\FetchedMetadata  $fetched
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \Throwable
      */
     #[\Override]
-    public function write(RefreshClaim $claim, FetchedMetadata $fetched, ?ActingIdentity $actor, ClientContext $client): RefreshResult
+    public function write(RefreshClaim $claim, FetchedMetadata $fetched, ?Caller $caller, ClientContext $client): RefreshResult
     {
-        return $this->writer->locked($claim, self::trustedOf(...), function (Connection $locked) use ($fetched, $actor, $client): RefreshResult {
+        return $this->writer->locked($claim, self::trustedOf(...), function (Connection $locked) use ($fetched, $caller, $client): RefreshResult {
 
             $metadata = $fetched->document();
 
             if ($metadata instanceof ProviderKeySet && $fetched->validatedAt !== null) {
-                return $this->writtenKeys($locked, $metadata, $fetched->validatedAt, $actor, $client);
+                return $this->writtenKeys($locked, $metadata, $fetched->validatedAt, $caller, $client);
             }
 
             if (!$metadata instanceof OidcMetadata || $fetched->validatedAt === null) {
-                return $this->writer->failed($locked, $fetched->reason ?? FailureReason::DISCOVERY_INVALID, $actor, $client);
+                return $this->writer->failed($locked, $fetched->reason ?? FailureReason::DISCOVERY_INVALID, $caller, $client);
             }
 
             $refusal = $this->refusal($locked, $metadata, $fetched->validatedAt);
 
-            return $refusal === null ? $this->written($locked, $metadata, $fetched->validatedAt, $actor, $client) : $this->writer->failed($locked, $refusal, $actor, $client);
-        }, $actor, $client);
+            return $refusal === null ? $this->written($locked, $metadata, $fetched->validatedAt, $caller, $client) : $this->writer->failed($locked, $refusal, $caller, $client);
+        }, $caller, $client);
     }
 
     /**
@@ -327,14 +327,14 @@ final readonly class OidcMetadataSource extends MetadataSource
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Metadata\OidcMetadata  $metadata
      * @param  \Carbon\CarbonImmutable  $validatedAt
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function written(Connection $locked, OidcMetadata $metadata, CarbonImmutable $validatedAt, ?ActingIdentity $actor, ClientContext $client): RefreshResult
+    private function written(Connection $locked, OidcMetadata $metadata, CarbonImmutable $validatedAt, ?Caller $caller, ClientContext $client): RefreshResult
     {
         $settings = self::settingChanges($locked, $metadata->document());
         $keys     = $metadata->keys();
@@ -349,7 +349,7 @@ final readonly class OidcMetadataSource extends MetadataSource
             $this->voider->voidFor($locked);
         }
 
-        $this->administration->connectionUpdated($locked, $names, $actor, $client);
+        $this->administration->connectionUpdated($locked, $names, $caller, $client);
 
         $this->writer->succeeded($locked, [
             'settings'        => array_replace($locked->settings, $settings),
@@ -358,7 +358,7 @@ final readonly class OidcMetadataSource extends MetadataSource
             'jwks_fetched_at' => $metadata->keysValidatedAt,
         ], $validatedAt);
 
-        return $this->writer->refreshed($locked, [...$names, ...($moved ? [self::KEYS] : [])], $trust, $actor, $client);
+        return $this->writer->refreshed($locked, [...$names, ...($moved ? [self::KEYS] : [])], $trust, $caller, $client);
     }
 
     /**
@@ -370,17 +370,17 @@ final readonly class OidcMetadataSource extends MetadataSource
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet  $keys
      * @param  \Carbon\CarbonImmutable  $validatedAt
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function writtenKeys(Connection $locked, ProviderKeySet $keys, CarbonImmutable $validatedAt, ?ActingIdentity $actor, ClientContext $client): RefreshResult
+    private function writtenKeys(Connection $locked, ProviderKeySet $keys, CarbonImmutable $validatedAt, ?Caller $caller, ClientContext $client): RefreshResult
     {
         if ($this->expiry->hasExpired(null, $validatedAt)) {
-            return $this->writer->failed($locked, FailureReason::METADATA_EXPIRED, $actor, $client);
+            return $this->writer->failed($locked, FailureReason::METADATA_EXPIRED, $caller, $client);
         }
 
         $changes = $keys->changesFrom(ProviderKeySet::fromStored($locked->jwks, OidcOptions::of($locked)->algorithms()));
@@ -396,7 +396,7 @@ final readonly class OidcMetadataSource extends MetadataSource
             'jwks_fetched_at' => $validatedAt,
         ]);
 
-        return $this->writer->refreshed($locked, $changes['added'] > 0 || $removed ? [self::KEYS] : [], $removed, $actor, $client);
+        return $this->writer->refreshed($locked, $changes['added'] > 0 || $removed ? [self::KEYS] : [], $removed, $caller, $client);
     }
 
     /**

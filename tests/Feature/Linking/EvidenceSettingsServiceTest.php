@@ -7,7 +7,6 @@ namespace Tests\Feature\Linking;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
 use SineMacula\Laravel\Sso\Connections\EvidenceSettingsService;
@@ -22,6 +21,8 @@ use SineMacula\Laravel\Sso\Evidence\ConnectionEvidencePolicy;
 use SineMacula\Laravel\Sso\Evidence\EvidenceRules;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -120,7 +121,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     public function testASetWritesAndReportsNamesAlone(): void
     {
         $before = Connection::query()->whereKey($this->connection->id)->sole();
-        $result = self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser(), new ActingIdentity('App\Models\User', '42'));
+        $result = self::service()->set('tenant-1', $this->connection->id, self::POLICY, Clients::browser(), new Caller(new IdentityReference('App\Models\User', '42')));
         $after  = Connection::query()->whereKey($this->connection->id)->sole();
         $names  = ['evidence.acr', 'evidence.amr', 'evidence.combinations'];
 
@@ -537,12 +538,13 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
              *
              * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
              * @param  int  $maxAgeSeconds
+             * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
              * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
              */
             #[\Override]
-            public function check(FreshnessOperation $operation, int $maxAgeSeconds): FreshnessOutcome
+            public function check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller $caller): FreshnessOutcome
             {
-                unset($operation, $maxAgeSeconds);
+                unset($operation, $maxAgeSeconds, $caller);
 
                 Connection::query()->whereKey($this->id)->delete();
 

@@ -13,6 +13,8 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Freshness\FreshnessCheck;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Freshness\RefusingFreshness;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
@@ -50,20 +52,22 @@ final class DefaultFreshnessRefusesTest extends TestCase
 
     /**
      * With the default binding, every operation is refused, alone and all
-     * together.
+     * together, for no caller and for a caller on a session alike.
      *
      * @return void
      */
     public function testTheDefaultRefusesEveryOperation(): void
     {
-        $gate = $this->gate();
+        $gate   = $this->gate();
+        $caller = new Caller(new IdentityReference('App\Models\User', '42'), 'session-1');
 
         foreach (FreshnessOperation::cases() as $operation) {
-            self::assertSame(FreshnessOutcome::STALE, $gate->check($operation), $operation->value);
-            self::assertSame(FreshnessOutcome::STALE, $gate->checkAll([$operation]), $operation->value);
+            self::assertSame(FreshnessOutcome::STALE, $gate->check($operation, null), $operation->value);
+            self::assertSame(FreshnessOutcome::STALE, $gate->check($operation, $caller), $operation->value);
+            self::assertSame(FreshnessOutcome::STALE, $gate->checkAll([$operation], null), $operation->value);
         }
 
-        self::assertSame(FreshnessOutcome::STALE, $gate->checkAll(FreshnessOperation::cases()));
+        self::assertSame(FreshnessOutcome::STALE, $gate->checkAll(FreshnessOperation::cases(), null));
     }
 
     /**
@@ -79,12 +83,12 @@ final class DefaultFreshnessRefusesTest extends TestCase
         $this->app?->instance(Freshness::class, $freshness);
 
         foreach (FreshnessOperation::cases() as $operation) {
-            self::assertSame(FreshnessOutcome::FRESH, $this->gate()->check($operation), $operation->value);
+            self::assertSame(FreshnessOutcome::FRESH, $this->gate()->check($operation, null), $operation->value);
 
             $freshness->assertAsked($operation, 300);
         }
 
-        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->checkAll(FreshnessOperation::cases()));
+        self::assertSame(FreshnessOutcome::FRESH, $this->gate()->checkAll(FreshnessOperation::cases(), null));
 
         $freshness->assertAskedExactly([...FreshnessOperation::cases(), ...FreshnessOperation::cases()]);
     }
@@ -99,7 +103,7 @@ final class DefaultFreshnessRefusesTest extends TestCase
     public function testEachRequestAsksTheContractBoundWhenItIsServed(): void
     {
         Route::post('/freshness/{operation}', static fn (FreshnessGate $gate, string $operation): JsonResponse => new JsonResponse([
-            'outcome' => $gate->check(FreshnessOperation::from($operation))->value,
+            'outcome' => $gate->check(FreshnessOperation::from($operation), null)->value,
         ]));
 
         $this->postJson('/freshness/sso.connection.delete')->assertOk()->assertExactJson(['outcome' => 'stale']);

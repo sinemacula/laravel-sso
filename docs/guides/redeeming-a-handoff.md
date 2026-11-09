@@ -118,7 +118,8 @@ single-use store, so redeeming it again through `admit()` works. An unlinked han
 any other, whether or not you go on to write a session. The purpose your endpoint asks for decides: a client that posts
 a sign-in code to your `link` endpoint gets `purpose_mismatch`, never a server error, and the code is spent.
 
-Both take the caller your application has authenticated as their last argument, an `IdentityReference`:
+Both take the caller your application has authenticated as their last argument, an `Identities\Caller` of the identity
+and the session it is on:
 
 <!-- snippet: tests/Integration/Examples/RedeemingAHandoff/redemptions/link.php#admit-link -->
 ```php
@@ -126,8 +127,9 @@ $result = $redemptions->admit(Purpose::LINK, 'web', $connectionId, $code, $verif
 ```
 
 Only a `link` reads it: holding a code and its verifier proves which client started the flow, not who is calling now.
-No caller, or any other than the identity the code is bound to, compared byte for byte, is `identity_mismatch`. See
-[Links](links.md).
+No caller, or one whose identity is any other than the identity the code is bound to, compared byte for byte, is
+`identity_mismatch`. The caller as you give it, with its session, is then the one the freshness and link confirmation
+contracts judge. See [Links](links.md).
 
 ## What a redemption checks
 
@@ -354,7 +356,8 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
 - `admit()` is `recheck()` followed by the purpose's writes: activating a reservation, creating or confirming a link, or
   renewing a session. It answers an `Admission`: `isPassed()`, or the `outcome` that refused it, with the `identity`
   established, the `linkId` it resolved through, and the `evidence` accepted. `$outcome->reason()` gives the
-  `FailureReason` to refuse with. Pass the caller your application has authenticated: a `link` needs it.
+  `FailureReason` to refuse with. Pass the caller your application has authenticated, an `Identities\Caller` on its
+  session: a `link` needs it.
 - `recheck()` alone judges, and writes nothing but a suspension it finds, which is latched whatever the redemption comes
   to. It takes the lock, and refuses one taken for another tenant, connection or application than the result's with a
   `LogicException`, so it cannot be reached without the locks. It answers `passed` or the first that refuses:

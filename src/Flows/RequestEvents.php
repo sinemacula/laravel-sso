@@ -13,7 +13,7 @@ use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Http\ClientContext;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 
@@ -29,8 +29,9 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * A started request's context names its connection, the connection's tenant and
  * protocol, the application, the purpose, the public reference, and the
  * identity and session it was started for. A refusal's names the purpose, the
- * identity and the session the application gave, and as much more as the start
- * had established when it was refused: the application once admitted, the
+ * identity of the caller the application gave and the session when the purpose
+ * binds one (`Purpose::bindsSession()`), and as much more as the start had
+ * established when it was refused: the application once admitted, the
  * connection once found, the public reference once made. The public reference
  * is the only flow identifier either carries (SSO-9.8); neither holds the
  * protocol state, the nonce, a verifier or a challenge (SSO-10.4).
@@ -98,8 +99,7 @@ final readonly class RequestEvents
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -113,8 +113,7 @@ final readonly class RequestEvents
     public function failed(
         FailureReason $reason,
         Purpose $purpose,
-        ?IdentityReference $identity,
-        ?string $sessionId,
+        ?Caller $caller,
         ClientContext $client,
         ?Application $application = null,
         ?Connection $connection = null,
@@ -128,9 +127,9 @@ final readonly class RequestEvents
             application: $application?->name,
             purpose: $purpose->value,
             requestReference: $reference?->value,
-            identityMorphClass: $identity?->type,
-            identityId: $identity?->id,
-            sessionId: $sessionId,
+            identityMorphClass: $caller?->identity->type,
+            identityId: $caller?->identity->id,
+            sessionId: $purpose->bindsSession() ? $caller?->sessionId : null,
         );
 
         $this->dispatcher->dispatch(new FlowFailed($context, Flow::AUTHORIZATION_REQUEST, $reason));

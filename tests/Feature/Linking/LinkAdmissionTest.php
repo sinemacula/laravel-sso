@@ -28,6 +28,7 @@ use SineMacula\Laravel\Sso\Handoffs\Redemption\Admission;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
 use SineMacula\Laravel\Sso\Linking\RefusingLinkEligibility;
@@ -93,7 +94,7 @@ final class LinkAdmissionTest extends LinkingTestCase
 
         $this->startRecordingEvents();
 
-        $answer = app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person);
+        $answer = app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), new Caller($this->person));
 
         self::assertTrue($answer->isRedeemed());
         self::assertFalse($answer->isAdmitted());
@@ -116,7 +117,15 @@ final class LinkAdmissionTest extends LinkingTestCase
         [, $code, $verifier] = $this->linkFlow();
 
         $answer = DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->redeem(
+                Purpose::LINK,
+                'web',
+                $this->connection->id,
+                $code,
+                $verifier,
+                Clients::browser(),
+                new Caller($this->person),
+            ),
         );
 
         self::assertTrue($answer->isAdmitted());
@@ -132,7 +141,15 @@ final class LinkAdmissionTest extends LinkingTestCase
         [, $code, $verifier] = $this->linkFlow();
 
         $answer = DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(
+                Purpose::LINK,
+                'web',
+                $this->connection->id,
+                $code,
+                $verifier,
+                Clients::browser(),
+                new Caller($this->person),
+            ),
         );
 
         self::assertTrue($answer->isRedeemed());
@@ -150,14 +167,22 @@ final class LinkAdmissionTest extends LinkingTestCase
         [$start, $code, $verifier] = $this->linkFlow();
 
         try {
-            app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person);
+            app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), new Caller($this->person));
             self::fail('A link was admitted with no transaction open.');
         } catch (\LogicException $exception) {
             self::assertSame('A session is admitted inside the caller\'s transaction on the package\'s storage connection (decision D5).', $exception->getMessage());
         }
 
         self::assertNull($this->stored($start)->redeemed_at);
-        self::assertTrue(app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person)->isRedeemed());
+        self::assertTrue(app(HandoffRedemption::class)->redeem(
+            Purpose::LINK,
+            'web',
+            $this->connection->id,
+            $code,
+            $verifier,
+            Clients::browser(),
+            new Caller($this->person),
+        )->isRedeemed());
     }
 
     /**
@@ -224,7 +249,15 @@ final class LinkAdmissionTest extends LinkingTestCase
             DB::connection(StorageConnection::name())->transaction(function () use ($code, $verifier): void {
 
                 self::assertTrue(
-                    app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person)->isAdmitted(),
+                    app(HandoffRedemption::class)->admit(
+                        Purpose::LINK,
+                        'web',
+                        $this->connection->id,
+                        $code,
+                        $verifier,
+                        Clients::browser(),
+                        new Caller($this->person),
+                    )->isAdmitted(),
                 );
                 self::assertSame(1, Link::query()->count());
 
@@ -277,7 +310,7 @@ final class LinkAdmissionTest extends LinkingTestCase
         $this->startRecordingEvents();
 
         try {
-            app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person);
+            app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), new Caller($this->person));
             self::fail('The contract\'s exception was swallowed.');
         } catch (\RuntimeException $exception) {
             self::assertSame('The membership store is down.', $exception->getMessage());
@@ -306,7 +339,7 @@ final class LinkAdmissionTest extends LinkingTestCase
         $binding   = new HandoffBinding(identity: $this->person, trustVersion: 0);
         $admission = $this->underLock(
             $result,
-            fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, Clients::browser(), $this->person),
+            fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, Clients::browser(), new Caller($this->person)),
         );
         $link = Link::query()->sole();
 
@@ -344,7 +377,7 @@ final class LinkAdmissionTest extends LinkingTestCase
         $binding = new HandoffBinding(identity: $this->person, trustVersion: 0);
         $outcome = $this->underLock(
             $result,
-            fn (HandoffRecheck $recheck, RecheckLock $lock): RecheckOutcome => $recheck->recheck($result, $binding, $lock, Clients::browser(), $this->person),
+            fn (HandoffRecheck $recheck, RecheckLock $lock): RecheckOutcome => $recheck->recheck($result, $binding, $lock, Clients::browser(), new Caller($this->person)),
         );
 
         self::assertSame(RecheckOutcome::PASSED, $outcome);
@@ -364,7 +397,7 @@ final class LinkAdmissionTest extends LinkingTestCase
         $binding   = new HandoffBinding(trustVersion: 0);
         $admission = $this->underLock(
             $result,
-            fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, Clients::browser(), $this->person),
+            fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, Clients::browser(), new Caller($this->person)),
         );
 
         self::assertSame([
@@ -391,9 +424,9 @@ final class LinkAdmissionTest extends LinkingTestCase
         $this->bindLinker(LinkResolution::reserved());
 
         $binding = new HandoffBinding(identity: $this->person, trustVersion: 0);
-        $outcome = fn (?IdentityReference $caller): RecheckOutcome => $this->underLock(
+        $outcome = fn (IdentityReference $caller): RecheckOutcome => $this->underLock(
             $result,
-            static fn (HandoffRecheck $recheck, RecheckLock $lock): RecheckOutcome => $recheck->recheck($result, $binding, $lock, Clients::browser(), $caller),
+            static fn (HandoffRecheck $recheck, RecheckLock $lock): RecheckOutcome => $recheck->recheck($result, $binding, $lock, Clients::browser(), new Caller($caller)),
         );
 
         $stale = FakeFreshness::stale();
@@ -471,7 +504,7 @@ final class LinkAdmissionTest extends LinkingTestCase
 
         $outcome = $this->underLock(
             $result,
-            fn (HandoffRecheck $recheck, RecheckLock $lock): RecheckOutcome => $recheck->recheck($result, $binding, $lock, Clients::browser(), $this->person),
+            fn (HandoffRecheck $recheck, RecheckLock $lock): RecheckOutcome => $recheck->recheck($result, $binding, $lock, Clients::browser(), new Caller($this->person)),
         );
 
         self::assertSame($expected, $outcome);
@@ -521,7 +554,7 @@ final class LinkAdmissionTest extends LinkingTestCase
         $binding   = new HandoffBinding(linkId: $observed, identity: $this->person, trustVersion: 0);
         $admission = $this->underLock(
             $result,
-            fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, Clients::browser(), $this->person),
+            fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, Clients::browser(), new Caller($this->person)),
         );
 
         $refused = ['outcome' => $expected, 'identity' => null, 'linkId' => null, 'evidence' => null, 'linkProvenance' => null, 'enforcementVersion' => null];
@@ -545,7 +578,7 @@ final class LinkAdmissionTest extends LinkingTestCase
         $binding   = new HandoffBinding($this->person, $link->id, $this->person, trustVersion: 0);
         $admission = $this->underLock(
             $result,
-            fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, Clients::browser(), $this->person),
+            fn (HandoffRecheck $recheck, RecheckLock $lock): Admission => $recheck->admit($result, $binding, $lock, Clients::browser(), new Caller($this->person)),
         );
 
         self::assertSame([
@@ -611,7 +644,7 @@ final class LinkAdmissionTest extends LinkingTestCase
                 new HandoffBinding(identity: $this->person, trustVersion: 0),
                 $recheck->lock('tenant-1', $this->connection->id, 'web'),
                 Clients::browser(),
-                $this->person,
+                new Caller($this->person),
             );
         });
     }
@@ -637,7 +670,7 @@ final class LinkAdmissionTest extends LinkingTestCase
                 new HandoffBinding(identity: $this->person, trustVersion: 0),
                 $recheck->lock('tenant-1', $this->connection->id, 'mobile'),
                 Clients::browser(),
-                $this->person,
+                new Caller($this->person),
             );
         });
     }
@@ -652,7 +685,7 @@ final class LinkAdmissionTest extends LinkingTestCase
     {
         $result  = $this->linkResult();
         $lock    = RecheckLock::held('tenant-1', $this->connection->id, 'web', $this->connection, null);
-        $context = new RedemptionContext($result, new HandoffBinding(trustVersion: 0), $lock, $this->connection, Clients::browser(), $this->person);
+        $context = new RedemptionContext($result, new HandoffBinding(trustVersion: 0), $lock, $this->connection, Clients::browser(), new Caller($this->person));
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('A link flow names the identity it was started for.');
@@ -686,7 +719,15 @@ final class LinkAdmissionTest extends LinkingTestCase
     private function admitted(string $code, string $verifier): RedemptionResult
     {
         return DB::connection(StorageConnection::name())->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $this->person),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(
+                Purpose::LINK,
+                'web',
+                $this->connection->id,
+                $code,
+                $verifier,
+                Clients::browser(),
+                new Caller($this->person),
+            ),
         );
     }
 

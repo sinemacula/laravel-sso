@@ -6,11 +6,12 @@ namespace Tests\Feature\Metadata;
 
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\FetchedMetadata;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
@@ -96,7 +97,7 @@ final class MetadataSourcesTest extends TestCase
     {
         $connection = $this->makeConnection(['protocol' => 'cas', 'settings' => ['metadata_refresh' => true]]);
         $refresher  = app(MetadataRefresher::class);
-        $actor      = new ActingIdentity('App\Models\User', '1');
+        $actor      = new Caller(new IdentityReference('App\Models\User', '1'));
 
         self::assertSame([], $refresher->dueConnectionIds());
         self::assertSame(RefreshOutcome::SKIPPED, $refresher->refreshQueued($connection->id, Clients::browser())->outcome);

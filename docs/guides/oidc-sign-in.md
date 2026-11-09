@@ -104,18 +104,19 @@ authentication at the provider, whatever the connection configures:
 
 Bind `Contracts\ReauthenticationSessions`, which says whether the identity is signed in through the connection on the
 session: by default the package keeps no sessions, so every `reauthenticate` is refused with `session_ineligible`. Take
-the identity and the session from your own authentication, never from the request body:
+the caller, its identity and the session it is on, from your own authentication, never from the request body:
 
 <!-- snippet: tests/Integration/Examples/OidcSignIn/start/reauthenticate.php#oidc-start-reauthenticate -->
 ```php
+use SineMacula\Laravel\Sso\Identities\Caller;
+
 $result = app(AuthorizationRequestService::class)->start(
     application: 'web',
     purpose: Purpose::REAUTHENTICATE,
     connectionId: $connectionId,
     client: $client,
     codeChallenge: $codeChallenge,
-    identity: $identity,
-    sessionId: $sessionId,
+    caller: new Caller($identity, $sessionId),
 );
 ```
 

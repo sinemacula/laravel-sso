@@ -33,6 +33,7 @@ use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -701,15 +702,15 @@ trait FlowRoutes
      */
     private static function startAnswer(Request $request, string $connection): JsonResponse
     {
-        $session = $request->input('session');
-        $result  = app(AuthorizationRequestService::class)->start(
+        $session  = $request->input('session');
+        $identity = self::identityOf($request, 'identity_type', 'identity_id');
+        $result   = app(AuthorizationRequestService::class)->start(
             self::FLOW_APPLICATION,
             Purpose::from((string) $request->input('purpose')),
             $connection,
             ClientContext::fromRequest($request),
             null,
-            self::identityOf($request, 'identity_type', 'identity_id'),
-            is_string($session) ? $session : null,
+            $identity === null ? null : new Caller($identity, is_string($session) ? $session : null),
         );
 
         return self::startedAnswer($result);
@@ -792,6 +793,7 @@ trait FlowRoutes
     private static function redemptionAnswer(Request $request, string $connection): JsonResponse
     {
         $purpose = Purpose::from((string) $request->input('purpose'));
+        $caller  = self::identityOf($request, 'caller_type', 'caller_id');
         $redeem  = static fn (): RedemptionResult => app(HandoffRedemption::class)->redeem(
             $purpose,
             (string) $request->input('application'),
@@ -799,7 +801,7 @@ trait FlowRoutes
             (string) $request->input('code'),
             (string) $request->input('verifier'),
             ClientContext::fromRequest($request),
-            self::identityOf($request, 'caller_type', 'caller_id'),
+            $caller === null ? null : new Caller($caller),
         );
 
         $answer = $purpose === Purpose::LINK ? $redeem() : DB::connection(StorageConnection::name())->transaction($redeem);

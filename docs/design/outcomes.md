@@ -70,7 +70,7 @@ the same way:
   `migrated`; a change that may alter what the connection's subjects mean while it has links is refused with
   `connection_has_links`, and a migration whose relinks and removals do not account for every current link exactly
   once with `links_unaccounted`; see `connection-lifecycle.md`.
-- An application's mistake (an empty tenant id, an acting identity with no type) is an `InvalidArgumentException`; a
+- An application's mistake (an empty tenant id, a caller with an empty session id) is an `InvalidArgumentException`; a
   database error, a `SecretEncrypter` that cannot encrypt or a key OpenSSL cannot generate propagates.
 
 ### Flow, link, handoff and completion operations (SSO-5, SSO-8, SSO-9)

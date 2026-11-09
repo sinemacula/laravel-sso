@@ -22,12 +22,12 @@ use Tests\Integration\Examples\Clients;
  * @var array{
  *     tenant: \Tests\Integration\Examples\SamlConnections\Tenant,
  *     connection_id: string,
- *     actor: \SineMacula\Laravel\Sso\Administration\ActingIdentity
+ *     caller: \SineMacula\Laravel\Sso\Identities\Caller
  * } $input
  */
 $tenant       = $input['tenant'];
 $connectionId = $input['connection_id'];
-$actor        = $input['actor'];
+$caller       = $input['caller'];
 
 $client = Clients::browser();
 // @snippet-start saml-connections-keys
@@ -36,7 +36,7 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 
 $keys = app(KeyService::class);
 
-$keys->addNext($tenant->id, $connectionId, KeyUse::SP_SIGNING, $client, actor: $actor);
-$keys->addNext($tenant->id, $connectionId, KeyUse::SP_ENCRYPTION, $client, actor: $actor);
+$keys->addNext($tenant->id, $connectionId, KeyUse::SP_SIGNING, $client, caller: $caller);
+$keys->addNext($tenant->id, $connectionId, KeyUse::SP_ENCRYPTION, $client, caller: $caller);
 // @snippet-end saml-connections-keys
 return $keys->keys($tenant->id, $connectionId);

@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
@@ -21,6 +20,8 @@ use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\FetchedMetadata;
 use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
@@ -783,7 +784,7 @@ final class OidcMetadataSourceTest extends TestCase
     {
         config()->set('sso.rate_limits.metadata.per_connection', ['max' => 2, 'decay_seconds' => 3600]);
 
-        $actor      = new ActingIdentity('App\Models\User', '42');
+        $actor      = new Caller(new IdentityReference('App\Models\User', '42'));
         $connection = $this->oidc([], ['metadata_refresh_at' => $this->clock->now()->addHour()]);
         $claimed    = $this->oidc([], ['metadata_claimed_until' => $this->clock->now()->addMinute()]);
         $off        = $this->oidc(['metadata_refresh' => false]);
@@ -811,7 +812,7 @@ final class OidcMetadataSourceTest extends TestCase
      */
     public function testAStaleAdministratorCannotOverwriteASwitchedOffConnection(): void
     {
-        $actor = new ActingIdentity('App\Models\User', '42');
+        $actor = new Caller(new IdentityReference('App\Models\User', '42'));
         $moved = ['token_endpoint' => self::MOVED];
         $off   = $this->oidc(['metadata_refresh' => false, ...$moved], ['metadata_fetched_at' => $this->clock->now()->subDay()]);
         $on    = $this->oidc($moved);
@@ -893,7 +894,7 @@ final class OidcMetadataSourceTest extends TestCase
 
         self::assertTrue($expiry->isExpired($this->row($connection)));
 
-        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, new ActingIdentity('App\Models\User', '42'), Clients::browser());
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, new Caller(new IdentityReference('App\Models\User', '42')), Clients::browser());
         $row    = $this->row($connection);
 
         self::assertSame([RefreshOutcome::REFRESHED, [], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
@@ -1085,7 +1086,7 @@ final class OidcMetadataSourceTest extends TestCase
         self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
         self::assertSame(
             FailureReason::FEATURE_DISABLED,
-            $this->refresher()->refreshNow(self::TENANT, $connection->id, new ActingIdentity('App\Models\User', '42'), Clients::browser())->reason,
+            $this->refresher()->refreshNow(self::TENANT, $connection->id, new Caller(new IdentityReference('App\Models\User', '42')), Clients::browser())->reason,
         );
 
         $this->fetcher->assertNothingFetched();

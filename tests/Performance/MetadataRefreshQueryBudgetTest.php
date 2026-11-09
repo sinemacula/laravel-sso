@@ -5,9 +5,10 @@ declare(strict_types = 1);
 namespace Tests\Performance;
 
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
@@ -331,10 +332,10 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     /**
      * The administrator who asks for a refresh now.
      *
-     * @return \SineMacula\Laravel\Sso\Administration\ActingIdentity
+     * @return \SineMacula\Laravel\Sso\Identities\Caller
      */
-    private static function actor(): ActingIdentity
+    private static function actor(): Caller
     {
-        return new ActingIdentity('App\Models\User', '42');
+        return new Caller(new IdentityReference('App\Models\User', '42'));
     }
 }

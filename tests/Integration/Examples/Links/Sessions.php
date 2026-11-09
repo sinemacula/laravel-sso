@@ -7,15 +7,16 @@ namespace Tests\Integration\Examples\Links;
 use Illuminate\Contracts\Session\Session;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 
 /**
  * The example application's sessions (SSO-8.8): it records the session the
  * request carries when a person signs in, through an admitted SSO sign-in or
- * with a password, and reads it back, locked, for its link confirmation. It
- * reads and writes them on the package's storage connection, so a locking read
- * takes part in a redemption's transaction.
+ * with a password, and reads a caller's back, locked, for its link
+ * confirmation. It reads and writes them on the package's storage connection,
+ * so a locking read takes part in a redemption's transaction.
  *
  * A session admitted from a redemption records the link it stood on and whether
  * that link had verified domain provenance then, from the provenance the
@@ -77,20 +78,24 @@ final readonly class Sessions
     }
 
     /**
-     * The request's session of the identity, locked on the package's storage
-     * connection until the transaction it is read in ends, or `null` when the
-     * request carries none of the identity's.
+     * The caller's session, when it is the caller's identity's, locked on the
+     * package's storage connection until the transaction it is read in ends, or
+     * `null` when the caller gives no session, or one that is not theirs.
      *
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return ?\Tests\Integration\Examples\Links\UserSession
      */
-    public function currentLocked(IdentityReference $identity): ?UserSession
+    public function lockedFor(Caller $caller): ?UserSession
     {
+        if ($caller->sessionId === null) {
+            return null;
+        }
+
         return UserSession::on(StorageConnection::name())
             ->useWritePdo()
-            ->whereKey($this->session->getId())
-            ->where('identity_type', $identity->type)
-            ->where('identity_id', $identity->id)
+            ->whereKey($caller->sessionId)
+            ->where('identity_type', $caller->identity->type)
+            ->where('identity_id', $caller->identity->id)
             ->lockForUpdate()
             ->first();
     }

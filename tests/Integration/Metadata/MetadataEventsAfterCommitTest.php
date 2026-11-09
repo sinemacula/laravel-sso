@@ -7,7 +7,6 @@ namespace Tests\Integration\Metadata;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\MetadataEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
@@ -16,6 +15,8 @@ use SineMacula\Laravel\Sso\Events\KeyAdded;
 use SineMacula\Laravel\Sso\Events\KeyRetired;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshed;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyRing;
@@ -138,7 +139,7 @@ final class MetadataEventsAfterCommitTest extends TestCase
     public function testARefreshCommittedReportsOnlyOnceTheTransactionCommits(): void
     {
         DB::connection(StorageConnection::name())->transaction(function (): void {
-            $this->applier()->apply($this->claim(), self::replacement(), self::now(), Clients::browser(), new ActingIdentity('App\Models\User', '42'));
+            $this->applier()->apply($this->claim(), self::replacement(), self::now(), Clients::browser(), new Caller(new IdentityReference('App\Models\User', '42')));
 
             $this->assertNoEvents();
         });

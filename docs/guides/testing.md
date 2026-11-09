@@ -133,7 +133,7 @@ $this->connectionId = $this->makeOidcConnection($this->provider);
 
 A test plays your client: it starts a flow, sends the browser to the provider, reads the redirect the completion
 answers, checks the reference is the one it started, and redeems the code with its verifier. A `link` is redeemed alone,
-as the caller your application has authenticated:
+as the caller your application has authenticated, an `Identities\Caller` of the identity and the session it is on:
 
 <!-- snippet: tests/Integration/Examples/ExampleTestCase.php#redeem-link -->
 
@@ -837,7 +837,8 @@ $this->freshness->assertAsked(FreshnessOperation::LINK_CREATE, 300);
 self::assertTrue($this->startFlow(Purpose::SIGN_IN, $connectionId)->isStarted());
 ```
 
-It judges no caller. Your own contract reads when your caller last authenticated.
+It judges no caller, and records the one each question was asked for (`asked()`). Your own contract judges when the
+caller it is given last authenticated.
 
 ## Refusals worth testing
 

@@ -31,6 +31,7 @@ use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\ReauthenticationBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\SignInBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\ReservationActivation;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
@@ -681,7 +682,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
             'code'         => $redeeming[1],
             'verifier'     => $redeeming[2],
             'client'       => Clients::browser(),
-            'caller'       => $redeeming[3],
+            'caller'       => $redeeming[3] === null ? null : new Caller($redeeming[3]),
         ];
     }
 

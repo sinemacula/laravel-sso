@@ -29,10 +29,14 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
+use SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
@@ -56,6 +60,7 @@ use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Protocols\VerifyingDriver;
+use Tests\Fixtures\Results\ExampleResults;
 
 /**
  * Adversarial tests of the `link` purpose through public completion and
@@ -112,7 +117,9 @@ final class LinkBranchTest extends LinkingTestCase
      * An unlinked subject that is still unlinked is linked to the bound
      * identity with the `link_purpose` origin: an active link, no session, no
      * proof, no acknowledged sign-in, and the connection's links version raised
-     * once. Freshness and eligibility were each asked at both ends of the flow.
+     * once. Freshness and eligibility were each asked at both ends of the flow,
+     * freshness for the caller of each end: at redemption, the caller the
+     * redemption was made for, with its session, as given.
      *
      * @return void
      */
@@ -122,9 +129,10 @@ final class LinkBranchTest extends LinkingTestCase
 
         self::assertNull($this->storedCode($start)->link_id);
 
-        $before = $this->linksVersion();
-        $answer = $this->redeem($completion, $start, $this->person);
-        $link   = Link::query()->sole();
+        $redeemer = new Caller(new IdentityReference('App\Models\User', '7'), 'session-of-the-redeemer');
+        $before   = $this->linksVersion();
+        $answer   = $this->redeem($completion, $start, $redeemer);
+        $link     = Link::query()->sole();
 
         self::assertTrue($answer->isRedeemed());
         self::assertTrue($answer->isAdmitted());
@@ -141,10 +149,14 @@ final class LinkBranchTest extends LinkingTestCase
         self::assertFalse($this->connection->refresh()->has_completed_sign_in);
         self::assertNotNull($this->storedCode($start)->redeemed_at);
 
-        self::assertSame(
-            [['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 300], ['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 300]],
+        self::assertEquals(
+            [
+                ['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 300, 'caller' => new Caller($this->person)],
+                ['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 300, 'caller' => $redeemer],
+            ],
             $this->freshness->asked(),
         );
+        self::assertSame($redeemer, $this->freshness->asked()[1]['caller']);
         self::assertSame(
             [['App\Models\User', '7', $this->connection->id], ['App\Models\User', '7', $this->connection->id]],
             $this->eligibilityAsked,
@@ -227,7 +239,7 @@ final class LinkBranchTest extends LinkingTestCase
     public function testACallerOtherThanTheBoundIdentityIsRefused(?array $stranger): void
     {
         $bound  = new IdentityReference('App\Models\User', 'Ab7');
-        $caller = $stranger === null ? null : new IdentityReference($stranger[0], $stranger[1]);
+        $caller = $stranger === null ? null : new Caller(new IdentityReference($stranger[0], $stranger[1]), 'session-1');
 
         [$start, $completion] = $this->linkFlow($bound);
 
@@ -257,21 +269,23 @@ final class LinkBranchTest extends LinkingTestCase
 
     /**
      * A stale caller cannot start a `link`: `sso.link.create` is asked, with
-     * its maximum age, and nothing is stored.
+     * its maximum age, for the caller on the session it gave, and nothing is
+     * stored.
      *
      * @return void
      */
     public function testAStaleCallerCannotStartALink(): void
     {
-        $stale = FakeFreshness::stale();
+        $stale  = FakeFreshness::stale();
+        $caller = new Caller($this->person, 'session-1');
 
         $this->app?->instance(Freshness::class, $stale);
 
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $this->connection->id, Clients::browser(), null, $this->person, null);
+        $start = app(AuthorizationRequestService::class)->start('web', Purpose::LINK, $this->connection->id, Clients::browser(), null, $caller);
 
         self::assertTrue($start->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $start->reason);
-        self::assertSame([['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 300]], $stale->asked());
+        self::assertSame([['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 300, 'caller' => $caller]], $stale->asked());
         self::assertSame(0, AuthorizationRequest::query()->count());
 
         $this->assertExactlyOneFailure(Flow::AUTHORIZATION_REQUEST, FailureReason::FRESHNESS_REQUIRED);
@@ -296,7 +310,7 @@ final class LinkBranchTest extends LinkingTestCase
         $answer = $this->redeem($completion, $start, $this->person);
 
         $this->assertRefused($answer, FailureReason::FRESHNESS_REQUIRED, $start);
-        self::assertSame([['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 300]], $stale->asked());
+        self::assertEquals([['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 300, 'caller' => new Caller($this->person)]], $stale->asked());
         self::assertSame(0, Link::query()->count());
         self::assertSame($before, $this->linksVersion());
         self::assertCount(1, $this->eligibilityAsked);
@@ -1025,7 +1039,7 @@ final class LinkBranchTest extends LinkingTestCase
             $code,
             $verifier ?? (string) $start->verifier?->reveal(),
             Clients::browser(),
-            $this->person,
+            new Caller($this->person),
         ));
 
         $this->assertRefused($answer, $reason, $start);
@@ -1160,6 +1174,24 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
+     * Admission follows a judgement that passed the caller; called directly
+     * with no caller, it refuses to write.
+     *
+     * @return void
+     */
+    public function testTheBranchWritesNothingForNoCaller(): void
+    {
+        $result  = ExampleResults::full(Purpose::LINK, $this->connection->id);
+        $lock    = RecheckLock::held('tenant-1', $this->connection->id, 'web', $this->connection, null);
+        $context = new RedemptionContext($result, new HandoffBinding(identity: $this->person, trustVersion: 0), $lock, $this->connection, Clients::browser());
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('A link redemption is admitted for the caller its judgement passed.');
+
+        app(LinkBranch::class)->admit($context);
+    }
+
+    /**
      * Start and complete a `link` flow for the identity.
      *
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -1181,10 +1213,10 @@ final class LinkBranchTest extends LinkingTestCase
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $completion
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller|\SineMacula\Laravel\Sso\Identities\IdentityReference|null  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      */
-    private function redeem(CompletionResult $completion, StartResult $start, ?IdentityReference $caller): RedemptionResult
+    private function redeem(CompletionResult $completion, StartResult $start, Caller|IdentityReference|null $caller): RedemptionResult
     {
         $this->startRecordingEvents();
 

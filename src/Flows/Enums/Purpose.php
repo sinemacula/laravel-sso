@@ -40,4 +40,16 @@ enum Purpose: string
     {
         return $this === self::REAUTHENTICATE;
     }
+
+    /**
+     * Whether a flow of the purpose is bound to the caller's session, which its
+     * request stores and its events carry: a `reauthenticate` alone. A `link`
+     * gives its caller's session to freshness, and binds none.
+     *
+     * @return bool
+     */
+    public function bindsSession(): bool
+    {
+        return $this === self::REAUTHENTICATE;
+    }
 }

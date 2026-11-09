@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionFinder;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionSecrets;
@@ -25,6 +24,8 @@ use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -139,7 +140,7 @@ final class ConnectionServiceTest extends TestCase
             Clients::browser(),
             self::OIDC + ['client_secret' => self::SECRET],
             ['department' => 'dept'],
-            actor: new ActingIdentity('user', '42'),
+            caller: new Caller(new IdentityReference('user', '42')),
         );
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
@@ -502,7 +503,13 @@ final class ConnectionServiceTest extends TestCase
 
         $this->clock->advance(60);
 
-        $result = $this->service()->update(self::TENANT, $id, ['settings' => ['issuer' => 'https://login.example.com']], Clients::browser(), new ActingIdentity('user', '7'));
+        $result = $this->service()->update(
+            self::TENANT,
+            $id,
+            ['settings' => ['issuer' => 'https://login.example.com']],
+            Clients::browser(),
+            new Caller(new IdentityReference('user', '7')),
+        );
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertSame(['issuer'], $result->changedSettings);
@@ -963,7 +970,7 @@ final class ConnectionServiceTest extends TestCase
         $this->freshness->reset();
         $this->startRecordingEvents();
 
-        $result = $this->service()->enable(self::TENANT, $id, Clients::browser(), new ActingIdentity('user', '42'));
+        $result = $this->service()->enable(self::TENANT, $id, Clients::browser(), new Caller(new IdentityReference('user', '42')));
 
         self::assertSame(ConnectionStatus::ENABLED, $result->status);
         self::assertTrue($result->isChanged());

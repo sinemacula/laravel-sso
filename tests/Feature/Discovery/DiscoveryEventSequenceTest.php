@@ -18,6 +18,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -430,7 +431,14 @@ final class DiscoveryEventSequenceTest extends TestCase
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
 
-        return $app->make(DiscoveryService::class)->start($application, $purpose, self::LOCAL_PART . '@' . $domain, self::client(), $codeChallenge, $identity);
+        return $app->make(DiscoveryService::class)->start(
+            $application,
+            $purpose,
+            self::LOCAL_PART . '@' . $domain,
+            self::client(),
+            $codeChallenge,
+            $identity === null ? null : new Caller($identity),
+        );
     }
 
     /**

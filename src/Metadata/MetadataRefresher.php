@@ -6,7 +6,6 @@ namespace SineMacula\Laravel\Sso\Metadata;
 
 use Illuminate\Database\Eloquent\Builder;
 use Psr\Log\LoggerInterface;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Config\Enums\Feature;
 use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Connections\ConnectionFinder;
@@ -17,6 +16,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
@@ -202,7 +202,7 @@ final readonly class MetadataRefresher
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
-     * @param  \SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
@@ -211,7 +211,7 @@ final readonly class MetadataRefresher
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      * @throws \Throwable
      */
-    public function refreshNow(string $tenantId, string $connectionId, ActingIdentity $actor, ClientContext $client): RefreshResult
+    public function refreshNow(string $tenantId, string $connectionId, Caller $caller, ClientContext $client): RefreshResult
     {
         StorageConnection::assertNoTransaction(self::IN_TRANSACTION);
 
@@ -221,7 +221,7 @@ final readonly class MetadataRefresher
             return RefreshResult::refused(FailureReason::CONNECTION_NOT_FOUND);
         }
 
-        $refusal = $this->refusalNow($connection);
+        $refusal = $this->refusalNow($connection, $caller);
 
         if ($refusal !== null) {
             return $refusal;
@@ -229,7 +229,7 @@ final readonly class MetadataRefresher
 
         $attempt = $this->limiter->attempt(AttemptSubject::metadata($connection->id));
 
-        return $attempt->retryAfter !== null ? RefreshResult::rateLimited($connection->id, $attempt->retryAfter) : $this->refresh($connection, $actor, $client, true);
+        return $attempt->retryAfter !== null ? RefreshResult::rateLimited($connection->id, $attempt->retryAfter) : $this->refresh($connection, $caller, $client, true);
     }
 
     /**
@@ -238,12 +238,13 @@ final readonly class MetadataRefresher
      * where the schedule would not refresh it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return ?\SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    private function refusalNow(Connection $connection): ?RefreshResult
+    private function refusalNow(Connection $connection, Caller $caller): ?RefreshResult
     {
         if (!$this->isRefreshable($connection)) {
             return RefreshResult::refused(FailureReason::FEATURE_DISABLED, $connection->id);
@@ -253,7 +254,9 @@ final readonly class MetadataRefresher
             return null;
         }
 
-        return $this->freshness->check(FreshnessOperation::CONNECTION_TRUST)->isFresh() ? null : RefreshResult::refused(FailureReason::FRESHNESS_REQUIRED, $connection->id);
+        $fresh = $this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh();
+
+        return $fresh ? null : RefreshResult::refused(FailureReason::FRESHNESS_REQUIRED, $connection->id);
     }
 
     /**
@@ -262,7 +265,7 @@ final readonly class MetadataRefresher
      * apply.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  bool  $asked
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
@@ -270,7 +273,7 @@ final readonly class MetadataRefresher
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    private function refresh(Connection $connection, ?ActingIdentity $actor, ClientContext $client, bool $asked): RefreshResult
+    private function refresh(Connection $connection, ?Caller $caller, ClientContext $client, bool $asked): RefreshResult
     {
         $source = $this->sourceOf($connection);
         $claim  = $source->claim($connection);
@@ -280,7 +283,7 @@ final readonly class MetadataRefresher
         }
 
         $fetched = $source->fetch($claim);
-        $result  = $source->write($claim, $fetched, $actor, $client);
+        $result  = $source->write($claim, $fetched, $caller, $client);
 
         if (!$result->isRefreshed()) {
             $this->logger->warning('sso.metadata.refresh_' . $result->outcome->value, ['reason' => $result->reason?->value, 'fetch_status' => $fetched->fetchStatus->value]);

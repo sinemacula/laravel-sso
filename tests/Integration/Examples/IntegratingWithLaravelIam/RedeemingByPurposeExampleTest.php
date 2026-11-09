@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkService;
@@ -252,7 +253,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
         $connectionId = $this->connectionId;
         $code         = $redirect->code();
         $verifier     = self::verifierOf($start);
-        $caller       = $this->person;
+        $caller       = new Caller($this->person, 'session-1'); // the signed-in person, on their session
 
         $client = Clients::browser();
         // @snippet-start iam-link
@@ -279,7 +280,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
      */
     public function testALinkRedeemedByAnotherCallerIsRefused(): void
     {
-        $stranger = new IdentityReference('App\Models\User', 'person-2');
+        $stranger = new Caller(new IdentityReference('App\Models\User', 'person-2'), 'session-2');
         $start    = $this->startFlow(Purpose::LINK, $this->connectionId, $this->person);
         $redirect = $this->respondAtProvider($this->provider, $this->connectionId, $start);
         $refused  = app(HandoffRedemption::class)->redeem(
@@ -295,7 +296,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
         self::assertTrue($refused->isRefused());
         self::assertSame(FailureReason::IDENTITY_MISMATCH, $refused->reason);
         self::assertSame([], app(LinkService::class)->list($this->person));
-        self::assertSame([], app(LinkService::class)->list($stranger));
+        self::assertSame([], app(LinkService::class)->list($stranger->identity));
         self::assertSame([FailureReason::IDENTITY_MISMATCH], $this->failureReasons());
     }
 

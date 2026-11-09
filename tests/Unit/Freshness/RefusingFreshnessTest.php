@@ -11,6 +11,8 @@ use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Freshness\RefusingFreshness;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
  * Unit tests for the default freshness contract: it answers `stale` for every
@@ -52,7 +54,8 @@ final class RefusingFreshnessTest extends TestCase
 
     /**
      * Each operation is refused at every maximum age, the most generous
-     * included, and again when asked a second time.
+     * included, for no caller and for a caller on a session alike, and again
+     * when asked a second time.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @return void
@@ -61,9 +64,11 @@ final class RefusingFreshnessTest extends TestCase
     public function testRefusesTheOperationAtEveryAge(FreshnessOperation $operation): void
     {
         $freshness = new RefusingFreshness;
+        $caller    = new Caller(new IdentityReference('App\Models\User', '42'), 'session-1');
 
         foreach ([...self::AGES, ...self::AGES] as $age) {
-            self::assertSame(FreshnessOutcome::STALE, $freshness->check($operation, $age), "{$operation->value} at {$age} seconds was not refused.");
+            self::assertSame(FreshnessOutcome::STALE, $freshness->check($operation, $age, null), "{$operation->value} at {$age} seconds was not refused.");
+            self::assertSame(FreshnessOutcome::STALE, $freshness->check($operation, $age, $caller), "{$operation->value} at {$age} seconds was not refused for a caller.");
         }
     }
 }

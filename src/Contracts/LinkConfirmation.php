@@ -4,7 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Contracts;
 
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 
 /**
@@ -24,14 +24,19 @@ use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
  * guard, the connections' and the links' locks (`docs/design/linking.md`), so
  * its own guards come after the package's.
  *
- * Answer `independent` only when the current session was not established
- * through a link that had verified domain provenance when the session was
- * established, whether it is given, removed since or confirmed since, and its
- * freshness was not renewed through one, nor through the connection such a link
- * belongs to; a password or a passkey the person holds is independent. Answer
- * `dependent` otherwise, and when it cannot tell. So an implementation records,
- * when it admits a session from a redemption, whether the link it stood on
- * (`RedemptionResult::$linkId`) had that provenance then.
+ * It is given the caller the redemption is made for (`Identities\Caller`),
+ * whose identity is the one the code is bound to, and judges that caller's
+ * session, never the request or job being served. Answer `independent` only
+ * when that session was not established through a link that had verified domain
+ * provenance when the session was established, whether it is given, removed
+ * since or confirmed since, and its freshness was not renewed through one, nor
+ * through the connection such a link belongs to; a password or a passkey the
+ * person holds is independent. Answer `dependent` otherwise, and when it cannot
+ * tell: a caller with no session, and a session it cannot tie to the caller's
+ * identity or cannot guard through the redeemer's commit, are `dependent`. So
+ * an implementation records, when it admits a session from a redemption,
+ * whether the link it stood on (`RedemptionResult::$linkId`) had that
+ * provenance then.
  *
  * Removal is not the only way out for a person whose only credential is such a
  * link. Application-controlled recovery, or a credential established
@@ -57,12 +62,12 @@ use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 interface LinkConfirmation
 {
     /**
-     * Whether the caller's current authentication is independent of the links.
+     * Whether the caller's session is independent of the links.
      *
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  list<string>  $domainLinkIds
      * @return \SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict
      */
-    public function judge(IdentityReference $identity, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict;
+    public function judge(Caller $caller, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict;
 }

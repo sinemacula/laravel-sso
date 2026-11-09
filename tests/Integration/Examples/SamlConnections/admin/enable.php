@@ -22,15 +22,15 @@ use Tests\Integration\Examples\Clients;
  * @var array{
  *     tenant: \Tests\Integration\Examples\SamlConnections\Tenant,
  *     connection_id: string,
- *     actor: \SineMacula\Laravel\Sso\Administration\ActingIdentity
+ *     caller: \SineMacula\Laravel\Sso\Identities\Caller
  * } $input
  */
 $tenant       = $input['tenant'];
 $connectionId = $input['connection_id'];
-$actor        = $input['actor'];
+$caller       = $input['caller'];
 
 $client = Clients::browser();
 // @snippet-start saml-connections-enable
-$result = app(ConnectionService::class)->enable($tenant->id, $connectionId, $client, $actor);
+$result = app(ConnectionService::class)->enable($tenant->id, $connectionId, $client, $caller);
 // @snippet-end saml-connections-enable
 return $result;

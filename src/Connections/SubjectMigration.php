@@ -6,12 +6,12 @@ namespace SineMacula\Laravel\Sso\Connections;
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\DB;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkCreationStatus;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
@@ -151,7 +151,7 @@ final readonly class SubjectMigration
      * @param  array<array-key, mixed>  $relinks
      * @param  array<array-key, mixed>  $removals
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \InvalidArgumentException
@@ -164,9 +164,9 @@ final readonly class SubjectMigration
         #[\SensitiveParameter] array $relinks,
         array $removals,
         ClientContext $client,
-        ?ActingIdentity $actor = null,
+        ?Caller $caller = null,
     ): ConnectionResult {
-        return $this->transaction(function () use ($tenantId, $connectionId, $changes, $relinks, $removals, $client, $actor): ConnectionResult {
+        return $this->transaction(function () use ($tenantId, $connectionId, $changes, $relinks, $removals, $client, $caller): ConnectionResult {
 
             $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
@@ -180,7 +180,7 @@ final readonly class SubjectMigration
                 return ConnectionResult::refused(FailureReason::LINKS_UNACCOUNTED);
             }
 
-            return $this->migrateLocked($locked, $links, $changes, $relinks, $actor, $client);
+            return $this->migrateLocked($locked, $links, $changes, $relinks, $caller, $client);
         });
     }
 
@@ -193,7 +193,7 @@ final readonly class SubjectMigration
      * @param  array<string, \SineMacula\Laravel\Sso\Models\Link>  $links
      * @param  array<string, mixed>  $changes
      * @param  array<array-key, mixed>  $relinks
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -206,13 +206,13 @@ final readonly class SubjectMigration
         array $links,
         #[\SensitiveParameter] array $changes,
         #[\SensitiveParameter] array $relinks,
-        ?ActingIdentity $actor,
+        ?Caller $caller,
         ClientContext $client,
     ): ConnectionResult {
         [$subjects, $violations] = self::relinks($relinks, $links);
 
         $result = DB::connection(StorageConnection::name())->transaction(
-            fn (): ConnectionResult => $this->changed($locked, $changes, $links, $subjects, $violations, $actor, $client),
+            fn (): ConnectionResult => $this->changed($locked, $changes, $links, $subjects, $violations, $caller, $client),
         );
 
         $summary = $result->connection;
@@ -221,7 +221,7 @@ final readonly class SubjectMigration
             return $result;
         }
 
-        return $this->relinkRefusal($locked, $links, $subjects, $actor, $client) ?? ConnectionResult::migrated($summary, $result->changedSettings);
+        return $this->relinkRefusal($locked, $links, $subjects, $caller, $client) ?? ConnectionResult::migrated($summary, $result->changedSettings);
     }
 
     /**
@@ -235,7 +235,7 @@ final readonly class SubjectMigration
      * @param  array<string, \SineMacula\Laravel\Sso\Models\Link>  $links
      * @param  array<array-key, \SineMacula\Laravel\Sso\Links\LinkSubject>  $subjects
      * @param  list<\SineMacula\Laravel\Sso\Connections\SettingViolation>  $violations
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -252,10 +252,10 @@ final readonly class SubjectMigration
         array $links,
         array $subjects,
         array $violations,
-        ?ActingIdentity $actor,
+        ?Caller $caller,
         ClientContext $client,
     ): ConnectionResult {
-        $result = $this->connections->changeLocked($locked, $changes, $client, $actor, $violations);
+        $result = $this->connections->changeLocked($locked, $changes, $client, $caller, $violations);
 
         if (!$result->isChanged()) {
             return $result;
@@ -271,7 +271,7 @@ final readonly class SubjectMigration
                 $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($locked->tenant_id, $locked->id, $identity, $link->id));
             }
 
-            $this->events->removed($locked, $identity, $client, $actor);
+            $this->events->removed($locked, $identity, $client, $caller);
         }
 
         return $result;
@@ -285,7 +285,7 @@ final readonly class SubjectMigration
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, \SineMacula\Laravel\Sso\Models\Link>  $links
      * @param  array<array-key, \SineMacula\Laravel\Sso\Links\LinkSubject>  $subjects
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return ?\SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
@@ -293,13 +293,13 @@ final readonly class SubjectMigration
      * @throws \LogicException
      * @throws \Throwable
      */
-    private function relinkRefusal(Connection $locked, array $links, array $subjects, ?ActingIdentity $actor, ClientContext $client): ?ConnectionResult
+    private function relinkRefusal(Connection $locked, array $links, array $subjects, ?Caller $caller, ClientContext $client): ?ConnectionResult
     {
         foreach ($subjects as $linkId => $subject) {
 
             $link     = $links[$linkId];
             $identity = new IdentityReference($link->identity_type, $link->identity_id);
-            $creation = $this->links->create($locked, $subject, $identity, LinkOrigin::MIGRATION, $client, $actor);
+            $creation = $this->links->create($locked, $subject, $identity, LinkOrigin::MIGRATION, $client, $caller);
 
             if ($creation->isRefused()) {
 

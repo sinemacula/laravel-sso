@@ -8,12 +8,13 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshed;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\RefreshClaim;
 use SineMacula\Laravel\Sso\Metadata\RefreshResult;
@@ -131,7 +132,13 @@ final class RefreshWriterTest extends TestCase
         Connection::query()->whereKey($claim->connection->id)->update([...$columns, 'metadata_refresh_failures' => 4, 'metadata_refresh_at' => $next]);
 
         $before = $this->row($claim)->getAttributes();
-        $result = $this->writer()->locked($claim, static fn (): array => self::TRUSTED, self::neverRuns(...), new ActingIdentity('App\Models\User', '42'), Clients::browser());
+        $result = $this->writer()->locked(
+            $claim,
+            static fn (): array => self::TRUSTED,
+            self::neverRuns(...),
+            new Caller(new IdentityReference('App\Models\User', '42')),
+            Clients::browser(),
+        );
 
         $this->assertConflict($result, $claim);
         self::assertSame($before, $this->row($claim)->getAttributes());
@@ -364,7 +371,7 @@ final class RefreshWriterTest extends TestCase
     public function testARefreshReportsAndAnswersWhatChanged(): void
     {
         $claim  = $this->claim();
-        $result = $this->writer()->refreshed($this->row($claim), ['issuer', 'jwks'], true, new ActingIdentity('App\Models\User', '42'), Clients::browser());
+        $result = $this->writer()->refreshed($this->row($claim), ['issuer', 'jwks'], true, new Caller(new IdentityReference('App\Models\User', '42')), Clients::browser());
 
         self::assertSame(
             [RefreshOutcome::REFRESHED, $claim->connection->id, ['issuer', 'jwks'], 2, true],

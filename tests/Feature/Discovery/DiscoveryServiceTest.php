@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Flows\Verifier;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -537,46 +538,39 @@ final class DiscoveryServiceTest extends TestCase
     /**
      * Each misbound start and its message.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: bool, 2: ?string, 3: string}>
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: ?\SineMacula\Laravel\Sso\Identities\Caller, 2: string}>
      */
     public static function misboundStarts(): iterable
     {
-        $signIn = 'A `sign_in` flow is started with no identity and no session.';
-        $link   = 'A `link` flow is started for an identity, with no session.';
-        $reauth = 'A `reauthenticate` flow is started for an identity, on a session.';
-        $length = 'A session id is 1 to 255 bytes.';
+        $signIn = 'A `sign_in` flow is started with no caller.';
+        $link   = 'A `link` flow is started for a caller.';
+        $reauth = 'A `reauthenticate` flow is started for a caller, on a session.';
 
-        yield 'sign_in with an identity' => [Purpose::SIGN_IN, true, null, $signIn];
-        yield 'sign_in with a session' => [Purpose::SIGN_IN, false, 'session-1', $signIn];
-        yield 'sign_in with both' => [Purpose::SIGN_IN, true, 'session-1', $signIn];
-        yield 'link without an identity' => [Purpose::LINK, false, null, $link];
-        yield 'link with a session' => [Purpose::LINK, true, 'session-1', $link];
-        yield 'reauthenticate without an identity' => [Purpose::REAUTHENTICATE, false, 'session-1', $reauth];
-        yield 'reauthenticate without a session' => [Purpose::REAUTHENTICATE, true, null, $reauth];
-        yield 'an empty session id' => [Purpose::REAUTHENTICATE, true, '', $length];
-        yield 'a session id of 256 bytes' => [Purpose::REAUTHENTICATE, true, str_repeat('s', 256), $length];
+        yield 'sign_in with a caller' => [Purpose::SIGN_IN, new Caller(self::identity()), $signIn];
+        yield 'sign_in with a caller on a session' => [Purpose::SIGN_IN, new Caller(self::identity(), 'session-1'), $signIn];
+        yield 'link without a caller' => [Purpose::LINK, null, $link];
+        yield 'reauthenticate without a caller' => [Purpose::REAUTHENTICATE, null, $reauth];
+        yield 'reauthenticate without a session' => [Purpose::REAUTHENTICATE, new Caller(self::identity()), $reauth];
     }
 
     /**
-     * An identity or a session that does not fit the purpose, and a session id
-     * a request cannot keep, are application code's mistakes, refused before
-     * anything is counted or read.
+     * A caller that does not fit the purpose is application code's mistake,
+     * refused before anything is counted or read.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
-     * @param  bool  $withIdentity
-     * @param  ?string  $sessionId
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  string  $message
      * @return void
      *
      * @throws \Throwable
      */
     #[DataProvider('misboundStarts')]
-    public function testAMisboundStartIsAnInvalidArgument(Purpose $purpose, bool $withIdentity, ?string $sessionId, string $message): void
+    public function testAMisboundStartIsAnInvalidArgument(Purpose $purpose, ?Caller $caller, string $message): void
     {
         $queries = $this->recordQueries();
 
         try {
-            $this->service()->start('discovering', $purpose, self::MATCH, Clients::browser(), null, $withIdentity ? self::identity() : null, $sessionId);
+            $this->service()->start('discovering', $purpose, self::MATCH, Clients::browser(), null, $caller);
             self::fail('A misbound start was accepted.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame($message, $exception->getMessage());
@@ -618,7 +612,8 @@ final class DiscoveryServiceTest extends TestCase
 
     /**
      * A match whose `link` comes from a fresh caller is started for its
-     * identity; a miss for a `link` asks nothing and leads to the fallback.
+     * identity alone, the session the caller gave asked about by freshness and
+     * not stored; a miss for a `link` asks nothing and leads to the fallback.
      *
      * @return void
      */
@@ -629,11 +624,12 @@ final class DiscoveryServiceTest extends TestCase
         self::assertSame(['type' => 'redirect', 'url' => self::FALLBACK], $miss->body()['navigation']);
         self::assertSame([], $this->freshness->operations());
 
-        $match = $this->discover(self::MATCH, Purpose::LINK, identity: self::identity());
+        $match = $this->discover(self::MATCH, Purpose::LINK, identity: self::identity(), sessionId: 'session-1');
         $row   = AuthorizationRequest::query()->sole();
 
         self::assertTrue($match->isStarted());
         self::assertSame([FreshnessOperation::LINK_CREATE], $this->freshness->operations());
+        self::assertSame('session-1', $this->freshness->callers()[0]?->sessionId);
         self::assertSame([Purpose::LINK, 'App\Models\User', '42', null], [$row->purpose, $row->identity_type, $row->identity_id, $row->session_id]);
     }
 
@@ -767,7 +763,7 @@ final class DiscoveryServiceTest extends TestCase
         ?string $sessionId = null,
     ): StartResult {
         $startedAt = (int) hrtime(true);
-        $result    = $this->service()->start($application, $purpose, $email, $this->client, $codeChallenge, $identity, $sessionId);
+        $result    = $this->service()->start($application, $purpose, $email, $this->client, $codeChallenge, $identity === null ? null : new Caller($identity, $sessionId));
         $took      = (int) hrtime(true) - $startedAt;
 
         self::assertGreaterThanOrEqual(self::FLOOR * 1000000, $took, 'The answer came before the least time a discovery start takes.');

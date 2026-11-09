@@ -7,6 +7,7 @@ namespace SineMacula\Laravel\Sso\Freshness;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
 
 /**
  * The default freshness contract: it answers `stale` for every operation, so no
@@ -19,16 +20,17 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 final readonly class RefusingFreshness implements Freshness
 {
     /**
-     * Refuse the operation, whatever its maximum age.
+     * Refuse the operation, whatever its maximum age and whoever the caller.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  int  $maxAgeSeconds
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
      */
     #[\Override]
-    public function check(FreshnessOperation $operation, int $maxAgeSeconds): FreshnessOutcome
+    public function check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller $caller): FreshnessOutcome
     {
-        unset($operation, $maxAgeSeconds);
+        unset($operation, $maxAgeSeconds, $caller);
 
         return FreshnessOutcome::STALE;
     }

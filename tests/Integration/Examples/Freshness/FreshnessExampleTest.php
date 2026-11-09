@@ -5,9 +5,6 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\Freshness;
 
 use Illuminate\Auth\GenericUser;
-use Illuminate\Http\Request;
-use Illuminate\Session\ArraySessionHandler;
-use Illuminate\Session\Store;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
@@ -17,6 +14,8 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Freshness\MaximumAges;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
@@ -29,13 +28,13 @@ use Tests\Integration\Examples\ExampleTestCase;
  * shared example harness: the guide's published maximum ages laid over the
  * package's and asked with each change; the application's own contract, bound
  * in its service provider in place of the default that refuses everything,
- * judging the caller of the request being served by the time they last
- * authenticated, from the session or a verified token, against the package's
- * clock; and `FakeFreshness` bound by a test, answering `stale` for one
- * operation and asserting what was asked. Each refusal is shown: a change asked
- * of a caller who authenticated too long ago, or in the future, or who cannot
- * be judged, is refused with `freshness_required` and writes nothing, and an
- * age out of range fails closed.
+ * judging the caller it is given by the time the session they are on last
+ * authenticated, as the application recorded it, against the package's clock;
+ * and `FakeFreshness` bound by a test, answering `stale` for one operation and
+ * asserting what was asked. Each refusal is shown: a change asked of a caller
+ * who authenticated too long ago, or in the future, or who cannot be judged, is
+ * refused with `freshness_required` and writes nothing, and an age out of range
+ * fails closed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,9 +48,6 @@ final class FreshnessExampleTest extends ExampleTestCase
 {
     /** @var string The administrator the application has authenticated. */
     private const string ADMINISTRATOR = 'admin-1';
-
-    /** @var string Where the application's administration takes a change. */
-    private const string CHANGE_URL = 'https://app.example.com/admin/sso/connections';
 
     /**
      * Under the published configuration, a trust change is asked with the five
@@ -88,19 +84,19 @@ final class FreshnessExampleTest extends ExampleTestCase
 
         app()->register(AppServiceProvider::class);
 
-        $this->serveSession($this->clock->now()->getTimestamp() - 200);
+        $caller = $this->signIn($this->clock->now()->getTimestamp() - 200);
 
-        $connectionId = $this->createConnection();
-        $rotated      = app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, Clients::browser());
+        $connectionId = $this->createConnection($caller);
+        $rotated      = app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, Clients::browser(), caller: $caller);
 
         self::assertTrue($rotated->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $rotated->reason);
         self::assertNull($rotated->key);
-        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId, Clients::browser())->isChanged());
+        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId, Clients::browser(), $caller)->isChanged());
 
         $this->clock->advance(101);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId, Clients::browser())->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId, Clients::browser(), $caller)->reason);
         self::assertTrue(app(ConnectionService::class)->get(self::TENANT, $connectionId)?->enabled);
     }
 
@@ -133,7 +129,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     {
         app()->forgetInstance(Freshness::class);
 
-        self::assertSame(FreshnessOutcome::STALE, app(Freshness::class)->check(FreshnessOperation::CONNECTION_ENABLE, 300));
+        self::assertSame(FreshnessOutcome::STALE, app(Freshness::class)->check(FreshnessOperation::CONNECTION_ENABLE, 300, null));
 
         app()->register(AppServiceProvider::class);
 
@@ -153,9 +149,9 @@ final class FreshnessExampleTest extends ExampleTestCase
 
         app()->register(AppServiceProvider::class);
 
-        $this->serveSession($this->clock->now()->getTimestamp() - 300);
+        $caller = $this->signIn($this->clock->now()->getTimestamp() - 300);
 
-        self::assertTrue(app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, Clients::browser())->isChanged());
+        self::assertTrue(app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, Clients::browser(), $caller)->isChanged());
         self::assertNull(app(ConnectionService::class)->get(self::TENANT, $connectionId));
     }
 
@@ -171,9 +167,8 @@ final class FreshnessExampleTest extends ExampleTestCase
 
         app()->register(AppServiceProvider::class);
 
-        $this->serveSession($this->clock->now()->getTimestamp() - 301);
-
-        $deleted = app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, Clients::browser());
+        $caller  = $this->signIn($this->clock->now()->getTimestamp() - 301);
+        $deleted = app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, Clients::browser(), $caller);
 
         self::assertTrue($deleted->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $deleted->reason);
@@ -181,34 +176,31 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * On a request with no session, the contract reads the `auth_time` of the
-     * verified token: one a minute old is fresh, and one in the future, which
-     * the application cannot vouch for, is stale. Each question reads the
-     * request then being served.
+     * A sign-in a minute old is fresh, and one recorded in the future, which
+     * the application cannot vouch for, is stale. Each question judges the
+     * caller it is given.
      *
      * @return void
      */
-    public function testATokensAuthTimeIsJudgedWithoutASession(): void
+    public function testASignInInTheFutureIsStale(): void
     {
         $connectionId = $this->createConnection();
         $now          = $this->clock->now()->getTimestamp();
 
         app()->register(AppServiceProvider::class);
 
-        $this->serveToken($now - 60);
+        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId, Clients::browser(), $this->signIn($now - 60))->isChanged());
 
-        self::assertTrue(app(ConnectionService::class)->enable(self::TENANT, $connectionId, Clients::browser())->isChanged());
+        $future = $this->signIn($now + 1, 'session-2');
 
-        $this->serveToken($now + 1);
-
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId, Clients::browser())->reason);
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, app(ConnectionLifecycle::class)->disable(self::TENANT, $connectionId, Clients::browser(), $future)->reason);
         self::assertTrue(app(ConnectionService::class)->get(self::TENANT, $connectionId)?->enabled);
     }
 
     /**
-     * A caller the contract cannot judge is stale: one who is not signed in,
-     * whatever their session holds, and one whose session records no sign-in,
-     * or records it as anything but a timestamp.
+     * A caller the contract cannot judge is stale: no caller, a caller on no
+     * session, a caller on a session no sign-in was recorded for, and one on
+     * another identity's session, however recent.
      *
      * @return void
      */
@@ -218,24 +210,24 @@ final class FreshnessExampleTest extends ExampleTestCase
 
         app()->register(AppServiceProvider::class);
 
-        $this->serveSession($now - 10);
+        $signedIn = $this->signIn($now - 10);
+        $identity = $signedIn->identity;
 
-        $signedIn = app(Freshness::class)->check(FreshnessOperation::CONNECTION_DELETE, 300);
+        self::assertSame(FreshnessOutcome::FRESH, app(Freshness::class)->check(FreshnessOperation::CONNECTION_DELETE, 300, $signedIn));
 
-        $this->actingAsGuest();
+        $unjudged = [
+            'no caller'               => null,
+            'no session'              => new Caller($identity),
+            'an unknown session'      => new Caller($identity, 'session-unknown'),
+            'another identity\'s one' => new Caller(new IdentityReference(GenericUser::class, 'someone-else'), 'session-1'),
+        ];
 
-        $signedOut = app(Freshness::class)->check(FreshnessOperation::CONNECTION_DELETE, 300);
-
-        self::assertSame(FreshnessOutcome::FRESH, $signedIn);
-        self::assertSame(FreshnessOutcome::STALE, $signedOut);
-
-        foreach ([null, (string) ($now - 10), (float) ($now - 10)] as $recorded) {
-
-            $this->serveSession($recorded);
-
-            $unjudged = app(Freshness::class)->check(FreshnessOperation::CONNECTION_DELETE, 300);
-
-            self::assertSame(FreshnessOutcome::STALE, $unjudged, sprintf('A session recording %s is stale.', var_export($recorded, true)));
+        foreach ($unjudged as $case => $caller) {
+            self::assertSame(
+                FreshnessOutcome::STALE,
+                app(Freshness::class)->check(FreshnessOperation::CONNECTION_DELETE, 300, $caller),
+                sprintf('A caller with %s is stale.', $case),
+            );
         }
     }
 
@@ -265,8 +257,8 @@ final class FreshnessExampleTest extends ExampleTestCase
         $freshness->assertNotAsked(FreshnessOperation::CONNECTION_TRUST);
 
         self::assertSame([
-            ['operation' => FreshnessOperation::CONNECTION_ENABLE, 'max_age_seconds' => 300],
-            ['operation' => FreshnessOperation::CONNECTION_DELETE, 'max_age_seconds' => 300],
+            ['operation' => FreshnessOperation::CONNECTION_ENABLE, 'max_age_seconds' => 300, 'caller' => null],
+            ['operation' => FreshnessOperation::CONNECTION_DELETE, 'max_age_seconds' => 300, 'caller' => null],
         ], $freshness->asked());
         self::assertTrue(app(ConnectionService::class)->get(self::TENANT, $connectionId)?->enabled);
     }
@@ -289,16 +281,18 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * Create a disabled SAML connection of the tenant, and answer its id.
+     * Create a disabled SAML connection of the tenant, for the caller given,
+     * and answer its id.
      *
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return string
      */
-    private function createConnection(): string
+    private function createConnection(?Caller $caller = null): string
     {
         $created = app(ConnectionService::class)->create(self::TENANT, 'saml2', 'Example SAML', Clients::browser(), [
             'idp_entity_id' => FakeSamlIdentityProvider::ENTITY_ID,
             'sso_url'       => FakeSamlIdentityProvider::SSO_URL,
-        ]);
+        ], caller: $caller);
 
         self::assertTrue($created->isChanged());
 
@@ -306,51 +300,20 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * Serve a request whose session records the administrator's sign-in at the
-     * time given, as the application's sign-in stores it.
+     * Record the administrator's sign-in on the session at the time given, as
+     * the application's sign-in records it, and answer them as the caller the
+     * application gives the package: their identity, on that session.
      *
-     * @param  mixed  $authenticatedAt
-     * @return void
+     * @param  int  $authenticatedAt
+     * @param  string  $sessionId
+     * @return \SineMacula\Laravel\Sso\Identities\Caller
      */
-    private function serveSession(mixed $authenticatedAt): void
+    private function signIn(int $authenticatedAt, string $sessionId = 'session-1'): Caller
     {
-        $session = new Store('example_session', new ArraySessionHandler(120));
+        $identity = new IdentityReference(GenericUser::class, self::ADMINISTRATOR);
 
-        $session->put('auth.authenticated_at', $authenticatedAt);
+        app(SignInTimes::class)->record($identity, $sessionId, $authenticatedAt);
 
-        $request = Request::create(self::CHANGE_URL, 'POST');
-
-        $request->setLaravelSession($session);
-
-        $this->serve($request);
-    }
-
-    /**
-     * Serve a request with no session, carrying the `auth_time` of the token
-     * the application's middleware verified.
-     *
-     * @param  int  $authTime
-     * @return void
-     */
-    private function serveToken(int $authTime): void
-    {
-        $request = Request::create(self::CHANGE_URL, 'POST');
-
-        $request->attributes->set('auth_time', $authTime);
-
-        $this->serve($request);
-    }
-
-    /**
-     * Make the request the one being served, its caller the administrator.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return void
-     */
-    private function serve(Request $request): void
-    {
-        $this->instance('request', $request);
-
-        $this->actingAs(new GenericUser(['id' => self::ADMINISTRATOR]));
+        return new Caller($identity, $sessionId);
     }
 }

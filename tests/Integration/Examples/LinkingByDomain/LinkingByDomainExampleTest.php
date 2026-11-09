@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
@@ -21,6 +20,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
@@ -71,8 +71,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     /** @var \SineMacula\Laravel\Sso\Identities\IdentityReference The member who signs in for the first time. */
     private IdentityReference $person;
 
-    /** @var \SineMacula\Laravel\Sso\Administration\ActingIdentity The administrator who changes the connection. */
-    private ActingIdentity $actor;
+    /** @var \SineMacula\Laravel\Sso\Identities\Caller The administrator who changes the connection. */
+    private Caller $caller;
 
     /**
      * Switch domain linking on, create the application's tables with the
@@ -117,7 +117,7 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
         $this->provider     = new FakeOpenIdProvider(clock: $this->clock);
         $this->connectionId = $this->makeOidcConnection($this->provider);
         $this->person       = new IdentityReference(Users::TYPE, 'person-1');
-        $this->actor        = new ActingIdentity(Users::TYPE, 'admin-1');
+        $this->caller       = new Caller(new IdentityReference(Users::TYPE, 'admin-1'));
 
         $this->addMember('person-1', self::EMAIL, $this->clock->now()->subDays(2));
 
@@ -206,7 +206,7 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     {
         app()->register(AppServiceProvider::class);
 
-        $result = (new LinkingSettings)->enable(self::TENANT, $this->connectionId, self::DOMAIN, $this->actor);
+        $result = (new LinkingSettings)->enable(self::TENANT, $this->connectionId, self::DOMAIN, $this->caller);
 
         self::assertSame(ConnectionStatus::UPDATED, $result->status);
         self::assertNull($result->reason);
@@ -239,7 +239,7 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
         $settings = new LinkingSettings;
 
         try {
-            $settings->enable(self::TENANT, $this->connectionId, null, $this->actor);
+            $settings->enable(self::TENANT, $this->connectionId, null, $this->caller);
 
             self::fail('Settings with no organisation value were accepted.');
         } catch (ValidationException $invalid) {
@@ -248,7 +248,7 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
 
         $this->freshness->staleFor(FreshnessOperation::CONNECTION_TRUST);
 
-        $stale = $settings->enable(self::TENANT, $this->connectionId, self::DOMAIN, $this->actor);
+        $stale = $settings->enable(self::TENANT, $this->connectionId, self::DOMAIN, $this->caller);
 
         self::assertTrue($stale->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $stale->reason);
@@ -330,7 +330,7 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
      */
     private function turnLinkingOn(): void
     {
-        self::assertTrue((new LinkingSettings)->enable(self::TENANT, $this->connectionId, self::DOMAIN, $this->actor)->isChanged());
+        self::assertTrue((new LinkingSettings)->enable(self::TENANT, $this->connectionId, self::DOMAIN, $this->caller)->isChanged());
     }
 
     /**

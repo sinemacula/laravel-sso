@@ -11,6 +11,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\LinkConfirmationGate;
 use SineMacula\Laravel\Sso\Links\Enums\LinkCreationStatus;
@@ -22,9 +23,12 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 /**
  * A `link` at redemption (SSO-5.11, SSO-8.5, SSO-8.8, SSO-9.9): it makes no
  * session and no further-factor proof, acknowledges no sign-in and never asks
- * the evidence contract. The caller the application has authenticated must be
- * the identity the code is bound to, compared byte for byte, since possessing
- * the code and its verifier does not prove that (`identity_mismatch`).
+ * the evidence contract. The identity of the caller the application has
+ * authenticated must be the identity the code is bound to, compared byte for
+ * byte, since possessing the code and its verifier does not prove that
+ * (`identity_mismatch`). That caller, with the session the application gave
+ * with it, is the one freshness and the confirmation judge, as given: never one
+ * rebuilt from the binding.
  *
  * The package's locks come first: under the identity's guard and the
  * connections `Handoffs\HandoffRecheck::lock()` took, the identity's verified
@@ -119,14 +123,16 @@ final readonly class LinkBranch implements PurposeBranch
         $storage  = $this->storage->require('A [link] redemption');
         $identity = $context->binding->identity;
 
-        if (!self::isCallerBound($context->caller, $identity)) {
+        $caller = $context->caller;
+
+        if (!self::isCallerBound($caller, $identity)) {
             return Judgement::of(RecheckOutcome::IDENTITY_MISMATCH);
         }
 
         $held = $this->confirmation->lockedDomainLinks($identity, $context->lock);
         $now  = $storage->resolve($context->result, $context->client);
 
-        return Judgement::of($this->applicationRefusal($context, $identity, $held) ?? self::continuity($now, $identity, $context->binding));
+        return Judgement::of($this->applicationRefusal($context, $caller, $identity, $held) ?? self::continuity($now, $identity, $context->binding));
     }
 
     /**
@@ -143,9 +149,10 @@ final readonly class LinkBranch implements PurposeBranch
     {
         $storage  = $this->storage->require('A [link] redemption');
         $identity = $context->binding->identity ?? throw new \LogicException('A link flow names the identity it was started for.');
+        $caller   = $context->caller            ?? throw new \LogicException('A link redemption is admitted for the caller its judgement passed.');
         $held     = $this->confirmation->lockedDomainLinks($identity, $context->lock);
 
-        if (!$this->confirmation->allows($identity, $context->connection, $held, $context->lock->domainLinkHeld)) {
+        if (!$this->confirmation->allows($caller, $context->connection, $held, $context->lock->domainLinkHeld)) {
             return Admission::refused(RecheckOutcome::INDEPENDENT_AUTHENTICATION_REQUIRED);
         }
 
@@ -160,38 +167,42 @@ final readonly class LinkBranch implements PurposeBranch
     }
 
     /**
-     * Whether the caller the application has authenticated is the identity the
-     * code is bound to, byte for byte; no caller, or no identity, is not.
+     * Whether the identity of the caller the application has authenticated is
+     * the identity the code is bound to, byte for byte; no caller, or no
+     * identity, is not.
      *
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return bool
      *
+     * @phpstan-assert-if-true \SineMacula\Laravel\Sso\Identities\Caller $caller
      * @phpstan-assert-if-true \SineMacula\Laravel\Sso\Identities\IdentityReference $identity
      */
-    private static function isCallerBound(?IdentityReference $caller, ?IdentityReference $identity): bool
+    private static function isCallerBound(?Caller $caller, ?IdentityReference $identity): bool
     {
-        return $identity !== null && $caller !== null && $caller->is($identity);
+        return $identity !== null && $caller !== null && $caller->identity->is($identity);
     }
 
     /**
      * Why an application contract refuses the redemption, or `null`, asked once
      * the package's locks are held: freshness, eligibility, the confirmation.
+     * Freshness and the confirmation judge the caller, with its session.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  list<string>  $held
      * @return ?\SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
      */
-    private function applicationRefusal(RedemptionContext $context, IdentityReference $identity, array $held): ?RecheckOutcome
+    private function applicationRefusal(RedemptionContext $context, Caller $caller, IdentityReference $identity, array $held): ?RecheckOutcome
     {
         $connection = $context->connection;
 
         return match (true) {
-            !$this->freshness->check(FreshnessOperation::LINK_CREATE)->isFresh()                        => RecheckOutcome::FRESHNESS_REQUIRED,
-            !$this->eligibility->judge($identity, $connection)->isEligible()                            => RecheckOutcome::LINK_INELIGIBLE,
-            !$this->confirmation->allows($identity, $connection, $held, $context->lock->domainLinkHeld) => RecheckOutcome::INDEPENDENT_AUTHENTICATION_REQUIRED,
-            default                                                                                     => null,
+            !$this->freshness->check(FreshnessOperation::LINK_CREATE, $caller)->isFresh()             => RecheckOutcome::FRESHNESS_REQUIRED,
+            !$this->eligibility->judge($identity, $connection)->isEligible()                          => RecheckOutcome::LINK_INELIGIBLE,
+            !$this->confirmation->allows($caller, $connection, $held, $context->lock->domainLinkHeld) => RecheckOutcome::INDEPENDENT_AUTHENTICATION_REQUIRED,
+            default                                                                                   => null,
         };
     }
 

@@ -65,15 +65,15 @@ $changes = ['settings' => $proposed->settings()];
 $fetch   = $proposed->fetch(); // null for metadata given as XML
 
 $saved = $fetch === null
-    ? app(ConnectionService::class)->update($tenant->id, $connection->id, $changes, $client, $actor)
-    : app(ImportSaver::class)->save($tenant->id, $connection->id, $changes, $fetch, $client, $actor);
+    ? app(ConnectionService::class)->update($tenant->id, $connection->id, $changes, $client, $caller)
+    : app(ImportSaver::class)->save($tenant->id, $connection->id, $changes, $fetch, $client, $caller);
 
 if (!$saved->isSucceeded()) {
     return back()->withErrors(['metadata' => $saved->reason?->value]);
 }
 
 foreach ($proposed->signingCertificates() as $certificate) {
-    app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $certificate['certificate'], $client, $actor);
+    app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $certificate['certificate'], $client, $caller);
 }
 ```
 
@@ -123,7 +123,7 @@ every import that names the connection, and every refresh, must then be signed b
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 
-$trusted = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $actor, KeyUse::METADATA_SIGNING);
+$trusted = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $caller, KeyUse::METADATA_SIGNING);
 ```
 
 The entity must be covered by a signature that verifies with an anchor (its own, or an enclosing aggregate's), and every
@@ -158,11 +158,11 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 
 $updated = app(ConnectionService::class)->update($tenant->id, $connection->id, ['settings' => [
     'metadata_url' => 'https://idp.example.com/metadata.xml',
-]], $client, $actor);
+]], $client, $caller);
 
 // With the provider's or the federation's signing certificate as an anchor,
 // that is all it takes.
-$anchored = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $actor, KeyUse::METADATA_SIGNING);
+$anchored = app(KeyService::class)->trustCertificate($tenant->id, $connection->id, $anchor, $client, $caller, KeyUse::METADATA_SIGNING);
 ```
 
 **Choose what you are trusting.** The two ways of keeping up with a provider's certificates each have a cost:
@@ -263,7 +263,7 @@ deadline from it, and the schedule goes on leaving it alone:
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 
-$result = app(MetadataRefresher::class)->refreshNow($tenant->id, $connection->id, $actor, $client);
+$result = app(MetadataRefresher::class)->refreshNow($tenant->id, $connection->id, $caller, $client);
 
 if ($result->outcome === RefreshOutcome::RATE_LIMITED) {
     return back()->withErrors(['metadata' => "Try again in {$result->retryAfter} seconds."]);
@@ -273,7 +273,8 @@ $outcome = $result->outcome;         // RefreshOutcome::REFRESHED, FAILED, CONFL
 $changed = $result->changedSettings; // ['sso_url', 'idp_signing_certificates'], say
 ```
 
-The acting identity is required: every refresh an administrator asks for is reported as theirs. Each counts against the
+The caller is required: every refresh an administrator asks for is reported as theirs, and where the schedule would not
+refresh the connection, the [freshness contract](freshness.md#the-caller) judges it. Each counts against the
 connection's metadata limit (`sso.rate_limits.metadata`, 10 an hour per connection by default, shared with URL imports
 naming the connection) before anything is claimed or fetched, so an administrator cannot hammer the provider.
 `refreshNow()` runs in the request that calls it, so call it from a queued job when the metadata is large. Where the
@@ -375,5 +376,5 @@ php artisan queue:work redis --queue=metadata --timeout=660 --memory=1024
 
 A refresh that changes certificates also reports `KeyRetired` and `KeyAdded`, and one that moves the endpoint
 `ConnectionUpdated`, before `MetadataRefreshed`. Each event's context names the connection and, for `refreshNow()`, the
-acting identity you passed; a scheduled refresh has none. No event carries a certificate, a URL or the metadata. Each is
-dispatched after the refresh's transaction commits; see [Events](events.md).
+identity of the caller you passed as the acting identity; a scheduled refresh has none. No event carries a certificate,
+a URL or the metadata. Each is dispatched after the refresh's transaction commits; see [Events](events.md).

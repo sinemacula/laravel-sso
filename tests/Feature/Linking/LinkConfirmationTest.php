@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
@@ -70,6 +71,9 @@ final class LinkConfirmationTest extends LinkingTestCase
 
     /** @var string Another subject of the same provider. */
     private const string SECOND_SUBJECT = 'second-subject';
+
+    /** @var string The session the person redeems on. */
+    private const string REDEEMER_SESSION = 'session-of-the-redeemer';
 
     /** @var int How many rows a test has made of its own, each of its own subject. */
     private int $rows = 0;
@@ -155,7 +159,7 @@ final class LinkConfirmationTest extends LinkingTestCase
 
         self::assertSame([$own->id], $held);
         self::assertSame([$this->connection->id], LinkConfirmationGate::connectionsHolding($person));
-        self::assertTrue(app(LinkConfirmationGate::class)->allows($person, $this->connection, $held, false));
+        self::assertTrue(app(LinkConfirmationGate::class)->allows(new Caller($person, self::REDEEMER_SESSION), $this->connection, $held, false));
         self::assertSame([[$person->id, $this->connection->id, [$own->id]]], $this->confirmation->asked);
     }
 
@@ -184,17 +188,21 @@ final class LinkConfirmationTest extends LinkingTestCase
     /**
      * Independent authentication confirms: the provenance and any suspension
      * are cleared. The contract is asked in the judgement and again in the
-     * admission, for this identity and connection, naming exactly the link.
+     * admission, for this identity and connection, naming exactly the link, and
+     * each time it is given the caller the redemption was made for, with its
+     * session, as given.
      *
      * @return void
      */
     public function testIndependentAuthenticationConfirms(): void
     {
-        $link = $this->linkByDomain();
+        $link   = $this->linkByDomain();
+        $caller = new Caller(new IdentityReference($this->person->type, $this->person->id), self::REDEEMER_SESSION);
 
         $link->forceFill(['state' => LinkState::SUSPENDED, 'suspended_at' => $this->clock->now()])->save();
 
-        self::assertTrue($this->redeemLink()->isRedeemed());
+        self::assertTrue($this->redeemLink($caller)->isRedeemed());
+        self::assertSame([$caller, $caller], $this->confirmation->callers);
 
         $kept = Link::query()->sole();
 
@@ -733,22 +741,32 @@ final class LinkConfirmationTest extends LinkingTestCase
      */
     private function redeemStandalone(?string $code, ?string $verifier): RedemptionResult
     {
-        return app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, (string) $code, (string) $verifier, Clients::browser(), $this->person);
+        return app(HandoffRedemption::class)->redeem(
+            Purpose::LINK,
+            'web',
+            $this->connection->id,
+            (string) $code,
+            (string) $verifier,
+            Clients::browser(),
+            new Caller($this->person),
+        );
     }
 
     /**
-     * Run a `link` flow for the person, through to its redemption.
+     * Run a `link` flow for the person, through to its redemption by the caller
+     * given, or the person on the redeemer's session.
      *
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      */
-    private function redeemLink(): RedemptionResult
+    private function redeemLink(?Caller $caller = null): RedemptionResult
     {
         $start      = $this->start(Purpose::LINK, $this->person);
         $completion = $this->complete();
 
         self::assertTrue($completion->isCompleted(), (string) $completion->reason?->value);
 
-        return $this->admit($completion, $start, Purpose::LINK, $this->person);
+        return $this->admit($completion, $start, Purpose::LINK, $caller ?? new Caller($this->person, self::REDEEMER_SESSION));
     }
 
     /**

@@ -10,7 +10,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 
 /**
  * Unit tests for the purposes a flow is started for: the three SSO-5.1 names,
- * stable, and which forces fresh authentication.
+ * stable, which forces fresh authentication, and which binds a session.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,5 +41,17 @@ final class PurposeTest extends TestCase
         self::assertTrue(Purpose::REAUTHENTICATE->forcesAuthentication());
         self::assertFalse(Purpose::SIGN_IN->forcesAuthentication());
         self::assertFalse(Purpose::LINK->forcesAuthentication());
+    }
+
+    /**
+     * Only `reauthenticate` is bound to the caller's session.
+     *
+     * @return void
+     */
+    public function testOnlyReauthenticationBindsASession(): void
+    {
+        self::assertTrue(Purpose::REAUTHENTICATE->bindsSession());
+        self::assertFalse(Purpose::SIGN_IN->bindsSession());
+        self::assertFalse(Purpose::LINK->bindsSession());
     }
 }

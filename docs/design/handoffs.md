@@ -43,7 +43,10 @@ completion is in `completion.md`.
 ### Redeeming
 
 `Handoffs\HandoffRedemption::redeem(Purpose $purpose, string $application, string $connectionId, string $code,
-string $verifier)` (`@api`, resolved per request) answers a `Handoffs\RedemptionResult`. The steps run in this fixed
+string $verifier, ClientContext $client, ?Caller $caller = null)` (`@api`, resolved per request), and `admit()` with the
+same arguments inside the caller's transaction, answers a `Handoffs\RedemptionResult`. The caller (`Identities\Caller`)
+is the one the application authenticated, on the session it gave; a `link` compares its identity with the bound one
+and gives it, as given, to freshness and the link confirmation. The steps run in this fixed
 order, and the first that refuses ends the redemption:
 
 1. The attempt is counted with `AttemptSubject::redemption()` against the IP address of the `Http\ClientContext` the
@@ -146,8 +149,8 @@ adapter redeems through `HandoffRedemption` (`docs/guides/integrating-with-larav
   (`@api`, made only by `lock()`) holds the tenant, connection and application it was taken for, the connection's
   locked row (`null` when gone or of another tenant) and the locked enforcement; it is good only for the transaction it
   was taken in.
-- `recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ?IdentityReference $caller = null):
-  Handoffs\Enums\RecheckOutcome` takes the lock (one taken for another tenant, connection or application than the
+- `recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?Caller $caller =
+  null): Handoffs\Enums\RecheckOutcome` takes the lock (one taken for another tenant, connection or application than the
   result's is a `LogicException`), so the check is never reached without the locks, and answers, in order, the first
   that refuses:
   1. `connection_unavailable`: the connection's locked row is gone, of another tenant, or not usable

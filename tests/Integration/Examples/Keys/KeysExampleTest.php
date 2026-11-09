@@ -6,7 +6,6 @@ namespace Tests\Integration\Examples\Keys;
 
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -15,6 +14,7 @@ use SineMacula\Laravel\Sso\Events\KeyMadeCurrent;
 use SineMacula\Laravel\Sso\Events\KeyRetired;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyStatus;
@@ -107,10 +107,11 @@ final class KeysExampleTest extends ExampleTestCase
         // @snippet-start keys-service
         $keys = app(KeyService::class);
         // @snippet-end keys-service
-        $client = Clients::browser();
+        $client  = Clients::browser();
+        $request = self::requestOnSession('/admin/sso/keys');
         // @snippet-start keys-add-first
-        $actor  = new ActingIdentity($user->getMorphClass(), (string) $user->getKey());
-        $result = $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, $client, KeyType::RSA, $actor);
+        $caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId());
+        $result = $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, $client, KeyType::RSA, $caller);
 
         $state = $result->key?->state; // KeyState::CURRENT
         // @snippet-end keys-add-first
@@ -122,16 +123,16 @@ final class KeysExampleTest extends ExampleTestCase
         $this->freshness->assertAsked(FreshnessOperation::KEYS_ROTATE);
 
         $oldKeyId  = $first->id;
-        $next      = self::keyOf($keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, Clients::browser(), actor: $actor)->key);
+        $next      = self::keyOf($keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, Clients::browser(), caller: $caller)->key);
         $nextKeyId = $next->id;
 
         self::assertSame(KeyState::NEXT, $next->state);
-        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, Clients::browser(), actor: $actor)->reason);
+        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $keys->addNext($tenantId, $connectionId, KeyUse::SP_SIGNING, Clients::browser(), caller: $caller)->reason);
         self::assertSame([$oldKeyId, $nextKeyId], self::idsOf(app(KeyRing::class)->published($connectionId, KeyUse::SP_SIGNING)));
 
         $client = Clients::browser();
         // @snippet-start keys-make-current
-        $result = $keys->makeCurrent($tenantId, $connectionId, $nextKeyId, $client, $actor);
+        $result = $keys->makeCurrent($tenantId, $connectionId, $nextKeyId, $client, $caller);
 
         $current  = $result->key;      // the new current key
         $previous = $result->previous; // the old one, now retiring, with retiringUntil set
@@ -149,12 +150,12 @@ final class KeysExampleTest extends ExampleTestCase
 
         $client = Clients::browser();
         // @snippet-start keys-retire
-        $result = $keys->retire($tenantId, $connectionId, $oldKeyId, $client, $actor);
+        $result = $keys->retire($tenantId, $connectionId, $oldKeyId, $client, $caller);
         // @snippet-end keys-retire
         self::assertSame(KeyStatus::RETIRED, $result->status);
         self::assertSame($oldKeyId, self::keyOf($result->key)->id);
-        self::assertSame(FailureReason::KEY_NOT_FOUND, $keys->retire($tenantId, $connectionId, $oldKeyId, Clients::browser(), $actor)->reason);
-        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $keys->retire($tenantId, $connectionId, $nextKeyId, Clients::browser(), $actor)->reason);
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $keys->retire($tenantId, $connectionId, $oldKeyId, Clients::browser(), $caller)->reason);
+        self::assertSame(FailureReason::KEY_STATE_CONFLICT, $keys->retire($tenantId, $connectionId, $nextKeyId, Clients::browser(), $caller)->reason);
         self::assertSame([$nextKeyId], self::idsOf($keys->keys($tenantId, $connectionId) ?? [], KeyUse::SP_SIGNING));
 
         self::assertSame([
@@ -178,7 +179,7 @@ final class KeysExampleTest extends ExampleTestCase
     {
         $tenantId         = self::TENANT;
         $connectionId     = $this->connectionId;
-        $actor            = new ActingIdentity($this->user->getMorphClass(), (string) $this->user->getKey());
+        $caller           = new Caller(new IdentityReference($this->user->getMorphClass(), (string) $this->user->getKey()));
         $keys             = app(KeyService::class);
         $rotated          = new FakeSamlIdentityProvider;
         $certificatePem   = $rotated->certificate();
@@ -186,10 +187,10 @@ final class KeysExampleTest extends ExampleTestCase
 
         $client = Clients::browser();
         // @snippet-start keys-trust-certificate
-        $result = $keys->trustCertificate($tenantId, $connectionId, $certificatePem, $client, $actor);
+        $result = $keys->trustCertificate($tenantId, $connectionId, $certificatePem, $client, $caller);
 
         // Later, once the identity provider signs with the new certificate
-        $removed = $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, $client, $actor);
+        $removed = $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, $client, $caller);
         // @snippet-end keys-trust-certificate
         self::assertSame(KeyStatus::TRUSTED, $result->status);
         self::assertSame([KeyUse::IDP_SIGNING, null], [$result->key?->use, $result->key?->state]);
@@ -207,12 +208,12 @@ final class KeysExampleTest extends ExampleTestCase
 
         [$privateKey, $certificate] = FakeSamlIdentityProvider::keyPair();
 
-        $again   = $keys->trustCertificate($tenantId, $connectionId, $certificatePem, Clients::browser(), $actor);
-        $withKey = $keys->trustCertificate($tenantId, $connectionId, $privateKey . $certificate, Clients::browser(), $actor);
+        $again   = $keys->trustCertificate($tenantId, $connectionId, $certificatePem, Clients::browser(), $caller);
+        $withKey = $keys->trustCertificate($tenantId, $connectionId, $privateKey . $certificate, Clients::browser(), $caller);
 
         self::assertSame([FailureReason::SETTINGS_INVALID, [['certificate', 'duplicate']]], [$again->reason, self::violationsOf($again)]);
         self::assertSame([['certificate', 'private_key_refused']], self::violationsOf($withKey));
-        self::assertSame(FailureReason::KEY_NOT_FOUND, $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, Clients::browser(), $actor)->reason);
+        self::assertSame(FailureReason::KEY_NOT_FOUND, $keys->distrustCertificate($tenantId, $connectionId, $oldCertificateId, Clients::browser(), $caller)->reason);
         self::assertSame([(string) $result->key?->id], $this->trustedCertificateIds());
     }
 

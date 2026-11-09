@@ -6,11 +6,12 @@ namespace Tests\Integration\Examples\SamlMetadata;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\ViewErrorBag;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\ConnectionSummary;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
@@ -98,7 +99,7 @@ abstract class SamlMetadataExampleTestCase extends ExampleTestCase
     {
         return app(ConnectionService::class)->update(self::TENANT, $this->connection->id, [
             'settings' => ['metadata_url' => self::METADATA_URL, ...$settings],
-        ], Clients::browser(), self::actor());
+        ], Clients::browser(), self::caller());
     }
 
     /**
@@ -141,11 +142,11 @@ abstract class SamlMetadataExampleTestCase extends ExampleTestCase
     /**
      * The administrator, as the acting identity of each change.
      *
-     * @return \SineMacula\Laravel\Sso\Administration\ActingIdentity
+     * @return \SineMacula\Laravel\Sso\Identities\Caller
      */
-    protected static function actor(): ActingIdentity
+    protected static function caller(): Caller
     {
-        return new ActingIdentity('App\Models\User', '42');
+        return new Caller(new IdentityReference('App\Models\User', '42'));
     }
 
     /**

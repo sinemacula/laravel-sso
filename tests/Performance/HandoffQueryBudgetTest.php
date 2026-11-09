@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStore;
@@ -352,7 +353,7 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
         $app = $this->app;
 
         $redemption = $app->make(HandoffRedemption::class);
-        $caller     = new IdentityReference('App\Models\User', '42');
+        $caller     = new Caller(new IdentityReference('App\Models\User', '42'));
 
         return DB::connection(StorageConnection::name())->transaction(
             fn (): RedemptionResult => $redemption->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser(), $caller),

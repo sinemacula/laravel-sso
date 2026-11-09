@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
 use SineMacula\Laravel\Sso\Linking\MembershipStanding;
@@ -197,7 +198,8 @@ abstract class LinkingTestCase extends TestCase
     }
 
     /**
-     * Start a flow for the purpose.
+     * Start a flow for the purpose, for the identity on the session as its
+     * caller, when an identity is given.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -206,7 +208,14 @@ abstract class LinkingTestCase extends TestCase
      */
     protected function start(Purpose $purpose = Purpose::SIGN_IN, ?IdentityReference $identity = null, ?string $session = null): StartResult
     {
-        $start = app(AuthorizationRequestService::class)->start('web', $purpose, $this->connection->id, Clients::browser(), null, $identity, $session);
+        $start = app(AuthorizationRequestService::class)->start(
+            'web',
+            $purpose,
+            $this->connection->id,
+            Clients::browser(),
+            null,
+            $identity === null ? null : new Caller($identity, $session),
+        );
 
         static::assertTrue($start->isStarted());
 
@@ -234,21 +243,30 @@ abstract class LinkingTestCase extends TestCase
 
     /**
      * Redeem the completion's code with the start's verifier, inside the
-     * caller's transaction, as a session-admitting redeemer does.
+     * caller's transaction, as a session-admitting redeemer does, for the
+     * caller given; an identity alone is a caller with no session.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $completion
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller|\SineMacula\Laravel\Sso\Identities\IdentityReference|null  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      */
-    protected function admit(CompletionResult $completion, StartResult $start, Purpose $purpose = Purpose::SIGN_IN, ?IdentityReference $caller = null): RedemptionResult
+    protected function admit(CompletionResult $completion, StartResult $start, Purpose $purpose = Purpose::SIGN_IN, Caller|IdentityReference|null $caller = null): RedemptionResult
     {
         $code     = (string) $completion->handoff?->code->reveal();
         $verifier = (string) $start->verifier?->reveal();
 
         return $this->connection->getConnection()->transaction(
-            fn (): RedemptionResult => app(HandoffRedemption::class)->admit($purpose, 'web', $this->connection->id, $code, $verifier, Clients::browser(), $caller),
+            fn (): RedemptionResult => app(HandoffRedemption::class)->admit(
+                $purpose,
+                'web',
+                $this->connection->id,
+                $code,
+                $verifier,
+                Clients::browser(),
+                $caller instanceof IdentityReference ? new Caller($caller) : $caller,
+            ),
         );
     }
 

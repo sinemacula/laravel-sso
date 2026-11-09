@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Flows\NoReauthenticationSessions;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
@@ -345,7 +346,7 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
 
         $client = Clients::browser();
         // @snippet-start reauthenticating-start
-        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $codeChallenge, $identity, $sessionId);
+        $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $codeChallenge, new Caller($identity, $sessionId));
         // @snippet-end reauthenticating-start
         self::assertNull($start->verifier);
 

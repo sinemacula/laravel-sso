@@ -25,17 +25,17 @@ use Tests\Integration\Examples\Clients;
  *     tenant: \Tests\Integration\Examples\SamlConnections\Tenant,
  *     connection_id: string,
  *     certificate: string,
- *     actor: \SineMacula\Laravel\Sso\Administration\ActingIdentity
+ *     caller: \SineMacula\Laravel\Sso\Identities\Caller
  * } $input
  */
 $keys           = $input['keys'];
 $tenant         = $input['tenant'];
 $connectionId   = $input['connection_id'];
 $certificatePem = $input['certificate'];
-$actor          = $input['actor'];
+$caller         = $input['caller'];
 
 $client = Clients::browser();
 // @snippet-start saml-connections-trust
-$keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $client, $actor);
+$keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $client, $caller);
 // @snippet-end saml-connections-trust
 return $keys->keys($tenant->id, $connectionId);

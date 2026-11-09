@@ -5,9 +5,9 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\LinkingByDomain;
 
 use Illuminate\Validation\ValidationException;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use Tests\Integration\Examples\Clients;
 
 /**
@@ -31,12 +31,12 @@ final readonly class LinkingSettings
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  ?string  $organization
-     * @param  \SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \Illuminate\Validation\ValidationException
      */
-    public function enable(string $tenantId, string $connectionId, ?string $organization, ActingIdentity $actor): ConnectionResult
+    public function enable(string $tenantId, string $connectionId, ?string $organization, Caller $caller): ConnectionResult
     {
         $client = Clients::browser();
         // @snippet-start linking-policy-change
@@ -45,7 +45,7 @@ final readonly class LinkingSettings
             'issuer_class'       => 'shared', // or single_organization, acknowledged
             'organization_claim' => 'hd',
             'organization_value' => $organization,
-        ], $client, $actor);
+        ], $client, $caller);
 
         if ($result->isInvalid()) {
             // Each violation names a setting and a code, never the value given

@@ -10,6 +10,8 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 
 /**
@@ -46,10 +48,10 @@ final class FakeFreshnessTest extends TestCase
     public function testAnswersTheOutcomeItWasBuiltWith(): void
     {
         foreach (FreshnessOperation::cases() as $operation) {
-            self::assertSame(FreshnessOutcome::FRESH, (new FakeFreshness)->check($operation, 300));
-            self::assertSame(FreshnessOutcome::FRESH, FakeFreshness::fresh()->check($operation, 300));
-            self::assertSame(FreshnessOutcome::STALE, FakeFreshness::stale()->check($operation, 300));
-            self::assertSame(FreshnessOutcome::STALE, (new FakeFreshness(FreshnessOutcome::STALE))->check($operation, 300));
+            self::assertSame(FreshnessOutcome::FRESH, (new FakeFreshness)->check($operation, 300, null));
+            self::assertSame(FreshnessOutcome::FRESH, FakeFreshness::fresh()->check($operation, 300, null));
+            self::assertSame(FreshnessOutcome::STALE, FakeFreshness::stale()->check($operation, 300, null));
+            self::assertSame(FreshnessOutcome::STALE, (new FakeFreshness(FreshnessOutcome::STALE))->check($operation, 300, null));
         }
     }
 
@@ -81,7 +83,7 @@ final class FakeFreshnessTest extends TestCase
                 ? FreshnessOutcome::STALE
                 : FreshnessOutcome::FRESH;
 
-            self::assertSame($expected, $freshness->check($operation, 300), $operation->value);
+            self::assertSame($expected, $freshness->check($operation, 300, null), $operation->value);
         }
     }
 
@@ -95,8 +97,8 @@ final class FakeFreshnessTest extends TestCase
     {
         $freshness = FakeFreshness::stale()->staleFor(FreshnessOperation::KEYS_ROTATE);
 
-        self::assertSame(FreshnessOutcome::STALE, $freshness->check(FreshnessOperation::KEYS_ROTATE, 300));
-        self::assertSame(FreshnessOutcome::FRESH, $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300));
+        self::assertSame(FreshnessOutcome::STALE, $freshness->check(FreshnessOperation::KEYS_ROTATE, 300, null));
+        self::assertSame(FreshnessOutcome::FRESH, $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300, null));
     }
 
     /**
@@ -111,9 +113,9 @@ final class FakeFreshnessTest extends TestCase
             ->staleFor(FreshnessOperation::DOMAIN_CLAIM)
             ->staleFor(FreshnessOperation::DOMAIN_VERIFY, FreshnessOperation::DOMAIN_CLAIM);
 
-        self::assertSame(FreshnessOutcome::STALE, $freshness->check(FreshnessOperation::DOMAIN_CLAIM, 300));
-        self::assertSame(FreshnessOutcome::STALE, $freshness->check(FreshnessOperation::DOMAIN_VERIFY, 300));
-        self::assertSame(FreshnessOutcome::FRESH, $freshness->check(FreshnessOperation::DOMAIN_REMOVE, 300));
+        self::assertSame(FreshnessOutcome::STALE, $freshness->check(FreshnessOperation::DOMAIN_CLAIM, 300, null));
+        self::assertSame(FreshnessOutcome::STALE, $freshness->check(FreshnessOperation::DOMAIN_VERIFY, 300, null));
+        self::assertSame(FreshnessOutcome::FRESH, $freshness->check(FreshnessOperation::DOMAIN_REMOVE, 300, null));
     }
 
     /**
@@ -126,30 +128,32 @@ final class FakeFreshnessTest extends TestCase
         $freshness = FakeFreshness::stale()->staleFor();
 
         foreach (FreshnessOperation::cases() as $operation) {
-            self::assertSame(FreshnessOutcome::FRESH, $freshness->check($operation, 300));
+            self::assertSame(FreshnessOutcome::FRESH, $freshness->check($operation, 300, null));
         }
     }
 
     /**
-     * Every question is recorded with its maximum age, in order, a repeat and a
-     * refused one included, and nothing before the first.
+     * Every question is recorded with its maximum age and its caller, as given
+     * or none, in order, a repeat and a refused one included, and nothing
+     * before the first.
      *
      * @return void
      */
     public function testRecordsEveryQuestionInOrder(): void
     {
         $freshness = FakeFreshness::fresh()->staleFor(FreshnessOperation::LINK_CREATE);
+        $caller    = new Caller(new IdentityReference('App\Models\User', '42'), 'session-1');
 
         self::assertSame([], $freshness->asked());
 
-        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 120);
-        $freshness->check(FreshnessOperation::LINK_CREATE, 60);
-        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 3600);
+        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 120, $caller);
+        $freshness->check(FreshnessOperation::LINK_CREATE, 60, null);
+        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 3600, $caller);
 
         self::assertSame([
-            ['operation' => FreshnessOperation::CONNECTION_TRUST, 'max_age_seconds' => 120],
-            ['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 60],
-            ['operation' => FreshnessOperation::CONNECTION_TRUST, 'max_age_seconds' => 3600],
+            ['operation' => FreshnessOperation::CONNECTION_TRUST, 'max_age_seconds' => 120, 'caller' => $caller],
+            ['operation' => FreshnessOperation::LINK_CREATE, 'max_age_seconds' => 60, 'caller' => null],
+            ['operation' => FreshnessOperation::CONNECTION_TRUST, 'max_age_seconds' => 3600, 'caller' => $caller],
         ], $freshness->asked());
     }
 
@@ -164,11 +168,11 @@ final class FakeFreshnessTest extends TestCase
         $first  = FakeFreshness::fresh()->staleFor(FreshnessOperation::CONNECTION_ENABLE);
         $second = FakeFreshness::fresh();
 
-        $first->check(FreshnessOperation::CONNECTION_ENABLE, 300);
+        $first->check(FreshnessOperation::CONNECTION_ENABLE, 300, null);
 
-        self::assertSame(FreshnessOutcome::FRESH, $second->check(FreshnessOperation::CONNECTION_ENABLE, 300));
+        self::assertSame(FreshnessOutcome::FRESH, $second->check(FreshnessOperation::CONNECTION_ENABLE, 300, null));
         self::assertCount(1, $first->asked());
-        self::assertSame([['operation' => FreshnessOperation::CONNECTION_ENABLE, 'max_age_seconds' => 300]], $second->asked());
+        self::assertSame([['operation' => FreshnessOperation::CONNECTION_ENABLE, 'max_age_seconds' => 300, 'caller' => null]], $second->asked());
     }
 
     /**
@@ -181,8 +185,8 @@ final class FakeFreshnessTest extends TestCase
     {
         $freshness = FakeFreshness::stale();
 
-        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 120);
-        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300);
+        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 120, null);
+        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300, null);
 
         $freshness->assertAsked(FreshnessOperation::CONNECTION_TRUST);
         $freshness->assertAsked(FreshnessOperation::CONNECTION_TRUST, 120);
@@ -198,7 +202,7 @@ final class FakeFreshnessTest extends TestCase
     {
         $freshness = FakeFreshness::fresh();
 
-        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300);
+        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300, null);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Expected [sso.connection.delete] to be asked; it was not.');
@@ -216,7 +220,7 @@ final class FakeFreshnessTest extends TestCase
     {
         $freshness = FakeFreshness::fresh();
 
-        $freshness->check(FreshnessOperation::KEYS_ROTATE, 300);
+        $freshness->check(FreshnessOperation::KEYS_ROTATE, 300, null);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Expected [sso.keys.rotate with a maximum age of 60 seconds] to be asked; it was not.');
@@ -249,9 +253,9 @@ final class FakeFreshnessTest extends TestCase
 
         $freshness->assertAskedExactly([]);
 
-        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300);
-        $freshness->check(FreshnessOperation::CONNECTION_IDP_INITIATED, 60);
-        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300);
+        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300, null);
+        $freshness->check(FreshnessOperation::CONNECTION_IDP_INITIATED, 60, null);
+        $freshness->check(FreshnessOperation::CONNECTION_TRUST, 300, null);
 
         $freshness->assertAskedExactly([FreshnessOperation::CONNECTION_TRUST, FreshnessOperation::CONNECTION_IDP_INITIATED, FreshnessOperation::CONNECTION_TRUST]);
     }
@@ -265,8 +269,8 @@ final class FakeFreshnessTest extends TestCase
     {
         $freshness = FakeFreshness::fresh();
 
-        $freshness->check(FreshnessOperation::DOMAIN_CLAIM, 300);
-        $freshness->check(FreshnessOperation::DOMAIN_VERIFY, 300);
+        $freshness->check(FreshnessOperation::DOMAIN_CLAIM, 300, null);
+        $freshness->check(FreshnessOperation::DOMAIN_VERIFY, 300, null);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Expected exactly [sso.domain.verify, sso.domain.claim] to be asked, in order.');
@@ -284,8 +288,8 @@ final class FakeFreshnessTest extends TestCase
     {
         $freshness = FakeFreshness::fresh();
 
-        $freshness->check(FreshnessOperation::ENFORCEMENT_UPDATE, 300);
-        $freshness->check(FreshnessOperation::ENFORCEMENT_UPDATE, 300);
+        $freshness->check(FreshnessOperation::ENFORCEMENT_UPDATE, 300, null);
+        $freshness->check(FreshnessOperation::ENFORCEMENT_UPDATE, 300, null);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Expected exactly [sso.enforcement.update] to be asked, in order.');
@@ -315,7 +319,7 @@ final class FakeFreshnessTest extends TestCase
     {
         $freshness = FakeFreshness::stale();
 
-        $freshness->check(FreshnessOperation::LINK_REMOVE, 300);
+        $freshness->check(FreshnessOperation::LINK_REMOVE, 300, null);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Expected exactly [] to be asked, in order.');
@@ -342,7 +346,7 @@ final class FakeFreshnessTest extends TestCase
     {
         $freshness = FakeFreshness::stale();
 
-        $freshness->check(FreshnessOperation::CONNECTION_ENABLE, 300);
+        $freshness->check(FreshnessOperation::CONNECTION_ENABLE, 300, null);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Expected nothing to be asked.');
@@ -362,7 +366,7 @@ final class FakeFreshnessTest extends TestCase
 
         $freshness->assertNotAsked(FreshnessOperation::CONNECTION_DELETE);
 
-        $freshness->check(FreshnessOperation::CONNECTION_ENABLE, 300);
+        $freshness->check(FreshnessOperation::CONNECTION_ENABLE, 300, null);
 
         $freshness->assertNotAsked(FreshnessOperation::CONNECTION_DELETE);
     }
@@ -377,8 +381,8 @@ final class FakeFreshnessTest extends TestCase
     {
         $freshness = FakeFreshness::fresh();
 
-        $freshness->check(FreshnessOperation::CONNECTION_ENABLE, 300);
-        $freshness->check(FreshnessOperation::CONNECTION_DELETE, 300);
+        $freshness->check(FreshnessOperation::CONNECTION_ENABLE, 300, null);
+        $freshness->check(FreshnessOperation::CONNECTION_DELETE, 300, null);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Expected [sso.connection.delete] not to be asked; it was.');

@@ -21,11 +21,11 @@ use Tests\Integration\Examples\Clients;
 /**
  * @var array{
  *     tenant: \Tests\Integration\Examples\SamlConnections\Tenant,
- *     actor: \SineMacula\Laravel\Sso\Administration\ActingIdentity
+ *     caller: \SineMacula\Laravel\Sso\Identities\Caller
  * } $input
  */
 $tenant = $input['tenant'];
-$actor  = $input['actor'];
+$caller = $input['caller'];
 
 $client = Clients::browser();
 // @snippet-start saml-connections-create
@@ -42,7 +42,7 @@ $result = app(ConnectionService::class)->create(
         'sso_binding'    => 'http_redirect',
         'name_id_format' => 'persistent',
     ],
-    actor: $actor,
+    caller: $caller,
 );
 // @snippet-end saml-connections-create
 return $result;

@@ -8,12 +8,17 @@ use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Domains\DomainService;
+use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainStatus;
 use SineMacula\Laravel\Sso\Events\DomainClaimed;
 use SineMacula\Laravel\Sso\Events\DomainRemoved;
 use SineMacula\Laravel\Sso\Events\DomainVerified;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
  * Feature tests for the client the domain helpers are given: each claim,
@@ -101,6 +106,52 @@ final class DomainServiceTest extends DomainServiceTestCase
         self::assertSame(DomainStatus::REMOVED, $result->status);
         $this->assertEventSequence([DomainRemoved::class]);
         $this->assertCarriesTheClient($this->recordedEvents()[0], null);
+    }
+
+    /**
+     * Each change asks freshness for the caller it is given, its session
+     * included, and the one its event names as acting: a claim, a verification
+     * and a removal, each with its own operation.
+     *
+     * @return void
+     */
+    public function testEachChangeAsksFreshnessForItsCaller(): void
+    {
+        $caller = new Caller(new IdentityReference('App\Models\User', '42'), 'session-1');
+
+        $this->dns->publishes(self::summaryOf($this->domains()->claim(self::TENANT, $this->connection->id, 'example.com', $this->client, $caller)));
+
+        self::assertSame(DomainStatus::VERIFIED, $this->domains()->verify(self::TENANT, $this->connection->id, 'example.com', $this->client, $caller)->status);
+        self::assertSame(DomainStatus::REMOVED, $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com', $this->client, $caller)->status);
+
+        self::assertSame([FreshnessOperation::DOMAIN_CLAIM, FreshnessOperation::DOMAIN_VERIFY, FreshnessOperation::DOMAIN_REMOVE], $this->freshness->operations());
+        self::assertSame([$caller, $caller, $caller], $this->freshness->callers());
+        self::assertSame('42', $this->recordedEvents()[0]->context()->actingIdentityId);
+    }
+
+    /**
+     * A stale caller is refused each change with `freshness_required`, and
+     * nothing is claimed, verified or removed.
+     *
+     * @return void
+     */
+    public function testAStaleCallerIsRefusedEachChange(): void
+    {
+        $this->dns->publishes(self::summaryOf($this->domains()->claim(self::TENANT, $this->connection->id, 'example.com', $this->client, $this->actor)));
+        $this->freshness->answer(FreshnessOutcome::STALE);
+        $this->startRecordingEvents();
+
+        $claimed  = $this->domains()->claim(self::TENANT, $this->connection->id, 'example.org', $this->client, $this->actor);
+        $verified = $this->domains()->verify(self::TENANT, $this->connection->id, 'example.com', $this->client, $this->actor);
+        $removed  = $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com', $this->client, $this->actor);
+
+        self::assertSame(
+            [FailureReason::FRESHNESS_REQUIRED, FailureReason::FRESHNESS_REQUIRED, FailureReason::FRESHNESS_REQUIRED],
+            [$claimed->reason, $verified->reason, $removed->reason],
+        );
+        self::assertSame(DomainState::PENDING, $this->domains()->get(self::TENANT, $this->connection->id, 'example.com')?->state);
+        self::assertNull($this->domains()->get(self::TENANT, $this->connection->id, 'example.org'));
+        $this->assertEventSequence([]);
     }
 
     /**

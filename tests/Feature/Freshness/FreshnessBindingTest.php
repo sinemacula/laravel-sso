@@ -39,7 +39,7 @@ final class FreshnessBindingTest extends TestCase
         self::assertInstanceOf(RefusingFreshness::class, $this->freshness());
 
         foreach (FreshnessOperation::cases() as $operation) {
-            self::assertSame(FreshnessOutcome::STALE, $this->freshness()->check($operation, 300));
+            self::assertSame(FreshnessOutcome::STALE, $this->freshness()->check($operation, 300, null));
         }
     }
 
@@ -85,7 +85,7 @@ final class FreshnessBindingTest extends TestCase
         (new SsoServiceProvider($app))->register();
 
         self::assertSame($freshness, $this->freshness());
-        self::assertSame(FreshnessOutcome::FRESH, $this->freshness()->check(FreshnessOperation::CONNECTION_TRUST, 300));
+        self::assertSame(FreshnessOutcome::FRESH, $this->freshness()->check(FreshnessOperation::CONNECTION_TRUST, 300, null));
     }
 
     /**

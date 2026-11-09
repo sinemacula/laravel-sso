@@ -7,7 +7,6 @@ namespace Tests\Feature\Administration;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
@@ -20,6 +19,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Freshness\RefusingFreshness;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyResult;
@@ -90,8 +91,8 @@ final class FreshnessConventionTest extends TestCase
         'sso_url'       => 'https://idp.example.com/sso',
     ];
 
-    /** @var \SineMacula\Laravel\Sso\Administration\ActingIdentity Who makes each change. */
-    private ActingIdentity $actor;
+    /** @var \SineMacula\Laravel\Sso\Identities\Caller Who makes each change. */
+    private Caller $actor;
 
     /** @var string The OIDC connection. */
     private string $oidc;
@@ -124,7 +125,7 @@ final class FreshnessConventionTest extends TestCase
     {
         parent::setUp();
 
-        $this->actor = new ActingIdentity('App\Models\User', '42');
+        $this->actor = new Caller(new IdentityReference('App\Models\User', '42'), 'session-1');
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00Z'));
 
@@ -213,7 +214,7 @@ final class FreshnessConventionTest extends TestCase
         $freshness->assertAskedExactly($operations);
 
         $expected = array_map(
-            static fn (FreshnessOperation $operation): array => ['operation' => $operation, 'max_age_seconds' => self::MAX_AGES[$operation->configKey()]],
+            fn (FreshnessOperation $operation): array => ['operation' => $operation, 'max_age_seconds' => self::MAX_AGES[$operation->configKey()], 'caller' => $this->actor],
             $operations,
         );
 
@@ -222,6 +223,27 @@ final class FreshnessConventionTest extends TestCase
         foreach ($operations as $operation) {
             $freshness->assertAsked($operation, self::MAX_AGES[$operation->configKey()]);
         }
+    }
+
+    /**
+     * The caller a change is asked about, with its session, is the one its
+     * event names as acting: its identity, and never its session.
+     *
+     * @return void
+     */
+    public function testTheCallerAskedAboutIsTheOneTheEventNames(): void
+    {
+        $freshness = $this->freshness();
+
+        $this->startRecordingEvents();
+
+        self::assertTrue($this->mutate('update trust setting')->isSucceeded());
+
+        $context = $this->recordedEvents()[0]->context();
+
+        self::assertSame([$this->actor], array_column($freshness->asked(), 'caller'));
+        self::assertSame(['App\Models\User', '42'], [$context->actingIdentityMorphClass, $context->actingIdentityId]);
+        self::assertNull($context->sessionId);
     }
 
     /**
@@ -302,7 +324,7 @@ final class FreshnessConventionTest extends TestCase
     private function connectionMutations(): array
     {
         return [
-            'create'               => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, actor: $this->actor),
+            'create'               => fn (): ConnectionResult => $this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, caller: $this->actor),
             'update trust setting' => fn (): ConnectionResult => $this->connections()->update(
                 self::TENANT,
                 $this->oidc,
@@ -387,15 +409,15 @@ final class FreshnessConventionTest extends TestCase
     {
         $this->freshness();
 
-        $oidc = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC, actor: $this->actor);
-        $saml = $this->connections()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML, actor: $this->actor);
+        $oidc = $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC, caller: $this->actor);
+        $saml = $this->connections()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML, caller: $this->actor);
         $on   = $this->connections()->create(
             self::TENANT,
             'saml2',
             'Started by the IdP',
             Clients::browser(),
             self::SAML + ['idp_initiated' => true, 'idp_initiated_start_url' => 'https://app.example.com/start'],
-            actor: $this->actor,
+            caller: $this->actor,
         );
 
         $this->oidc             = (string) $oidc->connection?->id;

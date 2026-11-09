@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
 use SineMacula\Laravel\Sso\Flows\StartEligibility;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\Concerns\UsesConnections;
@@ -74,26 +75,28 @@ final class StartEligibilityTest extends TestCase
      */
     public function testASignInMayAlwaysStart(): void
     {
-        self::assertNull($this->eligibility()->refusal(Purpose::SIGN_IN, $this->connection, null, null));
+        self::assertNull($this->eligibility()->refusal(Purpose::SIGN_IN, $this->connection, null));
         self::assertSame([], $this->freshness->asked());
     }
 
     /**
      * A `link` may start once the freshness contract answers `fresh` for
-     * `sso.link.create`, and is `freshness_required` when it answers `stale`.
+     * `sso.link.create`, asked for the caller as given, its session included,
+     * and is `freshness_required` when it answers `stale`.
      *
      * @return void
      */
     public function testALinkNeedsAFreshAuthentication(): void
     {
-        $identity = new IdentityReference('App\Models\User', '7');
+        $caller = new Caller(new IdentityReference('App\Models\User', '7'), 'session-1');
 
-        self::assertNull($this->eligibility()->refusal(Purpose::LINK, $this->connection, $identity, null));
+        self::assertNull($this->eligibility()->refusal(Purpose::LINK, $this->connection, $caller));
         self::assertSame([FreshnessOperation::LINK_CREATE], $this->freshness->operations());
+        self::assertSame([$caller], $this->freshness->callers());
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $this->eligibility()->refusal(Purpose::LINK, $this->connection, $identity, null));
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $this->eligibility()->refusal(Purpose::LINK, $this->connection, $caller));
     }
 
     /**
@@ -105,13 +108,13 @@ final class StartEligibilityTest extends TestCase
      */
     public function testAReauthenticationNeedsTheIdentitySignedInOnTheSession(): void
     {
-        $identity = new IdentityReference('App\Models\User', '7');
+        $caller = new Caller(new IdentityReference('App\Models\User', '7'), 'session-1');
 
-        self::assertNull($this->eligibility()->refusal(Purpose::REAUTHENTICATE, $this->connection, $identity, 'session-1'));
+        self::assertNull($this->eligibility()->refusal(Purpose::REAUTHENTICATE, $this->connection, $caller));
 
         $this->sessions->standing = SessionStanding::NOT_SIGNED_IN;
 
-        self::assertSame(FailureReason::SESSION_INELIGIBLE, $this->eligibility()->refusal(Purpose::REAUTHENTICATE, $this->connection, $identity, 'session-1'));
+        self::assertSame(FailureReason::SESSION_INELIGIBLE, $this->eligibility()->refusal(Purpose::REAUTHENTICATE, $this->connection, $caller));
         self::assertSame([], $this->freshness->asked());
     }
 

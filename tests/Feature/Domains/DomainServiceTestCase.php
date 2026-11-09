@@ -4,13 +4,14 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Domains;
 
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Domains\DomainResult;
 use SineMacula\Laravel\Sso\Domains\DomainService;
 use SineMacula\Laravel\Sso\Domains\DomainSummary;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 use Tests\Concerns\RecordsEventSequences;
@@ -52,8 +53,8 @@ abstract class DomainServiceTestCase extends TestCase
     /** @var \SineMacula\Laravel\Sso\Models\Connection The tenant's connection. */
     protected Connection $connection;
 
-    /** @var \SineMacula\Laravel\Sso\Administration\ActingIdentity Who makes each change. */
-    protected ActingIdentity $actor;
+    /** @var \SineMacula\Laravel\Sso\Identities\Caller Who makes each change. */
+    protected Caller $actor;
 
     /**
      * Bind the clock, the freshness contract and the resolver, create the
@@ -69,7 +70,7 @@ abstract class DomainServiceTestCase extends TestCase
         $this->clock     = new FixedClock('2026-11-01T09:30:00Z');
         $this->freshness = new RecordingFreshness;
         $this->dns       = new FakeDnsResolver;
-        $this->actor     = new ActingIdentity('App\Models\User', '42');
+        $this->actor     = new Caller(new IdentityReference('App\Models\User', '42'));
 
         $this->app?->instance(Clock::class, $this->clock);
         $this->app?->instance(Freshness::class, $this->freshness);

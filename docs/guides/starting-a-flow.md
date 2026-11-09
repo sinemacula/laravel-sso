@@ -60,8 +60,8 @@ Always send `headers()` with the body: every answer carries `Cache-Control: no-s
 `Retry-After`. A started answer may carry a verifier, which must never be cached by the browser, a proxy or a CDN.
 
 The application name comes from your client and is checked exactly against `sso.applications`. The purpose and, for
-`link` and `reauthenticate`, the identity and the session must come from your own authentication, never from the
-request body (see [Purposes](#purposes)).
+`link` and `reauthenticate`, the caller (an `Identities\Caller` of the identity and the session it is on) must come from
+your own authentication, never from the request body (see [Purposes](#purposes)).
 
 ## The answer
 
@@ -129,26 +129,29 @@ API, and of the `state` or `RelayState` sent to the provider, which are random v
 
 ## Purposes
 
-| Purpose          | Identity     | Session | Before it starts                                                                  |
-|------------------|--------------|---------|-----------------------------------------------------------------------------------|
-| `sign_in`        | none         | none    | nothing more                                                                      |
-| `link`           | the caller's | none    | the freshness contract is asked `sso.link.create` (see [Freshness](freshness.md)) |
-| `reauthenticate` | the caller's | its id  | `Contracts\ReauthenticationSessions` must answer `signed_in`                      |
+| Purpose          | Caller                                           | Bound to                      | Before it starts                                                                                  |
+|------------------|--------------------------------------------------|-------------------------------|---------------------------------------------------------------------------------------------------|
+| `sign_in`        | none                                             | nothing                       | nothing more                                                                                      |
+| `link`           | the signed-in identity, with its session or not  | the identity                  | the freshness contract is asked `sso.link.create` for the caller (see [Freshness](freshness.md))  |
+| `reauthenticate` | the signed-in identity, on its session           | the identity and the session  | `Contracts\ReauthenticationSessions` must answer `signed_in`                                      |
 
 <!-- snippet: tests/Integration/Examples/StartingAFlow/caller.php#start-for-the-caller -->
 
 ```php
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
-$identity = new IdentityReference($user->getMorphClass(), (string) $user->getKey());
+$caller = new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $sessionId);
 
-$linking          = $requests->start('web', Purpose::LINK, $connectionId, $client, $challenge, $identity);
-$reauthenticating = $requests->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $challenge, $identity, $sessionId);
+$linking          = $requests->start('web', Purpose::LINK, $connectionId, $client, $challenge, $caller);
+$reauthenticating = $requests->start('web', Purpose::REAUTHENTICATE, $connectionId, $client, $challenge, $caller);
 ```
 
-Any other combination, or a session id that is empty or longer than 255 bytes, is an `InvalidArgumentException`: a
-mistake in your code, not a refusal.
+A `link` gives the caller's session, when you pass one, to the freshness contract alone: the request stores the identity
+and no session. Any other combination (a caller for a `sign_in`, none for a `link`, none or one with no session for a
+`reauthenticate`), or a session id that is empty or longer than 255 bytes, is an `InvalidArgumentException`: a mistake
+in your code, not a refusal.
 
 > [!IMPORTANT]
 > The default freshness contract refuses every operation, so every `link` is refused with `freshness_required` until

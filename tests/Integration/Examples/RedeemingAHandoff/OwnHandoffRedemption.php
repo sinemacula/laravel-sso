@@ -11,7 +11,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Http\ClientContext;
-use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
 
 /**
@@ -61,7 +61,7 @@ final readonly class OwnHandoffRedemption
      * @param  string  $value
      * @param  string  $verifier
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
      *
      * @throws \Throwable
@@ -71,7 +71,7 @@ final readonly class OwnHandoffRedemption
         #[\SensitiveParameter] string $value,
         #[\SensitiveParameter] string $verifier,
         ClientContext $client,
-        ?IdentityReference $caller = null,
+        ?Caller $caller = null,
     ): ?FailureReason {
         // Read the code plainly first, to learn the result it carries
         $code = $this->codes->find($value);
@@ -87,12 +87,12 @@ final readonly class OwnHandoffRedemption
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $verifier
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
      *
      * @throws \Throwable
      */
-    private function admit(OwnHandoffCode $code, Purpose $purpose, #[\SensitiveParameter] string $verifier, ClientContext $client, ?IdentityReference $caller): ?FailureReason
+    private function admit(OwnHandoffCode $code, Purpose $purpose, #[\SensitiveParameter] string $verifier, ClientContext $client, ?Caller $caller): ?FailureReason
     {
         // @snippet-start own-code-redemption
         return DB::connection(StorageConnection::name())->transaction(function () use ($code, $purpose, $verifier, $client, $caller): ?FailureReason {

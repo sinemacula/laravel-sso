@@ -7,7 +7,6 @@ namespace Tests\Feature\Connections;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\ImportSaver;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
@@ -16,6 +15,8 @@ use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Metadata\DiscoveryImporter;
@@ -378,7 +379,7 @@ final class ImportSaverTest extends TestCase
             ['settings' => $proposed->settings()],
             $proposed->fetch(),
             Clients::browser(),
-            new ActingIdentity('App\Models\User', '42'),
+            new Caller(new IdentityReference('App\Models\User', '42')),
         );
         $row    = $this->row($connection);
         $events = $this->recordedEvents();

@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Flows\RequestEvents;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -174,7 +175,8 @@ final class StartEventSequenceTest extends TestCase
 
     /**
      * A full limit reports one `rate_limited`, with the purpose and the
-     * identity the application gave, before any application is admitted.
+     * identity the application gave, before any application is admitted; a
+     * `link` binds no session, so the caller's is not reported.
      *
      * @return void
      */
@@ -184,7 +186,7 @@ final class StartEventSequenceTest extends TestCase
 
         $this->startFlow();
         $this->startRecordingEvents();
-        $this->startFlow(Purpose::LINK, identity: self::identity());
+        $this->startFlow(Purpose::LINK, identity: self::identity(), sessionId: 'session-1');
 
         $this->assertEventSequence([FlowFailed::class]);
 
@@ -288,7 +290,8 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * A stale `link` reports one `freshness_required`, with the connection.
+     * A stale `link` reports one `freshness_required`, with the connection and
+     * not the session the caller gave to freshness.
      *
      * @return void
      */
@@ -296,7 +299,7 @@ final class StartEventSequenceTest extends TestCase
     {
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $this->startFlow(Purpose::LINK, identity: self::identity());
+        $this->startFlow(Purpose::LINK, identity: self::identity(), sessionId: 'session-1');
 
         $this->assertEventSequence([FlowFailed::class]);
 
@@ -497,8 +500,7 @@ final class StartEventSequenceTest extends TestCase
             $connectionId ?? $this->connection->id,
             self::client(),
             $codeChallenge,
-            $identity,
-            $sessionId,
+            $identity === null ? null : new Caller($identity, $sessionId),
         );
     }
 

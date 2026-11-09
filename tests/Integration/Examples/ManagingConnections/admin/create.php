@@ -8,8 +8,9 @@ declare(strict_types = 1);
  * its own authorisation has let the signed-in user manage the tenant's
  * connections, given the connection service, the tenant, that user and the
  * request: the package creates a disabled Google Workspace connection from the
- * `google` preset and the client the form names, carrying the user as the
- * acting identity on the event it reports. An invalid form goes back with each
+ * `google` preset and the client the form names, for the user on their session
+ * as the caller: freshness judges that caller, and the event it reports names
+ * the user as the acting identity. An invalid form goes back with each
  * violation under the setting it names; any other result is answered for the
  * endpoint to turn into its response.
  *
@@ -33,9 +34,10 @@ $user        = $input['user'];
 $request     = $input['request'];
 
 // @snippet-start connections-create
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 $result = $connections->create(
     tenantId: $tenant->id,
@@ -47,7 +49,7 @@ $result = $connections->create(
         'client_secret' => $request->input('client_secret'),
     ],
     preset: 'google',
-    actor: new ActingIdentity($user->getMorphClass(), (string) $user->getKey()),
+    caller: new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId()),
 );
 
 if ($result->isInvalid()) {

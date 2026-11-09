@@ -8,13 +8,14 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshed;
 use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyRing;
@@ -244,7 +245,7 @@ final class MetadataApplierTest extends TestCase
         $this->app?->instance('request', Request::create('/', 'POST', server: ['REMOTE_ADDR' => '198.51.100.9', 'HTTP_USER_AGENT' => 'Served/1.0']));
         $this->startRecordingEvents();
 
-        $actor = new ActingIdentity('App\Models\Admin', '9');
+        $actor = new Caller(new IdentityReference('App\Models\Admin', '9'));
 
         $this->applier()->apply($this->claim(), self::metadata([0], ['sso_url' => self::MOVED_URL]), $this->clock->now(), new ClientContext('203.0.113.7', 'Example/1.0'), $actor);
 
@@ -650,7 +651,7 @@ final class MetadataApplierTest extends TestCase
 
         $this->connection->forceFill(['metadata_version' => 1])->save();
 
-        $result = $this->applier()->fail($claim, FailureReason::FETCH_FAILED, Clients::browser(), new ActingIdentity('App\Models\User', '42'));
+        $result = $this->applier()->fail($claim, FailureReason::FETCH_FAILED, Clients::browser(), new Caller(new IdentityReference('App\Models\User', '42')));
 
         self::assertSame([RefreshOutcome::CONFLICT, FailureReason::METADATA_CONFLICT], [$result->outcome, $result->reason]);
         self::assertSame([0, null], [$this->row()->metadata_refresh_failures, $this->row()->metadata_refresh_at]);

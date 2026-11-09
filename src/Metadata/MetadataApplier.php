@@ -5,12 +5,12 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Metadata;
 
 use Carbon\CarbonImmutable;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -116,19 +116,19 @@ final readonly class MetadataApplier
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
      * @param  \Carbon\CarbonImmutable  $validatedAt
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \Throwable
      */
-    public function apply(RefreshClaim $claim, IdpMetadata $metadata, CarbonImmutable $validatedAt, ClientContext $client, ?ActingIdentity $actor = null): RefreshResult
+    public function apply(RefreshClaim $claim, IdpMetadata $metadata, CarbonImmutable $validatedAt, ClientContext $client, ?Caller $caller = null): RefreshResult
     {
-        return $this->writer->locked($claim, self::trustedOf(...), function (Connection $locked) use ($metadata, $validatedAt, $actor, $client): RefreshResult {
+        return $this->writer->locked($claim, self::trustedOf(...), function (Connection $locked) use ($metadata, $validatedAt, $caller, $client): RefreshResult {
 
             $refusal = $this->refusal($locked, $metadata, $validatedAt);
 
-            return $refusal === null ? $this->written($locked, $metadata, $validatedAt, $actor, $client) : $this->writer->failed($locked, $refusal, $actor, $client);
-        }, $actor, $client);
+            return $refusal === null ? $this->written($locked, $metadata, $validatedAt, $caller, $client) : $this->writer->failed($locked, $refusal, $caller, $client);
+        }, $caller, $client);
     }
 
     /**
@@ -139,18 +139,18 @@ final readonly class MetadataApplier
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \Throwable
      */
-    public function fail(RefreshClaim $claim, FailureReason $reason, ClientContext $client, ?ActingIdentity $actor = null): RefreshResult
+    public function fail(RefreshClaim $claim, FailureReason $reason, ClientContext $client, ?Caller $caller = null): RefreshResult
     {
         return $this->writer->locked(
             $claim,
             self::trustedOf(...),
-            fn (Connection $locked): RefreshResult => $this->writer->failed($locked, $reason, $actor, $client),
-            $actor,
+            fn (Connection $locked): RefreshResult => $this->writer->failed($locked, $reason, $caller, $client),
+            $caller,
             $client,
         );
     }
@@ -221,19 +221,19 @@ final readonly class MetadataApplier
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
      * @param  \Carbon\CarbonImmutable  $validatedAt
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function written(Connection $locked, IdpMetadata $metadata, CarbonImmutable $validatedAt, ?ActingIdentity $actor, ClientContext $client): RefreshResult
+    private function written(Connection $locked, IdpMetadata $metadata, CarbonImmutable $validatedAt, ?Caller $caller, ClientContext $client): RefreshResult
     {
-        $changes = $this->keys->replaceTrustedCertificatesLocked($locked, array_column($metadata->signingCertificates(), 'certificate'), $client, $actor);
+        $changes = $this->keys->replaceTrustedCertificatesLocked($locked, array_column($metadata->signingCertificates(), 'certificate'), $client, $caller);
 
         if ($changes['violations'] !== []) {
-            return $this->writer->failed($locked, FailureReason::METADATA_INVALID, $actor, $client);
+            return $this->writer->failed($locked, FailureReason::METADATA_INVALID, $caller, $client);
         }
 
         $removed   = $changes['retired'] !== [];
@@ -249,9 +249,9 @@ final readonly class MetadataApplier
         $certificates = $changes['added'] !== [] || $removed;
         $changed      = [...array_keys($endpoints), ...($certificates ? [self::SIGNING_CERTIFICATES] : [])];
 
-        $this->administration->connectionUpdated($locked, array_keys($endpoints), $actor, $client);
+        $this->administration->connectionUpdated($locked, array_keys($endpoints), $caller, $client);
 
-        return $this->writer->refreshed($locked, $changed, $removed || $endpoints !== [], $actor, $client);
+        return $this->writer->refreshed($locked, $changed, $removed || $endpoints !== [], $caller, $client);
     }
 
     /**

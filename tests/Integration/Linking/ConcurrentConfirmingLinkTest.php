@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
@@ -683,7 +684,7 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
         $caller ??= $this->person;
 
         return fn (): string => self::outcomeOf(
-            app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $flow[1], $flow[2], Clients::browser(), $caller),
+            app(HandoffRedemption::class)->redeem(Purpose::LINK, 'web', $this->connection->id, $flow[1], $flow[2], Clients::browser(), new Caller($caller)),
         );
     }
 

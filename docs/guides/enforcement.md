@@ -29,9 +29,10 @@ Before you turn a tenant's rule on, decide what should happen to the sessions it
 
 ## Turning it on
 
-Give the tenant, the switch, the connections that satisfy the rule and, as an `Administration\ActingIdentity`, the
-administrator making the change. Here `$tenant` and `$user` are your own models; the example asserts that the change
-was made, where your screen would answer each result in the table below:
+Give the tenant, the switch, the connections that satisfy the rule and, as an `Identities\Caller`, the administrator
+making the change, on the session the [freshness contract](freshness.md#the-caller) judges. Here `$tenant` and `$user`
+are your own models; the example asserts that the change was made, where your screen would answer each result in the
+table below:
 
 <!-- snippet: tests/Integration/Examples/Enforcement/EnforcementExampleTest.php#enforcement-update -->
 ```php
@@ -40,7 +41,7 @@ $result = $enforcement->update(
     true,
     [$connectionId],
     $client,
-    new ActingIdentity($user->getMorphClass(), (string) $user->getKey()),
+    new Caller(new IdentityReference($user->getMorphClass(), (string) $user->getKey()), $request->session()->getId()),
 );
 
 self::assertSame(EnforcementStatus::UPDATED, $result->status);

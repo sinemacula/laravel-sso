@@ -109,7 +109,7 @@ code issued before a disable is never redeemed after the enable. A refused or un
   connection. Freshness is asked first, as for every update, so a stale caller is `freshness_required` whatever the
   links. A link of another connection does not count; a reservation that expired at now or before does not count.
 - `Connections\SubjectMigration` (`@api`, final, readonly, resolved per request) is the explicit way to make such a
-  change. `migrate($tenantId, $connectionId, $changes, $relinks, $removals, $client, $actor)` takes the change as
+  change. `migrate($tenantId, $connectionId, $changes, $relinks, $removals, $client, $caller)` takes the change as
   `update()` does and an exhaustive disposition of the connection's links: the relinks, each link id mapped to a list of
   its subject under the new meaning, then optionally its NameID format and its issuer (the format `null` or left out for
   none, and the issuer, when `null` or left out, the link's own, so a migration that changes the issuer gives the new

@@ -16,6 +16,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use Tests\Integration\Examples\Clients;
@@ -252,15 +253,15 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `reauthenticate` with an empty session id is the application's mistake,
-     * an `InvalidArgumentException`, not a refusal.
+     * A caller with an empty session id is the application's mistake, an
+     * `InvalidArgumentException`, not a refusal.
      *
      * @return void
      */
     public function testAnEmptySessionIdIsAMistake(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage(sprintf('A session id is 1 to %d bytes.', AuthorizationRequestService::MAX_SESSION_ID_LENGTH));
+        $this->expectExceptionMessage(sprintf('A session id is 1 to %d bytes.', Caller::MAX_SESSION_ID_LENGTH));
 
         self::startForCaller([
             'user'           => new User(['id' => 'person-1']),

@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -20,6 +19,8 @@ use SineMacula\Laravel\Sso\Events\ConnectionEnabled;
 use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\KeyAdded;
 use SineMacula\Laravel\Sso\Events\KeyMadeCurrent;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
@@ -68,8 +69,8 @@ final class AdministrationEventsAfterCommitTest extends TestCase
         'client_secret'          => 'the-client-secret-value',
     ];
 
-    /** @var \SineMacula\Laravel\Sso\Administration\ActingIdentity Who makes each change. */
-    private ActingIdentity $actor;
+    /** @var \SineMacula\Laravel\Sso\Identities\Caller Who makes each change. */
+    private Caller $actor;
 
     /** @var string The OIDC connection the helpers act on. */
     private string $connection;
@@ -86,7 +87,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     {
         parent::setUp();
 
-        $this->actor = new ActingIdentity('App\Models\User', '42');
+        $this->actor = new Caller(new IdentityReference('App\Models\User', '42'));
 
         $this->app?->instance(Clock::class, new FixedClock('2026-11-01T09:30:00.250000Z'));
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
@@ -95,7 +96,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
 
         $this->usePackageTables();
 
-        $this->connection = (string) $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC, actor: $this->actor)->connection?->id;
+        $this->connection = (string) $this->connections()->create(self::TENANT, 'oidc', 'Acme', Clients::browser(), self::OIDC, caller: $this->actor)->connection?->id;
 
         $this->startRecordingEvents();
     }
@@ -115,7 +116,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
         try {
             DB::connection(self::STORE)->transaction(function (): void {
 
-                self::assertTrue($this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, actor: $this->actor)->isSucceeded());
+                self::assertTrue($this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, caller: $this->actor)->isSucceeded());
                 self::assertTrue($this->connections()->update(
                     self::TENANT,
                     $this->connection,
@@ -184,7 +185,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     {
         DB::connection()->beginTransaction();
 
-        $this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, actor: $this->actor);
+        $this->connections()->create(self::TENANT, 'oidc', 'Second', Clients::browser(), self::OIDC, caller: $this->actor);
 
         $this->assertEventSequence([ConnectionCreated::class]);
 

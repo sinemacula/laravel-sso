@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
 use SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged;
 use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
@@ -115,18 +116,19 @@ final readonly class LinkConfirmationGate
     }
 
     /**
-     * Whether the identity has never held such a link, or the caller's
-     * authentication is independent of those it holds and held.
+     * Whether the caller's identity has never held such a link, or the caller's
+     * session is independent of those it holds and held. The caller is the one
+     * the redemption is made for, with its session, as given.
      *
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  list<string>  $held
      * @param  bool  $heldBefore
      * @return bool
      */
-    public function allows(IdentityReference $identity, Connection $connection, array $held, bool $heldBefore): bool
+    public function allows(Caller $caller, Connection $connection, array $held, bool $heldBefore): bool
     {
-        return ($held === [] && !$heldBefore) || $this->confirmation->judge($identity, $connection, $held)->isIndependent();
+        return ($held === [] && !$heldBefore) || $this->confirmation->judge($caller, $connection, $held)->isIndependent();
     }
 
     /**

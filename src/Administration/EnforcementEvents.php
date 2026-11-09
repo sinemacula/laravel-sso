@@ -10,6 +10,7 @@ use SineMacula\Laravel\Sso\Events\EnforcementChanged;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\ExemptionUsed;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 
@@ -56,17 +57,17 @@ final readonly class EnforcementEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\TenantEnforcement  $enforcement
      * @param  ?string  $previousVersion
-     * @param  ?\SineMacula\Laravel\Sso\Administration\ActingIdentity  $actor
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
-    public function changed(TenantEnforcement $enforcement, ?string $previousVersion, ?ActingIdentity $actor, ClientContext $client): void
+    public function changed(TenantEnforcement $enforcement, ?string $previousVersion, ?Caller $caller, ClientContext $client): void
     {
         $context = $this->contexts->make(
             $client,
             connectionTenantId: $enforcement->tenant_id,
-            actingIdentityMorphClass: $actor?->type,
-            actingIdentityId: $actor?->id,
+            actingIdentityMorphClass: $caller?->identity->type,
+            actingIdentityId: $caller?->identity->id,
         );
 
         $ids = array_values(array_unique($enforcement->connection_ids));

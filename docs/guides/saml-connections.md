@@ -44,7 +44,7 @@ $result = app(ConnectionService::class)->create(
         'sso_binding'    => 'http_redirect',
         'name_id_format' => 'persistent',
     ],
-    actor: $actor,
+    caller: $caller,
 );
 ```
 
@@ -76,8 +76,8 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 
 $keys = app(KeyService::class);
 
-$keys->addNext($tenant->id, $connectionId, KeyUse::SP_SIGNING, $client, actor: $actor);
-$keys->addNext($tenant->id, $connectionId, KeyUse::SP_ENCRYPTION, $client, actor: $actor);
+$keys->addNext($tenant->id, $connectionId, KeyUse::SP_SIGNING, $client, caller: $caller);
+$keys->addNext($tenant->id, $connectionId, KeyUse::SP_ENCRYPTION, $client, caller: $caller);
 ```
 
 ### SAML is RSA only
@@ -105,7 +105,7 @@ administrator gave you (see [Keys](keys.md#trusting-identity-provider-certificat
 <!-- snippet: tests/Integration/Examples/SamlConnections/admin/trust.php#saml-connections-trust -->
 
 ```php
-$keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $client, $actor);
+$keys->trustCertificate($tenant->id, $connectionId, $certificatePem, $client, $caller);
 ```
 
 A signature is valid when any trusted certificate verifies it; a certificate carried in a response is never trusted for
@@ -177,7 +177,7 @@ HTTP-POST only.
 <!-- snippet: tests/Integration/Examples/SamlConnections/admin/enable.php#saml-connections-enable -->
 
 ```php
-$result = app(ConnectionService::class)->enable($tenant->id, $connectionId, $client, $actor);
+$result = app(ConnectionService::class)->enable($tenant->id, $connectionId, $client, $caller);
 ```
 
 Enabling does not check that the connection is complete, but an incomplete one is never used: a SAML connection is

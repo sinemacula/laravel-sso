@@ -6,7 +6,6 @@ namespace Tests\Integration\Administration;
 
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Contracts\Clock;
@@ -18,6 +17,8 @@ use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\KeyAdded;
 use SineMacula\Laravel\Sso\Events\KeyMadeCurrent;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
@@ -103,14 +104,14 @@ final class NoSecretInAdministrationEventsTest extends TestCase
      */
     public function testNoEventHoldsASecretOrASettingValue(): void
     {
-        $actor = new ActingIdentity('App\Models\User', '42');
+        $actor = new Caller(new IdentityReference('App\Models\User', '42'));
         $oidc  = (string) $this->connections()->create(
             self::TENANT,
             'oidc',
             'Acme',
             Clients::browser(),
             self::OIDC + ['client_secret' => self::SECRET],
-            actor: $actor,
+            caller: $actor,
         )->connection?->id;
 
         $secretCiphertexts = $this->secretCiphertexts($oidc);
@@ -128,7 +129,7 @@ final class NoSecretInAdministrationEventsTest extends TestCase
             'Acme SAML',
             Clients::browser(),
             ['idp_entity_id' => 'https://idp.example.com/entity', 'sso_url' => 'https://idp.example.com/sso'],
-            actor: $actor,
+            caller: $actor,
         )->connection?->id;
 
         self::assertTrue($this->keys()->trustCertificate(self::TENANT, $saml, Certificates::distinct(60), Clients::browser(), $actor)->isSucceeded());

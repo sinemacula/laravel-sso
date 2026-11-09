@@ -27,14 +27,15 @@ $sessionId     = $input['session'];
 $client        = $input['client'];
 
 // @snippet-start oidc-start-reauthenticate
+use SineMacula\Laravel\Sso\Identities\Caller;
+
 $result = app(AuthorizationRequestService::class)->start(
     application: 'web',
     purpose: Purpose::REAUTHENTICATE,
     connectionId: $connectionId,
     client: $client,
     codeChallenge: $codeChallenge,
-    identity: $identity,
-    sessionId: $sessionId,
+    caller: new Caller($identity, $sessionId),
 );
 // @snippet-end oidc-start-reauthenticate
 return $result;

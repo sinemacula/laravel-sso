@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Handoffs\Redemption\ReauthenticationBranch;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\SignInBranch;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\IdentityLock;
 use SineMacula\Laravel\Sso\Linking\LinkConfirmationGate;
@@ -217,14 +218,14 @@ final readonly class HandoffRecheck
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    public function recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?IdentityReference $caller = null): RecheckOutcome
+    public function recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?Caller $caller = null): RecheckOutcome
     {
         return $this->judged($result, $binding, $lock, $client, $caller)->outcome;
     }
@@ -239,14 +240,14 @@ final readonly class HandoffRecheck
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Admission
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    public function admit(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?IdentityReference $caller = null): Admission
+    public function admit(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?Caller $caller = null): Admission
     {
         $judgement = $this->judged($result, $binding, $lock, $client, $caller);
 
@@ -315,14 +316,14 @@ final readonly class HandoffRecheck
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    private function judged(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?IdentityReference $caller): Judgement
+    private function judged(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?Caller $caller): Judgement
     {
         self::assertHeldFor($lock, $result);
 

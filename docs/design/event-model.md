@@ -117,15 +117,15 @@ are a contract.
   flow; SIEM consumers count by these values.
 - Administration events (SSO-10.3) report each change a management helper makes to a connection, a key or a certificate,
   and the nearing expiry of a key or certificate. `Administration\AdministrationEvents` builds every one, its context
-  through `EventContexts::make()` from the connection's id, its tenant and protocol and the acting identity the
-  application passed (`Administration\ActingIdentity`, as `actingIdentityMorphClass` and `actingIdentityId`), and hands
-  it to `AfterCommitDispatcher::dispatch()` inside the helper's transaction, so it is delivered when that transaction
-  commits and never when it, or a transaction the application wrapped it in, rolls back (SSO-10.5). Its context carries
-  no flow identifier, identity, application or purpose. A refused change and a change that changed nothing report
-  nothing, and fire no `FlowFailed`, since a helper's refusal is its result. No administration event holds a secret, a
-  ciphertext, a private key or a setting's value: `ConnectionUpdated` names what changed, never its value. The
-  nearing-expiry event reports a certificate's end of validity and never enforces it, with no acting identity.
-  `administration-events.md` records the rest:
+  through `EventContexts::make()` from the connection's id, its tenant and protocol and the identity of the caller the
+  application passed (`Identities\Caller`, as `actingIdentityMorphClass` and `actingIdentityId`; never its session), and
+  hands it to `AfterCommitDispatcher::dispatch()` inside the helper's transaction, so it is delivered when that
+  transaction commits and never when it, or a transaction the application wrapped it in, rolls back (SSO-10.5). Its
+  context carries no flow identifier, identity, application or purpose. A refused change and a change that changed
+  nothing report nothing, and fire no `FlowFailed`, since a helper's refusal is its result. No administration event
+  holds a secret, a ciphertext, a private key or a setting's value: `ConnectionUpdated` names what changed, never its
+  value. The nearing-expiry event reports a certificate's end of validity and never enforces it, with no acting
+  identity. `administration-events.md` records the rest:
 
   | Event                | Fields beyond the context                                  | Dispatched by                                                  |
   |----------------------|------------------------------------------------------------|----------------------------------------------------------------|
@@ -183,8 +183,8 @@ are a contract.
   `startRecordingEvents()` and asserts `assertExactlyOneFailure($flow, $reason)` for every refused start, completion,
   callback and redemption, `assertNoFailure()` for an accepted one, `assertEventSequence()` for the order of what was
   reported, and `assertNoEvents()` where nothing may be.
-- `src/Administration/AdministrationEvents.php`, `src/Administration/ActingIdentity.php`: the administration events'
-  context and dispatch.
+- `src/Administration/AdministrationEvents.php`, `src/Identities/Caller.php`: the administration events' context and
+  dispatch.
 - `src/Events/ConnectionCreated.php`, `ConnectionUpdated.php`, `ConnectionEnabled.php`, `ConnectionDisabled.php`,
   `ConnectionDeleted.php`, `KeyAdded.php`, `KeyMadeCurrent.php`, `KeyRetired.php`, `KeyNearingExpiry.php`.
 - `src/Keys/ExpiryReport.php` and `src/Keys/ExpiryNotifier.php`: the nearing-expiry report and its warnings.

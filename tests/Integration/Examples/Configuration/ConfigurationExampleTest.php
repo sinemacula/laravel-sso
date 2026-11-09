@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
@@ -245,7 +246,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
             HandoffRedirect::from($location)->code(),
             self::verifierOf($start),
             Clients::browser(),
-            $this->person,
+            new Caller($this->person),
         );
 
         self::assertTrue($redeemed->isRedeemed());
@@ -255,7 +256,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
 
         $this->clock->advance(60);
 
-        $expired = $redemption->redeem(Purpose::LINK, 'mobile', $connectionId, $redirect->code(), self::verifierOf($start), Clients::browser(), $this->person);
+        $expired = $redemption->redeem(Purpose::LINK, 'mobile', $connectionId, $redirect->code(), self::verifierOf($start), Clients::browser(), new Caller($this->person));
 
         self::assertTrue($expired->isRefused());
         self::assertSame(FailureReason::HANDOFF_EXPIRED, $expired->reason);
@@ -390,7 +391,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
      */
     private function startMobile(Purpose $purpose, string $connectionId, ?IdentityReference $identity = null): StartResult
     {
-        return app(AuthorizationRequestService::class)->start('mobile', $purpose, $connectionId, Clients::browser(), null, $identity);
+        return app(AuthorizationRequestService::class)->start('mobile', $purpose, $connectionId, Clients::browser(), null, $identity === null ? null : new Caller($identity));
     }
 
     /**

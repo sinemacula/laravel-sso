@@ -8,7 +8,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
@@ -34,6 +33,7 @@ use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
@@ -547,7 +547,12 @@ final class OidcAdversarialCallbackTest extends TestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::fresh());
 
-        $refreshed = app(MetadataRefresher::class)->refreshNow($connection->tenant_id, $connection->id, new ActingIdentity('App\Models\User', '42'), Clients::browser());
+        $refreshed = app(MetadataRefresher::class)->refreshNow(
+            $connection->tenant_id,
+            $connection->id,
+            new Caller(new IdentityReference('App\Models\User', '42')),
+            Clients::browser(),
+        );
 
         self::assertTrue($refreshed->isRefreshed());
         self::assertTrue($this->receiveCallback($connection, $this->granted($connection))->isCompleted());
@@ -1020,7 +1025,14 @@ final class OidcAdversarialCallbackTest extends TestCase
      */
     private function startUrl(Connection $connection, Purpose $purpose = Purpose::SIGN_IN, ?IdentityReference $identity = null, ?string $session = null): string
     {
-        $started = app(AuthorizationRequestService::class)->start('web', $purpose, $connection->id, Clients::browser(), null, $identity, $session);
+        $started = app(AuthorizationRequestService::class)->start(
+            'web',
+            $purpose,
+            $connection->id,
+            Clients::browser(),
+            null,
+            $identity === null ? null : new Caller($identity, $session),
+        );
 
         self::assertTrue($started->isStarted());
 

@@ -6,7 +6,6 @@ namespace Tests\Feature\Administration;
 
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SineMacula\Laravel\Sso\Administration\ActingIdentity;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Events\ConnectionCreated;
@@ -18,6 +17,8 @@ use SineMacula\Laravel\Sso\Events\KeyAdded;
 use SineMacula\Laravel\Sso\Events\KeyMadeCurrent;
 use SineMacula\Laravel\Sso\Events\KeyNearingExpiry;
 use SineMacula\Laravel\Sso\Events\KeyRetired;
+use SineMacula\Laravel\Sso\Identities\Caller;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -41,7 +42,6 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(AdministrationEvents::class)]
-#[CoversClass(ActingIdentity::class)]
 final class AdministrationEventsTest extends TestCase
 {
     use RecordsEventSequences, UsesConnections;
@@ -72,7 +72,7 @@ final class AdministrationEventsTest extends TestCase
     public function testReportsEachConnectionChange(): void
     {
         $connection = $this->makeConnection(['tenant_id' => 'tenant-7', 'protocol' => 'saml2']);
-        $actor      = new ActingIdentity('App\Models\User', '42');
+        $actor      = new Caller(new IdentityReference('App\Models\User', '42'));
 
         $this->events()->connectionCreated($connection, $actor, Clients::browser());
         $this->events()->connectionUpdated($connection, ['sso_url', 'display_name', 'sso_url'], $actor, Clients::browser());
@@ -201,24 +201,6 @@ final class AdministrationEventsTest extends TestCase
         }
 
         $this->assertNoEvents();
-    }
-
-    /**
-     * An acting identity needs a type and an id.
-     *
-     * @return void
-     */
-    public function testAnActingIdentityNeedsATypeAndAnId(): void
-    {
-        foreach ([['', '1'], ['App\Models\User', '']] as [$type, $id]) {
-
-            try {
-                new ActingIdentity($type, $id);
-                self::fail('An empty part was accepted.');
-            } catch (\InvalidArgumentException $exception) {
-                self::assertSame('An acting identity has a type and an id.', $exception->getMessage());
-            }
-        }
     }
 
     /**
