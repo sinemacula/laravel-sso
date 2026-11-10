@@ -351,7 +351,11 @@ final readonly class KeyService
             }
         }
 
-        $stored  = $violations === [] ? self::query($locked, true)->where('use', KeyUse::IDP_SIGNING->value)->get()->keyBy('fingerprint')->all() : [];
+        if ($violations !== []) {
+            return ['added' => [], 'retired' => [], 'violations' => $violations];
+        }
+
+        $stored  = self::query($locked, true)->where('use', KeyUse::IDP_SIGNING->value)->get()->keyBy('fingerprint')->all();
         $retired = array_diff_key($stored, $wanted);
 
         foreach ($retired as $key) {
@@ -363,14 +367,17 @@ final readonly class KeyService
             $this->voider->voidFor($locked);
         }
 
-        $added = $violations === [] ? array_diff_key($wanted, $stored) : [];
-        $trust = fn (array $facts): KeySummary => $this->insertTrusted($locked, $facts, KeyUse::IDP_SIGNING, $caller, $client)->key
+        $added = [];
+
+        foreach (array_diff_key($wanted, $stored) as $facts) {
+            $added[] = $this->insertTrusted($locked, $facts, KeyUse::IDP_SIGNING, $caller, $client)->key
                 ?? throw new \LogicException('A judged certificate is trusted.');
+        }
 
         return [
-            'added'      => array_values(array_map($trust, $added)),
+            'added'      => $added,
             'retired'    => array_values(array_map(KeySummary::of(...), $retired)),
-            'violations' => $violations,
+            'violations' => [],
         ];
     }
 
