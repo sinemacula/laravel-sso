@@ -56,6 +56,28 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
+ *
+ * @phpstan-type Parts array{
+ *     connection?: ?\SineMacula\Laravel\Sso\Models\Connection,
+ *     correlation?: ?\SineMacula\Laravel\Sso\Protocols\Correlation,
+ *     authorizationRequest?: ?\SineMacula\Laravel\Sso\Models\AuthorizationRequest,
+ *     consumed?: ?\SineMacula\Laravel\Sso\Protocols\ConsumedRequest,
+ *     application?: ?\SineMacula\Laravel\Sso\Applications\Application,
+ *     enforcementPolicy?: ?\SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy,
+ *     claims?: ?\SineMacula\Laravel\Sso\Results\VerifiedClaims,
+ *     result?: ?\SineMacula\Laravel\Sso\Results\VerifiedResult,
+ *     linkedIdentity?: ?\SineMacula\Laravel\Sso\Identities\IdentityReference,
+ *     sessionNotAfter?: ?\Carbon\CarbonImmutable,
+ *     handoff?: ?\SineMacula\Laravel\Sso\Handoffs\IssuedHandoff,
+ *     replay?: ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord,
+ *     transitionReceipt?: ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt,
+ *     resolution?: ?\SineMacula\Laravel\Sso\Links\LinkResolution,
+ *     reservedCandidate?: ?\SineMacula\Laravel\Sso\Links\ReservedCandidate,
+ *     linkingDomain?: ?\SineMacula\Laravel\Sso\Models\Domain,
+ *     linkingVersion?: ?int,
+ *     verifiedUntil?: ?\Carbon\CarbonImmutable,
+ *     linkingDiscovery?: ?\SineMacula\Laravel\Sso\Linking\LinkingDiscovery
+ * }
  */
 final readonly class CompletionState
 {
@@ -382,11 +404,35 @@ final readonly class CompletionState
     /**
      * A new state with the parts given replaced and every other kept.
      *
-     * @param  array<string, mixed>  $parts
+     * @param  Parts  $parts
      * @return self
      */
     private function with(array $parts): self
     {
-        return new self(...[...get_object_vars($this), ...$parts]);
+        return new self(...[
+            'connectionId'         => $this->connectionId,
+            'request'              => $this->request,
+            'client'               => $this->client,
+            'connection'           => $this->connection,
+            'correlation'          => $this->correlation,
+            'authorizationRequest' => $this->authorizationRequest,
+            'consumed'             => $this->consumed,
+            'application'          => $this->application,
+            'enforcementPolicy'    => $this->enforcementPolicy,
+            'claims'               => $this->claims,
+            'result'               => $this->result,
+            'linkedIdentity'       => $this->linkedIdentity,
+            'sessionNotAfter'      => $this->sessionNotAfter,
+            'handoff'              => $this->handoff,
+            'replay'               => $this->replay,
+            'transitionReceipt'    => $this->transitionReceipt,
+            'resolution'           => $this->resolution,
+            'reservedCandidate'    => $this->reservedCandidate,
+            'linkingDomain'        => $this->linkingDomain,
+            'linkingVersion'       => $this->linkingVersion,
+            'verifiedUntil'        => $this->verifiedUntil,
+            'linkingDiscovery'     => $this->linkingDiscovery,
+            ...$parts,
+        ]);
     }
 }
