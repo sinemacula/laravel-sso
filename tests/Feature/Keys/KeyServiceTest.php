@@ -1327,7 +1327,9 @@ final class KeyServiceTest extends TestCase
      */
     private function trustedFingerprints(): array
     {
-        $fingerprints = array_map(strval(...), ConnectionKey::query()->where('use', KeyUse::IDP_SIGNING->value)->pluck('fingerprint')->all());
+        $fingerprints = ConnectionKey::query()->where('use', KeyUse::IDP_SIGNING->value)->pluck('fingerprint')->all();
+
+        self::assertContainsOnlyString($fingerprints);
 
         sort($fingerprints);
 

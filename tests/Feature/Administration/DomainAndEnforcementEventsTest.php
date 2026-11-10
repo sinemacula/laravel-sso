@@ -111,7 +111,13 @@ final class DomainAndEnforcementEventsTest extends TestCase
     {
         $row = $this->makeEnforcement(['enabled' => true, 'connection_ids' => ['c-2', 'c-1', 'c-2'], 'version' => '01jbversion000000000000002']);
 
-        $this->reporter(EnforcementEvents::class)->changed($row, '01jbversion000000000000001', new Caller(new IdentityReference('App\Models\User', '42')), Clients::browser());
+        $this->reporter(EnforcementEvents::class)->changed(
+            $row,
+            '01jbversion000000000000002',
+            '01jbversion000000000000001',
+            new Caller(new IdentityReference('App\Models\User', '42')),
+            Clients::browser(),
+        );
 
         $this->assertEventSequence([EnforcementChanged::class]);
 

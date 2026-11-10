@@ -168,11 +168,11 @@ final class SamlStartTest extends TestCase
 
         $ids = AuthorizationRequest::query()->orderBy('id')->pluck('saml_request_id')->all();
 
+        self::assertContainsOnlyString($ids);
         self::assertCount(2, $ids);
         self::assertCount(2, array_unique($ids));
 
         foreach ($ids as $id) {
-            self::assertIsString($id);
             self::assertMatchesRegularExpression('/^_[0-9a-f]{64}$/D', $id);
         }
 

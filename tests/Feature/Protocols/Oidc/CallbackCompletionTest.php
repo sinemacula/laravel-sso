@@ -542,7 +542,7 @@ final class CallbackCompletionTest extends TestCase
      * Judge the callback.
      *
      * @param  string  $query
-     * @param  array<string, mixed>  $consumed
+     * @param  array{expectedIssuer?: ?string, issuerRequired?: bool, codeVerifier?: ?string}  $consumed
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return \SineMacula\Laravel\Sso\Protocols\Completion
      *
@@ -564,7 +564,7 @@ final class CallbackCompletionTest extends TestCase
     /**
      * The request the callback answers, with the changes given.
      *
-     * @param  array<string, mixed>  $changes
+     * @param  array{expectedIssuer?: ?string, issuerRequired?: bool, codeVerifier?: ?string}  $changes
      * @return \SineMacula\Laravel\Sso\Protocols\ConsumedRequest
      */
     private function consumed(array $changes): ConsumedRequest

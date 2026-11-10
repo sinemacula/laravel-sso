@@ -216,6 +216,19 @@ final class ProtocolManagerTest extends TestCase
     }
 
     /**
+     * A name that is neither a string nor an enum names no driver.
+     *
+     * @return void
+     */
+    public function testRefusesADriverNameThatIsNotAStringOrAnEnum(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Protocol driver [array] is not registered.');
+
+        $this->manager()->driver(['saml2']);
+    }
+
+    /**
      * A registered driver that does not implement `ProtocolDriver` fails as a
      * misconfiguration naming the protocol and what it resolved to.
      *

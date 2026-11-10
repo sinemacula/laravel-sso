@@ -53,7 +53,7 @@ final class ReplayRecordTest extends TestCase
     /**
      * Rows of `[one, other]`: two tuples a naive join would make one key.
      *
-     * @return iterable<string, array{0: list<string>, 1: list<string>}>
+     * @return iterable<string, array{0: array{string, string, string}, 1: array{string, string, string}}>
      */
     public static function provideAmbiguousTuples(): iterable
     {
@@ -67,8 +67,8 @@ final class ReplayRecordTest extends TestCase
     /**
      * Two different tuples never share a key.
      *
-     * @param  list<string>  $one
-     * @param  list<string>  $other
+     * @param  array{string, string, string}  $one
+     * @param  array{string, string, string}  $other
      * @return void
      */
     #[DataProvider('provideAmbiguousTuples')]
@@ -76,7 +76,7 @@ final class ReplayRecordTest extends TestCase
     {
         $until = CarbonImmutable::parse('2026-11-01T12:05:00Z');
 
-        self::assertNotSame(ReplayRecord::samlAssertion(...[...$one, $until])->key(), ReplayRecord::samlAssertion(...[...$other, $until])->key());
+        self::assertNotSame(ReplayRecord::samlAssertion(...$one, until: $until)->key(), ReplayRecord::samlAssertion(...$other, until: $until)->key());
     }
 
     /**

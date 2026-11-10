@@ -1124,6 +1124,10 @@ final class PrunerTest extends TestCase
         $records = $this->capturedLogRecords();
 
         self::assertCount(1, $records);
+
+        $deleted = $records[0]['context']['deleted'];
+
+        self::assertIsArray($deleted);
         self::assertSame(Pruner::LOG_MESSAGE, $records[0]['message']);
         self::assertSame($level, $records[0]['level']);
         self::assertSame($outcome, $records[0]['context']['outcome']);
@@ -1131,7 +1135,7 @@ final class PrunerTest extends TestCase
         self::assertSame(['outcome', 'now', 'duration_ms', 'deleted', 'incomplete', 'failures'], array_keys($records[0]['context']));
         self::assertSame($fails ? ['authorization_requests' => 'Illuminate\Database\QueryException'] : [], $records[0]['context']['failures']);
         self::assertSame($capped ? ['authorization_requests'] : [], $records[0]['context']['incomplete']);
-        self::assertSame(array_map(static fn (PruneKind $kind): string => $kind->value, PruneKind::cases()), array_keys($records[0]['context']['deleted']));
+        self::assertSame(array_map(static fn (PruneKind $kind): string => $kind->value, PruneKind::cases()), array_keys($deleted));
         $this->assertNothingLoggedContains($id, $this->connection->id, self::INJECTED_FAILURE, 'sso_authorization_requests');
         $this->assertNoEvents();
     }

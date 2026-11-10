@@ -134,6 +134,8 @@ final class RecheckReportTest extends TestCase
 
         self::assertIsArray($encoded);
         self::assertIsArray($encoded['counts']);
+        self::assertIsArray($encoded['entries']);
+        self::assertIsArray($encoded['entries'][0]);
 
         $counts   = $encoded['counts'];
         $expected = ['confirmed' => 0, 'restored' => 1, 'suspended' => 0, 'still_failing' => 0, 'lapsed' => 1, 'lookup_failed' => 0, 'resolver_threw' => 1, 'skipped' => 0];

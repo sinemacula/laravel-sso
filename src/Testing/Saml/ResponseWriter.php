@@ -16,6 +16,11 @@ use Carbon\CarbonImmutable;
  * @copyright   2026 Sine Macula Limited
  *
  * @phpstan-import-type ResponseOptions from \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
+ *
+ * @phpstan-type Confirmation array{
+ *     method: string, data: bool, recipient: ?string, not_before: ?\Carbon\CarbonImmutable,
+ *     not_on_or_after: ?\Carbon\CarbonImmutable, in_response_to: ?string
+ * }
  */
 final readonly class ResponseWriter
 {
@@ -111,7 +116,7 @@ final readonly class ResponseWriter
     /**
      * One `saml:SubjectConfirmation`.
      *
-     * @param  array<string, mixed>  $confirmation
+     * @param  Confirmation  $confirmation
      * @return string
      */
     private static function confirmation(array $confirmation): string

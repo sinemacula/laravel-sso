@@ -243,6 +243,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     private static function listed(mixed $listed): array
     {
         self::assertIsArray($listed);
+        self::assertContainsOnlyInstancesOf(KeySummary::class, $listed);
 
         return array_values(array_map(static fn (KeySummary $key): array => [$key->use->value, $key->state?->value, $key->type->value], $listed));
     }
@@ -257,6 +258,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     private static function encryptionCertificate(mixed $listed): string
     {
         self::assertIsArray($listed);
+        self::assertContainsOnlyInstancesOf(KeySummary::class, $listed);
 
         $encryption = array_values(array_filter($listed, static fn (KeySummary $key): bool => $key->use === KeyUse::SP_ENCRYPTION));
 

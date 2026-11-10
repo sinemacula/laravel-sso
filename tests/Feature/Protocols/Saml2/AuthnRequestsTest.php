@@ -386,7 +386,7 @@ final class AuthnRequestsTest extends TestCase
      * Rows of `[ssoUrl, prefix]`: a single sign-on URL, and what the redirect
      * starts with.
      *
-     * @return iterable<string, array{0: string, 1: string}>
+     * @return iterable<string, array{0: string, 1: non-empty-string}>
      */
     public static function provideSingleSignOnUrls(): iterable
     {
@@ -404,7 +404,7 @@ final class AuthnRequestsTest extends TestCase
      * the URL as configured.
      *
      * @param  string  $ssoUrl
-     * @param  string  $prefix
+     * @param  non-empty-string  $prefix
      * @return void
      *
      * @throws \Random\RandomException

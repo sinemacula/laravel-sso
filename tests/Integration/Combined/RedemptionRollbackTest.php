@@ -421,13 +421,13 @@ final class RedemptionRollbackTest extends LinkingTestCase
         $this->startRecordingEvents();
         $this->armFailure($verb, $table, 1);
 
-        self::assertInjectedFailure(fn (): mixed => app(HandoffRedemption::class)->redeem(...$this->redemptionArguments($redeeming)));
+        self::assertInjectedFailure(fn (): mixed => $this->redeemedAlone($redeeming));
 
         self::assertSame($before, $this->stored(false));
         self::assertSame($attempts + 1, $this->attempts(null));
         $this->assertNoEvents();
 
-        $answer = app(HandoffRedemption::class)->redeem(...$this->redemptionArguments($redeeming));
+        $answer = $this->redeemedAlone($redeeming);
 
         self::assertTrue($answer->isRedeemed());
         self::assertFalse($answer->isAdmitted());
@@ -664,26 +664,34 @@ final class RedemptionRollbackTest extends LinkingTestCase
      */
     private function admitted(array $redeeming): RedemptionResult
     {
-        return app(HandoffRedemption::class)->admit(...$this->redemptionArguments($redeeming));
+        return app(HandoffRedemption::class)->admit(
+            $redeeming[0],
+            'web',
+            $this->connection->id,
+            $redeeming[1],
+            $redeeming[2],
+            Clients::browser(),
+            $redeeming[3] === null ? null : new Caller($redeeming[3]),
+        );
     }
 
     /**
-     * What a redemption is called with, by the name of each parameter.
+     * Redeem the code in a transaction of its own.
      *
      * @param  array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: string, 2: string, 3: ?\SineMacula\Laravel\Sso\Identities\IdentityReference}  $redeeming
-     * @return array<string, mixed>
+     * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      */
-    private function redemptionArguments(array $redeeming): array
+    private function redeemedAlone(array $redeeming): RedemptionResult
     {
-        return [
-            'purpose'      => $redeeming[0],
-            'application'  => 'web',
-            'connectionId' => $this->connection->id,
-            'code'         => $redeeming[1],
-            'verifier'     => $redeeming[2],
-            'client'       => Clients::browser(),
-            'caller'       => $redeeming[3] === null ? null : new Caller($redeeming[3]),
-        ];
+        return app(HandoffRedemption::class)->redeem(
+            $redeeming[0],
+            'web',
+            $this->connection->id,
+            $redeeming[1],
+            $redeeming[2],
+            Clients::browser(),
+            $redeeming[3] === null ? null : new Caller($redeeming[3]),
+        );
     }
 
     /**

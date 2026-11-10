@@ -352,9 +352,9 @@ final class MetadataWriterTest extends TestCase
     }
 
     /**
-     * The text of each node, in document order.
+     * The value of each attribute, in document order.
      *
-     * @param  \DOMNodeList<\DOMNode>|false  $nodes
+     * @param  \DOMNodeList<\DOMNameSpaceNode|\DOMNode>|false  $nodes
      * @return list<string>
      */
     private static function values(\DOMNodeList|false $nodes): array
@@ -362,7 +362,10 @@ final class MetadataWriterTest extends TestCase
         $values = [];
 
         foreach ($nodes ?: [] as $node) {
-            $values[] = $node->textContent;
+
+            self::assertInstanceOf(\DOMAttr::class, $node);
+
+            $values[] = $node->value;
         }
 
         return $values;

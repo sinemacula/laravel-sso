@@ -930,9 +930,11 @@ final class LaggingReplicaFlowsTest extends TestCase
      */
     private function assertRoutesToProvider(Connection $connection, string $email): void
     {
-        $answer = $this->sendFlowRequest('POST', '/sso/discover', ['email' => $email])->assertOk();
+        $answer        = $this->sendFlowRequest('POST', '/sso/discover', ['email' => $email])->assertOk();
+        $authorization = $this->flowProvider($connection)->endpoint('authorization');
 
-        self::assertStringStartsWith($this->flowProvider($connection)->endpoint('authorization'), self::flowText($answer->json('navigation.url')));
+        self::assertNotSame('', $authorization);
+        self::assertStringStartsWith($authorization, self::flowText($answer->json('navigation.url')));
     }
 
     /**

@@ -65,6 +65,7 @@ final class EnforcementEventsTest extends TestCase
 
         app(EnforcementEvents::class)->changed(
             $row,
+            '01jbversion000000000000002',
             '01jbversion000000000000001',
             new Caller(new IdentityReference('App\Models\User', '42')),
             new ClientContext('203.0.113.7', 'Example/1.0'),

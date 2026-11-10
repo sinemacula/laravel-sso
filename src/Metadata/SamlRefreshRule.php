@@ -105,7 +105,13 @@ final class SamlRefreshRule
             $ids[] = $connection->id;
         }
 
-        return $ids === [] ? [] : array_fill_keys(self::anchors()->whereIn('connection_id', $ids)->distinct()->pluck('connection_id')->all(), true);
+        if ($ids === []) {
+            return [];
+        }
+
+        $anchored = self::anchors()->whereIn('connection_id', $ids)->distinct()->pluck('connection_id')->all();
+
+        return array_fill_keys(array_filter($anchored, is_string(...)), true);
     }
 
     /**

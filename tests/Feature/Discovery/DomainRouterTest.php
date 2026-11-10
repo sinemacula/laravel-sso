@@ -340,7 +340,7 @@ final class DomainRouterTest extends TestCase
 
         self::assertNull($this->router()->connectionFor('someone@unknown.com'));
         self::assertCount(1, $queries);
-        self::assertStringContainsString('sso_domains', $queries[0]);
+        self::assertStringContainsString('sso_domains', $queries->getArrayCopy()[0]);
     }
 
     /**

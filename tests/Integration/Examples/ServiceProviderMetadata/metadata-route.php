@@ -20,7 +20,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 
-Route::get(config('sso.endpoints.paths.metadata'), static function (
+Route::get(config()->string('sso.endpoints.paths.metadata'), static function (
     Request $request,
     string $connection,
     ServiceProviderDescriptions $descriptions,

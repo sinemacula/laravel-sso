@@ -881,9 +881,11 @@ final class MetadataApplierTest extends TestCase
     {
         $fingerprints = ConnectionKey::query()->where('use', KeyUse::IDP_SIGNING->value)->pluck('fingerprint')->all();
 
+        self::assertContainsOnlyString($fingerprints);
+
         sort($fingerprints);
 
-        return array_map(strval(...), $fingerprints);
+        return $fingerprints;
     }
 
     /**

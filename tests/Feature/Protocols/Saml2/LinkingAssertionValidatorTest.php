@@ -344,7 +344,7 @@ final class LinkingAssertionValidatorTest extends TestCase
     /**
      * Rows of `[what changes on the settings]`: linking not on as it must be.
      *
-     * @return iterable<string, array{0: array<string, mixed>}>
+     * @return iterable<string, array{0: array<string, bool|int|string|null>}>
      */
     public static function provideOffSettings(): iterable
     {
@@ -359,7 +359,7 @@ final class LinkingAssertionValidatorTest extends TestCase
     /**
      * No linking email is built unless linking is on, acknowledged and named.
      *
-     * @param  array<string, mixed>  $change
+     * @param  array<string, bool|int|string|null>  $change
      * @return void
      */
     #[DataProvider('provideOffSettings')]

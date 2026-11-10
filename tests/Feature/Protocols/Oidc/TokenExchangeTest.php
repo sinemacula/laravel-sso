@@ -587,7 +587,7 @@ final class TokenExchangeTest extends TestCase
      * Send the token request through the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @param  array<string, mixed>  $consumed
+     * @param  array{codeVerifier?: ?string}  $consumed
      * @return \SineMacula\Laravel\Sso\Fetching\FetchResult
      *
      * @throws \LogicException
@@ -615,7 +615,7 @@ final class TokenExchangeTest extends TestCase
     /**
      * The request the code answers, with the changes given.
      *
-     * @param  array<string, mixed>  $changes
+     * @param  array{codeVerifier?: ?string}  $changes
      * @return \SineMacula\Laravel\Sso\Protocols\ConsumedRequest
      */
     private function consumed(array $changes = []): ConsumedRequest

@@ -469,7 +469,8 @@ final readonly class Saml2Settings implements ProtocolSettings
             return $violations;
         }
 
-        $complete = array_intersect($value, self::KEY_TRANSPORT_ALGORITHMS) !== [] && array_intersect($value, $data) !== [];
+        $chosen   = array_filter($value, is_string(...));
+        $complete = array_intersect($chosen, self::KEY_TRANSPORT_ALGORITHMS) !== [] && array_intersect($chosen, $data) !== [];
 
         return $complete ? [] : SettingRules::at($name, ViolationCode::REQUIRED);
     }

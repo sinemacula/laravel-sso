@@ -175,15 +175,17 @@ final class FakeIdTokenTest extends TestCase
      */
     public function testAKeyDescribesItself(): void
     {
-        $rsa = self::key('rsa');
-        $ec  = self::key('P-384');
+        $rsa   = self::key('rsa');
+        $ec    = self::key('P-384');
+        $ecJwk = $ec->jwk();
 
+        self::assertIsString($ecJwk['x']);
         self::assertSame(['RSA', null, 2048, 'k1'], [$rsa->type, $rsa->curve, $rsa->bits, $rsa->kid]);
         self::assertSame(['EC', 'P-384', 384], [$ec->type, $ec->curve, $ec->bits]);
         self::assertSame(['kty', 'n', 'e', 'kid', 'use'], array_keys($rsa->jwk()));
         self::assertSame(['kty', 'n', 'e', 'kid', 'alg', 'x5t'], array_keys($rsa->jwk('RS256', null, ['x5t' => 'a'])));
         self::assertSame(['kty', 'crv', 'x', 'y', 'kid', 'use', 'alg'], array_keys($ec->jwk('ES384')));
-        self::assertSame(64, strlen($ec->jwk()['x']));
+        self::assertSame(64, strlen($ecJwk['x']));
         self::assertSame(['kty', 'n', 'e', 'kid', 'use', 'd', 'p', 'q', 'dp', 'dq', 'qi'], array_keys($rsa->privateJwk()));
         self::assertSame(['kty', 'crv', 'x', 'y', 'kid', 'use', 'd'], array_keys($ec->privateJwk()));
         self::assertSame(['kty', 'n', 'e', 'use'], array_keys($rsa->withKid(null)->jwk()));
@@ -415,18 +417,26 @@ final class FakeIdTokenTest extends TestCase
         $details = (array) openssl_pkey_get_details((openssl_pkey_get_private($ec->privateKeyPem) ?: null) ?? throw new \LogicException('No key.'));
         $point   = (array) $details['ec'];
         $wide    = static fn (string $name): string => str_pad((string) $point[$name], 48, "\x00", STR_PAD_LEFT);
+        $public  = $ec->jwk();
+        $private = $ec->privateJwk();
 
-        self::assertSame([$wide('x'), $wide('y')], [JwsSigner::decode($ec->jwk()['x']), JwsSigner::decode($ec->jwk()['y'])]);
-        self::assertSame($wide('d'), JwsSigner::decode($ec->privateJwk()['d']));
+        self::assertIsString($public['x']);
+        self::assertIsString($public['y']);
+        self::assertIsString($private['d']);
+        self::assertSame([$wide('x'), $wide('y')], [JwsSigner::decode($public['x']), JwsSigner::decode($public['y'])]);
+        self::assertSame($wide('d'), JwsSigner::decode($private['d']));
 
-        $rsa = self::key('rsa');
+        $rsa    = self::key('rsa');
+        $rsaJwk = $rsa->jwk();
+
+        self::assertIsString($rsaJwk['n']);
 
         self::assertSame(2048, FakeSigningKey::rsa()->bits);
         self::assertSame('rsa-1', FakeSigningKey::rsa()->kid);
         self::assertSame(['EC', 'P-256', 'ec-1'], [FakeSigningKey::ec()->type, FakeSigningKey::ec()->curve, FakeSigningKey::ec()->kid]);
-        self::assertSame(256, strlen(JwsSigner::decode($rsa->jwk()['n'])));
-        self::assertStringNotContainsString('=', $rsa->jwk()['n']);
-        self::assertSame('AQAB', $rsa->jwk()['e']);
+        self::assertSame(256, strlen(JwsSigner::decode($rsaJwk['n'])));
+        self::assertStringNotContainsString('=', $rsaJwk['n']);
+        self::assertSame('AQAB', $rsaJwk['e']);
     }
 
     /**
