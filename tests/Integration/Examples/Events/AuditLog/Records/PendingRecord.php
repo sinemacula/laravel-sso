@@ -31,7 +31,7 @@ final class PendingRecord
     /** @var int The longest correlation id, in characters. */
     private const int ID_MAX_CHARACTERS = 191;
 
-    /** @var array<string, mixed> What the record was given, its properties in their place but kept in `$properties`. */
+    /** @var array<string, mixed> What the record was given, in the order it reads, with `properties` filled from `$properties`. */
     private array $given = [
         'code'           => null,
         'outcome'        => 'success',
