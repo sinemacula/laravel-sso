@@ -177,8 +177,11 @@ final class KeyGeneratorTest extends TestCase
             self::assertStringNotContainsString(substr($pem, 28, 40), $view);
         }
 
+        $certificate = $key->__debugInfo()['certificate'];
+
+        self::assertIsString($certificate);
         self::assertSame('[redacted]', $key->__debugInfo()['privateKey']);
-        self::assertSame(self::COMMON_NAME, self::parse($key->__debugInfo()['certificate'])['subject']['CN']);
+        self::assertSame(self::COMMON_NAME, self::parse($certificate)['subject']['CN']);
     }
 
     /**

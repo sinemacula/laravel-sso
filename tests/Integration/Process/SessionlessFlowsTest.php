@@ -148,10 +148,12 @@ final class SessionlessFlowsTest extends TestCase
 
         $this->flowVerifiedDomain($connection, 'discovery.example.com');
 
-        $match = $this->sendFlowRequest('POST', '/sso/discover', ['email' => 'person@discovery.example.com'])->assertOk();
-        $miss  = $this->sendFlowRequest('POST', '/sso/discover', ['email' => 'person@nowhere.example.com'])->assertOk();
+        $match         = $this->sendFlowRequest('POST', '/sso/discover', ['email' => 'person@discovery.example.com'])->assertOk();
+        $miss          = $this->sendFlowRequest('POST', '/sso/discover', ['email' => 'person@nowhere.example.com'])->assertOk();
+        $authorization = $this->flowProvider($connection)->endpoint('authorization');
 
-        self::assertStringStartsWith($this->flowProvider($connection)->endpoint('authorization'), self::flowText($match->json('navigation.url')));
+        self::assertNotSame('', $authorization);
+        self::assertStringStartsWith($authorization, self::flowText($match->json('navigation.url')));
         self::assertSame(self::FLOW_FALLBACK_URL, $miss->json('navigation.url'));
 
         /** @var array{reference: string, verifier: string, navigation: array{type: string, url: string}} $start */

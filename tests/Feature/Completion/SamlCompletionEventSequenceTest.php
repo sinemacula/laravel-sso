@@ -217,8 +217,12 @@ final class SamlCompletionEventSequenceTest extends TestCase
                 $this->makeAuthorizationRequest($this->connection, ['saml_request_id' => $requestId, 'state_digest' => hash('sha256', $relay)]);
             }
 
-            $request  = $response->inResponseTo($requestId)->completionRequest($relay);
-            $posted[] = $request->body()['SAMLResponse'];
+            $request = $response->inResponseTo($requestId)->completionRequest($relay);
+            $saml    = $request->body()['SAMLResponse'];
+
+            self::assertIsString($saml);
+
+            $posted[] = $saml;
             $posted[] = $relay;
 
             app(CompletionService::class)->complete(CompletionEndpoint::ASSERTION_CONSUMER_SERVICE, $this->connection->id, $request, Clients::browser());
@@ -230,7 +234,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
             array_map(static fn (SsoEvent $event): string => $event::class, $this->recordedEvents()),
         );
 
-        $secrets = [...array_map(strval(...), $posted), self::NAME_ID, self::ATTRIBUTE, self::ASSERTION_ID, '<saml:Assertion', 'name-id-value'];
+        $secrets = [...$posted, self::NAME_ID, self::ATTRIBUTE, self::ASSERTION_ID, '<saml:Assertion', 'name-id-value'];
 
         $this->assertNothingLoggedContains(...$secrets);
         $this->assertNothingReportedContains($secrets);

@@ -623,11 +623,16 @@ final class CompletionServiceTest extends TestCase
 
         self::assertTrue($this->completeAtCallback()->isCompleted());
 
-        $grant  = $this->issuer->soleGrant();
-        $pinned = $grant->result->toArray();
+        $grant      = $this->issuer->soleGrant();
+        $pinned     = $grant->result->toArray();
+        $attributes = $pinned['attributes'];
+
+        self::assertIsArray($attributes);
 
         // MySQL keeps a JSON object's keys in its own order, not as written.
-        ksort($pinned['attributes']);
+        ksort($attributes);
+
+        $pinned['attributes'] = $attributes;
 
         self::assertSame([
             'issuer'                 => VerifyingDriver::ISSUER,

@@ -116,11 +116,14 @@ final class FakeSamlIdentityProviderTest extends TestCase
         $response = self::idp()->response('https://sp.example.test', 'https://sp.example.test/acs', $now);
         $changed  = $response->inResponseTo('_request')->signed(true, false)->with(['name_id' => 'bob']);
 
-        $names = ['in_response_to', 'sign_response', 'sign_assertion', 'name_id'];
+        $names         = ['in_response_to', 'sign_response', 'sign_assertion', 'name_id'];
+        $confirmations = $changed->option('confirmations');
+
+        self::assertIsArray($confirmations);
 
         self::assertSame([null, false, true, 'alice'], array_map($response->option(...), $names));
         self::assertSame(['_request', true, false, 'bob'], array_map($changed->option(...), $names));
-        self::assertSame(['_request'], array_column($changed->option('confirmations'), 'in_response_to'));
+        self::assertSame(['_request'], array_column($confirmations, 'in_response_to'));
         self::assertSame([['https://sp.example.test']], $response->option('audiences'));
         self::assertEquals(CarbonImmutable::parse('2026-11-01T12:05:00Z'), $response->option('not_on_or_after'));
         self::assertNull($response->option('unknown'));

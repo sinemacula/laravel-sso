@@ -398,8 +398,11 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
         $writes = $this->countWrites();
         $keys   = $this->descriptions()->publicKeys($connection->id);
 
+        $jwks = self::decoded($keys)['keys'];
+
+        self::assertIsArray($jwks);
         self::assertSame('application/jwk-set+json', $keys->contentType);
-        self::assertSame([self::kidOf($current), self::kidOf($next)], array_column(self::decoded($keys)['keys'], 'kid'));
+        self::assertSame([self::kidOf($current), self::kidOf($next)], array_column($jwks, 'kid'));
         self::assertStringNotContainsString(self::SECRET, (string) $keys->body);
         self::assertSame($asked, $this->freshness->asked());
         self::assertSame(0, $writes->count);

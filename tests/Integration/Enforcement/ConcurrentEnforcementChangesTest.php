@@ -150,11 +150,13 @@ final class ConcurrentEnforcementChangesTest extends TestCase
         self::assertCount(1, array_keys($statuses, 'updated', true), (string) json_encode($outcomes));
         self::assertCount(self::PROCESSES - 1, array_keys($statuses, 'unchanged', true), (string) json_encode($outcomes));
 
-        $stored = TenantEnforcement::query()->sole();
+        $stored   = TenantEnforcement::query()->sole();
+        $versions = array_column($outcomes, 'version');
 
+        self::assertContainsOnlyString($versions);
         self::assertTrue($stored->enabled);
         self::assertSame([$id], $stored->connection_ids);
-        self::assertSame(array_values(array_unique(array_column($outcomes, 'version'))), [$stored->version]);
+        self::assertSame(array_values(array_unique($versions)), [$stored->version]);
     }
 
     /**
@@ -179,6 +181,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
 
         $versions = array_column($outcomes, 'version');
 
+        self::assertContainsOnlyString($versions);
         self::assertCount(self::PROCESSES, array_unique($versions));
         self::assertNotContains($initial->enforcement?->version, $versions);
 

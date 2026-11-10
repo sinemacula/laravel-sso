@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Integration\Config;
 
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Console\Kernel as FoundationKernel;
 use Illuminate\Support\Facades\Artisan;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -233,6 +234,8 @@ final class BootCheckTest extends TestCase
     protected function defineEnvironment(mixed $app): void
     {
         parent::defineEnvironment($app);
+
+        self::assertInstanceOf(Application::class, $app);
 
         if (!self::$everyCheck) {
             self::checkTheFoundations($app);

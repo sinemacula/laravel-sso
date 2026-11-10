@@ -606,7 +606,7 @@ final class SamlAdapterTest extends TestCase
      * Rows of `[response, policy]`: an encrypted response and the policy it is
      * read under, each failing to decrypt.
      *
-     * @return iterable<string, array{0: string, 1: array<string, mixed>}>
+     * @return iterable<string, array{0: string, 1: array{transports?: list<string>, data?: list<string>, keys?: list<string>}}>
      */
     public static function provideDecryptionFailures(): iterable
     {
@@ -626,7 +626,7 @@ final class SamlAdapterTest extends TestCase
      * Every decryption failure, of policy or of key, is the one failure.
      *
      * @param  string  $kind
-     * @param  array<string, mixed>  $policy
+     * @param  array{transports?: list<string>, data?: list<string>, keys?: list<string>}  $policy
      * @return void
      */
     #[DataProvider('provideDecryptionFailures')]

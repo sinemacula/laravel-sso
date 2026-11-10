@@ -215,12 +215,18 @@ final class BenchmarksRunTest extends TestCase
         $saml = (new SamlValidationBench)->provideVersions();
         $oidc = (new IdTokenValidationBench)->provideVersions();
 
-        self::assertSame(['simplesamlphp/saml2', 'simplesamlphp/xml-security', 'laravel/framework'], array_keys(reset($saml)));
-        self::assertSame(['web-token/jwt-library', 'laravel/framework'], array_keys(reset($oidc)));
         self::assertCount(1, $saml);
         self::assertCount(1, $oidc);
-        self::assertNotContains('unknown', reset($saml));
-        self::assertNotContains('unknown', reset($oidc));
+
+        $samlVersions = reset($saml);
+        $oidcVersions = reset($oidc);
+
+        self::assertIsArray($samlVersions);
+        self::assertIsArray($oidcVersions);
+        self::assertSame(['simplesamlphp/saml2', 'simplesamlphp/xml-security', 'laravel/framework'], array_keys($samlVersions));
+        self::assertSame(['web-token/jwt-library', 'laravel/framework'], array_keys($oidcVersions));
+        self::assertNotContains('unknown', $samlVersions);
+        self::assertNotContains('unknown', $oidcVersions);
         self::assertStringStartsWith('simplesamlphp/saml2 ', key($saml));
         self::assertStringStartsWith('web-token/jwt-library ', key($oidc));
     }

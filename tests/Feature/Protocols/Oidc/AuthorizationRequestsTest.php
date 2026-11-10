@@ -215,7 +215,7 @@ final class AuthorizationRequestsTest extends TestCase
     /**
      * Rows of `[purpose, the last parameters the request carries]`.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: string}>
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: non-empty-string}>
      */
     public static function providePurposes(): iterable
     {
@@ -231,7 +231,7 @@ final class AuthorizationRequestsTest extends TestCase
      * authentication.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
-     * @param  string  $last
+     * @param  non-empty-string  $last
      * @return void
      */
     #[DataProvider('providePurposes')]

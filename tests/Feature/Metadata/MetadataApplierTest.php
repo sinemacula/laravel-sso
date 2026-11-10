@@ -879,11 +879,11 @@ final class MetadataApplierTest extends TestCase
      */
     private function trusted(): array
     {
-        $fingerprints = ConnectionKey::query()->where('use', KeyUse::IDP_SIGNING->value)->pluck('fingerprint')->all();
+        $fingerprints = array_filter(ConnectionKey::query()->where('use', KeyUse::IDP_SIGNING->value)->pluck('fingerprint')->all(), is_string(...));
 
         sort($fingerprints);
 
-        return array_map(strval(...), $fingerprints);
+        return $fingerprints;
     }
 
     /**

@@ -180,6 +180,7 @@ final class HandoffTrustVersionTest extends ExampleTestCase
         $admitted = $this->admitSignIn($this->connectionId, $redirect, $start, 'session-1');
 
         self::assertTrue($admitted->isRedeemed());
+        self::assertNotNull($admitted->linkedIdentity);
         self::assertTrue($this->person->is($admitted->linkedIdentity));
         self::assertNotNull($this->sessions->authenticatedAt('session-1'));
     }

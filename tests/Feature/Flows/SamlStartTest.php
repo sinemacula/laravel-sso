@@ -166,13 +166,12 @@ final class SamlStartTest extends TestCase
         $this->startFlow($connection);
         $this->startFlow($connection);
 
-        $ids = AuthorizationRequest::query()->orderBy('id')->pluck('saml_request_id')->all();
+        $ids = array_filter(AuthorizationRequest::query()->orderBy('id')->pluck('saml_request_id')->all(), is_string(...));
 
         self::assertCount(2, $ids);
         self::assertCount(2, array_unique($ids));
 
         foreach ($ids as $id) {
-            self::assertIsString($id);
             self::assertMatchesRegularExpression('/^_[0-9a-f]{64}$/D', $id);
         }
 

@@ -209,14 +209,14 @@ final class ConnectionFinderTest extends TestCase
         $finder->find('tenant-1', $connection->id);
 
         self::assertCount(1, $statements);
-        self::assertStringNotContainsString('for update', $statements[0]);
+        self::assertStringNotContainsString('for update', $statements->getArrayCopy()[0]);
 
         $statements->exchangeArray([]);
 
         $database->transaction(static fn (): ?Connection => $finder->findForUpdate('tenant-1', $connection->id));
 
         self::assertCount(1, $statements);
-        self::assertStringEndsWith('for update', rtrim($statements[0], ' */'));
+        self::assertStringEndsWith('for update', rtrim($statements->getArrayCopy()[0], ' */'));
     }
 
     /**

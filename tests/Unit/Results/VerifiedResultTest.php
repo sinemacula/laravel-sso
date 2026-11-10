@@ -98,10 +98,12 @@ final class VerifiedResultTest extends TestCase
             self::assertTrue($result->requestReference->is($restored->requestReference));
 
             $unserialised = unserialize(serialize($result));
+            $json         = json_decode((string) json_encode($result), true);
 
             self::assertInstanceOf(VerifiedResult::class, $unserialised);
+            self::assertIsArray($json);
             self::assertSame($result->toArray(), $unserialised->toArray());
-            self::assertSame($result->toArray(), VerifiedResult::restore(json_decode((string) json_encode($result), true))->toArray());
+            self::assertSame($result->toArray(), VerifiedResult::restore($json)->toArray());
         }
     }
 
@@ -354,12 +356,14 @@ final class VerifiedResultTest extends TestCase
         $result = self::aResultAsserting($verified);
         $pair   = ['email' => self::ASSERTED_EMAIL, 'verified' => $verified, 'source' => 'userinfo'];
         $stored = $result->toArray();
+        $json   = json_decode((string) json_encode($stored), true);
 
+        self::assertIsArray($json);
         self::assertSame($pair, $stored['asserted_email']);
         self::assertSame('asserted_email', array_key_last($stored));
         self::assertSame($stored, $result->__serialize());
         self::assertSame($pair, VerifiedResult::restore($stored)->assertedEmail?->toArray());
-        self::assertSame($stored, VerifiedResult::restore(json_decode((string) json_encode($stored), true))->toArray());
+        self::assertSame($stored, VerifiedResult::restore($json)->toArray());
 
         $unserialised = unserialize(serialize($result));
 
@@ -390,9 +394,13 @@ final class VerifiedResultTest extends TestCase
      */
     public function testTheRedactedJsonIsNotAStoredForm(): void
     {
+        $json = json_decode((string) json_encode(self::aResultAsserting(true)), true);
+
+        self::assertIsArray($json);
+
         $this->expectExceptionObject(new \UnexpectedValueException('A stored verified result is not one the package wrote.'));
 
-        VerifiedResult::restore(json_decode((string) json_encode(self::aResultAsserting(true)), true));
+        VerifiedResult::restore($json);
     }
 
     /**

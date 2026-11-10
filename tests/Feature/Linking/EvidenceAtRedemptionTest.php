@@ -517,7 +517,11 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
         $accepted = new AcceptedEvidence($this->connection->id, $this->clock->now(), ['pwd']);
         $asked    = [];
 
-        $this->answering(function (VerifiedResult $result, SsoConnection $connection, CarbonImmutable $now) use (&$asked, $accepted): AcceptedEvidence {
+        $this->answering(function (mixed $result, mixed $connection, mixed $now) use (&$asked, $accepted): AcceptedEvidence {
+            self::assertInstanceOf(VerifiedResult::class, $result);
+            self::assertInstanceOf(SsoConnection::class, $connection);
+            self::assertInstanceOf(CarbonImmutable::class, $now);
+
             $asked[] = [
                 $result->purpose,
                 $result->authenticationContext->methods,
@@ -560,7 +564,11 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
 
         $policy = app(ConnectionEvidencePolicy::class);
 
-        $this->answering(static function (VerifiedResult $result, SsoConnection $connection, CarbonImmutable $now) use (&$states, $policy): ?AcceptedEvidence {
+        $this->answering(static function (mixed $result, mixed $connection, mixed $now) use (&$states, $policy): ?AcceptedEvidence {
+            self::assertInstanceOf(VerifiedResult::class, $result);
+            self::assertInstanceOf(SsoConnection::class, $connection);
+            self::assertInstanceOf(CarbonImmutable::class, $now);
+
             $states[] = Link::query()->sole()->state;
 
             return $policy->evaluate($result, $connection, $now);
@@ -722,7 +730,11 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
         $policy = app(ConnectionEvidencePolicy::class);
         $asked  = 0;
 
-        $this->answering(static function (VerifiedResult $result, SsoConnection $connection, CarbonImmutable $now) use (&$asked, $policy): ?AcceptedEvidence {
+        $this->answering(static function (mixed $result, mixed $connection, mixed $now) use (&$asked, $policy): ?AcceptedEvidence {
+            self::assertInstanceOf(VerifiedResult::class, $result);
+            self::assertInstanceOf(SsoConnection::class, $connection);
+            self::assertInstanceOf(CarbonImmutable::class, $now);
+
             if ($asked++ === 0) {
                 throw new \RuntimeException('The contract failed.');
             }

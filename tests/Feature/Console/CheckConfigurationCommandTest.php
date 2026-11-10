@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Console;
 
+use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -175,6 +176,8 @@ final class CheckConfigurationCommandTest extends TestCase
     protected function defineEnvironment(mixed $app): void
     {
         parent::defineEnvironment($app);
+
+        self::assertInstanceOf(Application::class, $app);
 
         self::checkTheFoundations($app);
     }

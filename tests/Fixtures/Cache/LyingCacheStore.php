@@ -66,7 +66,7 @@ final class LyingCacheStore implements LockProvider, Store
     {
         $this->calls++;
 
-        return array_fill_keys($keys, $this->answer);
+        return array_fill_keys(array_filter($keys, is_string(...)), $this->answer);
     }
 
     /**
@@ -204,9 +204,9 @@ final class LyingCacheStore implements LockProvider, Store
      * A lock that is always free, a new store's each time, or never free, held
      * already by someone else.
      *
-     * @param  mixed  $name
-     * @param  mixed  $seconds
-     * @param  mixed  $owner
+     * @param  string  $name
+     * @param  int  $seconds
+     * @param  ?string  $owner
      * @return \Illuminate\Contracts\Cache\Lock
      */
     #[\Override]
@@ -226,8 +226,8 @@ final class LyingCacheStore implements LockProvider, Store
     /**
      * The lock of the owner given.
      *
-     * @param  mixed  $name
-     * @param  mixed  $owner
+     * @param  string  $name
+     * @param  string  $owner
      * @return \Illuminate\Contracts\Cache\Lock
      */
     #[\Override]

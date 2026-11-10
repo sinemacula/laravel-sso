@@ -111,7 +111,13 @@ final class FakeOpenIdProviderTest extends TestCase
     {
         $fetcher  = new FakeFetcher;
         $provider = self::provider()->serve($fetcher);
-        $kids     = static fn (): array => array_column(self::json($fetcher->fetch(FetchRequest::jwks($provider->endpoint('jwks'))))['keys'] ?? [], 'kid');
+        $kids     = static function () use ($fetcher, $provider): array {
+            $keys = self::json($fetcher->fetch(FetchRequest::jwks($provider->endpoint('jwks'))))['keys'] ?? [];
+
+            self::assertIsArray($keys);
+
+            return array_column($keys, 'kid');
+        };
 
         self::assertSame(['rsa-1'], $kids());
 

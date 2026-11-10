@@ -333,7 +333,7 @@ final class ConsecutiveRequestsTest extends TestCase
 
         $listener = static function (ResultUnlinked $event) use (&$grantA, &$resultA, &$attempts, &$usable, &$linked, $identityA, $identityB): void {
 
-            if ($grantA === null) {
+            if ($grantA === null || $resultA === null) {
 
                 $grantA  = $event->grant;
                 $resultA = $event->result;

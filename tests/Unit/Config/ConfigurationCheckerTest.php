@@ -8,6 +8,7 @@ use Illuminate\Container\Container;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
+use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
 use Tests\Unit\Config\Fixtures\FailingCheck;
 use Tests\Unit\Config\Fixtures\InapplicableCheck;
@@ -55,22 +56,26 @@ final class ConfigurationCheckerTest extends TestCase
     }
 
     /**
-     * A check the container cannot build, and a class that is not a check, are
-     * problems of their subject, never checks skipped.
+     * A check the container cannot build, and one it builds as something that
+     * is not a check, are problems of their subject, never checks skipped.
      *
      * @return void
      */
     public function testACheckThatCannotBeUsedIsAProblem(): void
     {
-        $checker = new ConfigurationChecker(new Container, [
-            'missing'   => 'Tests\Unit\Config\Fixtures\MissingCheck',
-            'not_check' => \stdClass::class,
+        $container = new Container;
+
+        $container->bind(PassingCheck::class, static fn (): \stdClass => new \stdClass);
+
+        $checker = new ConfigurationChecker($container, [
+            'missing'   => ConfigurationCheck::class,
+            'not_check' => PassingCheck::class,
         ]);
 
         $report = $checker->report();
 
-        self::assertSame(['Target class [Tests\Unit\Config\Fixtures\MissingCheck] does not exist.'], $report['missing']);
-        self::assertSame(['[stdClass] is not a SineMacula\Laravel\Sso\Contracts\ConfigurationCheck.'], $report['not_check']);
+        self::assertSame(['Target [SineMacula\Laravel\Sso\Contracts\ConfigurationCheck] is not instantiable.'], $report['missing']);
+        self::assertSame(['[Tests\Unit\Config\Fixtures\PassingCheck] is not a SineMacula\Laravel\Sso\Contracts\ConfigurationCheck.'], $report['not_check']);
     }
 
     /**
