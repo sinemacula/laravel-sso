@@ -339,7 +339,7 @@ final readonly class AuthnRequestWriter
      *
      * @throws \LogicException
      */
-    private static function signature(#[\SensitiveParameter] SignatureAlgorithmInterface $signer, string $query): string
+    private static function signature(#[\SensitiveParameter] SignatureAlgorithmInterface $signer, #[\SensitiveParameter] string $query): string
     {
         $signature = $signer->sign($query);
 
