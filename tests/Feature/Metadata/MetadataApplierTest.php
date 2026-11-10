@@ -879,7 +879,9 @@ final class MetadataApplierTest extends TestCase
      */
     private function trusted(): array
     {
-        $fingerprints = array_filter(ConnectionKey::query()->where('use', KeyUse::IDP_SIGNING->value)->pluck('fingerprint')->all(), is_string(...));
+        $fingerprints = ConnectionKey::query()->where('use', KeyUse::IDP_SIGNING->value)->pluck('fingerprint')->all();
+
+        self::assertContainsOnlyString($fingerprints);
 
         sort($fingerprints);
 

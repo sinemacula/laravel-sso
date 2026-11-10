@@ -166,8 +166,9 @@ final class SamlStartTest extends TestCase
         $this->startFlow($connection);
         $this->startFlow($connection);
 
-        $ids = array_filter(AuthorizationRequest::query()->orderBy('id')->pluck('saml_request_id')->all(), is_string(...));
+        $ids = AuthorizationRequest::query()->orderBy('id')->pluck('saml_request_id')->all();
 
+        self::assertContainsOnlyString($ids);
         self::assertCount(2, $ids);
         self::assertCount(2, array_unique($ids));
 
