@@ -39,7 +39,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 
-Route::get(config('sso.endpoints.paths.metadata'), static function (
+Route::get(config()->string('sso.endpoints.paths.metadata'), static function (
     Request $request,
     string $connection,
     ServiceProviderDescriptions $descriptions,
@@ -200,7 +200,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Route;
 use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 
-Route::get(config('sso.endpoints.paths.jwks'), static function (string $connection, ServiceProviderDescriptions $descriptions): Response {
+Route::get(config()->string('sso.endpoints.paths.jwks'), static function (string $connection, ServiceProviderDescriptions $descriptions): Response {
     $keys = $descriptions->publicKeys($connection);
 
     abort_unless($keys->isAvailable(), 404);

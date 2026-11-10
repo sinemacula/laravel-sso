@@ -31,7 +31,7 @@ final class PendingRecord
     /** @var int The longest correlation id, in characters. */
     private const int ID_MAX_CHARACTERS = 191;
 
-    /** @var array<string, mixed> What the record was given. */
+    /** @var array<string, mixed> What the record was given, its properties in their place but kept in `$properties`. */
     private array $given = [
         'code'           => null,
         'outcome'        => 'success',
@@ -41,6 +41,9 @@ final class PendingRecord
         'tenant'         => null,
         'correlation_id' => null,
     ];
+
+    /** @var array<array-key, mixed> The properties the record was given. */
+    private array $properties = [];
 
     /**
      * Name what happened with an event code.
@@ -134,7 +137,7 @@ final class PendingRecord
      */
     public function withProperties(#[\SensitiveParameter] array $properties): self
     {
-        $this->given['properties'] = array_replace($this->given['properties'], $properties);
+        $this->properties = array_replace($this->properties, $properties);
 
         return $this;
     }
@@ -146,7 +149,7 @@ final class PendingRecord
      */
     public function toArray(): array
     {
-        return $this->given;
+        return [...$this->given, 'properties' => $this->properties];
     }
 
     /**

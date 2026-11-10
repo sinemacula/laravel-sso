@@ -98,7 +98,7 @@ self::assertFalse($report->hasResolverThrows());
 self::assertSame(1, $report->count(RecheckOutcome::SUSPENDED));
 
 // Entries and counts, snake_case, times in UTC
-$json = json_decode((string) json_encode($report), true);
+$json = $report->jsonSerialize();
 
 self::assertSame(1, $json['counts']['lookup_failed']);
 self::assertContains('2026-11-04T10:30:00Z', array_column($json['entries'], 'lapses_at'));

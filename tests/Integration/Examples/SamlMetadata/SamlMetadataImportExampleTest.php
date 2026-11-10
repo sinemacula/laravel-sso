@@ -84,6 +84,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
         self::assertEquals(['idp_entity_id' => self::ENTITY_ID, 'sso_url' => self::SSO_URL, 'sso_binding' => 'http_redirect'], $shown['settings']);
         self::assertIsArray($shown['signing']);
         self::assertCount(1, $shown['signing']);
+        self::assertIsString($shown['signing'][0]['certificate']);
         self::assertStringStartsWith('-----BEGIN CERTIFICATE-----', $shown['signing'][0]['certificate']);
         self::assertSame(openssl_x509_fingerprint($this->idp->certificate(), 'sha256'), $shown['signing'][0]['fingerprint']);
         self::assertSame([], $shown['encryption']);
