@@ -272,6 +272,8 @@ final class ProtocolManager extends Manager
      * application and forgets its scoped services before each job, and a driver
      * kept across that would go on using a job's old ones.
      *
+     * A name that is neither a string nor an enum names no driver.
+     *
      * @param  mixed  $driver
      * @return mixed
      *
@@ -280,6 +282,10 @@ final class ProtocolManager extends Manager
     #[\Override]
     public function driver(mixed $driver = null): mixed
     {
+        if ($driver !== null && !is_string($driver) && !$driver instanceof \UnitEnum) {
+            throw new \InvalidArgumentException(sprintf('Protocol driver [%s] is not registered.', get_debug_type($driver)));
+        }
+
         if ($this->followsApplication) {
             $this->followApplication(Container::getInstance());
         }
