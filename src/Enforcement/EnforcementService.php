@@ -343,21 +343,23 @@ final readonly class EnforcementService
         ?Caller $caller,
         ClientContext $client,
     ): EnforcementResult {
+        $version = self::ulid();
+
         $locked->forceFill([
             'enabled'        => $enabled,
             'connection_ids' => EnforcementSummary::sorted($ids),
-            'version'        => self::ulid(),
+            'version'        => $version,
             'changed_at'     => $this->clock->now(),
         ])->save();
 
         if ($enabled) {
 
-            $policy = EnforcementPolicy::required($locked->tenant_id, $locked->tenant_id, EnforcementFinder::enabledIds($connections), $locked->version);
+            $policy = EnforcementPolicy::required($locked->tenant_id, $locked->tenant_id, EnforcementFinder::enabledIds($connections), $version);
 
             $this->container->make(SessionRevocation::class)->revoke(RevocationScope::tenant($policy));
         }
 
-        $this->events->changed($locked, $previousVersion, $caller, $client);
+        $this->events->changed($locked, $version, $previousVersion, $caller, $client);
 
         return EnforcementResult::updated(EnforcementSummary::of($locked->tenant_id, $locked));
     }

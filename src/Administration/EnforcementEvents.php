@@ -53,15 +53,16 @@ final readonly class EnforcementEvents
 
     /**
      * Report the tenant's enforcement as the row now holds it, with the version
-     * it replaced.
+     * the change gave it and the version it replaced.
      *
      * @param  \SineMacula\Laravel\Sso\Models\TenantEnforcement  $enforcement
+     * @param  string  $version
      * @param  ?string  $previousVersion
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      */
-    public function changed(TenantEnforcement $enforcement, ?string $previousVersion, ?Caller $caller, ClientContext $client): void
+    public function changed(TenantEnforcement $enforcement, string $version, ?string $previousVersion, ?Caller $caller, ClientContext $client): void
     {
         $context = $this->contexts->make(
             $client,
@@ -74,7 +75,7 @@ final readonly class EnforcementEvents
 
         sort($ids, SORT_STRING);
 
-        $this->dispatcher->dispatch(new EnforcementChanged($context, $enforcement->enabled, $ids, $enforcement->version, $previousVersion));
+        $this->dispatcher->dispatch(new EnforcementChanged($context, $enforcement->enabled, $ids, $version, $previousVersion));
     }
 
     /**
