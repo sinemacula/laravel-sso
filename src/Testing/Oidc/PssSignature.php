@@ -78,7 +78,7 @@ final class PssSignature
     /**
      * A random salt of the length given.
      *
-     * @param  int  $length
+     * @param  int<1, max>  $length
      * @return string
      *
      * @throws \LogicException

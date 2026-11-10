@@ -402,13 +402,15 @@ final readonly class SubjectMigration
      */
     private static function isAccountedFor(array $links, #[\SensitiveParameter] array $relinks, array $removals): bool
     {
-        if (array_filter($removals, static fn (mixed $id): bool => !is_string($id)) !== []) {
+        $removed = array_filter($removals, is_string(...));
+
+        if (count($removed) !== count($removals)) {
             return false;
         }
 
         // As many ids given as there are links, and every link among them: each
         // link given exactly once, and nothing else
-        $given   = [...array_keys($relinks), ...array_unique($removals)];
+        $given   = [...array_keys($relinks), ...array_unique($removed)];
         $current = array_keys($links);
 
         return count($given) === count($current) && array_diff($current, $given) === [];

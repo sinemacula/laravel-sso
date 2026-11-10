@@ -158,6 +158,8 @@ final class ClaimTypes
      * @param  array<array-key, mixed>  $values
      * @param  int  $maxBytes
      * @return bool
+     *
+     * @phpstan-assert-if-true list<non-empty-string> $values
      */
     private static function isListOfText(#[\SensitiveParameter] array $values, int $maxBytes): bool
     {

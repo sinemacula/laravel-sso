@@ -68,7 +68,7 @@ final readonly class AssertionMapper
             self::instant($assertion->getIssueInstant()->toDateTime()),
             self::subject($assertion->getSubject()),
             self::conditions($assertion->getConditions(), $element),
-            array_map(self::authnStatement(...), $assertion->getAuthnStatements()),
+            array_values(array_map(self::authnStatement(...), $assertion->getAuthnStatements())),
             self::attributes($assertion),
             [
                 'encrypted_attributes' => self::encryptedAttributes($assertion),
@@ -184,7 +184,7 @@ final readonly class AssertionMapper
         $restricted = [];
 
         foreach ($conditions->getAudienceRestriction() as $restriction) {
-            $restricted[] = array_map(static fn ($audience): string => $audience->getContent()->getRawValue(), $restriction->getAudience());
+            $restricted[] = array_values(array_map(static fn ($audience): string => $audience->getContent()->getRawValue(), $restriction->getAudience()));
         }
 
         return new SamlConditions(

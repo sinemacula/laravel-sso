@@ -242,7 +242,7 @@ final readonly class AuthnRequestWriter
 
         if ($signer !== null) {
             $fields['SigAlg']    = $signer->getAlgorithmId();
-            $fields['Signature'] = base64_encode($signer->sign(OutgoingRequest::encode($fields)));
+            $fields['Signature'] = base64_encode(self::signature($signer, OutgoingRequest::encode($fields)));
         }
 
         return new OutgoingRequest($id, OutgoingRequest::HTTP_REDIRECT, $fields);
@@ -328,6 +328,26 @@ final readonly class AuthnRequestWriter
         }
 
         return $xml;
+    }
+
+    /**
+     * The signer's signature over the query, as raw bytes.
+     *
+     * @param  \SimpleSAML\XMLSecurity\Alg\Signature\SignatureAlgorithmInterface  $signer
+     * @param  string  $query
+     * @return string
+     *
+     * @throws \LogicException
+     */
+    private static function signature(#[\SensitiveParameter] SignatureAlgorithmInterface $signer, string $query): string
+    {
+        $signature = $signer->sign($query);
+
+        if ($signature === false) {
+            throw new \LogicException('The AuthnRequest could not be signed.');
+        }
+
+        return $signature;
     }
 
     /**

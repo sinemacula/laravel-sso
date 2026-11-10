@@ -137,7 +137,7 @@ final class StrictJson
         }
 
         $tokens = $matches[0];
-        $open   = new \SplStack;
+        $open   = new OpenContainers;
 
         foreach ($tokens as $index => $token) {
 
