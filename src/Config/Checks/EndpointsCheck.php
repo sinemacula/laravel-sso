@@ -47,7 +47,7 @@ final readonly class EndpointsCheck implements ConfigurationCheck
     #[\Override]
     public function applies(): bool
     {
-        return Features::isInUse();
+        return Features::isInUse($this->config);
     }
 
     /**

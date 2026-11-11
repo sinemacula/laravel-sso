@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Applications;
 
+use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Applications\Enums\HandoffDelivery;
 use SineMacula\Laravel\Sso\Config\BooleanSetting;
 use SineMacula\Laravel\Sso\Config\Enums\Feature;
@@ -92,15 +93,17 @@ final readonly class Application
     ) {}
 
     /**
-     * The application the settings under the name describe.
+     * The application the settings under the name describe, judged against the
+     * features the repository switches on.
      *
+     * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  string  $name
      * @param  mixed  $settings
      * @return self
      *
      * @throws \InvalidArgumentException
      */
-    public static function fromSettings(string $name, mixed $settings): self
+    public static function fromSettings(Repository $config, string $name, mixed $settings): self
     {
         $key      = "sso.applications.{$name}";
         $settings = self::shaped($name, $key, $settings);
@@ -115,7 +118,7 @@ final readonly class Application
             throw new \InvalidArgumentException(sprintf('`%s.delivery` must be `fragment` or `query`.', $key));
         }
 
-        [$discovery, $fallback] = self::discovery($key, $settings['discovery'] ?? []);
+        [$discovery, $fallback] = self::discovery($config, $key, $settings['discovery'] ?? []);
 
         return new self($name, $redirectUri, $externalSignIn, $delivery, $discovery, $fallback, $unlinked, $ttl);
     }
@@ -170,13 +173,14 @@ final readonly class Application
      * leads to: required while it offers discovery and the `discovery` feature
      * is on (or its switch is malformed), and checked whenever it is given.
      *
+     * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  string  $key
      * @param  mixed  $discovery
      * @return array{0: bool, 1: ?string}
      *
      * @throws \InvalidArgumentException
      */
-    private static function discovery(string $key, mixed $discovery): array
+    private static function discovery(Repository $config, string $key, mixed $discovery): array
     {
         if (!is_array($discovery) || array_diff(array_map(strval(...), array_keys($discovery)), self::DISCOVERY_SETTINGS) !== []) {
             throw new \InvalidArgumentException(sprintf('`%s.discovery` must be an array of `enabled` and `fallback_url`.', $key));
@@ -185,7 +189,7 @@ final readonly class Application
         $offered  = BooleanSetting::isOn("{$key}.discovery.enabled", $discovery['enabled'] ?? false);
         $fallback = $discovery['fallback_url'] ?? null;
 
-        if ($fallback === null && !($offered && Features::requested(Feature::DISCOVERY))) {
+        if ($fallback === null && !($offered && Features::requested($config, Feature::DISCOVERY))) {
             return [$offered, null];
         }
 

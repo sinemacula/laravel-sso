@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Logging;
 
+use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
@@ -24,9 +25,13 @@ final readonly class LoggingCheck implements ConfigurationCheck
     /**
      * Constructor.
      *
+     * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  \SineMacula\Laravel\Sso\Logging\LoggingSettings  $settings
      */
     public function __construct(
+
+        /** The configuration that says whether the package is in use. */
+        private Repository $config,
 
         /** The settings checked. */
         private LoggingSettings $settings,
@@ -40,7 +45,7 @@ final readonly class LoggingCheck implements ConfigurationCheck
     #[\Override]
     public function applies(): bool
     {
-        return Features::isInUse();
+        return Features::isInUse($this->config);
     }
 
     /**

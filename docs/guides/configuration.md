@@ -329,12 +329,23 @@ a worker command and `sso:check` with the package's own. Write a `ConfigurationC
 covers is on, and `checks()` returns closures, each throwing an exception whose message names one problem and the key,
 never the configured value. The check is built before `applies()` is asked, so building it must not depend on what it
 covers being on. This one checks the client hosts the redirect URI resolver above reads, and applies only while the
-package is in use (`Features::isInUse()`, a protocol on), so an application with single sign-on off never fails its boot
-on it. `ClientHostsCheck implements ConfigurationCheck` with these two methods:
+package is in use (`Features::isInUse($config)`, a protocol on in the repository it is given), so an application with
+single sign-on off never fails its boot on it. `ClientHostsCheck implements ConfigurationCheck` with these methods:
 
 <!-- snippet: tests/Integration/Examples/Configuration/ClientHostsCheck.php#configuration-added-check -->
 
 ```php
+/**
+ * Constructor.
+ *
+ * @param  \Illuminate\Contracts\Config\Repository  $config
+ */
+public function __construct(
+
+    /** The configuration checked. */
+    private Repository $config,
+) {}
+
 /**
  * Whether the package is in use, so an application with it off never fails
  * its boot on this check.
@@ -344,7 +355,7 @@ on it. `ClientHostsCheck implements ConfigurationCheck` with these two methods:
 #[\Override]
 public function applies(): bool
 {
-    return Features::isInUse();
+    return Features::isInUse($this->config);
 }
 
 /**
@@ -356,8 +367,8 @@ public function applies(): bool
 public function checks(): array
 {
     return [
-        static function (): void {
-            $hosts = config('clients.hosts');
+        function (): void {
+            $hosts = $this->config->get('clients.hosts');
 
             if (!is_array($hosts) || $hosts === [] || array_filter($hosts, static fn (mixed $host): bool => !is_string($host) || $host === '') !== []) {
                 throw new \InvalidArgumentException('`clients.hosts` must give each client a host.');

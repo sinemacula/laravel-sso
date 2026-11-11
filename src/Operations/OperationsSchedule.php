@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Operations;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\Features;
 
 /**
@@ -52,9 +53,13 @@ final readonly class OperationsSchedule
     /**
      * Constructor.
      *
+     * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  \SineMacula\Laravel\Sso\Operations\OperationsSettings  $settings
      */
     public function __construct(
+
+        /** The configuration that says whether the package is in use. */
+        private Repository $config,
 
         /** The cadences and the mutex switch, read on each call. */
         private OperationsSettings $settings,
@@ -71,7 +76,7 @@ final readonly class OperationsSchedule
      */
     public function register(Schedule $schedule): void
     {
-        if (!Features::isInUse()) {
+        if (!Features::isInUse($this->config)) {
             return;
         }
 

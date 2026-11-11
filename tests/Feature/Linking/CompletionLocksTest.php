@@ -192,7 +192,7 @@ final class CompletionLocksTest extends LinkingTestCase
         $this->start();
 
         $consumed    = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString(self::REFERENCE), $this->clock->now());
-        $application = Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']);
+        $application = Application::fromSettings(config(), 'web', ['redirect_uri' => 'https://app.example.com/sso']);
 
         return CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []), Clients::browser())
             ->withConnection($this->connection)
