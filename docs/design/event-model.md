@@ -84,18 +84,22 @@ are a contract.
   No package event implements `ShouldDispatchAfterCommit`, which would wait for the last transaction of any connection.
   The events dispatcher, the transactions manager and the database manager are resolved on each call, never held.
 - Laravel 12 does not tell its transactions manager when an outermost commit fails
-  (`ManagesTransactions::handleCommitTransactionException()`), so the callbacks waiting on that transaction stay pending
-  and run on the next outermost commit on the connection, which on a long-running worker can be another request's.
-  Laravel 13 drops them. The package does not rely on either: `Events\TransactionGenerations` counts each outermost
-  transaction begun on a connection, from a `TransactionBeginning` listener the service provider registers once, and a
-  savepoint never counts. Each callback carries its connection's generation when it was queued, and dispatches nothing
-  once that has moved on: a transaction that commits runs its callbacks before the next one begins, so only a failed
-  commit leaves one to run under a later generation. A record such a transaction left is found only while the
-  connection has a transaction open, so an event dispatched outside one is still dispatched at once. This covers the
-  application's own outermost transaction on the storage connection as well as the package's.
-- `TransactionGenerations` is a singleton, resolved when the provider boots, never scoped: a late callback can run in a
-  later request or job than the one that queued it, and a count started afresh there could reach the generation it was
-  queued in again. It holds a count by connection name and nothing of a request (SSO-11.2).
+  (`ManagesTransactions::handleCommitTransactionException()`), so the records of that transaction, its savepoints'
+  included, stay in the manager with their callbacks, and run on the next outermost commit on the connection, which on
+  a long-running worker can be another request's. Laravel 13 drops them. The package does not rely on either:
+  `Events\StrandedTransactions` listens for `TransactionBeginning`, from a listener the service provider registers
+  once, and when an outermost transaction begins it marks every record the manager still holds for the connection,
+  pending or staged, as stranded, but for the record just begun and any record whose parents reach it. Each callback
+  holds its own record and dispatches nothing once that record is marked. The manager removes a committing
+  transaction's records before running their callbacks, so a transaction a callback begins, a listener's or another
+  package's, marks none of them and every event of that commit is still dispatched. A record a failed commit left is
+  found only while the connection has a transaction open, so an event dispatched outside one is still dispatched at
+  once. This covers the application's own outermost transaction on the storage connection as well as the package's.
+- Two cases escape the marking, and a stranded callback runs as Laravel would run it: an outermost begin whose event is
+  not delivered (the testing traits begin their wrapping transaction so, and the application's then begin at level 2),
+  and a `commit()` called at level 0 after a Laravel 12 failure, which runs the stranded callbacks with no begin first.
+- `StrandedTransactions` is a singleton, resolved when the provider boots, never scoped, so the listener and the
+  dispatch share its marks. It holds them weakly, by record, and nothing of a request (SSO-11.2).
 - The unlinked-result event (SSO-8.6) alone is dispatched with `dispatchNow()`: synchronously, inside the flow,
   before any handoff is issued, so a listener can provision the identity in time. A queued listener on it is too late.
 - One failure event, `Events\FlowFailed`, reports every refused operation, with the flow (`Events\Enums\Flow`) and the
@@ -175,8 +179,8 @@ are a contract.
 - `src/Events/EventContexts.php`: `make()`, the cleaning and the caps.
 - `src/Events/AfterCommitDispatcher.php`: `dispatch()`, `dispatchNow()`, `pendingTransaction()`,
   `hasOpenTransaction()`.
-- `src/Events/TransactionGenerations.php`: `begun()`, `current()`; `src/SsoServiceProvider.php`:
-  `countOutermostTransactions()`.
+- `src/Events/StrandedTransactions.php`: `begun()`, `isStranded()`; `src/SsoServiceProvider.php`:
+  `markStrandedTransactions()`.
 - `src/Events/FlowFailed.php`, `src/Events/Enums/Flow.php`, `src/Events/Enums/FailureReason.php`.
 - `src/Database/StorageConnection.php`: `resolvedName()`, the default connection of the dispatch.
 - `tests/Concerns/RecordsEventSequences.php`: the event sequence harness. A flow test records with
@@ -209,15 +213,19 @@ are a contract.
   `testATransactionOnAnotherConnectionDoesNotDefer`, `testTheDefaultConnectionFollowsTheStorageConnection`,
   `testDispatchNowIsImmediateInsideATransaction`, `testIgnoresTheTransactionWrappingATest`,
   `testNestedSavepointRollbacksDropOnlyTheirEvents`, `testACallbackLeftByAFailedCommitIsDropped`,
-  `testDispatchesAtOnceBesideARecordAFailedCommitLeft`.
-- `tests/Feature/Events/TransactionGenerationsTest.php`
-  `testAConnectionStartsAtNought`, `testEachOutermostBeginAdvancesTheGenerationByOne`,
-  `testASavepointDoesNotAdvanceTheGeneration`, `testTheGenerationIsPerConnection`, `testOneCountServesTheProcess`.
+  `testDispatchesAtOnceBesideARecordAFailedCommitLeft`, `testAnEarlierCallbacksTransactionDoesNotDropTheEvent`,
+  `testACallbacksOwnTransactionDispatchesBesideTheCommittingOne`,
+  `testAStrandedEventStaysDroppedBesideACallbacksTransaction`.
+- `tests/Feature/Events/StrandedTransactionsTest.php`
+  `testAnOutermostBeginStrandsWhatAFailedCommitLeft`, `testASavepointStrandsNothing`,
+  `testATransactionBegunFromACommitCallbackStrandsNothing`, `testASavepointOfTheTransactionJustBegunIsNotStranded`,
+  `testOnlyTheConnectionsOwnRecordsAreStranded`, `testTheTestingManagersRecordsAreAllRead`,
+  `testNothingIsMarkedWithoutATransactionsManager`, `testOneInstanceServesTheProcess`.
 - `tests/Feature/Events/RecordsEventSequencesTest.php`.
 - `tests/Integration/Events/AfterCommitDispatchTest.php`
   `testAnEventIsDeliveredWhenItsWriteCommits`, `testAnEventIsDroppedWhenItsWriteRollsBack`,
   `testAChangeWhoseCommitFailsIsNeverReported`, `testTheApplicationsFailedCommitTakesThePackagesEventsWithIt`,
-  `testAQueuedListenerReceivesTheFailureIntact`.
+  `testAChangeIsReportedWhenAnEarlierCallbackWritesInATransaction`, `testAQueuedListenerReceivesTheFailureIntact`.
 - `tests/Unit/Events/AdministrationEventClassesTest.php`
   `testEachIsAPackageEventReturningItsContext`, `testEachSurvivesASerializeRoundTrip`,
   `testEachHoldsExactlyItsDeclaredProperties`, `testConnectionUpdatedHoldsAListOfNamesOnly`.

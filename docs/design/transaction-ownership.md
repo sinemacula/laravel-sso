@@ -18,8 +18,8 @@ committed stands, by design. `linking.md` describes the stages, and this note wh
 - A failed commit is a rollback: the events waiting on it are dropped, those of a savepoint that committed inside it
   included, whether the transaction is the package's or the application's own outermost one on the storage connection.
   Laravel 12 leaves their callbacks pending, to run on the next outermost commit on the connection, perhaps in another
-  request; `AfterCommitDispatcher` drops each one queued under an earlier generation than the connection's
-  (`Events\TransactionGenerations`), so no Laravel version reports a rolled-back change (`event-model.md`).
+  request; `AfterCommitDispatcher` drops each one whose record the next outermost begin marked as stranded
+  (`Events\StrandedTransactions`), so no Laravel version reports a rolled-back change (`event-model.md`).
 - An adapter that writes through the storage connection, inside the transaction the package has open or that it opened
   itself, commits or rolls back with it. One that writes through another connection is not atomic with it. So
   `SessionRevocation`, `ReauthenticationSessions`, a session written after `admit()`, and a listener's identity written
@@ -84,7 +84,7 @@ committed stands, by design. `linking.md` describes the stages, and this note wh
 
 ## Implementation Anchors
 
-- `src/Events/AfterCommitDispatcher.php`, `src/Events/TransactionGenerations.php`.
+- `src/Events/AfterCommitDispatcher.php`, `src/Events/StrandedTransactions.php`.
 - `src/Completion/CompletionPipeline.php`, `src/Completion/ProvisioningOffer.php`,
   `src/Provisioning/ProvisioningHelper.php`.
 - `src/Handoffs/HandoffRedemption.php`, `src/Handoffs/HandoffRecheck.php`.
