@@ -39,7 +39,7 @@ final readonly class Saml2Check implements ConfigurationCheck
     #[\Override]
     public function applies(): bool
     {
-        return Features::requested(Feature::SAML2);
+        return Features::requested($this->config, Feature::SAML2);
     }
 
     /**

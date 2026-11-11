@@ -109,7 +109,7 @@ final class RequestEventsTest extends TestCase
     public function testReportsARefusalWithWhatTheStartHadEstablished(): void
     {
         $connection  = $this->makeConnection();
-        $application = Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']);
+        $application = Application::fromSettings(config(), 'web', ['redirect_uri' => 'https://app.example.com/sso']);
         $reference   = RequestReference::generate();
         $caller      = new Caller(new IdentityReference('App\Models\User', '7'), 'session-1');
 

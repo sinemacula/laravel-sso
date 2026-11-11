@@ -80,7 +80,7 @@ final class CompletionStateTest extends TestCase
         $correlation = Correlation::solicited('state-1');
         $request     = new AuthorizationRequest;
         $consumed    = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString(str_repeat('r', 32)), CarbonImmutable::now());
-        $application = Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']);
+        $application = Application::fromSettings(config(), 'web', ['redirect_uri' => 'https://app.example.com/sso']);
         $claims      = ExampleResults::claims();
         $result      = ExampleResults::full();
         $identity    = new IdentityReference('user', '1');
@@ -127,7 +127,7 @@ final class CompletionStateTest extends TestCase
     public function testARedirectTargetNeedsTheRequestItsApplicationAndTheConnection(): void
     {
         $consumed    = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::generate(), CarbonImmutable::now());
-        $application = Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']);
+        $application = Application::fromSettings(config(), 'web', ['redirect_uri' => 'https://app.example.com/sso']);
         $arrived     = CompletionState::arrived('c', new CompletionRequest('GET', '', []), Clients::browser());
 
         self::assertFalse($arrived->withConnection(new Connection)->hasRedirectTarget());
@@ -162,7 +162,7 @@ final class CompletionStateTest extends TestCase
             ->withAuthorizationRequest(
                 new AuthorizationRequest,
                 new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString(str_repeat('r', 32)), CarbonImmutable::now()),
-                Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']),
+                Application::fromSettings(config(), 'web', ['redirect_uri' => 'https://app.example.com/sso']),
             )
             ->withResult(ExampleResults::full())
             ->withResolution(ExampleLinks::resolution(new IdentityReference('user', '1')))

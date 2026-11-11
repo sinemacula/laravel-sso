@@ -39,7 +39,7 @@ final readonly class OidcCheck implements ConfigurationCheck
     #[\Override]
     public function applies(): bool
     {
-        return Features::requested(Feature::OIDC);
+        return Features::requested($this->config, Feature::OIDC);
     }
 
     /**

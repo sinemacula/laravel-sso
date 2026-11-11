@@ -157,6 +157,7 @@ final class FetcherCheckTest extends TestCase
         $this->useThePackage();
 
         $check = new FetcherCheck(
+            config(),
             new FetcherSettings(config()),
             static fn (string $extension): bool => $extension === 'curl' ? $curlLoaded : extension_loaded($extension),
             static fn (string $class): bool => $class === CurlHandler::class ? $handlerExists : class_exists($class),
@@ -181,6 +182,7 @@ final class FetcherCheckTest extends TestCase
         $asked = new \ArrayObject;
 
         $check = new FetcherCheck(
+            config(),
             new FetcherSettings(config()),
             static function (string $extension) use ($asked): bool {
                 $asked->append($extension);

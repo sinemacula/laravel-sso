@@ -9,7 +9,11 @@ composer require sinemacula/laravel-sso
 
 The package needs PHP 8.3 or later with the `bcmath`, `curl`, `dom`, `hash`, `libxml`, `mbstring`, `openssl` and
 `zlib` extensions; Composer requires them, and the boot check names any that is missing (see
-[Checking the configuration](configuration.md#checking-the-configuration)).
+[Checking the configuration](configuration.md#checking-the-configuration)). While SAML is on, the same check names any
+XML provider package whose element registry the plugin has not put in place, as after an install with plugins
+disabled, `--no-plugins` or the plugin not allowed, and any registry it put in place twice or left stale from an
+earlier install: run `composer install` again with it allowed, into a fresh vendor directory if the plugin has run
+before.
 
 The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets two limits until the package
 can move to its next major version, which needs PHP 8.5:

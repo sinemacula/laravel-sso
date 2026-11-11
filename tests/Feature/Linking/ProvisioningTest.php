@@ -172,7 +172,7 @@ final class ProvisioningTest extends LinkingTestCase
         $arrived  = CompletionState::arrived($this->connection->id, new CompletionRequest('GET', '', []), Clients::browser());
         $consumed = new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString(str_repeat('r', 32)), $this->clock->now());
         $request  = new AuthorizationRequest;
-        $signIn   = $arrived->withAuthorizationRequest($request, $consumed, Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']));
+        $signIn   = $arrived->withAuthorizationRequest($request, $consumed, Application::fromSettings(config(), 'web', ['redirect_uri' => 'https://app.example.com/sso']));
         $stage    = new Provisioning;
 
         self::assertTrue($stage->run($arrived)->isProceeding(), 'nothing known');

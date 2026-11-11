@@ -2447,7 +2447,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
             ->withAuthorizationRequest(
                 $request,
                 new ConsumedRequest(Purpose::SIGN_IN, 'web', RequestReference::fromString(self::STATE_REFERENCE), $now),
-                Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso', 'handoff_ttl_seconds' => 60]),
+                Application::fromSettings(config(), 'web', ['redirect_uri' => 'https://app.example.com/sso', 'handoff_ttl_seconds' => 60]),
             )
             ->withValidation($connection->linking_version, $now->addMinute());
     }

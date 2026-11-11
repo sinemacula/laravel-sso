@@ -255,6 +255,6 @@ final class ConsumptionResultTest extends TestCase
      */
     private static function application(): Application
     {
-        return Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true]);
+        return Application::fromSettings(config(), 'web', ['redirect_uri' => 'https://app.example.com/sso', 'external_sign_in' => true]);
     }
 }
