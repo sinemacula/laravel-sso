@@ -205,7 +205,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
 
         $start = $this->start(Purpose::REAUTHENTICATE, $this->person, self::SESSION);
 
-        self::assertSame([['standing', 0, $this->person->type, $this->person->id, self::SESSION, $this->connection->id]], $this->table->calls);
+        self::assertSame([['standing', 0, $this->person->type, $this->person->id, self::SESSION, 'web', $this->connection->id]], $this->table->calls);
 
         $completion = $this->complete();
 
@@ -213,7 +213,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         self::assertTrue($this->admit($completion, $start, Purpose::REAUTHENTICATE)->isAdmitted());
 
         self::assertSame([
-            ['standing', 0, $this->person->type, $this->person->id, self::SESSION, $this->connection->id],
+            ['standing', 0, $this->person->type, $this->person->id, self::SESSION, 'web', $this->connection->id],
             ['lockedStanding', 2, $this->person->type, $this->person->id, self::SESSION, 'web', $this->connection->id, $link->id],
             ['renewAuthentication', 2, $this->person->type, $this->person->id, self::SESSION, $at->format(self::INSTANT), null],
         ], $this->table->calls);
@@ -371,6 +371,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         yield 'revoked' => ['active', false];
         yield 'of another identity' => ['identity_id', '8'];
         yield 'of another type of identity' => ['identity_type', 'App\Models\Admin'];
+        yield 'of another application' => ['application', 'mobile'];
         yield 'of another connection' => ['connection_id', 'another-connection'];
     }
 
@@ -1537,22 +1538,27 @@ final class ReauthenticationBranchTest extends LinkingTestCase
             ) {}
 
             /**
-             * Whether the identity holds the active session through the
-             * connection.
+             * Whether the identity holds the active session, of the
+             * application, through the connection.
              *
              * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
              * @param  string  $sessionId
+             * @param  string  $application
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
              */
             #[\Override]
-            public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding
+            public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding
             {
-                $this->record('standing', [$identity->type, $identity->id, $sessionId, $connection->getConnectionId()]);
+                $this->record('standing', [$identity->type, $identity->id, $sessionId, $application, $connection->getConnectionId()]);
 
                 $row = ($this->rows)()->where('id', $sessionId)->first();
 
-                return $this->matches($row, [$identity->type, $identity->id, $connection->getConnectionId()], ['identity_type', 'identity_id', 'connection_id']);
+                return $this->matches(
+                    $row,
+                    [$identity->type, $identity->id, $application, $connection->getConnectionId()],
+                    ['identity_type', 'identity_id', 'application', 'connection_id'],
+                );
             }
 
             /**

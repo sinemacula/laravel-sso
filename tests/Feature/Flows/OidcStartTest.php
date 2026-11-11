@@ -353,9 +353,9 @@ final class OidcStartTest extends TestCase
 
     /**
      * A `reauthenticate` asks the session contract with exactly the identity,
-     * the session and the connection, then forces fresh authentication:
-     * `max_age=0` over the connection's, and `prompt=login` over an extra one,
-     * the other extra parameters kept.
+     * the session, the application and the connection, then forces fresh
+     * authentication: `max_age=0` over the connection's, and `prompt=login`
+     * over an extra one, the other extra parameters kept.
      *
      * @return void
      *
@@ -371,7 +371,7 @@ final class OidcStartTest extends TestCase
         $row        = AuthorizationRequest::query()->sole();
 
         self::assertTrue($result->isStarted());
-        self::assertSame([[$identity, self::SESSION, $connection->id]], $sessions->asked);
+        self::assertSame([[$identity, self::SESSION, 'web', $connection->id]], $sessions->asked);
         self::assertSame([], $this->freshness->operations());
         self::assertSame(['0', 'login', 'person@example.test'], [$parameters['max_age'], $parameters['prompt'], $parameters['login_hint']]);
         self::assertSame(
@@ -716,12 +716,12 @@ final class OidcStartTest extends TestCase
      * asked.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding  $standing
-     * @return object{asked: list<array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string, 2: string}>}
+     * @return object{asked: list<array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string, 2: string, 3: string}>}
      */
     private function bindSessions(SessionStanding $standing): object
     {
         $sessions = new class ($standing) implements ReauthenticationSessions {
-            /** @var list<array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string, 2: string}> Each question, in order. */
+            /** @var list<array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string, 2: string, 3: string}> Each question, in order. */
             public array $asked = [];
 
             /**
@@ -740,13 +740,14 @@ final class OidcStartTest extends TestCase
              *
              * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
              * @param  string  $sessionId
+             * @param  string  $application
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
              */
             #[\Override]
-            public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding
+            public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding
             {
-                $this->asked[] = [$identity, $sessionId, $connection->getConnectionId()];
+                $this->asked[] = [$identity, $sessionId, $application, $connection->getConnectionId()];
 
                 return $this->standing;
             }
@@ -764,9 +765,9 @@ final class OidcStartTest extends TestCase
             #[\Override]
             public function lockedStanding(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection, string $linkId): SessionStanding
             {
-                unset($application, $linkId);
+                unset($linkId);
 
-                return $this->standing($identity, $sessionId, $connection);
+                return $this->standing($identity, $sessionId, $application, $connection);
             }
 
             /**

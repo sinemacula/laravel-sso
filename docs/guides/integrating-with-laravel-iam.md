@@ -291,8 +291,8 @@ evidence it accepted. `renewAuthentication()` is not given the result's issuer a
 external entry point needs to find the link, so the renewal is written once, after `admit()` answers, and never twice:
 
 1. `standing()` (at the start, no transaction): `externalStanding($sessionId, $identity, $connectionId)` (PR #127),
-   with no link, which reads on the write connection, writes nothing and locks nothing. `null` is `signed_in`; any
-   reason is `not_signed_in`.
+   with no link, which reads on the write connection, writes nothing and locks nothing. Answer `signed_in` only when
+   it answers `null` and the session's application is the `$application` given; anything else is `not_signed_in`.
 2. `lockedStanding()` (inside the adapter's transaction, after the package's locks): `externalStanding($sessionId,
    $identity, $connectionId, $linkId)` (PR #127), which locks the session's row until the transaction ends. Answer
    `signed_in` only when it answers `null` and the session's application is the `$application` given.

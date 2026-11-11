@@ -172,17 +172,23 @@ final class ApplicationRevocation implements ReauthenticationSessions, SessionRe
     }
 
     /**
-     * Whether the identity is signed in through the connection on the session.
+     * Whether the identity is signed in on the session, of the application,
+     * through the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $sessionId
+     * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
      */
     #[\Override]
-    public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding
+    public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding
     {
-        $session = self::ofIdentity(self::sessions(), $identity)->where('id', $sessionId)->where('connection_id', $connection->getConnectionId())->first();
+        $session = self::ofIdentity(self::sessions(), $identity)
+            ->where('id', $sessionId)
+            ->where('application', $application)
+            ->where('connection_id', $connection->getConnectionId())
+            ->first();
 
         return $session === null ? SessionStanding::NOT_SIGNED_IN : SessionStanding::SIGNED_IN;
     }

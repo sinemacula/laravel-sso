@@ -18,9 +18,10 @@ use SineMacula\Laravel\Sso\Models\Connection;
  * the freshness contract answers `fresh` for `sso.link.create` (SSO-2.12) for
  * the caller, with the session it gave, else `freshness_required`; a
  * `reauthenticate` once `Contracts\ReauthenticationSessions::standing()`
- * answers the caller's identity signed in through the connection on its session
- * (SSO-5.10), else `session_ineligible`. That alone, since the exact link is
- * judged at redemption, under the session's lock.
+ * answers the caller's identity signed in on its session, of the application
+ * the flow is started for, through the connection (SSO-5.10), else
+ * `session_ineligible`. That alone, since the exact link is judged at
+ * redemption, under the session's lock.
  *
  * It holds the freshness gate and the session contract, neither of which keeps
  * anything of one start for the next (SSO-11.2).
@@ -48,9 +49,10 @@ final readonly class StartEligibility
     ) {}
 
     /**
-     * Why the purpose may not start through the connection, for the caller, or
-     * `null` when it may.
+     * Why the purpose may not start for the application through the connection,
+     * for the caller, or `null` when it may.
      *
+     * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -59,27 +61,29 @@ final readonly class StartEligibility
      * @throws \InvalidArgumentException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    public function refusal(Purpose $purpose, Connection $connection, ?Caller $caller): ?FailureReason
+    public function refusal(string $application, Purpose $purpose, Connection $connection, ?Caller $caller): ?FailureReason
     {
         return match ($purpose) {
             Purpose::SIGN_IN        => null,
             Purpose::LINK           => $this->freshness->check(FreshnessOperation::LINK_CREATE, $caller)->isFresh() ? null : FailureReason::FRESHNESS_REQUIRED,
-            Purpose::REAUTHENTICATE => $this->isSignedIn($connection, $caller) ? null : FailureReason::SESSION_INELIGIBLE,
+            Purpose::REAUTHENTICATE => $this->isSignedIn($application, $connection, $caller) ? null : FailureReason::SESSION_INELIGIBLE,
         };
     }
 
     /**
-     * Whether the caller's identity is signed in through the connection on its
-     * session. Only a `reauthenticate` asks, whose caller gives both.
+     * Whether the caller's identity is signed in on its session, of the
+     * application, through the connection. Only a `reauthenticate` asks, whose
+     * caller gives both.
      *
+     * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return bool
      */
-    private function isSignedIn(Connection $connection, ?Caller $caller): bool
+    private function isSignedIn(string $application, Connection $connection, ?Caller $caller): bool
     {
         assert($caller !== null && $caller->sessionId !== null);
 
-        return $this->sessions->standing($caller->identity, $caller->sessionId, $connection)->isSignedIn();
+        return $this->sessions->standing($caller->identity, $caller->sessionId, $application, $connection)->isSignedIn();
     }
 }

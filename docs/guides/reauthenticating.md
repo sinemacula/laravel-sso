@@ -22,8 +22,9 @@ $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHEN
 `new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
 request itself, and each event it reports carries the client's IP address and user agent.
 
-1. **Start.** The package asks `standing()` whether the identity is signed in through the connection on the session.
-   Anything but `signed_in` is `session_ineligible`, and no request is stored.
+1. **Start.** The package asks `standing()` whether the identity is signed in on the session, of the application the
+   flow is started for, through the connection. Anything but `signed_in` is `session_ineligible`, and no request is
+   stored.
 2. **At the provider.** The driver forces fresh authentication: `ForceAuthn="true"` for SAML, `prompt=login` with
    `max_age=0` for OpenID Connect, whatever the connection configures. A connection's own `prompt` extra parameter or
    `max_age` never overrides them.
@@ -75,11 +76,11 @@ $this->app->bind(ReauthenticationSessions::class, UserSessions::class);
 
 Three methods, each with its own obligation:
 
-| Method                  | When                                        | Obligation                                                                             |
-|-------------------------|---------------------------------------------|----------------------------------------------------------------------------------------|
-| `standing()`            | The start, in no transaction of the package | The current answer for the identity, the session and the connection. It locks nothing. |
-| `lockedStanding()`      | Redemption, inside the caller's transaction | Every value matches, and the session's row is locked until that transaction ends.      |
-| `renewAuthentication()` | Redemption, after `lockedStanding()`        | Writes the authentication time, and the evidence when there is any, on the locked row. |
+| Method                  | When                                        | Obligation                                                                                              |
+|-------------------------|---------------------------------------------|---------------------------------------------------------------------------------------------------------|
+| `standing()`            | The start, in no transaction of the package | The current answer for the identity, the session, the application and the connection. It locks nothing. |
+| `lockedStanding()`      | Redemption, inside the caller's transaction | Every value matches, and the session's row is locked until that transaction ends.                       |
+| `renewAuthentication()` | Redemption, after `lockedStanding()`        | Writes the authentication time, and the evidence when there is any, on the locked row.                  |
 
 Answer `signed_in` only when you know it. If you cannot tell, answer `not_signed_in`. An exception propagates and rolls
 the redemption back with the code unconsumed, so use one for a failure, not for a refusal.

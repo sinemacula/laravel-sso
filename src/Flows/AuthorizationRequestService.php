@@ -56,10 +56,10 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  * 6. a `link` asks the freshness contract (`sso.link.create`) for its caller,
  *    with the session given, else `freshness_required` (SSO-2.12);
  * 7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing()`
- *    whether the caller's identity is signed in through the connection on its
- *    session, else `session_ineligible` (SSO-5.10); that alone, since the exact
- *    link is
- *    judged at redemption, under the session's lock;
+ *    whether the caller's identity is signed in on its session, of the
+ *    application, through the connection, else `session_ineligible`
+ *    (SSO-5.10); that alone, since the exact link is judged at redemption,
+ *    under the session's lock;
  * 8. the connection's trust version, as step 5 read it, is captured, the
  *    protocol state is generated (`ProtocolState`) and the driver asked to
  *    start, outside any transaction the start opens; a refused start is refused
@@ -205,7 +205,7 @@ final readonly class AuthorizationRequestService
     {
         self::assertBinding($purpose, $caller);
 
-        $reason = self::isChallenge($codeChallenge) ? $this->eligibility->refusal($purpose, $connection, $caller) : FailureReason::CHALLENGE_INVALID;
+        $reason = self::isChallenge($codeChallenge) ? $this->eligibility->refusal($application->name, $purpose, $connection, $caller) : FailureReason::CHALLENGE_INVALID;
 
         if ($reason !== null) {
             return $this->refuse($reason, $purpose, $caller, $client, $application, $connection);

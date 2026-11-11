@@ -30,21 +30,22 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 final readonly class UserSessions implements ReauthenticationSessions
 {
     /**
-     * Whether the identity is signed in through the connection on the session,
-     * read without a lock.
+     * Whether the identity is signed in on the session, of the application,
+     * through the connection, read without a lock.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $sessionId
+     * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
      */
     #[\Override]
-    public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding
+    public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding
     {
         $session = Session::on(StorageConnection::name())->useWritePdo()->whereKey($sessionId)->whereNull('revoked_at')->first();
-        $held    = [$session?->identity_type, $session?->identity_id, $session?->connection_id];
+        $held    = [$session?->identity_type, $session?->identity_id, $session?->application, $session?->connection_id];
 
-        return $held === [$identity->type, $identity->id, $connection->getConnectionId()] ? SessionStanding::SIGNED_IN : SessionStanding::NOT_SIGNED_IN;
+        return $held === [$identity->type, $identity->id, $application, $connection->getConnectionId()] ? SessionStanding::SIGNED_IN : SessionStanding::NOT_SIGNED_IN;
     }
 
     // @snippet-start reauthenticating-locked-standing

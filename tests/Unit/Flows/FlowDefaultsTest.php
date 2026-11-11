@@ -48,7 +48,7 @@ final class FlowDefaultsTest extends TestCase
      */
     public function testNoSessionIsFoundForReauthentication(): void
     {
-        $standing = (new NoReauthenticationSessions)->standing(new IdentityReference('user', '1'), 'session-1', new ExampleConnection);
+        $standing = (new NoReauthenticationSessions)->standing(new IdentityReference('user', '1'), 'session-1', 'web', new ExampleConnection);
 
         self::assertSame(SessionStanding::NOT_SIGNED_IN, $standing);
         self::assertFalse($standing->isSignedIn());

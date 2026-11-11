@@ -658,20 +658,26 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
             ) {}
 
             /**
-             * Whether the identity holds the active session through the
-             * connection.
+             * Whether the identity holds the active session, of the
+             * application, through the connection.
              *
              * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
              * @param  string  $sessionId
+             * @param  string  $application
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
              */
             #[\Override]
-            public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding
+            public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding
             {
                 $row = ($this->rows)()->where('id', $sessionId)->useWritePdo()->first();
 
-                return self::answer($row, ['identity_type' => $identity->type, 'identity_id' => $identity->id, 'connection_id' => $connection->getConnectionId()]);
+                return self::answer($row, [
+                    'identity_type' => $identity->type,
+                    'identity_id'   => $identity->id,
+                    'application'   => $application,
+                    'connection_id' => $connection->getConnectionId(),
+                ]);
             }
 
             /**
