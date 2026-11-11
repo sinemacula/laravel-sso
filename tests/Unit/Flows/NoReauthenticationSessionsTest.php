@@ -28,7 +28,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
  */
 #[CoversClass(NoReauthenticationSessions::class)]
 #[CoversClass(SessionStanding::class)]
-final class ReauthenticationSessionsDefaultTest extends TestCase
+final class NoReauthenticationSessionsTest extends TestCase
 {
     /**
      * Rows of `[identity, session, application]`.

@@ -126,12 +126,12 @@ authentication and nothing else; see [Starting a Flow](starting-a-flow.md#purpos
 
 ## Failures
 
-| Error                    | Why                                                                                     |
-|--------------------------|-----------------------------------------------------------------------------------------|
-| `connection_unavailable` | Disabled, incomplete, changed while starting, or its endpoint's query names a parameter |
-| `metadata_expired`       | A refresh validated the discovery document or the JWKS longer ago than the limit        |
-| `freshness_required`     | A `link` from a caller who did not authenticate recently enough                         |
-| `session_ineligible`     | A `reauthenticate` for an identity not signed in through the connection on the session  |
+| Error                    | Why                                                                                                  |
+|--------------------------|------------------------------------------------------------------------------------------------------|
+| `connection_unavailable` | Disabled, incomplete, changed while starting, or its endpoint's query names a parameter              |
+| `metadata_expired`       | A refresh validated the discovery document or the JWKS longer ago than the limit                     |
+| `freshness_required`     | A `link` from a caller who did not authenticate recently enough                                      |
+| `session_ineligible`     | A `reauthenticate` for an identity not signed in through the connection on the application's session |
 
 A connection is incomplete without its settings, without its client secret, or for `private_key_jwt` without a current
 `client_assertion` key that fits its [`client_assertion_algorithm`](oidc-connections.md#the-client-assertion-algorithm).
