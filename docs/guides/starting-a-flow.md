@@ -92,7 +92,7 @@ A refused answer's body is `{"error": "<reason>"}`, and a rate limited one adds 
 | `challenge_invalid`       | `code_challenge` is not an S256 challenge: 43 base64url characters, with no padding                    |
 | `connection_unavailable`  | The connection is unknown, disabled, of a protocol switched off, incomplete, or changed while starting |
 | `freshness_required`      | A `link` from a caller who did not authenticate recently enough                                        |
-| `session_ineligible`      | A `reauthenticate` for an identity not signed in through the connection on the session                 |
+| `session_ineligible`      | A `reauthenticate` for an identity not signed in through the connection on the application's session   |
 
 A protocol driver that cannot start answers its own reason (for example `metadata_expired`). Each refusal stores
 nothing and reports one `FlowFailed` event with the reason.

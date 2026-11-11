@@ -69,15 +69,18 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 interface ReauthenticationSessions
 {
     /**
-     * Whether the identity is signed in through the connection on the session,
-     * when a flow starts. It locks nothing.
+     * Whether the identity is signed in on the session, of the application,
+     * through the connection, when a flow starts. It locks nothing.
+     *
+     * The application is the one the flow is started for.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $sessionId
+     * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
      */
-    public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding;
+    public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding;
 
     /**
      * Whether the identity is signed in on the session, of the application,

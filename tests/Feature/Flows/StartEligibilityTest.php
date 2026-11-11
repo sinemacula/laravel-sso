@@ -25,8 +25,8 @@ use Tests\TestCase;
  * Feature tests for whether a purpose may start through a connection (steps 6
  * and 7 of a start): a `sign_in` always may and asks nothing; a `link` asks the
  * freshness contract for `sso.link.create`; a `reauthenticate` asks the session
- * contract whether the identity is signed in through the connection on the
- * session.
+ * contract whether the identity is signed in on the session, of the application
+ * the flow is started for, through the connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,7 +75,7 @@ final class StartEligibilityTest extends TestCase
      */
     public function testASignInMayAlwaysStart(): void
     {
-        self::assertNull($this->eligibility()->refusal(Purpose::SIGN_IN, $this->connection, null));
+        self::assertNull($this->eligibility()->refusal('web', Purpose::SIGN_IN, $this->connection, null));
         self::assertSame([], $this->freshness->asked());
     }
 
@@ -90,13 +90,13 @@ final class StartEligibilityTest extends TestCase
     {
         $caller = new Caller(new IdentityReference('App\Models\User', '7'), 'session-1');
 
-        self::assertNull($this->eligibility()->refusal(Purpose::LINK, $this->connection, $caller));
+        self::assertNull($this->eligibility()->refusal('web', Purpose::LINK, $this->connection, $caller));
         self::assertSame([FreshnessOperation::LINK_CREATE], $this->freshness->operations());
         self::assertSame([$caller], $this->freshness->callers());
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $this->eligibility()->refusal(Purpose::LINK, $this->connection, $caller));
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $this->eligibility()->refusal('web', Purpose::LINK, $this->connection, $caller));
     }
 
     /**
@@ -110,12 +110,31 @@ final class StartEligibilityTest extends TestCase
     {
         $caller = new Caller(new IdentityReference('App\Models\User', '7'), 'session-1');
 
-        self::assertNull($this->eligibility()->refusal(Purpose::REAUTHENTICATE, $this->connection, $caller));
+        self::assertNull($this->eligibility()->refusal('web', Purpose::REAUTHENTICATE, $this->connection, $caller));
 
         $this->sessions->standing = SessionStanding::NOT_SIGNED_IN;
 
-        self::assertSame(FailureReason::SESSION_INELIGIBLE, $this->eligibility()->refusal(Purpose::REAUTHENTICATE, $this->connection, $caller));
+        self::assertSame(FailureReason::SESSION_INELIGIBLE, $this->eligibility()->refusal('web', Purpose::REAUTHENTICATE, $this->connection, $caller));
         self::assertSame([], $this->freshness->asked());
+    }
+
+    /**
+     * A `reauthenticate` asks about the identity, the session, the application
+     * it is started for and the connection, so a session of another application
+     * is `session_ineligible`.
+     *
+     * @return void
+     */
+    public function testAReauthenticationAsksAboutTheApplicationItIsStartedFor(): void
+    {
+        $identity = new IdentityReference('App\Models\User', '7');
+        $caller   = new Caller($identity, 'session-1');
+
+        $this->sessions->application = 'web';
+
+        self::assertNull($this->eligibility()->refusal('web', Purpose::REAUTHENTICATE, $this->connection, $caller));
+        self::assertSame(FailureReason::SESSION_INELIGIBLE, $this->eligibility()->refusal('admin', Purpose::REAUTHENTICATE, $this->connection, $caller));
+        self::assertSame([[$identity, 'session-1', 'web', $this->connection->id], [$identity, 'session-1', 'admin', $this->connection->id]], $this->sessions->asked);
     }
 
     /**

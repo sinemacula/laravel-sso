@@ -43,6 +43,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
+use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
 
@@ -672,8 +673,8 @@ final class AuthorizationRequestServiceTest extends TestCase
 
     /**
      * A bound session contract decides a `reauthenticate`, asked with exactly
-     * the identity, the session and the connection: `not_signed_in` refuses,
-     * `signed_in` starts and stores both.
+     * the identity, the session, the application and the connection:
+     * `not_signed_in` refuses, `signed_in` starts and stores both.
      *
      * @return void
      */
@@ -683,7 +684,7 @@ final class AuthorizationRequestServiceTest extends TestCase
             /** @var \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding What every question is answered. */
             public SessionStanding $standing = SessionStanding::NOT_SIGNED_IN;
 
-            /** @var list<array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string, 2: string}> Each question, in order. */
+            /** @var list<array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string, 2: string, 3: string}> Each question, in order. */
             public array $asked = [];
 
             /**
@@ -691,13 +692,14 @@ final class AuthorizationRequestServiceTest extends TestCase
              *
              * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
              * @param  string  $sessionId
+             * @param  string  $application
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
              */
             #[\Override]
-            public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding
+            public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding
             {
-                $this->asked[] = [$identity, $sessionId, $connection->getConnectionId()];
+                $this->asked[] = [$identity, $sessionId, $application, $connection->getConnectionId()];
 
                 return $this->standing;
             }
@@ -715,9 +717,9 @@ final class AuthorizationRequestServiceTest extends TestCase
             #[\Override]
             public function lockedStanding(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection, string $linkId): SessionStanding
             {
-                unset($application, $linkId);
+                unset($linkId);
 
-                return $this->standing($identity, $sessionId, $connection);
+                return $this->standing($identity, $sessionId, $application, $connection);
             }
 
             /**
@@ -751,10 +753,30 @@ final class AuthorizationRequestServiceTest extends TestCase
         $row    = self::onlyRequest();
 
         self::assertTrue($result->isStarted());
-        self::assertSame([[$identity, $session, $this->connection->id], [$identity, $session, $this->connection->id]], $sessions->asked);
+        self::assertSame([[$identity, $session, 'web', $this->connection->id], [$identity, $session, 'web', $this->connection->id]], $sessions->asked);
         self::assertSame(Purpose::REAUTHENTICATE, $row->purpose);
         self::assertSame(['App\Models\User', '42', $session], [$row->identity_type, $row->identity_id, $row->session_id]);
         self::assertSame([], $this->freshness->operations());
+    }
+
+    /**
+     * The session contract is asked about the application the flow is started
+     * for, so a session of another application is `session_ineligible`.
+     *
+     * @return void
+     */
+    public function testAReauthenticationAsksAboutTheApplicationItIsStartedFor(): void
+    {
+        $sessions = new RecordingSessions(application: 'web');
+        $caller   = new Caller(self::identity(), 'session-1');
+
+        $this->app?->instance(ReauthenticationSessions::class, $sessions);
+
+        $this->assertRefused(FailureReason::SESSION_INELIGIBLE, $this->startFlow('discovering', Purpose::REAUTHENTICATE, caller: $caller));
+        self::assertSame([], $this->driver->starts());
+
+        self::assertTrue($this->startFlow('web', Purpose::REAUTHENTICATE, caller: $caller)->isStarted());
+        self::assertSame(['discovering', 'web'], array_column($sessions->asked, 2));
     }
 
     /**

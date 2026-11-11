@@ -144,66 +144,66 @@ with the operation's flow (`$event->flow`, a `Flow`) and a machine-readable reas
 | `callback`              | An OIDC authorisation response at the callback                              |
 | `redemption`            | A handoff code presented for redemption                                     |
 
-| Reason                                | Meaning                                                                                            |
-|---------------------------------------|----------------------------------------------------------------------------------------------------|
-| `connection_unavailable`              | The connection is unknown, disabled or incomplete; the same answer for each                        |
-| `application_not_allowed`             | The application does not allow sign-in through an external provider                                |
-| `request_unknown`                     | No stored authorisation request matches, or it was already used                                    |
-| `request_expired`                     | The authorisation request expired                                                                  |
-| `signature_invalid`                   | A required signature is missing, does not verify, or uses a key or algorithm not allowed           |
-| `issuer_mismatch`                     | The issuer is not the connection's                                                                 |
-| `audience_mismatch`                   | The audience does not name this service provider or client                                         |
-| `recipient_mismatch`                  | The recipient or destination is not the connection's assertion consumer service                    |
-| `assertion_expired`                   | The assertion or ID token is not yet valid, expired, or is too old                                 |
-| `replayed`                            | The assertion was seen before, or could not be recorded as seen                                    |
-| `nonce_mismatch`                      | The ID token's nonce is not the one the request stored                                             |
-| `provider_error`                      | The identity provider answered with an error                                                       |
-| `metadata_expired`                    | Something fetched for the connection is past its `validUntil` or stale limit                       |
-| `unlinked`                            | A sign-in resolved to no identity and the application does not allow unlinked handoffs             |
-| `purpose_mismatch`                    | A handoff code was presented to the redemption of another purpose                                  |
-| `verifier_mismatch`                   | The verifier presented with a handoff code does not match its challenge                            |
-| `rate_limited`                        | The IP address, email domain or connection used up its attempts for now                            |
-| `challenge_invalid`                   | The S256 challenge a start was given is not 43 base64url characters                                |
-| `session_ineligible`                  | A `reauthenticate` flow's identity is not signed in through the connection on its session          |
-| `discovery_no_match`                  | Discovery found no connection for the email's domain; the client got the fallback                  |
-| `connection_mismatch`                 | A response or a handoff code was presented for another connection than its own                     |
-| `application_mismatch`                | A handoff code was presented for another application than its own                                  |
-| `enforcement_unsatisfied`             | The connection does not satisfy its tenant's enforcement for the application                       |
-| `handoff_unknown`                     | No handoff code is stored for what was presented, or it was voided                                 |
-| `handoff_expired`                     | The handoff code expired                                                                           |
-| `link_changed`                        | The link a handoff code resolved was removed, or now names another identity                        |
-| `freshness_required`                  | A `link` flow was started without fresh enough authentication                                      |
-| `fetch_refused`                       | An outbound request to the identity provider was refused before it was sent                        |
-| `fetch_failed`                        | An outbound request to the identity provider was sent and failed                                   |
-| `response_invalid`                    | The SAML response is too large, malformed, not schema-valid, or holds a misplaced element          |
-| `decryption_failed`                   | The encrypted assertion could not be decrypted under the connection's algorithms                   |
-| `encryption_required`                 | The connection requires an encrypted assertion and the response carried a plain one                |
-| `subject_invalid`                     | The subject is missing, transient, of a format not allowed, or has a wrong qualifier               |
-| `request_mismatch`                    | The `RelayState` or a signed `InResponseTo` names another request than the consumed one            |
-| `authentication_expired`              | The authentication is older than allowed or than a reauthentication request, or its time is absent |
-| `authentication_context_mismatch`     | The authentication context is not one the connection requires                                      |
-| `condition_unsupported`               | The assertion carries a condition the package does not understand                                  |
-| `unsolicited_not_allowed`             | An unsolicited response reached a connection that does not allow IdP-initiated sign-in             |
-| `metadata_invalid`                    | The identity provider's metadata is malformed, not schema-valid, or holds nothing usable           |
-| `metadata_signature_invalid`          | The metadata is not signed by the connection's metadata signing anchor                             |
-| `metadata_entity_not_found`           | The metadata holds no entity with the connection's entity id                                       |
-| `metadata_conflict`                   | A metadata refresh lost to a change made while it fetched, and wrote nothing                       |
-| `metadata_refresh_in_progress`        | Another server is refreshing the connection's metadata                                             |
-| `id_token_invalid`                    | The ID token is missing, malformed, too large, or has a claim missing or wrongly typed             |
-| `token_response_invalid`              | The token endpoint's answer is not a JSON object with an access token of type `Bearer`             |
-| `at_hash_mismatch`                    | The ID token's `at_hash` does not match the access token                                           |
-| `userinfo_invalid`                    | The UserInfo answer is malformed, or its `sub` is not the ID token's                               |
-| `discovery_invalid`                   | The OpenID provider's discovery document is malformed or names nothing usable                      |
-| `jwks_invalid`                        | The OpenID provider's JWKS is malformed, too large, or holds no usable key                         |
-| `link_suspended`                      | The link is suspended until a confirming `link` flow                                               |
-| `principal_scope_unknown`             | The link stands on a verified domain and its identity's scope could not be judged, this attempt    |
-| `link_reserved`                       | Another flow's live reservation holds the subject                                                  |
-| `link_ineligible`                     | The link eligibility contract does not let the identity link through the connection                |
-| `independent_authentication_required` | The identity holds a verified domain link, and the caller did not authenticate apart from it       |
-| `identity_mismatch`                   | The caller or the result's link is not the flow's identity; names nobody                           |
-| `reservation_invalid`                 | The code's reservation is gone, expired, or a condition of it no longer holds                      |
-| `subject_already_linked`              | Another identity holds the subject, which is never named                                           |
-| `link_limit_reached`                  | The identity holds as many links in the connection as it may                                       |
+| Reason                                | Meaning                                                                                                 |
+|---------------------------------------|---------------------------------------------------------------------------------------------------------|
+| `connection_unavailable`              | The connection is unknown, disabled or incomplete; the same answer for each                             |
+| `application_not_allowed`             | The application does not allow sign-in through an external provider                                     |
+| `request_unknown`                     | No stored authorisation request matches, or it was already used                                         |
+| `request_expired`                     | The authorisation request expired                                                                       |
+| `signature_invalid`                   | A required signature is missing, does not verify, or uses a key or algorithm not allowed                |
+| `issuer_mismatch`                     | The issuer is not the connection's                                                                      |
+| `audience_mismatch`                   | The audience does not name this service provider or client                                              |
+| `recipient_mismatch`                  | The recipient or destination is not the connection's assertion consumer service                         |
+| `assertion_expired`                   | The assertion or ID token is not yet valid, expired, or is too old                                      |
+| `replayed`                            | The assertion was seen before, or could not be recorded as seen                                         |
+| `nonce_mismatch`                      | The ID token's nonce is not the one the request stored                                                  |
+| `provider_error`                      | The identity provider answered with an error                                                            |
+| `metadata_expired`                    | Something fetched for the connection is past its `validUntil` or stale limit                            |
+| `unlinked`                            | A sign-in resolved to no identity and the application does not allow unlinked handoffs                  |
+| `purpose_mismatch`                    | A handoff code was presented to the redemption of another purpose                                       |
+| `verifier_mismatch`                   | The verifier presented with a handoff code does not match its challenge                                 |
+| `rate_limited`                        | The IP address, email domain or connection used up its attempts for now                                 |
+| `challenge_invalid`                   | The S256 challenge a start was given is not 43 base64url characters                                     |
+| `session_ineligible`                  | A `reauthenticate` flow's identity is not signed in through the connection on its application's session |
+| `discovery_no_match`                  | Discovery found no connection for the email's domain; the client got the fallback                       |
+| `connection_mismatch`                 | A response or a handoff code was presented for another connection than its own                          |
+| `application_mismatch`                | A handoff code was presented for another application than its own                                       |
+| `enforcement_unsatisfied`             | The connection does not satisfy its tenant's enforcement for the application                            |
+| `handoff_unknown`                     | No handoff code is stored for what was presented, or it was voided                                      |
+| `handoff_expired`                     | The handoff code expired                                                                                |
+| `link_changed`                        | The link a handoff code resolved was removed, or now names another identity                             |
+| `freshness_required`                  | A `link` flow was started without fresh enough authentication                                           |
+| `fetch_refused`                       | An outbound request to the identity provider was refused before it was sent                             |
+| `fetch_failed`                        | An outbound request to the identity provider was sent and failed                                        |
+| `response_invalid`                    | The SAML response is too large, malformed, not schema-valid, or holds a misplaced element               |
+| `decryption_failed`                   | The encrypted assertion could not be decrypted under the connection's algorithms                        |
+| `encryption_required`                 | The connection requires an encrypted assertion and the response carried a plain one                     |
+| `subject_invalid`                     | The subject is missing, transient, of a format not allowed, or has a wrong qualifier                    |
+| `request_mismatch`                    | The `RelayState` or a signed `InResponseTo` names another request than the consumed one                 |
+| `authentication_expired`              | The authentication is older than allowed or than a reauthentication request, or its time is absent      |
+| `authentication_context_mismatch`     | The authentication context is not one the connection requires                                           |
+| `condition_unsupported`               | The assertion carries a condition the package does not understand                                       |
+| `unsolicited_not_allowed`             | An unsolicited response reached a connection that does not allow IdP-initiated sign-in                  |
+| `metadata_invalid`                    | The identity provider's metadata is malformed, not schema-valid, or holds nothing usable                |
+| `metadata_signature_invalid`          | The metadata is not signed by the connection's metadata signing anchor                                  |
+| `metadata_entity_not_found`           | The metadata holds no entity with the connection's entity id                                            |
+| `metadata_conflict`                   | A metadata refresh lost to a change made while it fetched, and wrote nothing                            |
+| `metadata_refresh_in_progress`        | Another server is refreshing the connection's metadata                                                  |
+| `id_token_invalid`                    | The ID token is missing, malformed, too large, or has a claim missing or wrongly typed                  |
+| `token_response_invalid`              | The token endpoint's answer is not a JSON object with an access token of type `Bearer`                  |
+| `at_hash_mismatch`                    | The ID token's `at_hash` does not match the access token                                                |
+| `userinfo_invalid`                    | The UserInfo answer is malformed, or its `sub` is not the ID token's                                    |
+| `discovery_invalid`                   | The OpenID provider's discovery document is malformed or names nothing usable                           |
+| `jwks_invalid`                        | The OpenID provider's JWKS is malformed, too large, or holds no usable key                              |
+| `link_suspended`                      | The link is suspended until a confirming `link` flow                                                    |
+| `principal_scope_unknown`             | The link stands on a verified domain and its identity's scope could not be judged, this attempt         |
+| `link_reserved`                       | Another flow's live reservation holds the subject                                                       |
+| `link_ineligible`                     | The link eligibility contract does not let the identity link through the connection                     |
+| `independent_authentication_required` | The identity holds a verified domain link, and the caller did not authenticate apart from it            |
+| `identity_mismatch`                   | The caller or the result's link is not the flow's identity; names nobody                                |
+| `reservation_invalid`                 | The code's reservation is gone, expired, or a condition of it no longer holds                           |
+| `subject_already_linked`              | Another identity holds the subject, which is never named                                                |
+| `link_limit_reached`                  | The identity holds as many links in the connection as it may                                            |
 
 The reasons and flows are stable: a value is never renamed or reused, so you can count failure modes by them.
 

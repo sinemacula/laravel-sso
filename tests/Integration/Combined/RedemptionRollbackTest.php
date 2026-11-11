@@ -799,13 +799,14 @@ final class RedemptionRollbackTest extends LinkingTestCase
              *
              * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
              * @param  string  $sessionId
+             * @param  string  $application
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
              */
             #[\Override]
-            public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding
+            public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding
             {
-                unset($connection);
+                unset($application, $connection);
 
                 $held = DB::connection(StorageConnection::name())->table($this->table)->where('id', $sessionId)->where('identity_id', $identity->id)->exists();
 
