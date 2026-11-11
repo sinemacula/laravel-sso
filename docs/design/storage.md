@@ -56,7 +56,8 @@ commit with the package follows (SSO-11.7, SSO-11.10).
 - A model takes its connection and table when it is built, so the settings are deployment configuration, fixed for the
   life of a process.
 - Every transaction the package tries again on a concurrency failure (a deadlock, a lock wait timeout or a
-  serialisation failure) runs through `Database\RetriedTransaction::run()`, at most three times in all. Laravel throws
+  serialisation failure) and that opens a savepoint runs through `Database\RetriedTransaction::run()`, at most three
+  times in all; the pruning delete is one statement and uses Laravel's `transaction()` directly. Laravel throws
   a failure in a savepoint inside it as a `DeadlockException`, and does not recognise a PostgreSQL serialisation
   failure (SQLSTATE `40001`) in that form, so the work's `DeadlockException` whose chain ends in one is rethrown as that
   failure and retried. Anything else propagates as it is, and an exception after the commit never runs the work again.
