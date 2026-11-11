@@ -384,6 +384,7 @@ such link with `RevocationScope::identityLink()` and the reason `scope_widened`.
 written, or outside a transaction (a `LogicException`), leaves a window in which a reservation or an activation sees the
 old principals. A change to several people, such as moving a subtree of tenants, passes them all in one call: it takes
 their guards in ascending order of `IdentityLock::digest()` before any connection, where one call per person would not.
+Every person in the call gains a principal in the one tenant it is given.
 
 ## Revocation
 

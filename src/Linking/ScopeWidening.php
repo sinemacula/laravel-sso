@@ -110,7 +110,8 @@ final readonly class ScopeWidening
      * Take the identities' guards; suspend their links by a verified domain in
      * every connection of another tenant than the new principal's, delete their
      * reservations in them, and revoke the sessions established through those
-     * links; answer how many links this suspended.
+     * links; answer how many links this suspended. Every identity gains its
+     * principal in the one tenant given.
      *
      * @param  list<\SineMacula\Laravel\Sso\Identities\IdentityReference>  $identities
      * @param  ?string  $tenantId

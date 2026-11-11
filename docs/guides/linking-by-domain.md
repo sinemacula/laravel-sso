@@ -206,7 +206,8 @@ the same way. A change to several identities' principals in one transaction, suc
 passes them all to one `widened()` call, which takes their guards in ascending order of
 `Linking\IdentityLock::digest()`, then locks the connections holding any of their links together. Calling it once per
 identity would lock one identity's connections before the next identity's guard, which can deadlock against a
-reservation or a confirmation.
+reservation or a confirmation. The call takes one tenant and spares its connections for every identity given, so pass
+together only identities that gain a principal in that same tenant.
 
 This principal-change transaction is the primary place sessions are revoked. A resolution that finds a definite outside
 scope repairs what it missed, revoking through the link in the completion's or the redemption's transaction; asking

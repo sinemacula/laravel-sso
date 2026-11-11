@@ -49,7 +49,9 @@ the claim, takes no guard and locks no claim; a sign-in with the feature or the 
 A transaction holds one identity's guard; one that changes several takes them in ascending order of
 `IdentityLock::digest()`. A widening of several identities, such as a subtree of tenants moved, is one `widened()` call
 given them all: it takes every guard, then locks the union of their connections in one statement, so a confirmation or
-a reservation of any of them never holds a guard the widening waits on while waiting on a connection it holds.
+a reservation of any of them never holds a guard the widening waits on while waiting on a connection it holds. The call
+takes one tenant, whose connections it spares for every identity given, so it suits identities that all gain a principal
+in the same tenant; identities gaining principals in different tenants are not one call.
 
 An application's guards come after the package's locks, in every path: its writers of verified emails, principals,
 memberships and sessions take them in the same relative order, or they will deadlock against an admission. Every
