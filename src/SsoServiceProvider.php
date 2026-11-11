@@ -5,7 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso;
 
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\DatabaseTransactionsManager;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -302,8 +304,35 @@ final class SsoServiceProvider extends ServiceProvider
         $stranded = $this->app->make(StrandedTransactions::class);
 
         $this->callAfterResolving('events', static function (Dispatcher $events) use ($stranded): void {
-            $events->listen(TransactionBeginning::class, $stranded->begun(...));
+            $events->listen(TransactionBeginning::class, static function (TransactionBeginning $event) use ($stranded): void {
+                self::markStranded($stranded, $event);
+            });
         });
+    }
+
+    /**
+     * Mark the records stranded on the connection when the transaction begun is
+     * its outermost and a transactions manager is bound.
+     *
+     * @param  \SineMacula\Laravel\Sso\Events\StrandedTransactions  $stranded
+     * @param  \Illuminate\Database\Events\TransactionBeginning  $event
+     * @return void
+     */
+    private static function markStranded(StrandedTransactions $stranded, TransactionBeginning $event): void
+    {
+        if ($event->connection->transactionLevel() !== 1) {
+            return;
+        }
+
+        // Not the container captured at boot: under Octane this is the sandbox.
+        $container = Container::getInstance();
+        $manager   = $container->bound('db.transactions') ? $container->make('db.transactions') : null;
+
+        if (!$manager instanceof DatabaseTransactionsManager) {
+            return;
+        }
+
+        $stranded->begun($event, $manager);
     }
 
     /**

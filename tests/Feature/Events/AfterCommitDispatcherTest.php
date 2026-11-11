@@ -264,7 +264,7 @@ final class AfterCommitDispatcherTest extends TestCase
     /**
      * An earlier callback of the same commit that begins and commits an
      * outermost transaction does not drop the event: it is dispatched once,
-     * after that callback.
+     * after that callback, in one sequence with it.
      *
      * @return void
      *
@@ -274,27 +274,30 @@ final class AfterCommitDispatcherTest extends TestCase
     {
         $event = self::event();
 
-        /** @var \ArrayObject<int, string> $order */
-        $order = new \ArrayObject;
+        /** @var \ArrayObject<int, \SineMacula\Laravel\Sso\Contracts\SsoEvent|string> $sequence */
+        $sequence = new \ArrayObject;
+
+        Event::listen(SsoEvent::class, static function (SsoEvent $delivered) use ($sequence): void {
+            $sequence->append($delivered);
+        });
 
         DB::beginTransaction();
 
-        DB::afterCommit(static function () use ($order): void {
+        DB::afterCommit(static function () use ($sequence): void {
             DB::transaction(static function (): void {});
 
-            $order->append('callback');
+            $sequence->append('callback');
         });
 
         $this->dispatcher()->dispatch($event);
 
         DB::commit();
 
-        self::assertSame(['callback'], $order->getArrayCopy());
-        self::assertSame([$event], $this->delivered->getArrayCopy());
+        self::assertSame(['callback', $event], $sequence->getArrayCopy());
 
         DB::transaction(static function (): void {});
 
-        self::assertSame([$event], $this->delivered->getArrayCopy());
+        self::assertSame(['callback', $event], $sequence->getArrayCopy());
     }
 
     /**

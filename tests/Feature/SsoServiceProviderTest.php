@@ -231,6 +231,54 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
+     * The listener marks nothing when a savepoint begins, though the
+     * transaction it sits in and a savepoint before it are held, and a
+     * transaction begins with no transactions manager bound.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testTheListenerMarksOnlyAnOutermostBeginWithAManager(): void
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app        = $this->app;
+        $stranded   = $app->make(StrandedTransactions::class);
+        $connection = DB::connection();
+
+        /** @var \Illuminate\Database\DatabaseTransactionsManager $manager */
+        $manager = $app->make('db.transactions');
+
+        $connection->beginTransaction();
+        $connection->beginTransaction();
+        $connection->commit();
+        $connection->beginTransaction();
+
+        $held = $manager->getPendingTransactions()->concat($manager->getCommittedTransactions());
+
+        $connection->rollBack();
+        $connection->rollBack();
+
+        self::assertCount(3, $held);
+
+        foreach ($held as $record) {
+            self::assertFalse($stranded->isStranded($record));
+        }
+
+        $app->offsetUnset('db.transactions');
+
+        try {
+            $connection->beginTransaction();
+
+            self::assertSame(1, $connection->transactionLevel());
+
+            $connection->rollBack();
+        } finally {
+            $app->instance('db.transactions', $manager);
+        }
+    }
+
+    /**
      * Each stateless enforcement contract with its default.
      *
      * @return iterable<string, array{class-string, class-string}>

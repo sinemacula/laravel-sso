@@ -17,9 +17,11 @@ committed stands, by design. `linking.md` describes the stages, and this note wh
   synchronous, with no package transaction open.
 - A failed commit is a rollback: the events waiting on it are dropped, those of a savepoint that committed inside it
   included, whether the transaction is the package's or the application's own outermost one on the storage connection.
-  Laravel 12 leaves their callbacks pending, to run on the next outermost commit on the connection, perhaps in another
-  request; `AfterCommitDispatcher` drops each one whose record the next outermost begin marked as stranded
-  (`Events\StrandedTransactions`), so no Laravel version reports a rolled-back change (`event-model.md`).
+  When the commit of `transaction()` fails, Laravel 12 leaves their callbacks pending, to run on the next outermost
+  commit on the connection, perhaps in another request; `AfterCommitDispatcher` drops each one whose record the next
+  outermost begin marked as stranded (`Events\StrandedTransactions`). So no Laravel version reports a rolled-back change
+  while that begin is observed; the cases that escape it are in `event-model.md`. A failed manual `commit()` leaves the
+  connection at level 1, for the caller to roll back.
 - An adapter that writes through the storage connection, inside the transaction the package has open or that it opened
   itself, commits or rolls back with it. One that writes through another connection is not atomic with it. So
   `SessionRevocation`, `ReauthenticationSessions`, a session written after `admit()`, and a listener's identity written

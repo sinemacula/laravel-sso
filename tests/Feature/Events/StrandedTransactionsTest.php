@@ -4,12 +4,21 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Events;
 
+use Carbon\CarbonImmutable;
+use Illuminate\Container\Container;
 use Illuminate\Database\DatabaseTransactionRecord;
 use Illuminate\Database\DatabaseTransactionsManager;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Foundation\Testing\DatabaseTransactionsManager as TestingTransactionsManager;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
+use SineMacula\Laravel\Sso\Contracts\SsoEvent;
+use SineMacula\Laravel\Sso\Events\AfterCommitDispatcher;
+use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Events\Enums\Flow;
+use SineMacula\Laravel\Sso\Events\EventContext;
+use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\StrandedTransactions;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\TestCase;
@@ -20,8 +29,9 @@ use Tests\TestCase;
  * second connection: an outermost begin strands every record its connection
  * still holds but its own and the savepoints inside it, a savepoint strands
  * nothing, a transaction begun from a commit callback leaves the committing
- * records alone, another connection's records are never touched, and one
- * instance serves the whole process.
+ * records alone, another connection's records are never touched, the current
+ * container's manager is the one read, and one instance serves the whole
+ * process.
  *
  * The failed commit is reproduced as Laravel 12 leaves it: the database rolls
  * the transaction back, but the transactions manager is never told.
@@ -163,7 +173,7 @@ final class StrandedTransactionsTest extends TestCase
 
         self::assertContains($savepoint, $this->manager()->getCommittedTransactions()->all());
 
-        $this->stranded()->begun(new TransactionBeginning($connection));
+        $this->stranded()->begun(new TransactionBeginning($connection), $this->manager());
 
         self::assertTrue($this->stranded()->isStranded($left));
         self::assertFalse($this->stranded()->isStranded($begun));
@@ -256,32 +266,64 @@ final class StrandedTransactionsTest extends TestCase
     }
 
     /**
-     * Without a transactions manager bound, a transaction begins and nothing is
-     * marked.
+     * Under an Octane-style sandbox, a clone of the application made current
+     * with a transactions manager of its own, the listener registered at boot
+     * marks that manager's records, and a dispatcher the sandbox builds shares
+     * the marks: an event a failed commit left there is never dispatched.
      *
      * @return void
      *
      * @throws \Throwable
      */
-    public function testNothingIsMarkedWithoutATransactionsManager(): void
+    public function testTheListenerMarksTheCurrentContainersRecords(): void
     {
         /** @var \Illuminate\Foundation\Application $app */
-        $app      = $this->app;
-        $previous = $this->manager();
+        $app        = $this->app;
+        $previous   = $this->manager();
+        $stranded   = $this->stranded();
+        $sandbox    = clone $app;
+        $manager    = new DatabaseTransactionsManager;
+        $connection = DB::connection();
+        $delivered  = new \ArrayObject;
 
-        [$left] = $this->leaveATransactionBehind();
+        Event::listen(SsoEvent::class, static function (SsoEvent $event) use ($delivered): void {
+            $delivered->append($event);
+        });
 
-        $app->offsetUnset('db.transactions');
+        // As Octane's CurrentApplication::set() makes a sandbox current.
+        $sandbox->instance('app', $sandbox);
+        $sandbox->instance(Container::class, $sandbox);
+        $sandbox->instance('db.transactions', $manager);
+        $connection->setTransactionManager($manager);
+        Container::setInstance($sandbox);
 
         try {
-            DB::beginTransaction();
+            $connection->beginTransaction();
 
-            self::assertSame(1, DB::transactionLevel());
-            self::assertFalse($this->stranded()->isStranded($left));
+            $left = $manager->getPendingTransactions()->last();
 
-            DB::rollBack();
+            $sandbox->make(AfterCommitDispatcher::class)->dispatch(
+                new FlowFailed(new EventContext(CarbonImmutable::parse('2026-10-31T12:00:00Z')), Flow::ASSERTION, FailureReason::REPLAYED),
+                (string) $connection->getName(),
+            );
+
+            $connection->unsetTransactionManager();
+            $connection->rollBack();
+            $connection->setTransactionManager($manager);
+
+            $connection->beginTransaction();
+
+            self::assertInstanceOf(DatabaseTransactionRecord::class, $left);
+            self::assertTrue($stranded->isStranded($left));
+            self::assertSame($stranded, $sandbox->make(StrandedTransactions::class));
+            self::assertCount(0, $previous->getPendingTransactions());
+
+            $connection->commit();
+
+            self::assertCount(0, $delivered);
         } finally {
-            $app->instance('db.transactions', $previous);
+            Container::setInstance($app);
+            $connection->setTransactionManager($previous);
         }
     }
 
