@@ -35,7 +35,7 @@ the candidates changed it refuses, and a caller's transaction is retried only wh
 | Reservation, T2  | Before T2 opens: the subject's row, the domain claim, then the matched identity | An eligible identity whose guard was not taken is `reservation_invalid`; a row gone since is `link_changed` |
 | Activation, TR   | The reservation's identity and domain                                           | A row no longer the handoff's, or of another identity, is `reservation_invalid`                             |
 | Confirmation, TR | The connections holding the identity's verified domain links, once guarded      | A link in a connection not locked is `Exceptions\LinkCandidatesChanged`, retried whole                      |
-| Widening, TW     | The connections holding the identity's rows, once guarded                       | A row in a connection not locked is `Exceptions\LinkCandidatesChanged`, retried whole                       |
+| Widening, TW     | The connections holding the identities' rows, once guarded                      | A row in a connection not locked is `Exceptions\LinkCandidatesChanged`, retried whole                       |
 
 Only a transaction whose `REPEATABLE READ` snapshot predates the change can reach `LinkCandidatesChanged`, and only on
 MySQL: on PostgreSQL its guard fails to serialise first, since whatever changed the row wrote the guard. A caller's
@@ -47,7 +47,11 @@ all the same, it restarts once from its transaction, and a second time propagate
 The guard's cost falls only on flows that touch linking. An ordinary linked sign-in reads its row where it used to lock
 the claim, takes no guard and locks no claim; a sign-in with the feature or the connection's linking off reads neither.
 A transaction holds one identity's guard; one that changes several takes them in ascending order of
-`IdentityLock::digest()`.
+`IdentityLock::digest()`. A widening of several identities, such as a subtree of tenants moved, is one `widened()` call
+given them all: it takes every guard, then locks the union of their connections in one statement, so a confirmation or
+a reservation of any of them never holds a guard the widening waits on while waiting on a connection it holds. The call
+takes one tenant, whose connections it spares for every identity given, so it suits identities that all gain a principal
+in the same tenant; identities gaining principals in different tenants are not one call.
 
 An application's guards come after the package's locks, in every path: its writers of verified emails, principals,
 memberships and sessions take them in the same relative order, or they will deadlock against an admission. Every
@@ -76,7 +80,7 @@ eligibility and the confirmation.
 | `link` in TR                       | The current caller, freshness and eligibility; the link created, the same link passing idempotently, or provenance and suspension cleared by the confirmation. No session, no proof. Commits with the consumption.                                                                                                                                                                                                                                                                                                                                                |
 | `reauthenticate` in TR             | The exact link and the active session bound to it, locked; an adapter's own result with no authentication time is refused (`authentication_expired`); the freshness write with any evidence newly accepted. Sign-in provenance and lifetime are kept. Commits with the consumption.                                                                                                                                                                                                                                                                               |
 | Refusal in TR                      | After consumption, that code's reservation is deleted, by its identity and handoff reference, one failure event queues and the refusal commits, with no session and no activation. An exception rolls TR back instead.                                                                                                                                                                                                                                                                                                                                            |
-| Principal widening, TW             | The application's transaction on the same connection. `Linking\ScopeWidening::widened()` first: identity guard, the connections holding the identity's rows, those rows; each active link in another tenant's connection suspended and its sessions revoked, a suspended one's revoked again, a reservation deleted. Then the application's guard and its principal write. Commits together.                                                                                                                                                                      |
+| Principal widening, TW             | The application's transaction on the same connection. `Linking\ScopeWidening::widened()` first: every identity's guard, in ascending digest order; the connections holding any of their rows, in one statement; those rows; every row checked to be in a locked connection before anything changes; each active link in another tenant's connection suspended and its sessions revoked, a suspended one's revoked again, a reservation deleted. Then the application's guard and its principal write. Commits together.                                           |
 | Administration and withdrawal, TA  | In the change's transaction: connection and domain locks in order; the change; affected reservations deleted (`Links\ReservationWithdrawal`); versions raised. A protocol trust change also voids unfinished requests and unredeemed codes.                                                                                                                                                                                                                                                                                                                       |
 
 ### Link and reservation states
@@ -169,10 +173,10 @@ Package locks do not serialise the application's writers unless those writers ta
 | `Linker`                   | `NoLinks`                    | a typed `LinkResolution`, with a link id. Whatever writes a link needs `Contracts\LinkStorage`: `LinkStore`, or a wrapper delegating to it; `NoLinks` is none, and a boot check reports it while the `domain_linking` feature is on                                                                                          |
 
 A principal mutation calls exactly this, in its one transaction on the storage connection: `ScopeWidening::widened()`
-first, which takes the identity's guard and holds it until commit; then the application's guard and its principal write;
-then it commits. A reservation, an activation or a confirmation of that identity therefore runs wholly before the
-change, and is found by it, or wholly after, and sees the principal written. No isolation level is required, and the
-application's guard never meets a package lock in the other direction.
+first, given the identities it changes, which takes their guards and holds them until commit; then the application's
+guard and its principal write; then it commits. A reservation, an activation or a confirmation of any of those
+identities therefore runs wholly before the change, and is found by it, or wholly after, and sees the principal written.
+No isolation level is required, and the application's guard never meets a package lock in the other direction.
 
 ### Custom implementations and sessions
 

@@ -54,19 +54,23 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   suspended, stored or revoked. A link already suspended stays suspended and the contract is not asked.
   `Linking\ScopeWidening` reports a widening from the application's principal mutation, which is the only way a
   principal added and removed between two checks is seen.
-- `Linking\ScopeWidening::widened($identity, $tenantId, $client)` runs first in the application's principal-change
-  transaction, on the storage connection (a `LogicException` outside one). `$tenantId` is the new principal's tenant,
-  compared exactly, or `null` for a platform principal. It takes the identity's guard (`Linking\IdentityLock`), which
-  every reservation, activation and confirmation of the identity takes first, and holds it until that transaction ends.
-  A plain read on the write connection then finds the identity's rows with verified domain provenance, the connections
-  holding them are locked in one statement in ascending id order, and the rows are read again by a locking read; a row
-  in a connection that was not locked, which only an older snapshot can come to, is `Exceptions\LinkCandidatesChanged`,
-  and the application retries its whole transaction. A connection of the new principal's tenant is left alone. For the
-  others: a reservation is deleted (`Links\ReservationWithdrawal::ofRows()`, raising `links_version`); an active link is
-  suspended; and for each active or already suspended link `Contracts\SessionRevocation::revoke()` is called with
+- `Linking\ScopeWidening::widened($identities, $tenantId, $client)` runs first in the application's principal-change
+  transaction, on the storage connection (a `LogicException` outside one), given the list of identities the change
+  affects; an empty list does nothing and answers 0. `$tenantId` is the new principal's tenant, compared exactly, or
+  `null` for a platform principal. It takes each identity's guard (`Linking\IdentityLock`) once, in ascending order of
+  `IdentityLock::digest()`, which every reservation, activation and confirmation of the identity takes first, and holds
+  them until that transaction ends. A plain read on the write connection then finds the identities' rows with verified
+  domain provenance, the connections holding any of them are locked in one statement in ascending id order, and the
+  rows are read again by a locking read; a row in a connection that was not locked, which only an older snapshot can
+  come to, is `Exceptions\LinkCandidatesChanged` before anything changes, and the application retries its whole
+  transaction. A connection of the new principal's tenant is left alone. For the others: a reservation is deleted
+  (`Links\ReservationWithdrawal::ofRows()`, raising `links_version`); an active link is suspended; and for each active
+  or already suspended link `Contracts\SessionRevocation::revoke()` is called with
   `RevocationScope::identityLink($tenantId, $connectionId, $identity, $linkId)`, reason `scope_widened`, inside the
   transaction. A revocation that throws rolls the change back. Without the application taking part, nothing can suspend
-  a link between two checks (`docs/guides/linking-by-domain.md`).
+  a link between two checks (`docs/guides/linking-by-domain.md`). A change to several identities, such as a subtree of
+  tenants moved, is one call given them all; one call per identity would lock one identity's connections before the
+  next identity's guard, against the package's lock order.
 - `LinkStore::create($connection, $subject, $identity, $origin, $client, $caller, $application, $purpose, $reference)`
   runs in one transaction on the storage connection (a savepoint inside the caller's), in this order:
   1. the connection's row is read again locked through `Connections\ConnectionFinder::findForUpdate()`, which

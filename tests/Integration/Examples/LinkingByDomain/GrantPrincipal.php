@@ -44,7 +44,7 @@ final readonly class GrantPrincipal
 
             // First the identity's guard, held until this commits; the tenant
             // is `null` for a platform principal
-            $widening->widened($identity, $tenantId, $client);
+            $widening->widened([$identity], $tenantId, $client);
 
             // Then your principal guard, then the write
             $this->lockPrincipals($identity);

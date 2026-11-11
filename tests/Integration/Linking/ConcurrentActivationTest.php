@@ -465,7 +465,7 @@ final class ConcurrentActivationTest extends LinkingTestCase
     private function widen(): string
     {
         DB::connection(StorageConnection::name())->transaction(function (): void {
-            app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser());
+            app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser());
         });
 
         return self::CHANGED;

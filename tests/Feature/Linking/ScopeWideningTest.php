@@ -117,7 +117,7 @@ final class ScopeWideningTest extends LinkingTestCase
     public function testItNeedsATransaction(): void
     {
         try {
-            app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser());
+            app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser());
             self::fail('It widened with no transaction open.');
         } catch (\LogicException $exception) {
             self::assertSame(
@@ -144,7 +144,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
         $answer = $this->connection->getConnection()->transaction(function () use ($before): int {
 
-            $suspended = app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser());
+            $suspended = app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser());
 
             self::assertCount($before, $this->recordedEvents());
 
@@ -199,7 +199,7 @@ final class ScopeWideningTest extends LinkingTestCase
         TableSessions::write('tenant-1', $this->connection->id, $link->id);
         TableSessions::write('tenant-1', $this->connection->id);
 
-        self::assertSame(1, $this->widen($this->person, 'tenant-2'));
+        self::assertSame(1, $this->widen([$this->person], 'tenant-2'));
 
         $left = DB::connection(StorageConnection::name())->table(TableSessions::TABLE)->pluck('link_id')->all();
 
@@ -217,7 +217,7 @@ final class ScopeWideningTest extends LinkingTestCase
     {
         $this->activeDomainLink();
 
-        self::assertSame(1, $this->widen($this->person, null));
+        self::assertSame(1, $this->widen([$this->person], null));
         self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
     }
 
@@ -231,11 +231,11 @@ final class ScopeWideningTest extends LinkingTestCase
     {
         $this->activeDomainLink();
 
-        self::assertSame(0, $this->widen($this->person, 'tenant-1'));
+        self::assertSame(0, $this->widen([$this->person], 'tenant-1'));
         self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
         self::assertSame([], $this->revocation->scopes);
 
-        self::assertSame(1, $this->widen($this->person, 'TENANT-1'));
+        self::assertSame(1, $this->widen([$this->person], 'TENANT-1'));
         self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
     }
 
@@ -250,7 +250,7 @@ final class ScopeWideningTest extends LinkingTestCase
     {
         $this->activeDomainLink();
 
-        $this->widen($this->person, 'tenant-2');
+        $this->widen([$this->person], 'tenant-2');
 
         self::assertSame(ScopeVerdict::WITHIN_TENANT, $this->scope->verdict);
 
@@ -274,7 +274,7 @@ final class ScopeWideningTest extends LinkingTestCase
         $version    = Connection::query()->whereKey($this->connection->id)->sole()->links_version;
 
         self::assertSame(LinkState::RESERVED, Link::query()->sole()->state);
-        self::assertSame(0, $this->widen($this->person, 'tenant-2'));
+        self::assertSame(0, $this->widen([$this->person], 'tenant-2'));
         self::assertSame(0, Link::query()->count());
         self::assertSame($version + 1, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
         self::assertSame([], $this->revocation->scopes);
@@ -308,7 +308,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
         self::assertSame([$link->id], $linkIds($this->revocation->scopes), 'The resolution that latched it revoked.');
 
-        self::assertSame(0, $this->widen($this->person, 'tenant-2'));
+        self::assertSame(0, $this->widen([$this->person], 'tenant-2'));
         self::assertSame([$link->id, $link->id], $linkIds($this->revocation->scopes));
         self::assertSame($version, Connection::query()->whereKey($this->connection->id)->sole()->links_version);
         self::assertCount($events, $this->recordedEvents());
@@ -401,7 +401,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
             app(LinkStore::class)->create($this->connection, new LinkSubject(VerifyingDriver::ISSUER, 'subject-' . $index), $identity, $origin, Clients::browser());
 
-            self::assertSame(0, $this->widen(new IdentityReference('App\Models\User', 'other-' . $index), 'tenant-2'));
+            self::assertSame(0, $this->widen([new IdentityReference('App\Models\User', 'other-' . $index)], 'tenant-2'));
         }
 
         self::assertSame(3, Link::query()->where('state', LinkState::ACTIVE->value)->count());
@@ -417,8 +417,8 @@ final class ScopeWideningTest extends LinkingTestCase
     {
         $this->activeDomainLink();
 
-        self::assertSame(0, $this->widen(new IdentityReference('App\Models\User', '8'), 'tenant-2'));
-        self::assertSame(0, $this->widen(new IdentityReference('App\Models\Admin', $this->person->id), 'tenant-2'));
+        self::assertSame(0, $this->widen([new IdentityReference('App\Models\User', '8')], 'tenant-2'));
+        self::assertSame(0, $this->widen([new IdentityReference('App\Models\Admin', $this->person->id)], 'tenant-2'));
         self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
     }
 
@@ -452,7 +452,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
         $this->recordLockOrder();
 
-        self::assertSame(2, $this->widen($this->person, 'tenant-9'));
+        self::assertSame(2, $this->widen([$this->person], 'tenant-9'));
         self::assertSame(['identity guard', 'connections ' . implode(', ', $all), 'link'], $this->lockOrder());
         self::assertSame($ids, array_map(static fn (RevocationScope $scope): ?string => $scope->connectionId, $this->revocation->scopes));
         self::assertSame(LinkState::ACTIVE, Link::query()->where('connection_id', $mine->id)->sole()->state);
@@ -474,7 +474,7 @@ final class ScopeWideningTest extends LinkingTestCase
         $events  = count($this->recordedEvents());
 
         try {
-            $this->widen($this->person, 'tenant-2');
+            $this->widen([$this->person], 'tenant-2');
             self::fail('The failure did not propagate.');
         } catch (\RuntimeException $exception) {
             self::assertSame(FailingRevocation::MESSAGE, $exception->getMessage());
@@ -514,7 +514,7 @@ final class ScopeWideningTest extends LinkingTestCase
         });
 
         try {
-            $database->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-9', Clients::browser()));
+            $database->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-9', Clients::browser()));
             self::fail('The change went on over what it missed.');
         } catch (LinkCandidatesChanged $exception) {
             self::assertSame('An identity\'s verified domain links changed before they were locked; retry the whole transaction.', $exception->getMessage());
@@ -525,7 +525,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
         $this->domainRowIn($other, 'a-subject');
 
-        self::assertSame(1, $this->widen($this->person, 'tenant-9'));
+        self::assertSame(1, $this->widen([$this->person], 'tenant-9'));
         self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
     }
 
@@ -537,8 +537,8 @@ final class ScopeWideningTest extends LinkingTestCase
      */
     public function testTheGuardIsTheIdentitys(): void
     {
-        $this->widen($this->person, 'tenant-2');
-        $this->widen($this->person, 'tenant-3');
+        $this->widen([$this->person], 'tenant-2');
+        $this->widen([$this->person], 'tenant-3');
 
         $guard = IdentityGuard::query()->sole();
 
@@ -546,7 +546,7 @@ final class ScopeWideningTest extends LinkingTestCase
         self::assertSame(64, strlen($guard->identity_hash));
         self::assertSame($this->clock->now()->toIso8601String(), $guard->created_at->toIso8601String());
 
-        $this->widen(new IdentityReference('App\Models\User', '8'), 'tenant-2');
+        $this->widen([new IdentityReference('App\Models\User', '8')], 'tenant-2');
 
         self::assertSame(2, IdentityGuard::query()->count());
         self::assertNotSame(IdentityLock::digest(new IdentityReference('ab', 'c')), IdentityLock::digest(new IdentityReference('a', 'bc')));
@@ -565,7 +565,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
         $this->app?->instance(Linker::class, new NoLinks);
 
-        self::assertSame(0, $this->widen($this->person, 'tenant-9'));
+        self::assertSame(0, $this->widen([$this->person], 'tenant-9'));
         self::assertSame(LinkState::ACTIVE, $row->refresh()->state);
         self::assertSame(1, IdentityGuard::query()->count());
     }
@@ -581,7 +581,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
         $this->app?->instance(Linker::class, new DelegatingLinkStorage(app(LinkStore::class)));
 
-        self::assertSame(1, $this->widen($this->person, 'tenant-9'));
+        self::assertSame(1, $this->widen([$this->person], 'tenant-9'));
         self::assertSame(LinkState::SUSPENDED, $row->refresh()->state);
         self::assertSame([$row->id], array_map(static fn (RevocationScope $scope): ?string => $scope->linkId, $this->revocation->scopes));
     }
@@ -601,7 +601,7 @@ final class ScopeWideningTest extends LinkingTestCase
 
         $other->forceFill(['identity_id' => 'ADA'])->save();
 
-        self::assertSame(0, $this->widen($person, 'tenant-9'));
+        self::assertSame(0, $this->widen([$person], 'tenant-9'));
         self::assertSame(LinkState::ACTIVE, $other->refresh()->state);
         self::assertSame([], $this->revocation->scopes);
     }
@@ -624,7 +624,7 @@ final class ScopeWideningTest extends LinkingTestCase
         $other->forceFill(['identity_id' => 'ADA'])->save();
         $own->forceFill(['identity_id' => 'ada'])->save();
 
-        self::assertSame(1, $this->widen($person, 'tenant-9'));
+        self::assertSame(1, $this->widen([$person], 'tenant-9'));
         self::assertSame(LinkState::ACTIVE, $other->refresh()->state);
         self::assertSame(LinkState::SUSPENDED, $own->refresh()->state);
         self::assertSame([$own->id], array_map(static fn (RevocationScope $scope): ?string => $scope->linkId, $this->revocation->scopes));
@@ -643,8 +643,202 @@ final class ScopeWideningTest extends LinkingTestCase
         $database->enableQueryLog();
         $database->flushQueryLog();
 
-        self::assertSame(0, $this->widen($this->person, 'tenant-9'));
+        self::assertSame(0, $this->widen([$this->person], 'tenant-9'));
         self::assertCount(3, $database->getQueryLog());
+    }
+
+    /**
+     * Several identities are widened in one call: each one's links in a
+     * connection of another tenant are suspended and revoked, and the total is
+     * answered.
+     *
+     * @return void
+     */
+    public function testSeveralIdentitiesAreWidenedInOneCall(): void
+    {
+        $other = new IdentityReference('App\Models\User', '8');
+        $mine  = $this->domainRowIn($this->connectionOf('tenant-9'), 'subject-in-mine');
+        $rows  = [
+            $this->domainRowIn($this->connectionOf('tenant-2'), 'subject-of-the-person'),
+            $this->domainRowIn($this->connectionOf('tenant-3'), 'subject-of-another', LinkState::ACTIVE, $other),
+        ];
+
+        self::assertSame(2, $this->widen([$this->person, $other], 'tenant-9'));
+
+        foreach ($rows as $row) {
+            self::assertSame(LinkState::SUSPENDED, $row->refresh()->state);
+        }
+
+        self::assertSame(LinkState::ACTIVE, $mine->refresh()->state);
+        self::assertEqualsCanonicalizing(
+            [$this->person->jsonSerialize(), $other->jsonSerialize()],
+            array_map(static fn (RevocationScope $scope): ?array => $scope->identity?->jsonSerialize(), $this->revocation->scopes),
+        );
+    }
+
+    /**
+     * An identity given twice is guarded, read and counted once.
+     *
+     * @return void
+     */
+    public function testAnIdentityGivenTwiceIsTakenOnce(): void
+    {
+        $connection = $this->connectionOf('tenant-2');
+
+        $this->domainRowIn($connection, 'a-subject');
+        $this->recordLockOrder();
+
+        self::assertSame(1, $this->widen([$this->person, $this->person], 'tenant-9'));
+        self::assertSame(['identity guard', 'connections ' . $connection->id, 'link'], $this->lockOrder());
+        self::assertCount(1, $this->revocation->scopes);
+    }
+
+    /**
+     * The guards are taken first, in ascending order of their digests, however
+     * the identities are given.
+     *
+     * @return void
+     */
+    public function testTheGuardsAreTakenInAscendingOrderOfTheirDigests(): void
+    {
+        $identities = array_map(static fn (string $id): IdentityReference => new IdentityReference('App\Models\User', $id), ['7', '8', '9', '10', '11']);
+
+        usort($identities, static fn (IdentityReference $a, IdentityReference $b): int => strcmp(IdentityLock::digest($b), IdentityLock::digest($a)));
+
+        $expected = array_map(IdentityLock::digest(...), $identities);
+        $digests  = [];
+        $table    = StorageConnection::table('identity_guards.table');
+
+        sort($expected, SORT_STRING);
+
+        $this->connection->getConnection()->listen(static function (QueryExecuted $query) use ($table, &$digests): void {
+
+            if (!str_starts_with(strtolower($query->sql), 'insert') || !str_contains($query->sql, $table)) {
+                return;
+            }
+
+            $hashes    = array_filter($query->bindings, static fn (mixed $binding): bool => is_string($binding) && preg_match('/^[0-9a-f]{64}$/', $binding) === 1);
+            $digests[] = array_values($hashes)[0] ?? null;
+        });
+
+        self::assertNotSame($expected, array_map(IdentityLock::digest(...), $identities));
+        self::assertSame(0, $this->widen($identities, 'tenant-9'));
+        self::assertSame($expected, $digests);
+    }
+
+    /**
+     * The connections holding any of the identities' rows are locked together,
+     * in one statement in ascending id order, after every guard and before the
+     * links.
+     *
+     * @return void
+     */
+    public function testTheUnionOfTheirConnectionsIsLockedInOneStatement(): void
+    {
+        $other  = new IdentityReference('App\Models\User', '8');
+        $first  = $this->connectionOf('tenant-2');
+        $shared = $this->connectionOf('tenant-3');
+        $last   = $this->connectionOf('tenant-4');
+
+        $this->domainRowIn($first, 'subject-of-the-person');
+        $this->domainRowIn($shared, 'another-subject-of-the-person');
+        $this->domainRowIn($shared, 'subject-of-another', LinkState::ACTIVE, $other);
+        $this->domainRowIn($last, 'another-subject-of-another', LinkState::ACTIVE, $other);
+
+        $ids = [$first->id, $shared->id, $last->id];
+
+        sort($ids, SORT_STRING);
+
+        $this->recordLockOrder();
+
+        self::assertSame(4, $this->widen([$other, $this->person], 'tenant-9'));
+        self::assertSame(['identity guard', 'identity guard', 'connections ' . implode(', ', $ids), 'link'], $this->lockOrder());
+    }
+
+    /**
+     * A row of one identity its plain read missed refuses the whole change
+     * before anything of another identity is changed or revoked.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAnUncoveredRowOfOneIdentityChangesNothingOfAnother(): void
+    {
+        $other    = new IdentityReference('App\Models\User', '8');
+        $missed   = $this->connectionOf('tenant-3');
+        $database = $this->connection->getConnection();
+        $inserted = false;
+
+        $this->domainRowIn($this->connectionOf('tenant-2'), 'subject-of-the-person');
+
+        $database->listen(function (QueryExecuted $query) use ($missed, $other, &$inserted): void {
+
+            if ($inserted || !str_contains($query->sql, StorageConnection::table('links.table')) || !str_starts_with(strtolower($query->sql), 'select')) {
+                return;
+            }
+
+            $inserted = true;
+
+            $this->domainRowIn($missed, 'subject-of-another', LinkState::ACTIVE, $other);
+        });
+
+        $this->expectException(LinkCandidatesChanged::class);
+
+        try {
+            $this->widen([$this->person, $other], 'tenant-9');
+        } finally {
+            self::assertTrue($inserted);
+            self::assertSame([], $this->revocation->scopes);
+            self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
+        }
+    }
+
+    /**
+     * An empty list is no change: it answers 0 and runs no statement, inside a
+     * transaction or not.
+     *
+     * @return void
+     */
+    public function testAnEmptyListChangesNothing(): void
+    {
+        $this->domainRowIn($this->connectionOf('tenant-2'), 'a-subject');
+
+        $database = $this->connection->getConnection();
+
+        $database->enableQueryLog();
+        $database->flushQueryLog();
+
+        self::assertSame(0, app(ScopeWidening::class)->widened([], 'tenant-9', Clients::browser()));
+        self::assertSame(0, $this->widen([], 'tenant-9'));
+        self::assertSame([], $database->getQueryLog());
+        self::assertSame(0, IdentityGuard::query()->count());
+        self::assertSame([], $this->revocation->scopes);
+    }
+
+    /**
+     * Its reads name exactly the identities given, and the provenance.
+     *
+     * @return void
+     */
+    public function testItReadsOnlyTheRowsOfTheIdentitiesGiven(): void
+    {
+        $other    = new IdentityReference('App\Models\Admin', '8');
+        $database = $this->connection->getConnection();
+        $table    = StorageConnection::table('links.table');
+
+        $database->enableQueryLog();
+        $database->flushQueryLog();
+
+        self::assertSame(0, $this->widen([$this->person, $other], 'tenant-9'));
+
+        $reads = array_values(array_filter($database->getQueryLog(), static fn (array $query): bool => str_contains($query['query'], $table)));
+
+        self::assertCount(2, $reads);
+
+        foreach ($reads as $read) {
+            self::assertEqualsCanonicalizing([$this->person->type, $this->person->id, $other->type, $other->id, LinkOrigin::VERIFIED_DOMAIN->value], $read['bindings']);
+        }
     }
 
     /**
@@ -674,7 +868,7 @@ final class ScopeWideningTest extends LinkingTestCase
         $this->domainRowIn($connection, 'subject-made-first', $first);
         $this->domainRowIn($connection, 'subject-made-second', $second);
 
-        self::assertSame(1, $this->widen($this->person, 'tenant-9'));
+        self::assertSame(1, $this->widen([$this->person], 'tenant-9'));
 
         $link = Link::query()->sole();
 
@@ -715,15 +909,15 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Report the widening, in a transaction.
+     * Report the widening of the identities, in a transaction.
      *
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  list<\SineMacula\Laravel\Sso\Identities\IdentityReference>  $identities
      * @param  ?string  $tenantId
      * @return int
      */
-    private function widen(IdentityReference $identity, ?string $tenantId): int
+    private function widen(array $identities, ?string $tenantId): int
     {
-        return $this->connection->getConnection()->transaction(static fn (): int => app(ScopeWidening::class)->widened($identity, $tenantId, Clients::browser()));
+        return $this->connection->getConnection()->transaction(static fn (): int => app(ScopeWidening::class)->widened($identities, $tenantId, Clients::browser()));
     }
 
     /**
@@ -764,15 +958,18 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A row of the person with verified domain provenance in the connection.
+     * A row of the identity, the person unless given, with verified domain
+     * provenance in the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $subject
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkState  $state
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return \SineMacula\Laravel\Sso\Models\Link
      */
-    private function domainRowIn(Connection $connection, string $subject, LinkState $state = LinkState::ACTIVE): Link
+    private function domainRowIn(Connection $connection, string $subject, LinkState $state = LinkState::ACTIVE, ?IdentityReference $identity = null): Link
     {
+        $identity ??= $this->person;
         $key  = new LinkSubject(VerifyingDriver::ISSUER, $subject);
         $link = new Link;
 
@@ -781,8 +978,8 @@ final class ScopeWideningTest extends LinkingTestCase
             'issuer'                 => $key->issuer,
             'subject'                => $key->subject,
             'subject_key'            => $key->key(),
-            'identity_type'          => $this->person->type,
-            'identity_id'            => $this->person->id,
+            'identity_type'          => $identity->type,
+            'identity_id'            => $identity->id,
             'state'                  => $state,
             'provenance'             => LinkOrigin::VERIFIED_DOMAIN,
             'reservation_id'         => $state === LinkState::RESERVED ? strtolower((string) Str::ulid()) : null,

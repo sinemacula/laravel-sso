@@ -120,7 +120,7 @@ final class LinkConfirmationTest extends LinkingTestCase
         self::assertSame(LinkState::ACTIVE, $kept->state);
         self::assertSame([], array_values(array_filter($this->recordedEvents(), static fn (object $event): bool => $event instanceof LinkConfirmed)));
 
-        self::assertSame(1, $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser())));
+        self::assertSame(1, $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser())));
         self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
     }
 

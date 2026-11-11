@@ -563,7 +563,7 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     private function widener(): \Closure
     {
         return fn (): string => 'widened:' . DB::connection(StorageConnection::name())->transaction(
-            fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()),
+            fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser()),
         );
     }
 
