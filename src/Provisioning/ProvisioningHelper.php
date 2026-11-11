@@ -4,6 +4,8 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Provisioning;
 
+use Illuminate\Contracts\Container\Container;
+use Illuminate\Database\DatabaseTransactionsManager;
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Completion\ProvisioningOffer;
 use SineMacula\Laravel\Sso\Completion\VerifiedDeadlines;
@@ -39,13 +41,16 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * 1. The bound `Contracts\Linker` not backed by `Contracts\LinkStorage` is a
  *    `LogicException`, with nothing written and the grant unspent: a link made
  *    here would be one the resolver ignores.
- * 2. The grant is claimed, before anything else, so a refused attempt can never
- *    be repeated for another identity, and a reentrant call or a second
- *    listener gets no second use. A grant given another result object than it
- *    is bound to (identical fields are not enough) is `grant_wrong_result`, and
- *    is spent all the same: that is a listener's bug, and recovery is a new
+ * 2. The grant is claimed, before anything else, so a reentrant call or a
+ *    second listener gets no second use, and bound to the listener's outermost
+ *    transaction on the storage connection, or to the helper's own once it
+ *    begins: only that transaction's rollback lets the grant be claimed again,
+ *    so a listener may retry its whole transaction. A grant given another
+ *    result object than it is bound to (identical fields are not enough) is
+ *    `grant_wrong_result`: that is a listener's bug, and recovery is a new
  *    flow. A grant that is used, closed or was not issued for a running
- *    dispatch is `grant_invalid`.
+ *    dispatch is `grant_invalid`. Every refusal spends the grant for good, so a
+ *    refused attempt can never be repeated for another identity.
  * 3. One transaction on the storage connection (a savepoint inside the
  *    listener's) takes the frozen lock order, each by a locking read on the
  *    write connection: the enforcing tenant's rule and connections
@@ -74,11 +79,14 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * accepted consequence of provisioning outside the package's locks.
  *
  * Resolve it from the container per dispatch. It holds the locks, the drivers'
- * registry, the metadata expiry, the deadlines, the storage binding, the clock
- * and the offer, none of which keeps anything of one completion for the next
- * (SSO-11.2). A database error and a contract's exception propagate (SSO-11.4);
- * on PostgreSQL under `REPEATABLE READ`, a transaction whose snapshot predates
- * a change it waited on fails to serialise instead of refusing.
+ * registry, the metadata expiry, the deadlines, the storage binding, the clock,
+ * the offer and the container the transactions manager is resolved from on each
+ * call, none of which keeps anything of one completion for the next (SSO-11.2).
+ * A database error and a contract's exception propagate (SSO-11.4); on
+ * PostgreSQL under `REPEATABLE READ`, a transaction whose snapshot predates a
+ * change it waited on fails to serialise instead of refusing, and on InnoDB
+ * under `REPEATABLE READ` two first sign-ins can deadlock on gap locks: both
+ * are worth a retry of the listener's whole transaction.
  *
  * @api
  *
@@ -97,6 +105,7 @@ final readonly class ProvisioningHelper
      * @param  \SineMacula\Laravel\Sso\Links\LinkStorageBinding  $storage
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      * @param  \SineMacula\Laravel\Sso\Completion\ProvisioningOffer  $offer
+     * @param  \Illuminate\Contracts\Container\Container  $container
      */
     public function __construct(
 
@@ -120,6 +129,9 @@ final readonly class ProvisioningHelper
 
         /** Whether a dispatch issued the grant. */
         private ProvisioningOffer $offer,
+
+        /** Resolves the transactions manager the grant's claim is bound through. */
+        private Container $container,
     ) {}
 
     /**
@@ -147,7 +159,20 @@ final readonly class ProvisioningHelper
             return $mismatched ? ProvisioningResult::grantWrongResult() : ProvisioningResult::grantInvalid();
         }
 
-        return DB::connection(StorageConnection::name())->transaction(fn (): ProvisioningResult => $this->underLocks($grant, $requestId, $result, $identity, $client));
+        $this->bind($grant);
+
+        return DB::connection(StorageConnection::name())->transaction(function () use ($grant, $requestId, $result, $identity, $client): ProvisioningResult {
+
+            $this->bind($grant);
+
+            $answer = $this->underLocks($grant, $requestId, $result, $identity, $client);
+
+            if ($answer->isRefused()) {
+                $grant->refuse();
+            }
+
+            return $answer;
+        });
     }
 
     /**
@@ -174,6 +199,26 @@ final readonly class ProvisioningHelper
     {
         return $request->trust_version === $connection->trust_version
             || TransitionReceipts::permits($grant->transitionReceipt(), $connection, $request);
+    }
+
+    /**
+     * Bind the grant's claim to the outermost transaction open on the storage
+     * connection, when a transactions manager is bound.
+     *
+     * @param  \SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant  $grant
+     * @return void
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function bind(ProvisioningGrant $grant): void
+    {
+        $manager = $this->container->bound('db.transactions') ? $this->container->make('db.transactions') : null;
+
+        if (!$manager instanceof DatabaseTransactionsManager) {
+            return;
+        }
+
+        $grant->bind($manager, StorageConnection::resolvedName());
     }
 
     /**

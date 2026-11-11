@@ -247,6 +247,13 @@ reservation carries the version it was made under.
   `reservation_invalid` at completion, and a subject held when read and absent under the lock is `link_changed`.
 - A wrong result given to the helper spends the grant and is `grant_wrong_result`; the listener rolls its identity and
   membership transaction back, and recovery is a new flow, not reuse of that grant.
+- A claim of the grant is bound to the outermost transaction on the storage connection whose callbacks apply, the
+  listener's or else the helper's own (the testing traits' wrapping transaction is not one), and is given back to the
+  same dispatch only when that transaction's rollback callback has run and its manager no longer holds it. So a listener
+  may retry its whole transaction (`DB::transaction($work, 3)`). A commit, a refusal, a rolled-back savepoint inside a
+  surviving transaction, a claim not yet bound, and a commit Laravel 12 fails without telling its manager leave it
+  spent. On InnoDB at `REPEATABLE READ`, two first sign-ins can deadlock on the gap locks of their empty-range locking
+  reads of a new identity's links: the listener retries, and `READ COMMITTED` for its transaction is recommended.
 - A linker not backed by `Contracts\LinkStorage` is a `LogicException` before a write, in each path that writes a link.
 - A listener's exception ends the completion as a server error: replay is recorded, `completed_at` stays unset, no
   code is issued, and nothing resumes it. A link it made stays made.
@@ -277,8 +284,9 @@ reservation carries the version it was made under.
 
 - `tests/Feature/Linking/StateMachineCompletionPipelineTest.php`, on `tests/Feature/Linking/LinkingTestCase.php`.
 - `tests/Feature/Linking/ProvisioningTest.php`, `ProvisioningEventSequenceTest.php`,
-  `tests/Integration/Linking/ConcurrentProvisioningTest.php`, `tests/Unit/Provisioning/ProvisioningGrantTest.php`,
-  `tests/Unit/Events/ResultUnlinkedTest.php`, `tests/Performance/ProvisioningQueryBudgetTest.php`.
+  `tests/Feature/Provisioning/ProvisioningHelperTest.php`, `tests/Integration/Linking/ConcurrentProvisioningTest.php`,
+  `tests/Unit/Provisioning/ProvisioningGrantTest.php`, `tests/Unit/Events/ResultUnlinkedTest.php`,
+  `tests/Performance/ProvisioningQueryBudgetTest.php`.
 - `tests/Feature/Linking/IdentityLockTest.php`, `tests/Integration/Linking/IdentityGuardMigrationTest.php`.
 - `tests/Feature/Linking/DomainLinkEligibilityTest.php`, `DomainLinkingEventSequenceTest.php`,
   `LinkingPolicyServiceTest.php`, `ReservationWithdrawalTest.php`, `ScopeWideningTest.php`,

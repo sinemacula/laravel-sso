@@ -5,6 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Provisioning;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\DatabaseTransactionRecord;
+use Illuminate\Database\DatabaseTransactionsManager;
 use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
@@ -17,10 +19,21 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  * nothing. It is bound to the exact immutable result object, which names its
  * tenant, application and purpose, so it can never be reconstructed from public
  * constructor arguments nor used for another result. `claim()` marks it used
- * before the helper attempts anything, whatever it was presented with, so a
- * refused attempt cannot be reused for another identity, and reentrant calls or
- * a second listener get no second use. `close()` runs in the dispatch's
- * `finally`, so it is void once the dispatch returns, or throws.
+ * before the helper attempts anything, whatever it was presented with, so
+ * reentrant calls or a second listener get no second use, and a refused claim
+ * or attempt spends it for good, so it cannot be reused for another identity.
+ * `close()` runs in the dispatch's `finally`, so it is void once the dispatch
+ * returns, or throws.
+ *
+ * A claim is released, for the same dispatch to claim again, only on evidence
+ * that the attempt which made it rolled back as a whole: the helper binds it
+ * (`bind()`) to the outermost transaction open on the storage connection whose
+ * callbacks apply, which is the helper's own when the listener has none (the
+ * testing traits' wrapping transaction is not one), and that transaction's
+ * rollback callback marks it. It is claimable again once marked and its
+ * transaction is gone from the manager; a commit, a rolled-back savepoint
+ * inside it, a commit Laravel 12 fails to report, or a claim never bound leaves
+ * it used. So a listener can retry its whole transaction after a deadlock.
  *
  * It proves the authority to provision for this result, not when an application
  * identity was created: that the identity is new remains the adapter's
@@ -41,8 +54,20 @@ final class ProvisioningGrant implements \JsonSerializable
     /** @var bool Whether its dispatch is still running. */
     private bool $open = true;
 
-    /** @var bool Whether the grant's one use has been claimed. */
+    /** @var bool Whether a claim holds the grant's one use. */
     private bool $used = false;
+
+    /** @var bool Whether a claim or an attempt was refused, which spends it for good. */
+    private bool $refused = false;
+
+    /** @var ?\Illuminate\Database\DatabaseTransactionsManager The manager of the transaction the claim is bound to. */
+    private ?DatabaseTransactionsManager $manager = null;
+
+    /** @var ?\Illuminate\Database\DatabaseTransactionRecord The outermost transaction the claim runs in, once bound. */
+    private ?DatabaseTransactionRecord $root = null;
+
+    /** @var bool Whether the transaction the claim is bound to was rolled back. */
+    private bool $rolledBack = false;
 
     /**
      * Constructor.
@@ -140,22 +165,75 @@ final class ProvisioningGrant implements \JsonSerializable
      * Claim the grant's one use for the exact result, while its dispatch runs:
      * any claim marks it used, before anything is attempted, and only the
      * first, of the result it is bound to, answers the consumed, unfinished
-     * request the helper checks under its locks; every other answers `null`.
+     * request the helper checks under its locks, as does a claim again once the
+     * first's transaction rolled back; every other answers `null`, and spends
+     * the grant for good.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @return ?string
      */
     public function claim(#[\SensitiveParameter] VerifiedResult $result): ?string
     {
-        $usable     = $this->isUsable();
-        $this->used = true;
+        if (!$this->isUsable() || !$this->isBoundTo($result)) {
+            $this->refused = true;
 
-        if (!$usable || !$this->isBoundTo($result)) {
             return null;
         }
 
+        $this->used       = true;
+        $this->root       = null;
+        $this->rolledBack = false;
+
         /** @var string */
         return $this->requestId->getValue();
+    }
+
+    /**
+     * Bind the claim to the outermost transaction open on the connection whose
+     * callbacks apply, so its rollback, and nothing else, releases the claim. A
+     * claim already bound, or with no such transaction open, is left as it is.
+     *
+     * @param  \Illuminate\Database\DatabaseTransactionsManager  $manager
+     * @param  string  $connection
+     * @return void
+     *
+     * @internal
+     */
+    public function bind(DatabaseTransactionsManager $manager, string $connection): void
+    {
+        if ($this->root !== null) {
+            return;
+        }
+
+        $root = self::outermost($manager, $connection);
+
+        if ($root === null) {
+            return;
+        }
+
+        $this->manager = $manager;
+        $this->root    = $root;
+
+        $root->addCallbackForRollback(function () use ($root): void {
+
+            if ($this->root !== $root) {
+                return;
+            }
+
+            $this->rolledBack = true;
+        });
+    }
+
+    /**
+     * Spend the grant for good: the helper refused the attempt.
+     *
+     * @return void
+     *
+     * @internal
+     */
+    public function refuse(): void
+    {
+        $this->refused = true;
     }
 
     /**
@@ -181,13 +259,14 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * Whether its dispatch is running and its one use unclaimed.
+     * Whether its dispatch is running, nothing refused it, and its one use is
+     * unclaimed or released by the rollback of the claim's transaction.
      *
      * @return bool
      */
     public function isUsable(): bool
     {
-        return $this->open && !$this->used;
+        return $this->open && !$this->refused && (!$this->used || $this->isReleased());
     }
 
     /**
@@ -222,5 +301,48 @@ final class ProvisioningGrant implements \JsonSerializable
     public function jsonSerialize(): array
     {
         return ['usable' => $this->isUsable()];
+    }
+
+    /**
+     * The outermost record, of those the manager holds open on the connection
+     * whose callbacks apply, that the innermost one is in.
+     *
+     * @param  \Illuminate\Database\DatabaseTransactionsManager  $manager
+     * @param  string  $connection
+     * @return ?\Illuminate\Database\DatabaseTransactionRecord
+     */
+    private static function outermost(DatabaseTransactionsManager $manager, string $connection): ?DatabaseTransactionRecord
+    {
+        $applicable = $manager->callbackApplicableTransactions();
+        $current    = $applicable->last(static fn (DatabaseTransactionRecord $record): bool => $record->connection === $connection);
+        $outermost  = null;
+
+        while ($current !== null && $applicable->containsStrict($current)) {
+            $outermost = $current;
+            $current   = $current->parent;
+        }
+
+        return $outermost;
+    }
+
+    /**
+     * Whether the claim's transaction was rolled back and its manager no longer
+     * holds it. Its disappearance alone proves nothing: a commit removes it
+     * before running its callbacks.
+     *
+     * @return bool
+     */
+    private function isReleased(): bool
+    {
+        $manager = $this->manager;
+        $root    = $this->root;
+
+        if (!$this->rolledBack || $manager === null) {
+            return false;
+        }
+
+        $held = $manager->getPendingTransactions()->concat($manager->getCommittedTransactions());
+
+        return !$held->contains(static fn (DatabaseTransactionRecord $record): bool => $record === $root);
     }
 }
