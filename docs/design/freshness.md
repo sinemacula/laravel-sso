@@ -37,7 +37,7 @@ each, the default that refuses, and the gate every listed mutation calls before 
   and never the value. It never falls back to the default or clamps to the range, either of which would loosen the
   requirement the setting was meant to set.
 - The default, `Freshness\RefusingFreshness`, answers `stale` for every operation at every age. It holds nothing, so
-  the provider binds it with `singletonIf`: an application or another package that bound the contract before the
+  the provider binds it as a singleton default: an application or another package that bound the contract before the
   provider registers keeps its binding, and one bound afterwards replaces the default.
 - Every operation SSO-2.12 lists asks through `Freshness\FreshnessGate`, never the contract directly.
   `FreshnessGate::check()` reads the operation's maximum age first, then resolves the contract from the container and
@@ -74,8 +74,8 @@ each, the default that refuses, and the gate every listed mutation calls before 
 
 ## Success Path
 
-1. The provider binds `Contracts\Freshness` to `RefusingFreshness` with `singletonIf`, unless the application bound a
-   contract first; `laravel-iam` binds `laravel-authentication`'s freshness check (AUTH-3.11), passing the maximum age
+1. The provider binds `Contracts\Freshness` to `RefusingFreshness` as a singleton default, unless the application bound
+   a contract first; `laravel-iam` binds `laravel-authentication`'s freshness check (AUTH-3.11), passing the maximum age
    on as the caller's requirement.
 2. A management helper finds the connection (and the key) on the write connection, and validates what it was given.
 3. It asks `FreshnessGate::check()` with the one operation the change is, or `checkAll()` with each, for the caller it
@@ -111,7 +111,7 @@ each, the default that refuses, and the gate every listed mutation calls before 
 - `src/Freshness/RefusingFreshness.php`, `src/Freshness/MaximumAges.php`, `src/Freshness/FreshnessGate.php`,
   `src/Freshness/FreshnessCheck.php`.
 - `src/Testing/FakeFreshness.php`.
-- `src/SsoServiceProvider.php`: `register()` (`singletonIf(Freshness::class, RefusingFreshness::class)`) and
+- `src/SsoServiceProvider.php`: `register()` (the singleton default `Support\PackageDefaults` lists) and
   `CONFIGURATION_CHECKS['freshness']`; `config/sso.php`: `freshness.max_age_seconds`.
 - `src/Events/Enums/FailureReason.php`: `FRESHNESS_REQUIRED`; `src/Contracts/ProtocolSettings.php`: `freshnessFor()`;
   `src/Keys/Enums/KeyUse.php`: `freshness()`.

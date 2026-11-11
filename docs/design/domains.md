@@ -48,8 +48,8 @@ order, and the predicates every later reader judges a domain by. The scheduled r
   requires every implementation to resolve the name as absolute. An answer with no TXT record (PHP's answer for a name
   that does not exist too) is `absent`; a `false` answer or one that warns is `lookup_failed`, logged through the
   sanitising logger with the name and PHP's warning, never a record; it keeps the first 64 records of at most 4096
-  bytes. An application that needs a bounded deadline, DNSSEC or DNS over HTTPS binds its own. It is bound with
-  `scopedIf`. `Testing\FakeDnsResolver` is the public test double.
+  bytes. An application that needs a bounded deadline, DNSSEC or DNS over HTTPS binds its own. It is a scoped
+  default. `Testing\FakeDnsResolver` is the public test double.
 - `Domains\DomainService` (`@api`) is the management helper. Every change is scoped to a tenant through
   `Connections\ConnectionFinder` (another tenant's connection is `connection_not_found`) and goes in one order: find
   the connection, and the claim, on the write connection; validate; ask freshness (`sso.domain.claim`,

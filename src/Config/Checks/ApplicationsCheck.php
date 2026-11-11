@@ -48,7 +48,7 @@ final readonly class ApplicationsCheck implements ConfigurationCheck
     #[\Override]
     public function applies(): bool
     {
-        return Features::isInUse();
+        return Features::isInUse($this->config);
     }
 
     /**
@@ -72,7 +72,7 @@ final readonly class ApplicationsCheck implements ConfigurationCheck
         $checks = [];
 
         foreach ($applications as $name => $settings) {
-            $checks[] = static fn (): Application => Application::fromSettings((string) $name, $settings);
+            $checks[] = fn (): Application => Application::fromSettings($this->config, (string) $name, $settings);
         }
 
         return $checks;

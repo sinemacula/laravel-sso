@@ -17,7 +17,8 @@ package registers its settings and its check without editing another's (SSO-12.2
   setting turns off a security check of a feature that is on.
 - `Config\Features::enabled()` is the answer a flow acts on, and a malformed switch fails it closed with an
   `InvalidArgumentException`. `requested()` and `isInUse()` are the answers the checks act on: a malformed switch counts
-  as on there, so what it would enable is checked as well as the switch.
+  as on there, so what it would enable is checked as well as the switch. Both read the configuration repository they
+  are given, which a check takes in its constructor, so a composing package's check can pass its own.
 - Settings are read when used, through the shared readers: `Config\IntegerSetting` (an integer or the digit string
   `env()` gives, within a range), `Config\BooleanSetting` (a boolean, `1`/`0`, `true`/`false`) and `Config\UrlSetting`
   (a web URL, or an application's redirect URI). Each fails closed naming the key and what it must be, never the
@@ -62,6 +63,14 @@ package registers its settings and its check without editing another's (SSO-12.2
 - The PHP extensions the package needs (`curl`, `dom`, `hash`, `libxml`, `mbstring`, `openssl`, `zlib`, and
   `idn_to_ascii()` from `ext-intl` or `symfony/polyfill-intl-idn`) are required by Composer and checked by
   `[extensions]` while the package is in use, naming each missing one with what it is needed for.
+- While `saml2` is on, or its switch is malformed, `[extensions]` also checks the XML element registries: the Composer
+  plugin `simplesamlphp/composer-xmlprovider-installer` hard-links each `simplesamlphp-xmlprovider` package's
+  `classes/element.registry.php` into its own `classes` directory, and the XML library's `ElementRegistry` loads every
+  `element.registry.*.php` there, from the directory it derives from its own file (`Library\ElementRegistries`). Each
+  installed provider package's registry (read through `Composer\InstalledVersions`) must be loaded exactly once, by
+  contents, and every file loaded must be an installed package's registry: a missing one leaves its elements unparsed,
+  and one loaded twice, or beside a stale copy from an earlier install, is merged into lists where the library expects
+  class names. A registry that cannot be read is a problem too. The check reads files only.
 
 ## Success Path
 
@@ -79,6 +88,10 @@ package registers its settings and its check without editing another's (SSO-12.2
 ## Failure / Edge Cases
 
 - A misspelt switch or application setting is refused rather than left at its default.
+- An install that skipped the XML provider plugin (plugins disabled, `--no-plugins`, the plugin not allowed in
+  `allow-plugins`) fails `[extensions]` naming the package, and one that left a second copy of a registry behind, or a
+  stale copy matching no installed package's, names the package or the stale file, rather than failing the first SAML
+  message parsed.
 - A feature on without the protocol it needs is a problem, including over a malformed protocol switch.
 - A malformed switch fails a flow closed (`enabled()`), and is reported by `[features]` at boot.
 - A check class that does not exist is reported under its subject, so a registry entry left behind fails the boot
@@ -99,6 +112,7 @@ package registers its settings and its check without editing another's (SSO-12.2
   `src/Config/IntegerSetting.php`, `src/Config/UrlSetting.php`.
 - `src/Contracts/ConfigurationCheck.php`, `src/Config/ConfigurationChecker.php`, `src/Config/ConfigurationChecks.php`,
   `src/Exceptions/InvalidConfigurationException.php`, `src/Exceptions/MissingExtensionException.php`.
+- `src/Protocols/Saml2/Library/ElementRegistries.php`: the directory the XML library loads its registries from.
 - `src/Config/Checks/FeaturesCheck.php`, `ExtensionsCheck.php`, `StorageCheck.php`, `EndpointsCheck.php`,
   `ApplicationsCheck.php`.
 - The checks of later parts, each beside the settings it reads: `src/Freshness/FreshnessCheck.php` (`[freshness]`),
@@ -115,7 +129,8 @@ package registers its settings and its check without editing another's (SSO-12.2
   `tests/Feature/Config/AddedConfigurationChecksTest.php`, `tests/Unit/Config/BooleanSettingTest.php`,
   `tests/Unit/Config/IntegerSettingTest.php`, `tests/Unit/Config/UrlSettingTest.php`,
   `tests/Unit/Config/Enums/FeatureTest.php`.
-- `tests/Feature/Config/FeaturesTest.php` and every test under `tests/Feature/Config/Checks/`.
+- `tests/Feature/Config/FeaturesTest.php` and every test under `tests/Feature/Config/Checks/`;
+  `tests/Unit/Protocols/Saml2/Library/ElementRegistriesTest.php`.
 - `tests/Feature/Console/CheckConfigurationCommandTest.php`.
 - `tests/Feature/SsoServiceProviderTest.php` `testBootingOutsideTheConsoleFailsOnAProblem`,
   `testBootingInTheConsoleLeavesTheCheckToTheCommand`, `testAWorkerCommandFailsToStartOnAProblem`,

@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Fetching;
 
 use GuzzleHttp\Handler\CurlHandler;
+use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 use SineMacula\Laravel\Sso\Exceptions\MissingExtensionException;
@@ -35,11 +36,15 @@ final readonly class FetcherCheck implements ConfigurationCheck
     /**
      * Constructor.
      *
+     * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  \SineMacula\Laravel\Sso\Fetching\FetcherSettings  $settings
      * @param  ?\Closure(string): bool  $loaded
      * @param  ?\Closure(string): bool  $classExists
      */
     public function __construct(
+
+        /** The configuration that says whether the package is in use. */
+        private Repository $config,
 
         /** The settings checked. */
         private FetcherSettings $settings,
@@ -62,7 +67,7 @@ final readonly class FetcherCheck implements ConfigurationCheck
     #[\Override]
     public function applies(): bool
     {
-        return Features::isInUse();
+        return Features::isInUse($this->config);
     }
 
     /**
