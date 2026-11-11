@@ -41,7 +41,7 @@ final readonly class MetadataCheck implements ConfigurationCheck
     #[\Override]
     public function applies(): bool
     {
-        return Features::isInUse();
+        return Features::isInUse($this->config);
     }
 
     /**
@@ -63,7 +63,7 @@ final readonly class MetadataCheck implements ConfigurationCheck
             static fn (): int => $settings->claimSeconds(),
         ];
 
-        if (!Features::requested(Feature::METADATA_REFRESH)) {
+        if (!Features::requested($this->config, Feature::METADATA_REFRESH)) {
             return $always;
         }
 

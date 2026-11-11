@@ -37,7 +37,7 @@ final readonly class PruningCheck implements ConfigurationCheck
     #[\Override]
     public function applies(): bool
     {
-        return Features::isInUse();
+        return Features::isInUse($this->config);
     }
 
     /**

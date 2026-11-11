@@ -1418,7 +1418,7 @@ final class LinkBranchTest extends LinkingTestCase
     private function withRequest(CompletionState $state, AuthorizationRequest $request): CompletionState
     {
         $consumed    = new ConsumedRequest(Purpose::LINK, 'web', RequestReference::fromString(str_repeat('r', 32)), $this->clock->now());
-        $application = Application::fromSettings('web', ['redirect_uri' => 'https://app.example.com/sso']);
+        $application = Application::fromSettings(config(), 'web', ['redirect_uri' => 'https://app.example.com/sso']);
 
         return $state->withAuthorizationRequest($request, $consumed, $application);
     }

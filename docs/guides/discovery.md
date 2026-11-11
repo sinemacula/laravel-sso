@@ -138,14 +138,14 @@ A mistake in your code (a misbound purpose) and a server error are thrown at onc
 
 A refused answer's body is `{"error": "<reason>"}`, and a rate limited one adds `"retry_after"` in seconds:
 
-| Error                     | Why                                                                                   |
-|---------------------------|---------------------------------------------------------------------------------------|
-| `rate_limited`            | The client's IP address or the email's domain used up its starts                      |
-| `application_not_allowed` | The application is not registered, or does not allow external sign-in                 |
-| `feature_disabled`        | The application does not offer discovery, or the `discovery` feature is off           |
-| `challenge_invalid`       | `code_challenge` is not an S256 challenge: 43 base64url characters, with no padding   |
-| `freshness_required`      | A `link` that matched, from a caller who did not authenticate recently enough         |
-| `session_ineligible`      | A `reauthenticate` that matched, for an identity not signed in through the connection |
+| Error                     | Why                                                                                                                |
+|---------------------------|--------------------------------------------------------------------------------------------------------------------|
+| `rate_limited`            | The client's IP address or the email's domain used up its starts                                                   |
+| `application_not_allowed` | The application is not registered, or does not allow external sign-in                                              |
+| `feature_disabled`        | The application does not offer discovery, or the `discovery` feature is off                                        |
+| `challenge_invalid`       | `code_challenge` is not an S256 challenge: 43 base64url characters, with no padding                                |
+| `freshness_required`      | A `link` that matched, from a caller who did not authenticate recently enough                                      |
+| `session_ineligible`      | A `reauthenticate` that matched, for an identity not signed in through the connection on the application's session |
 
 A protocol driver that cannot start answers its own reason (for example `metadata_expired`). A matched connection
 disabled or changed while its driver started leads to the fallback, as a miss does.

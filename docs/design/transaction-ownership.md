@@ -76,6 +76,8 @@ committed stands, by design. `linking.md` describes the stages, and this note wh
   outside the package's locks (`linking.md`). The person signs in again, and the link resolves.
 - TR fails anywhere, the commit included: the code is unspent, the reservation stands, and the caller's whole
   transaction may be retried. A contract's exception after an activation undoes the activation.
+- A standalone `link`'s TR that the database rolls back as a deadlock, a lock wait timeout or a serialisation failure
+  is tried again by the package, at most three times in all; the attempt counted before TR opened is counted once.
 - A refusal in TR commits, with the code spent and its reservation deleted; a failure in that commit undoes all three,
   and no `FlowFailed` is reported.
 - A lapse that fails keeps its reservations and its claim verified. Its lease stands, so the next recheck takes the

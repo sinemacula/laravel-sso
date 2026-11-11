@@ -28,17 +28,17 @@ use Tests\Fixtures\Protocols\ExampleConnection;
  */
 #[CoversClass(NoReauthenticationSessions::class)]
 #[CoversClass(SessionStanding::class)]
-final class ReauthenticationSessionsDefaultTest extends TestCase
+final class NoReauthenticationSessionsTest extends TestCase
 {
     /**
-     * Rows of `[identity, session]`.
+     * Rows of `[identity, session, application]`.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string}>
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string, 2: string}>
      */
     public static function provideQuestions(): iterable
     {
-        yield 'a session' => [new IdentityReference('App\Models\User', '7'), 'session-1'];
-        yield 'another identity on another session' => [new IdentityReference('App\Models\Admin', '8'), 'session-2'];
+        yield 'a session' => [new IdentityReference('App\Models\User', '7'), 'session-1', 'web'];
+        yield 'another identity on another session of another application' => [new IdentityReference('App\Models\Admin', '8'), 'session-2', 'admin'];
     }
 
     /**
@@ -46,12 +46,13 @@ final class ReauthenticationSessionsDefaultTest extends TestCase
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $session
+     * @param  string  $application
      * @return void
      */
     #[DataProvider('provideQuestions')]
-    public function testNobodyIsSignedInWhenAFlowStarts(IdentityReference $identity, string $session): void
+    public function testNobodyIsSignedInWhenAFlowStarts(IdentityReference $identity, string $session, string $application): void
     {
-        self::assertSame(SessionStanding::NOT_SIGNED_IN, (new NoReauthenticationSessions)->standing($identity, $session, new ExampleConnection));
+        self::assertSame(SessionStanding::NOT_SIGNED_IN, (new NoReauthenticationSessions)->standing($identity, $session, $application, new ExampleConnection));
     }
 
     /**
@@ -59,12 +60,13 @@ final class ReauthenticationSessionsDefaultTest extends TestCase
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $session
+     * @param  string  $application
      * @return void
      */
     #[DataProvider('provideQuestions')]
-    public function testNobodyIsSignedInAtRedemption(IdentityReference $identity, string $session): void
+    public function testNobodyIsSignedInAtRedemption(IdentityReference $identity, string $session, string $application): void
     {
-        self::assertSame(SessionStanding::NOT_SIGNED_IN, (new NoReauthenticationSessions)->lockedStanding($identity, $session, 'web', new ExampleConnection, 'link-1'));
+        self::assertSame(SessionStanding::NOT_SIGNED_IN, (new NoReauthenticationSessions)->lockedStanding($identity, $session, $application, new ExampleConnection, 'link-1'));
     }
 
     /**

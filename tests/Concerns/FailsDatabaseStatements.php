@@ -23,9 +23,11 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
  * case, with the occurrence to fail at: `onTable()` builds one from a verb and
  * a table through the connection's grammar, so it works on every engine.
  * Whatever was armed is disarmed by the failure, so a retry or the next step
- * runs. `failCommit()` fails the outermost commit on the connection instead,
- * rolling the transaction back in the database first, as a failed commit leaves
- * it.
+ * runs. `deadlockStatement()` fails a statement as a MySQL deadlock instead,
+ * and `failToSerialiseStatement()` as a PostgreSQL serialisation failure, with
+ * SQLSTATE `40001` as its code. `failCommit()` fails the outermost commit on
+ * the connection instead, rolling the transaction back in the database first,
+ * as a failed commit leaves it.
  *
  * Each call arms one failure; `disarmDatabaseFailures()` drops any not yet
  * reached, and `databaseFailuresFired()` says how many fired, so a test can
@@ -81,6 +83,27 @@ trait FailsDatabaseStatements
 
         for ($time = 0; $time < $times; $time++) {
             $this->databaseFailureState()['statements'][] = ['pattern' => $pattern, 'left' => 1, 'connection' => $name, 'deadlock' => true];
+        }
+
+        $this->installStatementHook($name);
+    }
+
+    /**
+     * Make the next statements matching the pattern fail as PostgreSQL does
+     * when it cannot serialise one (SQLSTATE `40001`), the given number of
+     * times: a transaction that retries such failures is tried again.
+     *
+     * @param  string  $pattern
+     * @param  int  $times
+     * @param  ?string  $connection
+     * @return void
+     */
+    protected function failToSerialiseStatement(string $pattern, int $times = 1, ?string $connection = null): void
+    {
+        $name = $connection ?? StorageConnection::resolvedName();
+
+        for ($time = 0; $time < $times; $time++) {
+            $this->databaseFailureState()['statements'][] = ['pattern' => $pattern, 'left' => 1, 'connection' => $name, 'serialization' => true];
         }
 
         $this->installStatementHook($name);
@@ -220,7 +243,7 @@ trait FailsDatabaseStatements
                 $state['statements'] = array_values($statements);
                 $state['fired']++;
 
-                throw self::injectedFailure($connection, $query, $armed['deadlock'] ?? false);
+                throw self::armedFailure($connection, $query, $armed);
             }
         });
     }
@@ -237,6 +260,40 @@ trait FailsDatabaseStatements
     {
         $driver            = new \PDOException(($deadlock ? 'Deadlock found when trying to get lock: ' : '') . self::INJECTED_FAILURE);
         $driver->errorInfo = ['HY000', 1, self::INJECTED_FAILURE];
+
+        return new QueryException((string) $connection->getName(), $query, [], $driver);
+    }
+
+    /**
+     * The exception the armed failure raises in place of the statement.
+     *
+     * @param  \Illuminate\Database\Connection  $connection
+     * @param  string  $query
+     * @param  array<string, mixed>  $armed
+     * @return \Illuminate\Database\QueryException
+     */
+    private static function armedFailure(Connection $connection, string $query, array $armed): QueryException
+    {
+        return ($armed['serialization'] ?? false) === true
+            ? self::serializationFailure($connection, $query)
+            : self::injectedFailure($connection, $query, ($armed['deadlock'] ?? false) === true);
+    }
+
+    /**
+     * The exception a statement PostgreSQL cannot serialise raises: SQLSTATE
+     * `40001` as its code, as PDO gives it.
+     *
+     * @param  \Illuminate\Database\Connection  $connection
+     * @param  string  $query
+     * @return \Illuminate\Database\QueryException
+     */
+    private static function serializationFailure(Connection $connection, string $query): QueryException
+    {
+        $message           = 'SQLSTATE[40001]: Serialization failure: 7 ERROR:  could not serialize access due to concurrent update';
+        $driver            = new \PDOException($message . ': ' . self::INJECTED_FAILURE);
+        $driver->errorInfo = ['40001', 7, self::INJECTED_FAILURE];
+
+        (new \ReflectionProperty(\Exception::class, 'code'))->setValue($driver, '40001');
 
         return new QueryException((string) $connection->getName(), $query, [], $driver);
     }

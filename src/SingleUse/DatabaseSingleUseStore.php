@@ -9,6 +9,7 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\SingleUseKey;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
@@ -154,7 +155,7 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
         $insert = static fn (Connection $connection): bool => $connection->table($table)->insert($row);
 
         try {
-            $connection->transaction($insert, self::ATTEMPTS);
+            RetriedTransaction::run($connection, $insert, self::ATTEMPTS);
         } catch (UniqueConstraintViolationException) {
             return false;
         }
@@ -183,7 +184,7 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
             ->where('expires_at', '<=', $now)
             ->delete();
 
-        $connection->transaction($delete, self::ATTEMPTS);
+        RetriedTransaction::run($connection, $delete, self::ATTEMPTS);
     }
 
     /**

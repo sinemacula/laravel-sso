@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Enforcement\Enums\EnforcementStatus;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -280,7 +281,9 @@ final readonly class EnforcementService
      */
     private function change(string $tenantId, bool $exists, bool $enabled, array $ids, ?Caller $caller, ClientContext $client, bool $freshnessAsked): EnforcementResult
     {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $exists, $enabled, $ids, $caller, $client, $freshnessAsked): EnforcementResult {
+        $connection = DB::connection(StorageConnection::name());
+
+        return RetriedTransaction::run($connection, function () use ($tenantId, $exists, $enabled, $ids, $caller, $client, $freshnessAsked): EnforcementResult {
 
             $locked      = $this->locked($tenantId, $exists);
             $stored      = EnforcementLock::isConfigured($locked) ? $locked : null;

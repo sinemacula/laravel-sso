@@ -175,13 +175,14 @@ final class OidcCompletionEventSequenceTest extends TestCase
              *
              * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
              * @param  string  $sessionId
+             * @param  string  $application
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
              */
             #[\Override]
-            public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding
+            public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding
             {
-                unset($identity, $sessionId, $connection);
+                unset($identity, $sessionId, $application, $connection);
 
                 return SessionStanding::SIGNED_IN;
             }
@@ -199,9 +200,9 @@ final class OidcCompletionEventSequenceTest extends TestCase
             #[\Override]
             public function lockedStanding(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection, string $linkId): SessionStanding
             {
-                unset($application, $linkId);
+                unset($linkId);
 
-                return $this->standing($identity, $sessionId, $connection);
+                return $this->standing($identity, $sessionId, $application, $connection);
             }
 
             /**

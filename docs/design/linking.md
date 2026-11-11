@@ -153,8 +153,9 @@ adapter redeeming its own codes calls `HandoffRecheck`'s `lock()`, naming a code
 The session's authentication time is an adapter obligation: under its session lock, in the redemption's transaction, it
 writes `max(current, provider_time)`, so a renewal never moves it backwards. The package does not hold the session.
 
-A retry is only ever of the caller's whole transaction. A committed refusal spends the code; a rollback undoes
-consumption and activation together.
+Inside a caller's transaction, a retry is only ever of the whole of it; the standalone path retries only its own
+transaction (`handoffs.md`). A committed refusal spends the code; a rollback undoes consumption and activation
+together.
 
 ### What the application's contracts guarantee
 

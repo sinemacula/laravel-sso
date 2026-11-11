@@ -600,6 +600,65 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
+     * A standalone `link` whose candidates change again in its restart
+     * propagates `LinkCandidatesChanged`: it restarts once, never twice, and
+     * leaves nothing written and the code unspent.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAStandaloneLinkRestartsOnlyOnce(): void
+    {
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+        $other      = $this->anotherConnection();
+        $inserted   = 0;
+        $guards     = 0;
+
+        $grammar    = $this->connection->getConnection()->getQueryGrammar();
+        $guardTable = 'insert into ' . $grammar->wrapTable(StorageConnection::table('identity_guards.table'));
+        $provenance = $grammar->wrap('provenance');
+
+        $this->connection->getConnection()->listen(function (QueryExecuted $query) use ($other, $guardTable, $provenance, &$inserted, &$guards): void {
+
+            $sql = strtolower($query->sql);
+
+            if (str_starts_with($sql, $guardTable)) {
+                $guards++;
+            }
+
+            if ($inserted === $guards || !str_contains($sql, $provenance) || !str_starts_with($sql, 'select')) {
+                return;
+            }
+
+            $inserted++;
+
+            $this->makeLink($other, 'a-subject-held-elsewhere', [
+                'identity_type' => $this->person->type,
+                'identity_id'   => $this->person->id,
+                'issuer'        => VerifyingDriver::ISSUER,
+                'provenance'    => LinkOrigin::VERIFIED_DOMAIN,
+            ]);
+        });
+
+        $redemption = app(HandoffRedemption::class);
+        $code       = (string) $completion->handoff?->code->reveal();
+        $verifier   = (string) $start->verifier?->reveal();
+
+        try {
+            $redemption->redeem(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), new Caller($this->person));
+            self::fail('A standalone link restarted more than once.');
+        } catch (LinkCandidatesChanged) {
+            self::assertSame(2, $guards);
+        }
+
+        self::assertSame(0, Link::query()->count());
+        self::assertNull(HandoffCode::query()->sole()->redeemed_at);
+        self::assertSame(0, $this->connection->getConnection()->transactionLevel());
+    }
+
+    /**
      * With independent authentication a second subject is made, with no domain
      * provenance; every domain link is named, in id order, active and suspended
      * alike.

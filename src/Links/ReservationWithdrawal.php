@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Links;
 
 use Illuminate\Support\Facades\DB;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -130,7 +131,7 @@ final class ReservationWithdrawal
      */
     public static function expired(string $connectionId, array $ids, string $cutoff): int
     {
-        return DB::connection(StorageConnection::name())->transaction(static function () use ($connectionId, $ids, $cutoff): int {
+        return RetriedTransaction::run(DB::connection(StorageConnection::name()), static function () use ($connectionId, $ids, $cutoff): int {
 
             Connection::query()->useWritePdo()->whereKey($connectionId)->lockForUpdate()->first();
 

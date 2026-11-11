@@ -16,9 +16,9 @@ that every secret, verifier, code and digest is compared in constant time (SSO-2
   `StringEncrypter`) under `app.key`. Laravel's encrypter decrypts under `app.key` and then each of
   `app.previous_keys`, so a secret encrypted before a rotation decrypts while its key is listed as a previous one, and
   rotating the key needs no migration of what is stored. The package has no key setting of its own.
-- The binding is a scoped default (`scopedIf`): one the application or another package made before the provider
-  registers is kept, and a new instance is built for each request or job, so a rotated key is read by the next one
-  once Laravel's encrypter is rebuilt.
+- The binding is a scoped default (`Support\PackageDefaults`): one the application or another package made before the
+  provider registers is kept, and a new instance is built for each request or job, so a rotated key is read by the
+  next one once Laravel's encrypter is rebuilt.
 - A ciphertext no current or previous key decrypts is a server error: the `RuntimeException` (Laravel's
   `DecryptException`) propagates, and is never read as a refusal, an unknown connection or a missing secret.
 - An exception from the encrypter never carries the plaintext: Laravel's messages name the failure only, and the
@@ -90,7 +90,7 @@ that every secret, verifier, code and digest is compared in constant time (SSO-2
 - `src/Secrets/Secret.php`, `src/Secrets/MaskedSecret.php`, `src/Secrets/MaskedKey.php`.
 - `src/Secrets/ConstantTime.php`.
 - `src/Database/CiphertextWrite.php`.
-- `src/Secrets/SecretsCheck.php`; `src/SsoServiceProvider.php`: the `scopedIf` binding and `CONFIGURATION_CHECKS`.
+- `src/Secrets/SecretsCheck.php`; `src/SsoServiceProvider.php`: the scoped default's binding and `CONFIGURATION_CHECKS`.
 
 ## Authoritative Tests
 

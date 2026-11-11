@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Applications;
 
+use Illuminate\Config\Repository;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Applications\Application;
@@ -39,7 +40,7 @@ final class ApplicationTest extends TestCase
     {
         config()->set('sso.features.discovery', true);
 
-        $application = Application::fromSettings('mobile', [
+        $application = Application::fromSettings(config(), 'mobile', [
             'redirect_uri'        => 'com.example.app:/sso?x=1',
             'external_sign_in'    => '1',
             'delivery'            => 'query',
@@ -66,7 +67,7 @@ final class ApplicationTest extends TestCase
      */
     public function testTakesEveryDefault(): void
     {
-        $application = Application::fromSettings('web', ['redirect_uri' => self::REDIRECT]);
+        $application = Application::fromSettings(config(), 'web', ['redirect_uri' => self::REDIRECT]);
 
         self::assertSame('web', $application->name);
         self::assertSame(self::REDIRECT, $application->redirectUri);
@@ -88,8 +89,8 @@ final class ApplicationTest extends TestCase
      */
     public function testAHandoffLivesOneSecondToFiveMinutes(): void
     {
-        self::assertSame(1, Application::fromSettings('web', ['redirect_uri' => self::REDIRECT, 'handoff_ttl_seconds' => 1])->handoffTtlSeconds);
-        self::assertSame(299, Application::fromSettings('web', ['redirect_uri' => self::REDIRECT, 'handoff_ttl_seconds' => 299])->handoffTtlSeconds);
+        self::assertSame(1, Application::fromSettings(config(), 'web', ['redirect_uri' => self::REDIRECT, 'handoff_ttl_seconds' => 1])->handoffTtlSeconds);
+        self::assertSame(299, Application::fromSettings(config(), 'web', ['redirect_uri' => self::REDIRECT, 'handoff_ttl_seconds' => 299])->handoffTtlSeconds);
     }
 
     /**
@@ -102,19 +103,36 @@ final class ApplicationTest extends TestCase
     {
         $offered = ['redirect_uri' => self::REDIRECT, 'discovery' => ['enabled' => true]];
 
-        self::assertNull(Application::fromSettings('web', $offered)->discoveryFallbackUrl);
-        self::assertSame('https://app.example.com/sign-in', Application::fromSettings('web', [
+        self::assertNull(Application::fromSettings(config(), 'web', $offered)->discoveryFallbackUrl);
+        self::assertSame('https://app.example.com/sign-in', Application::fromSettings(config(), 'web', [
             'redirect_uri' => self::REDIRECT,
             'discovery'    => ['fallback_url' => 'https://app.example.com/sign-in'],
         ])->discoveryFallbackUrl);
 
         config()->set('sso.features.discovery', true);
 
-        self::assertNull(Application::fromSettings('web', ['redirect_uri' => self::REDIRECT, 'discovery' => ['enabled' => false]])->discoveryFallbackUrl);
+        self::assertNull(Application::fromSettings(config(), 'web', ['redirect_uri' => self::REDIRECT, 'discovery' => ['enabled' => false]])->discoveryFallbackUrl);
 
         $this->expectExceptionObject(new \InvalidArgumentException('`sso.applications.web.discovery.fallback_url` ' . self::REDIRECT_RULE));
 
-        Application::fromSettings('web', $offered);
+        Application::fromSettings(config(), 'web', $offered);
+    }
+
+    /**
+     * Whether the `discovery` feature is on is read from the repository given,
+     * not the application's configuration.
+     *
+     * @return void
+     */
+    public function testTheDiscoveryFeatureIsReadFromTheRepositoryGiven(): void
+    {
+        $offered = ['redirect_uri' => self::REDIRECT, 'discovery' => ['enabled' => true]];
+
+        self::assertNull(Application::fromSettings(config(), 'web', $offered)->discoveryFallbackUrl);
+
+        $this->expectExceptionObject(new \InvalidArgumentException('`sso.applications.web.discovery.fallback_url` ' . self::REDIRECT_RULE));
+
+        Application::fromSettings(new Repository(['sso' => ['features' => ['discovery' => true]]]), 'web', $offered);
     }
 
     /**
@@ -191,7 +209,7 @@ final class ApplicationTest extends TestCase
     {
         $this->expectExceptionObject(new \InvalidArgumentException($message));
 
-        Application::fromSettings($name, $settings);
+        Application::fromSettings(config(), $name, $settings);
     }
 
     /**

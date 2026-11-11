@@ -13,7 +13,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
  * A reauthentication session contract with one session, bound to the link the
- * test sets, recording each renewal it was asked for.
+ * test sets and of the application it sets, recording each start's question and
+ * each renewal it was asked for.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,6 +23,9 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
  */
 final class RecordingSessions implements ReauthenticationSessions
 {
+    /** @var list<array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: string, 2: string, 3: string}> Every start's question: the identity, the session, the application and the connection's id. */
+    public array $asked = [];
+
     /** @var list<array{0: string, 1: \Carbon\CarbonImmutable, 2: ?\SineMacula\Laravel\Sso\Evidence\AcceptedEvidence}> Every renewal: the session, the time and the evidence. */
     public array $renewed = [];
 
@@ -30,6 +34,7 @@ final class RecordingSessions implements ReauthenticationSessions
      *
      * @param  ?string  $boundLink
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding  $standing
+     * @param  ?string  $application
      */
     public function __construct(
 
@@ -38,22 +43,27 @@ final class RecordingSessions implements ReauthenticationSessions
 
         /** What it answers. */
         public SessionStanding $standing = SessionStanding::SIGNED_IN,
+
+        /** The application the session is of, or `null` for any. */
+        public ?string $application = null,
     ) {}
 
     /**
-     * Answer the standing set.
+     * Record the question, and answer the standing set when the session is of
+     * the application.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $sessionId
+     * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Flows\Enums\SessionStanding
      */
     #[\Override]
-    public function standing(IdentityReference $identity, string $sessionId, SsoConnection $connection): SessionStanding
+    public function standing(IdentityReference $identity, string $sessionId, string $application, SsoConnection $connection): SessionStanding
     {
-        unset($identity, $sessionId, $connection);
+        $this->asked[] = [$identity, $sessionId, $application, $connection->getConnectionId()];
 
-        return $this->standing;
+        return $this->application === null || $this->application === $application ? $this->standing : SessionStanding::NOT_SIGNED_IN;
     }
 
     /**

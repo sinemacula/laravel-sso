@@ -59,8 +59,8 @@ provider entity id and metadata URL. None of them reads anything from the reques
 - A completion is accepted only at the endpoint resolved for the connection its authorisation request names (BL-34),
   SAML `Destination` and `Recipient` are compared with `assertionConsumerService` exactly (P4), and the OIDC callback is
   sent as `redirect_uri` exactly (P5).
-- Every binding is a default made with `singletonIf` (the policy and the redirect resolver hold nothing) or `scopedIf`
-  (the endpoint resolver reads configuration), so an application's or a sibling's earlier binding is kept, and nothing
+- Every binding is a default, a singleton (the policy and the redirect resolver hold nothing) or scoped (the endpoint
+  resolver reads configuration), so an application's or a sibling's earlier binding is kept, and nothing
   of one request outlives it (SSO-11.2).
 
 ## Success Path

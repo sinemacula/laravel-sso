@@ -37,10 +37,9 @@ the race. The tables, the value types and the completion they feed are in `flows
      reported, but the answer is `fallback()`: `started`, in a start's shape, leading to the application's fallback;
   6. a `link` asks `Freshness\FreshnessGate` with `sso.link.create` (SSO-2.12) for its caller, with the session it gave,
      else `freshness_required`;
-  7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing()` with the caller's identity and session and
-     the connection, else
-     `session_ineligible` for anything but `signed_in` (SSO-5.10); the default answers `not_signed_in` (steps 6 and 7
-     are `Flows\StartEligibility::refusal()`);
+  7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing()` with the caller's identity and session,
+     the application the flow is started for and the connection, else `session_ineligible` for anything but
+     `signed_in` (SSO-5.10); the default answers `not_signed_in` (steps 6 and 7 are `Flows\StartEligibility::refusal()`);
   8. the connection's `trust_version`, as step 5 read it, is captured; `Flows\ProtocolState::generate()`, then the
      driver's `start()` with a `Protocols\StartRequest` (purpose, application, reference, state, nonce, PKCE verifier),
      outside any transaction the start opens; a refused `Start` is refused with the driver's reason;

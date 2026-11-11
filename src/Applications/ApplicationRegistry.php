@@ -53,7 +53,7 @@ final readonly class ApplicationRegistry
             return null;
         }
 
-        return Application::fromSettings($name, $applications[$name]);
+        return Application::fromSettings($this->config, $name, $applications[$name]);
     }
 
     /**
@@ -68,7 +68,7 @@ final readonly class ApplicationRegistry
         $all = [];
 
         foreach ($this->applications() as $name => $settings) {
-            $all[(string) $name] = Application::fromSettings((string) $name, $settings);
+            $all[(string) $name] = Application::fromSettings($this->config, (string) $name, $settings);
         }
 
         return $all;

@@ -6,16 +6,14 @@ namespace SineMacula\Laravel\Sso;
 
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Container\Container as ContainerContract;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\DatabaseTransactionsManager;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Psr\Log\LoggerInterface;
-use SineMacula\Laravel\Sso\Applications\ConfiguredApplicationPolicy;
-use SineMacula\Laravel\Sso\Applications\ConfiguredRedirectUriResolver;
 use SineMacula\Laravel\Sso\Clock\ClockCheck;
-use SineMacula\Laravel\Sso\Clock\SystemClock;
 use SineMacula\Laravel\Sso\Config\Checks\ApplicationsCheck;
 use SineMacula\Laravel\Sso\Config\Checks\EndpointsCheck;
 use SineMacula\Laravel\Sso\Config\Checks\ExtensionsCheck;
@@ -29,59 +27,17 @@ use SineMacula\Laravel\Sso\Console\ExpiringKeysCommand;
 use SineMacula\Laravel\Sso\Console\PruneCommand;
 use SineMacula\Laravel\Sso\Console\RecheckDomainsCommand;
 use SineMacula\Laravel\Sso\Console\RefreshMetadataCommand;
-use SineMacula\Laravel\Sso\Contracts\ApplicationPolicy;
-use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
-use SineMacula\Laravel\Sso\Contracts\Clock;
-use SineMacula\Laravel\Sso\Contracts\DnsResolver;
-use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
-use SineMacula\Laravel\Sso\Contracts\Enforcement;
-use SineMacula\Laravel\Sso\Contracts\EnforcementExemption;
-use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
-use SineMacula\Laravel\Sso\Contracts\EvidencePolicy;
-use SineMacula\Laravel\Sso\Contracts\Fetcher;
-use SineMacula\Laravel\Sso\Contracts\Freshness;
-use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
-use SineMacula\Laravel\Sso\Contracts\HostResolver;
-use SineMacula\Laravel\Sso\Contracts\LinkConfirmation;
-use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
-use SineMacula\Laravel\Sso\Contracts\LinkEmailMatcher;
-use SineMacula\Laravel\Sso\Contracts\Linker;
-use SineMacula\Laravel\Sso\Contracts\LinkLimit;
-use SineMacula\Laravel\Sso\Contracts\PrincipalScope;
-use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
-use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
-use SineMacula\Laravel\Sso\Contracts\RedirectUriResolver;
-use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
-use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
-use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
-use SineMacula\Laravel\Sso\Contracts\TenantMembership;
 use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\DomainsCheck;
 use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
-use SineMacula\Laravel\Sso\Endpoints\ConfiguredEndpointResolver;
-use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
-use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
-use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
 use SineMacula\Laravel\Sso\Events\StrandedTransactions;
-use SineMacula\Laravel\Sso\Evidence\InsufficientEvidence;
 use SineMacula\Laravel\Sso\Fetching\FetcherCheck;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
-use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 use SineMacula\Laravel\Sso\Flows\FlowsCheck;
-use SineMacula\Laravel\Sso\Flows\NoReauthenticationSessions;
 use SineMacula\Laravel\Sso\Freshness\FreshnessCheck;
-use SineMacula\Laravel\Sso\Freshness\RefusingFreshness;
-use SineMacula\Laravel\Sso\Handoffs\DatabaseHandoffStore;
 use SineMacula\Laravel\Sso\Keys\ExpiryNotifier;
 use SineMacula\Laravel\Sso\Keys\KeysCheck;
 use SineMacula\Laravel\Sso\Linking\LinkingCheck;
-use SineMacula\Laravel\Sso\Linking\NoEmailMatches;
-use SineMacula\Laravel\Sso\Linking\NoTenantMembership;
-use SineMacula\Laravel\Sso\Linking\RefusingLinkConfirmation;
-use SineMacula\Laravel\Sso\Linking\RefusingLinkEligibility;
-use SineMacula\Laravel\Sso\Linking\RefusingPrincipalScope;
-use SineMacula\Laravel\Sso\Links\NoLinks;
-use SineMacula\Laravel\Sso\Links\OneLinkPerConnection;
 use SineMacula\Laravel\Sso\Logging\LoggingCheck;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
 use SineMacula\Laravel\Sso\Metadata\MetadataCheck;
@@ -90,7 +46,6 @@ use SineMacula\Laravel\Sso\Metadata\OidcMetadataSource;
 use SineMacula\Laravel\Sso\Metadata\ProviderKeys;
 use SineMacula\Laravel\Sso\Metadata\SamlMetadataSource;
 use SineMacula\Laravel\Sso\Operations\OperationsCheck;
-use SineMacula\Laravel\Sso\Protocols\DriverScope;
 use SineMacula\Laravel\Sso\Protocols\Oidc\CallbackCompletion;
 use SineMacula\Laravel\Sso\Protocols\Oidc\ClaimsAssembler;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcCheck;
@@ -100,13 +55,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\UnsolicitedResponses;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
 use SineMacula\Laravel\Sso\Pruning\Pruner;
 use SineMacula\Laravel\Sso\Pruning\PruningCheck;
-use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
 use SineMacula\Laravel\Sso\RateLimiting\RateLimitsCheck;
-use SineMacula\Laravel\Sso\Results\ProviderDeadlineLimitsSession;
-use SineMacula\Laravel\Sso\Revocation\NoSessionRevocation;
-use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use SineMacula\Laravel\Sso\Secrets\SecretsCheck;
-use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
+use SineMacula\Laravel\Sso\Support\PackageDefaults;
 
 /**
  * Package service provider: registers the package's configuration, its
@@ -204,26 +155,29 @@ final class SsoServiceProvider extends ServiceProvider
      *
      * Every binding is a default: one the application or another package made
      * before this provider registers is kept, and one made after replaces it,
-     * as any later binding does. A default that holds nothing between calls is
-     * a singleton; one that reads configuration or a connection is scoped, so
-     * nothing of one request or job outlives it under Octane or a queue worker
-     * (SSO-11.2). Each default fails closed: the freshness contract's refuses
-     * every operation (SSO-2.12); the DNS resolver's answers `lookup_failed`
-     * whenever the system resolver cannot answer (SSO-3.2); enforcement is read
-     * from the write connection on every question, inheritance applies each
-     * tenant's own setting, nobody is exempt (SSO-4.1, SSO-4.2, SSO-4.4); the
-     * session revocation revokes nothing, since the package keeps no sessions,
-     * which its documentation says (SSO-4.5); an application allows external
-     * sign-in only when its configuration says so, its redirect URI and the
-     * endpoints are the configured ones, never the request's (SSO-5.1,
-     * SSO-5.5); nothing is linked, an identity holds one link per connection,
-     * and no session is found for reauthentication (SSO-8.3, SSO-8.4,
-     * SSO-5.10); no identity may link, no email matches, no principal set or
-     * membership is known, and no evidence is accepted (SSO-8.5, SSO-8.7,
-     * SSO-8.8); the provider's session deadline limits the application's
-     * (SSO-6.10); and handoff codes are the package's own (SSO-9.2). The
-     * protocol registry is a singleton that builds its drivers with the
-     * application serving, in its present scope (see
+     * as any later binding does. Each default is bound under its private key
+     * (`Support\PackageDefaults`), and the contract to a transient closure that
+     * resolves that key, so the contract never holds an instance or a scope of
+     * the package's and a binding made over it stays wholly its maker's. A
+     * default that holds nothing between calls is a singleton; one that reads
+     * configuration or a connection is scoped, so nothing of one request or job
+     * outlives it under Octane or a queue worker (SSO-11.2). Each default fails
+     * closed: the freshness contract's refuses every operation (SSO-2.12); the
+     * DNS resolver's answers `lookup_failed` whenever the system resolver
+     * cannot answer (SSO-3.2); enforcement is read from the write connection on
+     * every question, inheritance applies each tenant's own setting, nobody is
+     * exempt (SSO-4.1, SSO-4.2, SSO-4.4); the session revocation revokes
+     * nothing, since the package keeps no sessions, which its documentation
+     * says (SSO-4.5); an application allows external sign-in only when its
+     * configuration says so, its redirect URI and the endpoints are the
+     * configured ones, never the request's (SSO-5.1, SSO-5.5); nothing is
+     * linked, an identity holds one link per connection, and no session is
+     * found for reauthentication (SSO-8.3, SSO-8.4, SSO-5.10); no identity may
+     * link, no email matches, no principal set or membership is known, and no
+     * evidence is accepted (SSO-8.5, SSO-8.7, SSO-8.8); the provider's session
+     * deadline limits the application's (SSO-6.10); and handoff codes are the
+     * package's own (SSO-9.2). The protocol registry is a singleton that builds
+     * its drivers with the application serving, in its present scope (see
      * `ProtocolManager::driver()`). Each is resolved only when first used.
      * `Events\StrandedTransactions` is a singleton, never scoped, since the
      * listener the provider registers and the after-commit dispatch must share
@@ -238,34 +192,21 @@ final class SsoServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/sso.php', 'sso');
 
-        $this->app->singletonIf(Clock::class, SystemClock::class);
-        $this->app->singletonIf(HostResolver::class, SystemHostResolver::class);
-        $this->app->scopedIf(SingleUseStore::class, DatabaseSingleUseStore::class);
-        $this->app->scopedIf(SecretEncrypter::class, LaravelSecretEncrypter::class);
-        $this->app->scopedIf(Fetcher::class, GuzzleFetcher::class);
-        $this->app->scopedIf(AttemptLimiter::class, DatabaseAttemptLimiter::class);
-        $this->app->singletonIf(Freshness::class, RefusingFreshness::class);
-        $this->app->scopedIf(DnsResolver::class, SystemDnsResolver::class);
-        $this->app->scopedIf(Enforcement::class, DatabaseEnforcement::class);
-        $this->app->singletonIf(EnforcementInheritance::class, OwnTenantInheritance::class);
-        $this->app->singletonIf(EnforcementExemption::class, NoExemptions::class);
-        $this->app->singletonIf(SessionRevocation::class, NoSessionRevocation::class);
-        $this->app->singletonIf(ApplicationPolicy::class, ConfiguredApplicationPolicy::class);
-        $this->app->singletonIf(RedirectUriResolver::class, ConfiguredRedirectUriResolver::class);
-        $this->app->scopedIf(EndpointResolver::class, ConfiguredEndpointResolver::class);
-        $this->app->singletonIf(Linker::class, NoLinks::class);
-        $this->app->singletonIf(LinkLimit::class, OneLinkPerConnection::class);
-        $this->app->singletonIf(ReauthenticationSessions::class, NoReauthenticationSessions::class);
-        $this->app->singletonIf(LinkEligibility::class, RefusingLinkEligibility::class);
-        $this->app->singletonIf(LinkConfirmation::class, RefusingLinkConfirmation::class);
-        $this->app->singletonIf(LinkEmailMatcher::class, NoEmailMatches::class);
-        $this->app->singletonIf(PrincipalScope::class, RefusingPrincipalScope::class);
-        $this->app->singletonIf(TenantMembership::class, NoTenantMembership::class);
-        $this->app->singletonIf(EvidencePolicy::class, InsufficientEvidence::class);
-        $this->app->singletonIf(ProviderSessionDeadline::class, ProviderDeadlineLimitsSession::class);
-        $this->app->scopedIf(HandoffIssuer::class, DatabaseHandoffStore::class);
+        foreach (PackageDefaults::SINGLETONS as $contract => $default) {
+            $this->app->singleton(PackageDefaults::key($contract), $default);
+            $this->app->bindIf($contract, self::forwardTo(PackageDefaults::key($contract)));
+        }
+
+        foreach (PackageDefaults::SCOPED as $contract => $default) {
+            $this->app->scoped(PackageDefaults::key($contract), $default);
+            $this->app->bindIf($contract, self::forwardTo(PackageDefaults::key($contract)));
+        }
+
+        foreach (PackageDefaults::SCOPED_STATE as $abstract) {
+            $this->app->scoped($abstract);
+        }
+
         $this->app->singletonIf(ProtocolManager::class);
-        $this->app->scoped(DriverScope::class);
         $this->app->singleton(StrandedTransactions::class);
         $this->app->when(self::LOGGING_CLASSES)->needs(LoggerInterface::class)->give(SanitizingLogger::class);
         $this->app->singleton(ConfigurationChecks::class, static fn (): ConfigurationChecks => new ConfigurationChecks(self::CONFIGURATION_CHECKS));
@@ -273,6 +214,29 @@ final class SsoServiceProvider extends ServiceProvider
             ConfigurationChecker::class,
             static fn (Application $app): ConfigurationChecker => new ConfigurationChecker($app, $app->make(ConfigurationChecks::class)->all()),
         );
+    }
+
+    /**
+     * Determine whether the contract is still bound to the package's default,
+     * rather than to anything an application or another package bound over it.
+     *
+     * The package binds each contract to a closure the provider declares, and
+     * never holds an instance under it, so an instance held, an alias, an
+     * unbound contract and any other binding answer false.
+     *
+     * @param  \Illuminate\Container\Container  $container
+     * @param  string  $contract
+     * @return bool
+     */
+    public static function isPackageDefault(Container $container, string $contract): bool
+    {
+        $concrete = $container->getBindings()[$contract]['concrete'] ?? null;
+
+        if (!$concrete instanceof \Closure || (new \ReflectionFunction($concrete))->getClosureScopeClass()?->getName() !== self::class) {
+            return false;
+        }
+
+        return !$container->isShared($contract) && !$container->isAlias($contract);
     }
 
     /**
@@ -288,6 +252,18 @@ final class SsoServiceProvider extends ServiceProvider
         $this->registerCommands();
         $this->markStrandedTransactions();
         $this->checkConfiguration();
+    }
+
+    /**
+     * Return the closure a contract is bound to, resolving the private key of
+     * its default in the container that resolves the contract.
+     *
+     * @param  string  $key
+     * @return \Closure(\Illuminate\Contracts\Container\Container): mixed
+     */
+    private static function forwardTo(string $key): \Closure
+    {
+        return static fn (ContainerContract $app): mixed => $app->make($key);
     }
 
     /**

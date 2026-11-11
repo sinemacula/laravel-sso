@@ -93,6 +93,15 @@ order, and the first that refuses ends the redemption:
   `link` is that transaction's first statement, and every plain read after it, under MySQL's `REPEATABLE READ`, sees
   what the guard's previous holder committed. A standalone `link` that comes to `Exceptions\LinkCandidatesChanged` all
   the same is rolled back and restarted once; inside a caller's transaction it propagates for a retry of the whole.
+- A standalone transaction the database rolls back as a deadlock, a lock wait timeout or a serialisation failure, one in
+  a savepoint inside it included, is tried again from its start, at most three times in all
+  (`Database\RetriedTransaction`, `storage.md`), and so is the restart above. Laravel never runs it again once it has
+  committed, so an after-commit listener's exception never repeats the redemption. The attempt counted at step 1 is
+  counted once. Inside a caller's transaction the failure propagates at once, never retried in part.
+- The single-use store records the code before the work that may fail. The default records it in the redemption's
+  transaction, so a failed attempt's record rolls back with it and the retry is not a replay. A store that records
+  outside that transaction keeps the record, and the retry is `replayed`: a store must record within the caller's
+  transaction for a retry, the package's or the caller's own, to redeem.
 - A `link` redemption reads, by a locking read under the identity's guard, whether the identity has ever held an active
   link by a verified domain (`domain_linked_at`, stamped at activation and never cleared), and asks
   `Contracts\LinkConfirmation` whenever it has, even when none remains.
@@ -110,8 +119,9 @@ order, and the first that refuses ends the redemption:
   transaction, then sees the session the redeemer wrote in its transaction; or the redemption waits for the change and
   refuses under the new rule. No session written in the redeemer's transaction survives a rule that does not allow it.
 - On PostgreSQL under `REPEATABLE READ`, a redemption that waited on a change of the rule may get a serialisation
-  failure (SQLSTATE `40001`) instead of the new rule. It propagates, as a server error; the package never retries a
-  part of a caller's transaction, and a caller that redeems inside its own transaction retries the whole of it.
+  failure (SQLSTATE `40001`) instead of the new rule. Inside a caller's transaction it propagates, as a server error;
+  the package never retries a part of a caller's transaction, and a caller that redeems inside its own transaction
+  retries the whole of it. A standalone redemption tries its own transaction again, as above.
 - Racing redemptions of one code serialise on the connection's lock, and the code's `redeemed_at` and the single-use
   record are written in the same transaction, so exactly one redeems it, plain or inside the racers' own transactions.
 - A code, a request's public reference and a verifier are distinct kinds (`HandoffCode`, `RequestReference`,

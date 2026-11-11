@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace SineMacula\Laravel\Sso\Secrets;
 
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Encryption\MissingAppKeyException;
 use SineMacula\Laravel\Sso\Config\Features;
@@ -36,9 +37,13 @@ final readonly class SecretsCheck implements ConfigurationCheck
     /**
      * Constructor.
      *
+     * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  \Illuminate\Contracts\Container\Container  $container
      */
     public function __construct(
+
+        /** The configuration that says whether the package is in use. */
+        private Repository $config,
 
         /** The container the encrypter is resolved from. */
         private Container $container,
@@ -52,7 +57,7 @@ final readonly class SecretsCheck implements ConfigurationCheck
     #[\Override]
     public function applies(): bool
     {
-        return Features::isInUse();
+        return Features::isInUse($this->config);
     }
 
     /**

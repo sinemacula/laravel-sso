@@ -56,7 +56,7 @@ final class FreshnessBindingTest extends TestCase
         $app       = $this->app;
         $freshness = $this->freshness();
 
-        self::assertTrue($app->isShared(Freshness::class));
+        self::assertTrue($app->isShared('sso.default:' . Freshness::class));
         self::assertSame($freshness, $this->freshness());
 
         $app->forgetScopedInstances();
