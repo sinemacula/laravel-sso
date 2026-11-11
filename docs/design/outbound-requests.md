@@ -16,7 +16,7 @@ Sheet).
   constructor of its purpose (`metadata`, `discovery`, `jwks`, `token`, `userInfo`), which pairs it with the only
   credential that purpose may carry; `metadata($url, $maxBytes)` may also carry a size cap of its own, at least a byte,
   which the fetcher holds that response to in place of `max_response_bytes`. The default is `Fetching\GuzzleFetcher`,
-  bound with `scopedIf`, so nothing of one request or job outlives it under Octane or a queue worker (SSO-11.2).
+  a scoped default, so nothing of one request or job outlives it under Octane or a queue worker (SSO-11.2).
 - Every URL, the request's own and each redirect's, is checked the same way before anything is resolved or sent:
   - the scheme, compared without regard to case, is `https`; anything else is refused (`scheme`);
   - it carries no userinfo (`user@`, `user:pass@`, an empty `@`), so `https://idp.example.com@169.254.169.254/` cannot
@@ -189,9 +189,8 @@ Sheet).
   `src/Fetching/FetcherSettings.php`, `src/Contracts/HostResolver.php`, `src/Fetching/SystemHostResolver.php`,
   `src/Fetching/FetcherCheck.php`.
 - `src/Testing/FakeFetcher.php`.
-- `src/SsoServiceProvider.php`: `register()` (`scopedIf(Fetcher::class, GuzzleFetcher::class)`,
-  `singletonIf(HostResolver::class, SystemHostResolver::class)`) and
-  `CONFIGURATION_CHECKS['fetcher']`; `config/sso.php`: `fetcher`.
+- `src/SsoServiceProvider.php`: `register()` and `CONFIGURATION_CHECKS['fetcher']`; `src/Support/PackageDefaults.php`:
+  the fetcher's scoped default and the host resolver's singleton; `config/sso.php`: `fetcher`.
 
 ## Authoritative Tests
 

@@ -19,11 +19,21 @@ or a result from one request or job to the next.
 
 - **Keep nothing between calls.** Most contracts are singletons by default, so under Octane one instance answers every
   request the worker serves. Read what you need each time, from the write connection.
-- **Bind through a closure or a class, never `instance()` alone.** The package binds its request-scoped contracts with
-  `scopedIf()`: the fetcher, the DNS resolver, the endpoint resolver, the secret encrypter, the single-use store, the
-  attempt limiter, the enforcement contract and the handoff issuer. A scoped binding is forgotten after every request
-  and job, an instance you gave it with it, and the next request builds the package's default again. Bind with
-  `scoped()` or `singleton()` and a closure or a class; `instance()` is for a test, which serves one request.
+- **What you bind is yours.** The package binds each default under a private key, `sso.default:` followed by the
+  contract's name, and binds the contract itself to a closure that resolves that key on every call. The defaults that
+  read configuration or a connection are scoped: the fetcher, the DNS resolver, the endpoint resolver, the secret
+  encrypter, the single-use store, the attempt limiter, the enforcement contract and the handoff issuer. The rest are
+  singletons. Whatever you bind over a contract, with `bind()`, `singleton()`, `scoped()` or `instance()`, stands
+  from one request to the next, and the default never comes back. An instance serves every request the worker
+  handles, so it must keep nothing of any one. `SsoServiceProvider::isPackageDefault($app, $contract)` tells you
+  whether a contract is still on the package's default.
+- **Extend the default's key, not the contract.** The contract is resolved afresh on every `make()`, so an
+  `extend()`, `afterResolving()` or `rebinding()` callback on it runs every time, not once per request: one that
+  changes the object changes the same scoped default again, and one that wraps it wraps it again. Extend
+  `sso.default:` followed by the contract's name instead, or bind your own.
+- **Forgetting the package's state yourself.** A long-running command that does several units of work without
+  Laravel's reset of the scoped instances calls `SineMacula\Laravel\Sso\Support\RequestState::forget(app())` between
+  them. It forgets the package's scoped defaults and its driver scope, and nothing else.
 - **A protocol driver of your own** is rebuilt once per request or job by the creator you gave
   `ProtocolManager::extend()`, so it may hold scoped services, and must hold nothing else.
 - **A verified result and a provisioning grant** live for their request: a grant kept for later is `grant_invalid`, and

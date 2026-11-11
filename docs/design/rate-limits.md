@@ -120,7 +120,7 @@ always on, why the counters may live on a connection of their own, and how a ful
 - `src/RateLimiting/RateLimitsCheck.php`: the `[rate_limits]` check.
 - `src/Models/RateLimit.php`: `prunable()`; `src/Models/Casts/UtcDateTime.php`.
 - `database/migrations/2026_10_31_000001_create_sso_rate_limits_table.php`.
-- `src/SsoServiceProvider.php`: the `scopedIf` binding of `AttemptLimiter` and the `rate_limits` check.
+- `src/SsoServiceProvider.php`: the scoped default of `AttemptLimiter` and the `rate_limits` check.
 
 ## Authoritative Tests
 
