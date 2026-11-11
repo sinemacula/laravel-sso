@@ -82,8 +82,9 @@ use Tests\TestCase;
  * enforcement statement and no inheritance asked; a code that no longer names
  * the connection or application its locks were taken for; a connection gone
  * before its lock; an enforcing tenant that moved since the lock; and a
- * standalone `link` tried again after a deadlock, at most three times, where a
- * caller's transaction is never retried in part.
+ * standalone `link` tried again after a deadlock or a serialisation failure in
+ * a savepoint, at most three times, where a caller's transaction is never
+ * retried in part.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -1359,6 +1360,35 @@ final class HandoffRedemptionTest extends TestCase
 
         self::assertSame(FailureReason::HANDOFF_UNKNOWN, $this->redeemAlone('not-a-code')->reason);
         self::assertTrue($this->redeemAlone('not-a-code')->isRateLimited());
+    }
+
+    /**
+     * A standalone `link` whose single-use record, in a savepoint of its
+     * transaction, PostgreSQL cannot serialise is tried again from its start
+     * and redeems: Laravel throws that failure from the savepoint in a form it
+     * would not retry, so it is retried only because it is unwrapped.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    public function testAStandaloneLinkIsTriedAgainAfterASerializationFailureInASavepoint(): void
+    {
+        $this->readyForTheFlowsIdentity();
+
+        $code = $this->issue(Purpose::LINK);
+
+        $this->failToSerialiseStatement(self::onTable('insert', StorageConnection::table('single_use.table')));
+        $this->startRecordingEvents();
+
+        $answer = $this->redeemAlone($code);
+
+        self::assertTrue($answer->isRedeemed());
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertSame([HandoffRedeemed::class], array_map(static fn (object $event): string => $event::class, $this->recordedEvents()));
+        self::assertNotNull($this->stored($code)->redeemed_at);
+        self::assertCount(1, $this->singleUseKeys());
     }
 
     /**

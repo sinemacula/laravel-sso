@@ -10,6 +10,7 @@ use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged;
@@ -300,7 +301,8 @@ final readonly class HandoffRedemption
         $admitted = $database->transactionLevel() > 0;
         $tenantId = Connection::query()->useWritePdo()->whereKey($found->connection_id)->value('tenant_id');
         $tenantId = is_string($tenantId) ? $tenantId : null;
-        $attempt  = fn (): RedemptionResult => $database->transaction(
+        $attempt  = fn (): RedemptionResult => RetriedTransaction::run(
+            $database,
             fn (): RedemptionResult => $this->locked($found, $tenantId, $mismatch, $caller, $admitted, $purpose, $client),
             self::ATTEMPTS,
         );

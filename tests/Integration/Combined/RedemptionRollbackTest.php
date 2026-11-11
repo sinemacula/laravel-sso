@@ -436,36 +436,46 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key]`: the statement of a standalone
-     * `link` the database rolls back as a deadlock, those in a savepoint of
-     * TR's included.
+     * Rows of `[the verb, the table's key, whether it is a serialisation
+     * failure]`: the statement of a standalone `link` the database rolls back
+     * as a deadlock or cannot serialise, those in a savepoint of TR's included.
      *
-     * @return iterable<string, array{0: string, 1: string}>
+     * @return iterable<string, array{0: string, 1: string, 2: bool}>
      */
     public static function provideStandaloneDeadlocks(): iterable
     {
-        yield 'at the single-use record' => ['insert', 'single_use.table'];
-        yield 'at the consumption' => ['update', 'handoff_codes.table'];
-        yield 'at the link' => ['insert', 'links.table'];
+        foreach (['a deadlock' => false, 'a serialisation failure' => true] as $failure => $serialization) {
+            yield "{$failure} at the single-use record" => ['insert', 'single_use.table', $serialization];
+            yield "{$failure} at the consumption" => ['update', 'handoff_codes.table', $serialization];
+            yield "{$failure} at the link" => ['insert', 'links.table', $serialization];
+        }
     }
 
     /**
-     * Rolls back TR, a standalone `link`'s, as a deadlock, and tries it again:
-     * nothing of the first attempt is kept or reported, the second redeems, and
-     * the attempt counted before TR opened is counted once.
+     * Rolls back TR, a standalone `link`'s, as a deadlock or a serialisation
+     * failure, and tries it again: nothing of the first attempt is kept or
+     * reported, the second redeems, and the attempt counted before TR opened is
+     * counted once.
      *
      * @param  string  $verb
      * @param  string  $table
+     * @param  bool  $serialization
      * @return void
      */
     #[DataProvider('provideStandaloneDeadlocks')]
-    public function testAStandaloneLinkDeadlockedIsTriedAgain(string $verb, string $table): void
+    public function testAStandaloneLinkDeadlockedIsTriedAgain(string $verb, string $table, bool $serialization): void
     {
         $redeeming = $this->flowOf(self::CREATING);
         $attempts  = $this->attempts(null);
+        $statement = self::onTable($verb, StorageConnection::table($table));
 
         $this->startRecordingEvents();
-        $this->deadlockStatement(self::onTable($verb, StorageConnection::table($table)));
+
+        if ($serialization) {
+            $this->failToSerialiseStatement($statement);
+        } else {
+            $this->deadlockStatement($statement);
+        }
 
         $answer = $this->redeemedAlone($redeeming);
 

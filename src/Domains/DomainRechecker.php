@@ -11,6 +11,7 @@ use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Administration\DomainEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Domains\Enums\RecheckFailure;
@@ -479,7 +480,7 @@ final readonly class DomainRechecker
      */
     private function transaction(\Closure $work): mixed
     {
-        return DB::connection(StorageConnection::name())->transaction($work, self::ATTEMPTS);
+        return RetriedTransaction::run(DB::connection(StorageConnection::name()), $work, self::ATTEMPTS);
     }
 
     /**

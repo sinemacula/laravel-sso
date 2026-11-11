@@ -55,6 +55,12 @@ commit with the package follows (SSO-11.7, SSO-11.10).
   identity's guard (`sso_identity_guards`) is keyed the same way, by a digest of its type and id, and names nobody.
 - A model takes its connection and table when it is built, so the settings are deployment configuration, fixed for the
   life of a process.
+- Every transaction the package tries again on a concurrency failure (a deadlock, a lock wait timeout or a
+  serialisation failure) runs through `Database\RetriedTransaction::run()`, at most three times in all. Laravel throws
+  a failure in a savepoint inside it as a `DeadlockException`, and does not recognise a PostgreSQL serialisation
+  failure (SQLSTATE `40001`) in that form, so the work's `DeadlockException` whose chain ends in one is rethrown as that
+  failure and retried. Anything else propagates as it is, and an exception after the commit never runs the work again.
+  Inside a caller's transaction nothing is retried: the failure propagates for a retry of the whole.
 
 ## Success Path
 
@@ -81,6 +87,7 @@ commit with the package follows (SSO-11.7, SSO-11.10).
 - `src/Database/StorageConnection.php`: `TABLES`, `name()`, `forRateLimits()`, `connectionFor()`, `table()`,
   `holds()`.
 - `src/Models/SsoModel.php`: the constructor and `identifiedAndStamped()`; `src/Database/MigrationCollisionGuard.php`.
+- `src/Database/RetriedTransaction.php`: `run()`.
 - `src/Models/Connection.php`, `src/Models/ConnectionKey.php`, `src/Models/Domain.php`,
   `src/Models/TenantEnforcement.php`, `src/Models/IdentityGuard.php` and their migrations (`connections.table`,
   `keys.table`, `domains.table`, `enforcement.table`, `identity_guards.table`): records keyed by a ULID and stamped by
@@ -94,6 +101,7 @@ commit with the package follows (SSO-11.7, SSO-11.10).
 - `tests/Feature/Models/SsoModelTest.php`
 - `tests/Integration/Database/StorageConnectionModelTest.php`
 - `tests/Unit/Database/MigrationCollisionGuardTest.php`
+- `tests/Feature/Database/RetriedTransactionTest.php`
 - `tests/Unit/Architecture/DatabaseStatementsTest.php` and
   `tests/Integration/Standalone/ApplicationIntegrationTest.php` `testEveryStatementOfEachPurposeReadsOrWritesRows`: at
   run time the package only reads and writes rows

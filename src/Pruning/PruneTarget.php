@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Pruning;
 
 use Illuminate\Database\Query\Builder;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\ReservationWithdrawal;
@@ -176,7 +177,8 @@ final readonly class PruneTarget
 
         $keys = array_map(static fn (PruneCandidate $candidate): int|string => $candidate->key, $candidates);
 
-        return $this->model->getConnection()->transaction(
+        return RetriedTransaction::run(
+            $this->model->getConnection(),
             fn (): int => $this->eligible()->whereIn($this->model->getKeyName(), $keys)->delete(),
             self::ATTEMPTS,
         );

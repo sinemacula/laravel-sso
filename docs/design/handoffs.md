@@ -93,9 +93,9 @@ order, and the first that refuses ends the redemption:
   `link` is that transaction's first statement, and every plain read after it, under MySQL's `REPEATABLE READ`, sees
   what the guard's previous holder committed. A standalone `link` that comes to `Exceptions\LinkCandidatesChanged` all
   the same is rolled back and restarted once; inside a caller's transaction it propagates for a retry of the whole.
-- A standalone transaction the database rolls back as a deadlock, a lock wait timeout or a serialisation failure (as
-  Laravel's concurrency error detection judges it) is tried again from its start, at most three times in all
-  (`$connection->transaction($work, 3)`), and so is the restart above. Laravel never runs it again once it has
+- A standalone transaction the database rolls back as a deadlock, a lock wait timeout or a serialisation failure, one in
+  a savepoint inside it included, is tried again from its start, at most three times in all
+  (`Database\RetriedTransaction`, `storage.md`), and so is the restart above. Laravel never runs it again once it has
   committed, so an after-commit listener's exception never repeats the redemption. The attempt counted at step 1 is
   counted once. Inside a caller's transaction the failure propagates at once, never retried in part.
 - The single-use store records the code before the work that may fail. The default records it in the redemption's
