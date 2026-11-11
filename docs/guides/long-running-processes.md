@@ -27,10 +27,11 @@ or a result from one request or job to the next.
   from one request to the next, and the default never comes back. An instance serves every request the worker
   handles, so it must keep nothing of any one. `SsoServiceProvider::isPackageDefault($app, $contract)` tells you
   whether a contract is still on the package's default.
-- **Extend the default's key, not the contract.** The contract is resolved afresh on every `make()`, so an
-  `extend()`, `afterResolving()` or `rebinding()` callback on it runs every time, not once per request: one that
-  changes the object changes the same scoped default again, and one that wraps it wraps it again. Extend
-  `sso.default:` followed by the contract's name instead, or bind your own.
+- **Extend the default's key, not the contract.** The contract is resolved afresh on every `make()`, so an `extend()`
+  or `afterResolving()` callback on it runs every time, not once per request: one that changes the object changes the
+  same scoped default again, and one that wraps it wraps it again. An `afterResolving()` on the contract can also run
+  twice on the first resolution, once for the default's key and once for the contract. Extend `sso.default:` followed
+  by the contract's name instead, or bind your own.
 - **Forgetting the package's state yourself.** A long-running command that does several units of work without
   Laravel's reset of the scoped instances calls `SineMacula\Laravel\Sso\Support\RequestState::forget(app())` between
   them. It forgets the package's scoped defaults and its driver scope, and nothing else.

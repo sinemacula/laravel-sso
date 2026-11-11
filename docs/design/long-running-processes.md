@@ -110,9 +110,10 @@ the schedule's are in `operations.md`.
 - A retried redemption, once its transaction rolled back, finds the code unspent and runs as new.
 - A statement that fails before the transaction it would be in is no different: the plain reads that find what to lock
   propagate as the locked ones do.
-- An `extend()`, `afterResolving()` or `rebinding()` callback on a contract runs on every resolution, since the contract
-  is transient: one that changes the default changes the same scoped instance again, and one that wraps it wraps it
-  again. An application extends the default's private key instead.
+- An `extend()` or `afterResolving()` callback on a contract runs on every resolution, since the contract is
+  transient: one that changes the default changes the same scoped instance again, and one that wraps it wraps it again.
+  An `afterResolving()` on the contract can run twice on the first resolution, once for the private key and once for
+  the contract. An application extends the default's private key instead.
 - A cache that is healthy but empty is not a failure of anything: a mutex taken again, nothing more.
 
 ## Implementation Anchors
