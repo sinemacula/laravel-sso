@@ -19,7 +19,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\EventContexts;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
-use SineMacula\Laravel\Sso\Events\TransactionGenerations;
+use SineMacula\Laravel\Sso\Events\StrandedTransactions;
 use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
@@ -38,7 +38,7 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(AfterCommitDispatcher::class)]
-#[CoversClass(TransactionGenerations::class)]
+#[CoversClass(StrandedTransactions::class)]
 #[CoversClass(EventContexts::class)]
 #[CoversClass(FlowFailed::class)]
 final class AfterCommitDispatchTest extends TestCase
@@ -220,6 +220,39 @@ final class AfterCommitDispatchTest extends TestCase
         });
 
         self::assertSame([$kept], $this->delivered->getArrayCopy());
+    }
+
+    /**
+     * A change is reported once when an earlier commit callback of its
+     * transaction writes in a transaction of its own, which reports its change
+     * once too.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAChangeIsReportedWhenAnEarlierCallbackWritesInATransaction(): void
+    {
+        $event    = $this->failure();
+        $callback = $this->failure();
+        $store    = DB::connection(self::STORE);
+
+        $store->transaction(function () use ($store, $event, $callback): void {
+            $store->afterCommit(function () use ($store, $callback): void {
+                $store->transaction(function () use ($store, $callback): void {
+                    $store->table(self::TABLE)->insert(['reference' => 'the callback\'s']);
+
+                    $this->dispatcher()->dispatch($callback);
+                });
+            });
+
+            $store->table(self::TABLE)->insert(['reference' => 'ref_1']);
+
+            $this->dispatcher()->dispatch($event);
+        });
+
+        self::assertSame(2, $store->table(self::TABLE)->count());
+        self::assertSame([$callback, $event], $this->delivered->getArrayCopy());
     }
 
     /**
