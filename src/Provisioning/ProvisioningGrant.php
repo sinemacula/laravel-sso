@@ -305,7 +305,8 @@ final class ProvisioningGrant implements \JsonSerializable
 
     /**
      * The outermost record, of those the manager holds open on the connection
-     * whose callbacks apply, that the innermost one is in.
+     * whose callbacks apply, that the innermost one is in, each a level below
+     * the one inside it.
      *
      * @param  \Illuminate\Database\DatabaseTransactionsManager  $manager
      * @param  string  $connection
@@ -317,7 +318,8 @@ final class ProvisioningGrant implements \JsonSerializable
         $current    = $applicable->last(static fn (DatabaseTransactionRecord $record): bool => $record->connection === $connection);
         $outermost  = null;
 
-        while ($current !== null && $applicable->containsStrict($current)) {
+        // A parent no lower than its child was left by a failed commit.
+        while ($current !== null && $applicable->containsStrict($current) && ($outermost === null || $current->level < $outermost->level)) {
             $outermost = $current;
             $current   = $current->parent;
         }

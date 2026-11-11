@@ -203,7 +203,8 @@ final readonly class ProvisioningHelper
 
     /**
      * Bind the grant's claim to the outermost transaction open on the storage
-     * connection, when a transactions manager is bound.
+     * connection, when one is open and a transactions manager is bound: with
+     * none open, what the manager holds was left by a failed commit.
      *
      * @param  \SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant  $grant
      * @return void
@@ -214,7 +215,7 @@ final readonly class ProvisioningHelper
     {
         $manager = $this->container->bound('db.transactions') ? $this->container->make('db.transactions') : null;
 
-        if (!$manager instanceof DatabaseTransactionsManager) {
+        if (!$manager instanceof DatabaseTransactionsManager || DB::connection(StorageConnection::name())->transactionLevel() === 0) {
             return;
         }
 

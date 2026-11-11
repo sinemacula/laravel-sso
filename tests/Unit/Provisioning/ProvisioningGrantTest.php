@@ -427,6 +427,45 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
+     * A record a commit the manager was never told failed leaves behind, still
+     * current, is no transaction of a claim made in the next: the claim is
+     * bound to that one alone, so once it commits, a later rollback that runs
+     * the stale record's callbacks releases nothing.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testARecordAFailedCommitLeftIsNoTransactionOfTheClaim(): void
+    {
+        $result  = self::verifiedResult();
+        $grant   = ProvisioningGrant::issue($result, self::REQUEST_ID, self::until());
+        $manager = new DatabaseTransactionsManager;
+
+        $manager->begin(self::CONNECTION, 1);
+
+        $stale = self::current($manager);
+
+        $manager->begin(self::CONNECTION, 1);
+        $manager->begin(self::CONNECTION, 2);
+
+        self::assertSame($stale, self::current($manager)->parent?->parent);
+
+        $grant->claim($result);
+        $grant->bind($manager, self::CONNECTION);
+        $manager->commit(self::CONNECTION, 2, 1);
+        $manager->commit(self::CONNECTION, 1, 0);
+        $manager->begin(self::CONNECTION, 1);
+
+        self::assertSame($stale, self::current($manager)->parent);
+
+        $manager->rollback(self::CONNECTION, 0);
+
+        self::assertFalse($grant->isUsable());
+        self::assertNull($grant->claim($result));
+    }
+
+    /**
      * Under the testing traits' manager, the transaction wrapping the test is
      * not one a claim is bound to: with only it open, the claim is bound to the
      * next transaction, and otherwise to the outermost inside it.

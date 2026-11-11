@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -410,22 +411,11 @@ final class ProvisioningHelperTest extends LinkingTestCase
 
         $this->onOffer(function (ResultUnlinked $event): void {
 
-            $database = self::storage();
-            $manager  = app('db.transactions');
-
-            self::assertInstanceOf(DatabaseTransactionsManager::class, $manager);
-
-            $database->beginTransaction();
+            self::storage()->beginTransaction();
 
             $this->provision($event);
 
-            $database->unsetTransactionManager();
-
-            try {
-                $database->rollBack();
-            } finally {
-                $database->setTransactionManager($manager);
-            }
+            self::endUnreported();
 
             $this->provision($event);
         });
@@ -433,6 +423,59 @@ final class ProvisioningHelperTest extends LinkingTestCase
         self::assertSame(FailureReason::UNLINKED, $this->complete()->reason);
         self::assertSame([ProvisioningStatus::CREATED, ProvisioningStatus::GRANT_INVALID], $this->statuses);
         self::assertSame(0, Link::query()->count());
+    }
+
+    /**
+     * Rows of `[inTransaction]`: the listener calling the helper with no
+     * transaction of its own, and inside one it commits.
+     *
+     * @return iterable<string, array{bool}>
+     */
+    public static function provideListenerTransactions(): iterable
+    {
+        yield 'with no transaction' => [false];
+        yield 'inside its transaction' => [true];
+    }
+
+    /**
+     * A record an unreported failed commit left behind, still current, is no
+     * transaction of the claim: the claim's own transaction commits, and a
+     * later rollback that runs the stale record's callbacks leaves the grant
+     * spent.
+     *
+     * @param  bool  $inTransaction
+     * @return void
+     */
+    #[DataProvider('provideListenerTransactions')]
+    public function testACommittedClaimStaysSpentPastARecordAFailedCommitLeft(bool $inTransaction): void
+    {
+        $this->start();
+
+        $this->onOffer(function (ResultUnlinked $event) use ($inTransaction): void {
+
+            $database = self::storage();
+
+            $database->beginTransaction();
+
+            self::endUnreported();
+
+            if ($inTransaction) {
+                $database->transaction(fn (): ProvisioningResult => $this->provision($event));
+            } else {
+                $this->provision($event);
+            }
+
+            $database->beginTransaction();
+            $database->rollBack();
+
+            self::assertFalse($event->grant->isUsable());
+
+            $this->provision($event);
+        });
+
+        self::assertTrue($this->complete()->isCompleted());
+        self::assertSame([ProvisioningStatus::CREATED, ProvisioningStatus::GRANT_INVALID], $this->statuses);
+        self::assertSame(1, Link::query()->count());
     }
 
     /**
@@ -544,5 +587,30 @@ final class ProvisioningHelperTest extends LinkingTestCase
     {
         /** @var \Illuminate\Database\Connection */
         return DB::connection(StorageConnection::name());
+    }
+
+    /**
+     * End the outermost transaction open on the storage connection as Laravel
+     * 12 ends one whose commit failed: the database rolls it back, but the
+     * transactions manager is never told, so its record stays current.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    private static function endUnreported(): void
+    {
+        $database = self::storage();
+        $manager  = app('db.transactions');
+
+        self::assertInstanceOf(DatabaseTransactionsManager::class, $manager);
+
+        $database->unsetTransactionManager();
+
+        try {
+            $database->rollBack(0);
+        } finally {
+            $database->setTransactionManager($manager);
+        }
     }
 }

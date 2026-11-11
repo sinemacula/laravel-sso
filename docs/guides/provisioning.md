@@ -136,9 +136,15 @@ a concurrent admission.
 
 On MySQL's InnoDB at its default `REPEATABLE READ`, the helper's locking reads of a new identity's links lock the gap
 where its rows would go, so two first sign-ins at once can deadlock, and the database rolls one back. Retry the
-listener's whole transaction, as `DB::connection(StorageConnection::name())->transaction($work, 3)` does: once that
-transaction has rolled back, the grant can be claimed again. Running the listener's transaction at `READ COMMITTED`
-takes no such gap locks, and is recommended.
+listener's whole transaction, as `DB::connection(StorageConnection::name())->transaction($work, 3)` does. The grant can
+be claimed again only once the package has seen that whole transaction roll back:
+
+- a claim stays spent when no transactions manager is bound, since the package then sees no transaction, and when its
+  commit failed on Laravel 12, which does not report it;
+- any refused call, a reentrant one or a second listener's included, spends the grant, so the original attempt cannot be
+  retried after it.
+
+Running the listener's transaction at `READ COMMITTED` takes no such gap locks, and is recommended.
 
 ## The helper
 

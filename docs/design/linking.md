@@ -248,12 +248,14 @@ reservation carries the version it was made under.
 - A wrong result given to the helper spends the grant and is `grant_wrong_result`; the listener rolls its identity and
   membership transaction back, and recovery is a new flow, not reuse of that grant.
 - A claim of the grant is bound to the outermost transaction on the storage connection whose callbacks apply, the
-  listener's or else the helper's own (the testing traits' wrapping transaction is not one), and is given back to the
-  same dispatch only when that transaction's rollback callback has run and its manager no longer holds it. So a listener
-  may retry its whole transaction (`DB::transaction($work, 3)`). A commit, a refusal, a rolled-back savepoint inside a
-  surviving transaction, a claim not yet bound, and a commit Laravel 12 fails without telling its manager leave it
-  spent. On InnoDB at `REPEATABLE READ`, two first sign-ins can deadlock on the gap locks of their empty-range locking
-  reads of a new identity's links: the listener retries, and `READ COMMITTED` for its transaction is recommended.
+  listener's or else the helper's own (the testing traits' wrapping transaction is not one), and only while one is open,
+  stepping only to a strictly lower level, so a record an unreported failed commit left behind is never it. It is given
+  back to the same dispatch only when that transaction's rollback callback has run and its manager no longer holds it.
+  So a listener may retry its whole transaction (`DB::transaction($work, 3)`). A commit, a refusal, a rolled-back
+  savepoint inside a surviving transaction, a claim not yet bound, and a commit Laravel 12 fails without telling its
+  manager leave it spent. On InnoDB at `REPEATABLE READ`, two first sign-ins can deadlock on the gap locks of their
+  empty-range locking reads of a new identity's links: the listener retries, and `READ COMMITTED` for its transaction is
+  recommended.
 - A linker not backed by `Contracts\LinkStorage` is a `LogicException` before a write, in each path that writes a link.
 - A listener's exception ends the completion as a server error: replay is recorded, `completed_at` stays unset, no
   code is issued, and nothing resumes it. A link it made stays made.
