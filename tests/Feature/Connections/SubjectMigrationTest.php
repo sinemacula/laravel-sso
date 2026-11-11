@@ -297,7 +297,7 @@ final class SubjectMigrationTest extends TestCase
         $this->app?->instance(Linker::class, app(LinkStore::class));
 
         $widened = $this->connection->getConnection()->transaction(
-            static fn (): int => app(ScopeWidening::class)->widened(new IdentityReference($relinked->identity_type, $relinked->identity_id), 'tenant-2', Clients::browser()),
+            static fn (): int => app(ScopeWidening::class)->widened([new IdentityReference($relinked->identity_type, $relinked->identity_id)], 'tenant-2', Clients::browser()),
         );
 
         self::assertSame(1, $widened);

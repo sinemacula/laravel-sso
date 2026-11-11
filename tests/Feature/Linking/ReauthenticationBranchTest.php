@@ -552,7 +552,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
         [$start, $completion] = $this->flow();
 
         if ($byWidening) {
-            DB::connection(StorageConnection::name())->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
+            DB::connection(StorageConnection::name())->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser()));
         } else {
             $this->scope->verdict = ScopeVerdict::OUTSIDE_TENANT;
         }

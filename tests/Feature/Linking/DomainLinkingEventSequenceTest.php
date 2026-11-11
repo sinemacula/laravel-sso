@@ -212,7 +212,7 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
 
         try {
             $this->connection->getConnection()->transaction(static function (): void {
-                app(ScopeWidening::class)->widened(new IdentityReference('App\Models\User', '7'), 'tenant-2', Clients::browser());
+                app(ScopeWidening::class)->widened([new IdentityReference('App\Models\User', '7')], 'tenant-2', Clients::browser());
 
                 throw new \RuntimeException('The principal could not be written.');
             });
@@ -223,7 +223,7 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
         $this->assertNoEvents();
         self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
 
-        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
+        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser()));
 
         $this->assertEventSequence([LinkSuspended::class]);
     }

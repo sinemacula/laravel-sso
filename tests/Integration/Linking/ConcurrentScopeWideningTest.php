@@ -23,7 +23,9 @@ use SineMacula\Laravel\Sso\Linking\IdentityLock;
 use SineMacula\Laravel\Sso\Linking\ReservationActivation;
 use SineMacula\Laravel\Sso\Linking\ReservationDiscovery;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
+use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
+use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
@@ -31,6 +33,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Feature\Linking\LinkingTestCase;
 use Tests\Fixtures\Clients;
+use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
  * Races a principal widening across processes, each with its own database
@@ -359,6 +362,49 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
+     * A widening of two identities against a reservation of one of them that
+     * holds its guard and has yet to lock the connection: the widening takes
+     * every guard before it locks a connection, so it waits on the guard while
+     * the reservation locks the connection the other identity's link is in, and
+     * the two never deadlock. Guarding one identity at a time would lock that
+     * connection first, and the database would abort one of them.
+     *
+     * @return void
+     */
+    public function testAWideningOfTwoIdentitiesTakesEveryGuardBeforeAConnection(): void
+    {
+        $this->requireRacing();
+        $this->start();
+        $this->answerFromThePrincipal();
+
+        $other = new IdentityReference('App\Models\User', '8');
+        $link  = $this->activeDomainLinkOf($other);
+
+        $outcomes = $this->race([
+            [function (): string {
+                self::await($this->signal('read-1'));
+
+                $this->holdOnceGuardedUntil('widening');
+
+                return $this->outcomeOf($this->complete());
+            }, false],
+            [function () use ($other): string {
+                self::await($this->signal('holding'));
+
+                $this->signalBeforeTheGuard('widening', $this->person);
+
+                DB::connection(StorageConnection::name())->transaction(fn (): int => app(ScopeWidening::class)->widened([$other, $this->person], 'tenant-2', Clients::browser()));
+
+                return self::WIDENED;
+            }, false],
+        ]);
+
+        self::assertSame([self::COMPLETED, self::WIDENED], $outcomes);
+        self::assertSame(LinkState::SUSPENDED, Link::query()->sole()->state);
+        self::assertSame($link->id, Link::query()->sole()->id);
+    }
+
+    /**
      * Assert the widening that came second ended exactly as expected, and, when
      * it was refused, that it changed nothing, and retry it.
      *
@@ -377,7 +423,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
 
         self::assertSame($unchanged, Link::query()->sole()->state);
 
-        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
+        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser()));
     }
 
     /**
@@ -446,26 +492,92 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
 
     /**
      * Touch the signal just before this process sends the statement that takes
-     * an identity's guard, on its own connection.
+     * an identity's guard, the given identity's when one is, on its own
+     * connection.
      *
      * @param  string  $signal
+     * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return void
      */
-    private function signalBeforeTheGuard(string $signal): void
+    private function signalBeforeTheGuard(string $signal, ?IdentityReference $identity = null): void
     {
-        $table = StorageConnection::table('identity_guards.table');
-        $path  = $this->signal($signal);
+        $table  = StorageConnection::table('identity_guards.table');
+        $path   = $this->signal($signal);
+        $digest = $identity === null ? null : IdentityLock::digest($identity);
 
-        DB::connection(StorageConnection::name())->beforeExecuting(static function (string $query) use ($table, $path): void {
+        DB::connection(StorageConnection::name())->beforeExecuting(static function (string $query, array $bindings) use ($table, $path, $digest): void {
 
             $sql = strtolower($query);
 
-            if (!str_starts_with($sql, 'insert') || !str_contains($sql, $table)) {
+            if (!str_starts_with($sql, 'insert') || !str_contains($sql, $table) || ($digest !== null && !in_array($digest, $bindings, true))) {
                 return;
             }
 
             touch($path);
         });
+    }
+
+    /**
+     * Once this process holds an identity's guard, signal `holding` just before
+     * it locks a connection, and wait for the signal before sending it.
+     *
+     * @param  string  $signal
+     * @return void
+     */
+    private function holdOnceGuardedUntil(string $signal): void
+    {
+        $guards      = StorageConnection::table('identity_guards.table');
+        $connections = StorageConnection::table('connections.table');
+        $holding     = $this->signal('holding');
+        $until       = $this->signal($signal);
+        $guarded     = false;
+
+        DB::connection(StorageConnection::name())->beforeExecuting(static function (string $query) use ($guards, $connections, $holding, $until, &$guarded): void {
+
+            $sql = strtolower($query);
+
+            if (str_starts_with($sql, 'insert') && str_contains($sql, $guards)) {
+                $guarded = true;
+
+                return;
+            }
+
+            if (!$guarded || !str_contains($sql, 'for update') || preg_match('/\bfrom\s+["`]?' . preg_quote($connections, '/') . '["`]?\s/', $sql) !== 1) {
+                return;
+            }
+
+            $guarded = false;
+
+            touch($holding);
+
+            self::await($until);
+        });
+    }
+
+    /**
+     * An active link of the identity by a verified domain, of another subject,
+     * in the connection.
+     *
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @return \SineMacula\Laravel\Sso\Models\Link
+     */
+    private function activeDomainLinkOf(IdentityReference $identity): Link
+    {
+        $key  = new LinkSubject(VerifyingDriver::ISSUER, 'subject-of-' . $identity->id);
+        $link = new Link;
+
+        $link->forceFill([
+            'connection_id' => $this->connection->id,
+            'issuer'        => $key->issuer,
+            'subject'       => $key->subject,
+            'subject_key'   => $key->key(),
+            'identity_type' => $identity->type,
+            'identity_id'   => $identity->id,
+            'state'         => LinkState::ACTIVE,
+            'provenance'    => LinkOrigin::VERIFIED_DOMAIN,
+        ])->save();
+
+        return $link;
     }
 
     /**
@@ -478,7 +590,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     private function widen(\Closure $underTheGuard): string
     {
         DB::connection(StorageConnection::name())->transaction(function () use ($underTheGuard): void {
-            app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser());
+            app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser());
             $underTheGuard();
         });
 

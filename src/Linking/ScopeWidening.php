@@ -26,26 +26,28 @@ use SineMacula\Laravel\Sso\Models\Link;
  * sessions are revoked for a widened scope.
  *
  * The application calls `widened()` first in the transaction that changes the
- * person's principals, on the storage connection, given the identity and the
- * tenant of the new principal, `null` for a platform principal, and the client
- * the change is made for (`Http\ClientContext`, which each `LinkSuspended`
- * carries: `new ClientContext(null, null)` from a console command or a job);
- * then takes the guard `Contracts\PrincipalScope` documents, writes the
- * principal, and commits:
+ * person's principals, on the storage connection, given the identities whose
+ * principals it changes (a list, so one change to several takes their locks in
+ * one order), the tenant of the new principal, `null` for a platform principal,
+ * and the client the change is made for (`Http\ClientContext`, which each
+ * `LinkSuspended` carries: `new ClientContext(null, null)` from a console
+ * command or a job); then takes the guard `Contracts\PrincipalScope` documents,
+ * writes the principal, and commits:
  *
  * ```php DB::connection($storage)->transaction(function () use ($widening,
  * $identity, $tenantId, $client): void {
- *     $widening->widened($identity, $tenantId, $client);
+ *     $widening->widened([$identity], $tenantId, $client);
  *     // take the guard the principal scope contract documents; write the principal
  * });
  * ```
  *
- * It takes the identity's guard first (`Linking\IdentityLock`) and holds it
- * until that transaction ends. A reservation, an activation and a confirmation
- * of the identity take the same guard first, so each runs wholly before this
- * change, and is found here, or wholly after it, and sees the principal
- * written. Nothing can slip in between, whatever the isolation level. For each
- * connection of another tenant holding one of the identity's links by a
+ * It takes each identity's guard first (`Linking\IdentityLock`), once, in
+ * ascending order of `IdentityLock::digest()`, and holds them until that
+ * transaction ends. A reservation, an activation and a confirmation of an
+ * identity take the same guard first, so each runs wholly before this change,
+ * and is found here, or wholly after it, and sees the principal written.
+ * Nothing can slip in between, whatever the isolation level. For each
+ * connection of another tenant holding one of the identities' links by a
  * verified domain, in ascending id order:
  *
  * - an active link is suspended: stored, latched
@@ -62,23 +64,25 @@ use SineMacula\Laravel\Sso\Models\Link;
  * A connection of the new principal's tenant is left alone: the principal is
  * inside it. Tenants are opaque, and compared exactly.
  *
- * The lock order is the package's: identity guard, connections ascending,
- * links, then the application's guards. Which connections hold the identity's
- * rows is found by a plain read once the guard is held, since locking link rows
- * before their connections would break that order; those connections are locked
- * in one statement, and the rows are then read again by a locking read. A row
- * in a connection that was not locked, which only a transaction with an older
- * snapshot can come to, is `Exceptions\LinkCandidatesChanged`, and the
+ * The lock order is the package's: identity guards, connections ascending,
+ * links, then the application's guards. Which connections hold the identities'
+ * rows is found by a plain read once every guard is held, since locking link
+ * rows before their connections would break that order; those connections, for
+ * every identity together, are locked in one statement, and the rows are then
+ * read again by a locking read. A row in a connection that was not locked,
+ * which only a transaction with an older snapshot can come to, is
+ * `Exceptions\LinkCandidatesChanged` before anything is changed, and the
  * application retries its whole transaction. Under PostgreSQL's
  * `REPEATABLE READ` such a transaction fails to serialise at the guard instead.
  *
  * A linker not backed by `Contracts\LinkStorage` holds no such link, so with
- * one bound only the guard is taken. Called with no transaction open on the
- * storage connection it is a `LogicException`: a suspension that commits apart
- * from the change could leave one without the other. A database error and a
- * revocation's exception propagate and roll the change back (SSO-11.4). It
- * holds the binding and the lock, neither of which keeps anything of one change
- * for the next (SSO-11.2). Resolve it from the container per request.
+ * one bound only the guards are taken, and an empty list takes nothing and
+ * answers 0. Called with no transaction open on the storage connection it is a
+ * `LogicException`: a suspension that commits apart from the change could leave
+ * one without the other. A database error and a revocation's exception
+ * propagate and roll the change back (SSO-11.4). It holds the binding and the
+ * lock, neither of which keeps anything of one change for the next (SSO-11.2).
+ * Resolve it from the container per request.
  *
  * @api
  *
@@ -98,61 +102,99 @@ final readonly class ScopeWidening
         /** Stores and reports each suspension. */
         private LinkStorageBinding $storage,
 
-        /** Holds the identity's linking changes apart from this one. */
+        /** Holds each identity's linking changes apart from this one. */
         private IdentityLock $identities,
     ) {}
 
     /**
-     * Take the identity's guard; suspend its links by a verified domain in
-     * every connection of another tenant than the new principal's, delete its
+     * Take the identities' guards; suspend their links by a verified domain in
+     * every connection of another tenant than the new principal's, delete their
      * reservations in them, and revoke the sessions established through those
      * links; answer how many links this suspended.
      *
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  list<\SineMacula\Laravel\Sso\Identities\IdentityReference>  $identities
      * @param  ?string  $tenantId
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return int
      *
      * @throws \LogicException
+     * @throws \SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged
      */
-    public function widened(IdentityReference $identity, ?string $tenantId, ClientContext $client): int
+    public function widened(array $identities, ?string $tenantId, ClientContext $client): int
     {
+        if ($identities === []) {
+            return 0;
+        }
+
         if (DB::connection(StorageConnection::name())->transactionLevel() === 0) {
             throw new \LogicException('A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection (decision D5).');
         }
 
-        $this->identities->acquire($identity);
+        $guarded = self::byDigest($identities);
+
+        foreach ($guarded as $identity) {
+            $this->identities->acquire($identity);
+        }
 
         $storage = $this->storage->find();
 
-        return $storage === null ? 0 : $this->suspended($storage, $identity, $tenantId, $client);
+        return $storage === null ? 0 : $this->suspended($storage, $guarded, $tenantId, $client);
     }
 
     /**
-     * The query of the identity's links by a verified domain, on the write
+     * The identities once each, keyed by and in ascending order of their
+     * guard's digest.
+     *
+     * @param  list<\SineMacula\Laravel\Sso\Identities\IdentityReference>  $identities
+     * @return array<string, \SineMacula\Laravel\Sso\Identities\IdentityReference>
+     */
+    private static function byDigest(array $identities): array
+    {
+        $guarded = [];
+
+        foreach ($identities as $identity) {
+            $guarded[IdentityLock::digest($identity)] = $identity;
+        }
+
+        ksort($guarded, SORT_STRING);
+
+        return $guarded;
+    }
+
+    /**
+     * The query of the identities' links by a verified domain, on the write
      * connection, whatever the state.
      *
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  array<string, \SineMacula\Laravel\Sso\Identities\IdentityReference>  $identities
      * @return \Illuminate\Database\Eloquent\Builder<\SineMacula\Laravel\Sso\Models\Link>
      */
-    private static function rowsOf(IdentityReference $identity): Builder
+    private static function rowsOf(array $identities): Builder
     {
         return Link::query()->useWritePdo()
-            ->where('identity_type', $identity->type)
-            ->where('identity_id', $identity->id)
+            ->where(static function (Builder $query) use ($identities): void {
+
+                foreach ($identities as $identity) {
+                    $query->orWhere(static fn (Builder $held): Builder => $held
+                        ->where('identity_type', $identity->type)
+                        ->where('identity_id', $identity->id));
+                }
+            })
             ->where('provenance', LinkOrigin::VERIFIED_DOMAIN->value);
     }
 
     /**
-     * The rows that are the identity's, byte for byte, whatever the collation.
+     * The rows that are one of the identities', byte for byte, whatever the
+     * collation.
      *
      * @param  array<int, \SineMacula\Laravel\Sso\Models\Link>  $rows
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  array<string, \SineMacula\Laravel\Sso\Identities\IdentityReference>  $identities
      * @return list<\SineMacula\Laravel\Sso\Models\Link>
      */
-    private static function owned(array $rows, IdentityReference $identity): array
+    private static function owned(array $rows, array $identities): array
     {
-        return array_values(array_filter($rows, static fn (Link $row): bool => $row->identity_type === $identity->type && $row->identity_id === $identity->id));
+        $isOwned = static fn (Link $row): bool => isset($identities[IdentityLock::digest(new IdentityReference($row->identity_type, $row->identity_id))]);
+
+        return array_values(array_filter($rows, $isOwned));
     }
 
     /**
@@ -193,21 +235,21 @@ final readonly class ScopeWidening
     }
 
     /**
-     * Under the guard, lock the connections holding the identity's rows and the
-     * rows, and make every change in those of another tenant.
+     * Under the guards, lock the connections holding the identities' rows and
+     * the rows, and make every change in those of another tenant.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\LinkStorage  $storage
-     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  array<string, \SineMacula\Laravel\Sso\Identities\IdentityReference>  $identities
      * @param  ?string  $tenantId
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return int
      *
      * @throws \SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged
      */
-    private function suspended(LinkStorage $storage, IdentityReference $identity, ?string $tenantId, ClientContext $client): int
+    private function suspended(LinkStorage $storage, array $identities, ?string $tenantId, ClientContext $client): int
     {
-        $locked = self::lockedConnections(self::owned(self::rowsOf($identity)->get()->all(), $identity));
-        $rows   = self::owned(self::rowsOf($identity)->orderBy('id')->lockForUpdate()->get()->all(), $identity);
+        $locked = self::lockedConnections(self::owned(self::rowsOf($identities)->get()->all(), $identities));
+        $rows   = self::owned(self::rowsOf($identities)->orderBy('id')->lockForUpdate()->get()->all(), $identities);
 
         self::assertCovered($rows, $locked);
 

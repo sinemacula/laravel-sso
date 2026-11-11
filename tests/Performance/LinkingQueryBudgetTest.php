@@ -365,7 +365,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
      */
     public function testAWidening(): void
     {
-        $widen = fn (): int => $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
+        $widen = fn (): int => $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser()));
 
         self::assertSame(0, $this->assertQueryBudget(2, 1, $widen));
 

@@ -613,7 +613,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     {
         [$start, $completion] = $this->reserved();
 
-        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened($this->person, 'tenant-2', Clients::browser()));
+        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser()));
 
         self::assertSame(ScopeVerdict::WITHIN_TENANT, $this->scope->verdict);
 
