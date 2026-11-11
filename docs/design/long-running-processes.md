@@ -26,8 +26,13 @@ the schedule's are in `operations.md`.
 
 - A binding that reads configuration or a connection is scoped, and one that holds nothing between calls a singleton.
   No service holds a connection, tenant, flow or result. No package class holds such a value in a static property.
-- A contract the provider binds as scoped is forgotten after every request and job, an instance given it too. An
-  application binds its own through a closure or a concrete class, never through `instance()` alone.
+- Each default is bound under its private key, `sso.default:` and the contract's name (`Support\PackageDefaults`),
+  scoped or a singleton, and the contract to a transient closure the provider declares that resolves the key. The
+  contract is never scoped and never holds an instance of the package's, so whatever an application binds over it,
+  `instance()` included, outlives every request and job. `SsoServiceProvider::isPackageDefault()` tells the package's
+  default from a binding made over it.
+- `Support\RequestState::forget()` forgets the package's scoped defaults and `Protocols\DriverScope`, and nothing
+  else, for a process that cannot forget every scoped instance between units of work.
 - `Events\StrandedTransactions` is a singleton, resolved when the provider boots, though it keeps marks between calls:
   the transaction records a failed commit left on Laravel 12, held weakly, so the `TransactionBeginning` listener that
   marks them and the after-commit callbacks that check them share one instance. It holds nothing of a request.
@@ -105,13 +110,17 @@ the schedule's are in `operations.md`.
 - A retried redemption, once its transaction rolled back, finds the code unspent and runs as new.
 - A statement that fails before the transaction it would be in is no different: the plain reads that find what to lock
   propagate as the locked ones do.
-- Binding a contract the provider scopes through `instance()` works in a test and silently falls back to the default in
-  a worker from the second request on.
+- An `extend()` or `afterResolving()` callback on a contract runs on every resolution, since the contract is
+  transient: one that changes the default changes the same scoped instance again, and one that wraps it wraps it again.
+  An `afterResolving()` on the contract can run twice on the first resolution, once for the private key and once for
+  the contract. An application extends the default's private key instead.
 - A cache that is healthy but empty is not a failure of anything: a mutex taken again, nothing more.
 
 ## Implementation Anchors
 
-- `src/SsoServiceProvider.php`: which binding is scoped and which a singleton.
+- `src/Support/PackageDefaults.php`: which default is scoped and which a singleton; `src/SsoServiceProvider.php`: how
+  each is bound, and `isPackageDefault()`.
+- `src/Support/RequestState.php`.
 - `src/Flows/AuthorizationRequestService.php`, `src/Flows/RequestConsumption.php`: the request row, and T1.
 - `src/Completion/CompletionPipeline.php`, `src/Completion/CompletionLocks.php`: T2 and T3, and that nothing is
   caught.
@@ -124,6 +133,8 @@ the schedule's are in `operations.md`.
 
 ## Authoritative Tests
 
+- `tests/Unit/SsoServiceProviderTest.php`
+- `tests/Unit/Support/RequestStateTest.php`
 - `tests/Integration/Process/SessionlessFlowsTest.php`
 - `tests/Integration/Process/ConsecutiveRequestsTest.php`
 - `tests/Integration/Process/QueueWorkerIsolationTest.php`
