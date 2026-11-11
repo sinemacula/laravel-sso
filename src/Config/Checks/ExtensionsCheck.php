@@ -62,6 +62,9 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
     /** @var string The problem of a package's registry that cannot be read. */
     private const string UNREADABLE = 'The XML element registry of `%s` cannot be read; ' . self::REINSTALL;
 
+    /** @var string The problem of a registry file the library loads that is no installed package's. */
+    private const string STALE = 'The SAML library loads the XML element registry `%s`, which is no installed package\'s; ' . self::REINSTALL;
+
     /** @var string The problem of a registry file the library loads that cannot be read. */
     private const string UNREADABLE_LOADED = 'The XML element registry `%s` the SAML library loads cannot be read; ' . self::REINSTALL;
 
@@ -159,8 +162,9 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
 
     /**
      * Every XML provider package's registry is loaded by the XML library
-     * exactly once: a missing one leaves its elements unparsed, and one loaded
-     * twice is merged into lists where the library expects class names.
+     * exactly once, and nothing else is: a missing one leaves its elements
+     * unparsed, and one loaded twice, or beside a stale copy, is merged into
+     * lists where the library expects class names.
      *
      * @return void
      *
@@ -168,12 +172,14 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
      */
     private function assertRegistriesLoaded(): void
     {
-        $loaded = self::loadedRegistries(($this->registryDirectory)());
+        $loaded    = self::loadedRegistries(($this->registryDirectory)());
+        $installed = [];
 
         foreach (($this->registries)() as $package => $registry) {
 
-            $contents = self::read($registry) ?? throw new ElementRegistryException(sprintf(self::UNREADABLE, $package));
-            $copies   = count(array_keys($loaded, $contents, true));
+            $contents    = self::read($registry) ?? throw new ElementRegistryException(sprintf(self::UNREADABLE, $package));
+            $copies      = count(array_keys($loaded, $contents, true));
+            $installed[] = $contents;
 
             if ($copies === 0) {
                 throw new ElementRegistryException(sprintf(self::NOT_LOADED, $package));
@@ -183,14 +189,21 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
                 throw new ElementRegistryException(sprintf(self::LOADED_TWICE, $package));
             }
         }
+
+        $stale = array_key_first(array_diff($loaded, $installed));
+
+        if ($stale !== null) {
+            throw new ElementRegistryException(sprintf(self::STALE, $stale));
+        }
     }
 
     /**
-     * The contents of each registry file in the directory, found as
-     * `ElementRegistry` finds them; a directory that does not exist holds none.
+     * The contents of each registry file in the directory, by file name, found
+     * as `ElementRegistry` finds them; a directory that does not exist holds
+     * none.
      *
      * @param  string  $directory
-     * @return list<string>
+     * @return array<string, string>
      *
      * @throws \SineMacula\Laravel\Sso\Exceptions\ElementRegistryException
      */
@@ -208,7 +221,7 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
                 continue;
             }
 
-            $loaded[] = self::read($file->getPathname()) ?? throw new ElementRegistryException(sprintf(self::UNREADABLE_LOADED, $file->getFilename()));
+            $loaded[$file->getFilename()] = self::read($file->getPathname()) ?? throw new ElementRegistryException(sprintf(self::UNREADABLE_LOADED, $file->getFilename()));
         }
 
         return $loaded;

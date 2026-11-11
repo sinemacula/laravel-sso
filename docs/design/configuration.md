@@ -68,8 +68,9 @@ package registers its settings and its check without editing another's (SSO-12.2
   `classes/element.registry.php` into its own `classes` directory, and the XML library's `ElementRegistry` loads every
   `element.registry.*.php` there, from the directory it derives from its own file (`Library\ElementRegistries`). Each
   installed provider package's registry (read through `Composer\InstalledVersions`) must be loaded exactly once, by
-  contents: a missing one leaves its elements unparsed, and one loaded twice is merged into lists where the library
-  expects class names. A registry that cannot be read is a problem too. The check reads files only.
+  contents, and every file loaded must be an installed package's registry: a missing one leaves its elements unparsed,
+  and one loaded twice, or beside a stale copy from an earlier install, is merged into lists where the library expects
+  class names. A registry that cannot be read is a problem too. The check reads files only.
 
 ## Success Path
 
@@ -88,8 +89,9 @@ package registers its settings and its check without editing another's (SSO-12.2
 
 - A misspelt switch or application setting is refused rather than left at its default.
 - An install that skipped the XML provider plugin (plugins disabled, `--no-plugins`, the plugin not allowed in
-  `allow-plugins`), or left a stale or second copy of a registry behind, fails `[extensions]` naming the package, rather
-  than the first SAML message parsed.
+  `allow-plugins`) fails `[extensions]` naming the package, and one that left a second copy of a registry behind, or a
+  stale copy matching no installed package's, names the package or the stale file, rather than failing the first SAML
+  message parsed.
 - A feature on without the protocol it needs is a problem, including over a malformed protocol switch.
 - A malformed switch fails a flow closed (`enabled()`), and is reported by `[features]` at boot.
 - A check class that does not exist is reported under its subject, so a registry entry left behind fails the boot

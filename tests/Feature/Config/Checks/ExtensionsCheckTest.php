@@ -191,6 +191,24 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
+     * A loaded registry that is no installed package's, such as a stale copy
+     * left beside the current one, is named by its file.
+     *
+     * @return void
+     */
+    public function testNamesAStaleRegistryTheLibraryLoads(): void
+    {
+        $this->useThePackage();
+        $this->registry('a', 'A');
+        $this->loaded('element.registry.1.php', 'A');
+        $this->loaded('element.registry.2.php', 'A, older');
+
+        $stale = 'The SAML library loads the XML element registry `element.registry.2.php`, which is no installed package\'s; ';
+
+        self::assertSame([$stale . self::REINSTALL], $this->registryProblems());
+    }
+
+    /**
      * A package's registry that cannot be read is named by its package.
      *
      * @return void

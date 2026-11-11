@@ -16,8 +16,9 @@ use SineMacula\Laravel\Sso\Config\Enums\Feature;
  * fails closed with an `InvalidArgumentException` naming its key. `requested()`
  * is the answer the configuration checks act on: a malformed switch counts as
  * on there, so the settings it would enable are checked as well as the switch
- * itself, and a check never fails to say why. Both read the repository they are
- * given, so a composing package's check can pass its own.
+ * itself, and a check never fails to say why. `requested()` and `isInUse()`
+ * read the repository they are given, so a composing package's check can pass
+ * its own.
  *
  * @api
  *
