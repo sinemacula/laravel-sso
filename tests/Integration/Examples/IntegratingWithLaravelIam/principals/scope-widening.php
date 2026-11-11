@@ -29,7 +29,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 
 DB::connection(StorageConnection::name())->transaction(static function () use ($identity, $tenantId, $client): void {
-    app(ScopeWidening::class)->widened($identity, $tenantId, $client); // 1. the guard, suspensions, revocation
+    app(ScopeWidening::class)->widened([$identity], $tenantId, $client); // 1. the guard, suspensions, revocation
 
     $principals = app(Principals::class);
 

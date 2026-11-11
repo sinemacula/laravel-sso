@@ -178,7 +178,7 @@ final class ScopeWideningExampleTest extends ExampleTestCase
     public function testAWideningOutsideATransactionIsRefused(): void
     {
         try {
-            app(ScopeWidening::class)->widened($this->person, self::OTHER_TENANT, Clients::browser());
+            app(ScopeWidening::class)->widened([$this->person], self::OTHER_TENANT, Clients::browser());
             self::fail('The widening was reported outside a transaction.');
         } catch (\LogicException $refused) {
             self::assertStringContainsString('inside the transaction', $refused->getMessage());

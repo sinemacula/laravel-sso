@@ -182,7 +182,7 @@ DB::connection(StorageConnection::name())->transaction(function () use ($identit
 
     // First the identity's guard, held until this commits; the tenant
     // is `null` for a platform principal
-    $widening->widened($identity, $tenantId, $client);
+    $widening->widened([$identity], $tenantId, $client);
 
     // Then your principal guard, then the write
     $this->lockPrincipals($identity);
@@ -202,8 +202,12 @@ whose sessions do not record their link revokes the identity's sessions through 
 under the lock, which on MySQL's `REPEATABLE READ` happens when your transaction read before it called `widened()` or
 redeemed. Retry your whole transaction. The package's standalone `link` redemption reads nothing before it takes the
 identity's guard, and restarts itself once if it comes to it. A database's serialisation failure or deadlock is retried
-the same way. A change to several identities in one transaction takes them in ascending order of
-`Linking\IdentityLock::digest()`.
+the same way. A change to several identities' principals in one transaction, such as moving a subtree of tenants,
+passes them all to one `widened()` call, which takes their guards in ascending order of
+`Linking\IdentityLock::digest()`, then locks the connections holding any of their links together. Calling it once per
+identity would lock one identity's connections before the next identity's guard, which can deadlock against a
+reservation or a confirmation. The call takes one tenant and spares its connections for every identity given, so pass
+together only identities that gain a principal in that same tenant.
 
 This principal-change transaction is the primary place sessions are revoked. A resolution that finds a definite outside
 scope repairs what it missed, revoking through the link in the completion's or the redemption's transaction; asking
