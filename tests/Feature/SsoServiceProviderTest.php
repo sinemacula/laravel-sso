@@ -7,8 +7,10 @@ namespace Tests\Feature;
 use Illuminate\Config\Repository as ConfigRepository;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\DatabaseTransactionRecord;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -41,6 +43,7 @@ use SineMacula\Laravel\Sso\Endpoints\ConfiguredEndpointResolver;
 use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
 use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
+use SineMacula\Laravel\Sso\Events\StrandedTransactions;
 use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
@@ -183,6 +186,96 @@ final class SsoServiceProviderTest extends TestCase
         self::assertSame($clock, $app->make(Clock::class));
         self::assertSame($resolver, $app->make(HostResolver::class));
         self::assertNotSame($app->make(ConfigurationChecker::class), $app->make(ConfigurationChecker::class));
+    }
+
+    /**
+     * The stranded transactions are one instance for the process, and the
+     * listener the provider registers marks the record a failed commit left
+     * when the next outermost transaction begins.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testTheStrandedTransactionsAreMarkedForTheProcess(): void
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app        = $this->app;
+        $stranded   = $app->make(StrandedTransactions::class);
+        $connection = DB::connection();
+
+        /** @var \Illuminate\Database\DatabaseTransactionsManager $manager */
+        $manager = $app->make('db.transactions');
+
+        $connection->beginTransaction();
+
+        $left = $manager->getPendingTransactions()->last();
+
+        $connection->unsetTransactionManager();
+        $connection->rollBack();
+        $connection->setTransactionManager($manager);
+
+        $app->forgetScopedInstances();
+
+        self::assertInstanceOf(DatabaseTransactionRecord::class, $left);
+        self::assertSame($stranded, $app->make(StrandedTransactions::class));
+        self::assertFalse($stranded->isStranded($left));
+
+        $connection->beginTransaction();
+
+        try {
+            self::assertTrue($stranded->isStranded($left));
+        } finally {
+            $connection->rollBack();
+        }
+    }
+
+    /**
+     * The listener marks nothing when a savepoint begins, though the
+     * transaction it sits in and a savepoint before it are held, and a
+     * transaction begins with no transactions manager bound.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testTheListenerMarksOnlyAnOutermostBeginWithAManager(): void
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app        = $this->app;
+        $stranded   = $app->make(StrandedTransactions::class);
+        $connection = DB::connection();
+
+        /** @var \Illuminate\Database\DatabaseTransactionsManager $manager */
+        $manager = $app->make('db.transactions');
+
+        $connection->beginTransaction();
+        $connection->beginTransaction();
+        $connection->commit();
+        $connection->beginTransaction();
+
+        $held = $manager->getPendingTransactions()->concat($manager->getCommittedTransactions());
+
+        $connection->rollBack();
+        $connection->rollBack();
+
+        self::assertCount(3, $held);
+
+        foreach ($held as $record) {
+            self::assertFalse($stranded->isStranded($record));
+        }
+
+        $app->offsetUnset('db.transactions');
+
+        try {
+            $connection->beginTransaction();
+
+            self::assertSame(1, $connection->transactionLevel());
+
+            $connection->rollBack();
+        } finally {
+            $app->instance('db.transactions', $manager);
+        }
     }
 
     /**

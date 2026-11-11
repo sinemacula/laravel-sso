@@ -5,7 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso;
 
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\DatabaseTransactionsManager;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -60,7 +62,7 @@ use SineMacula\Laravel\Sso\Endpoints\ConfiguredEndpointResolver;
 use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
 use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
-use SineMacula\Laravel\Sso\Events\TransactionGenerations;
+use SineMacula\Laravel\Sso\Events\StrandedTransactions;
 use SineMacula\Laravel\Sso\Evidence\InsufficientEvidence;
 use SineMacula\Laravel\Sso\Fetching\FetcherCheck;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
@@ -223,11 +225,11 @@ final class SsoServiceProvider extends ServiceProvider
      * protocol registry is a singleton that builds its drivers with the
      * application serving, in its present scope (see
      * `ProtocolManager::driver()`). Each is resolved only when first used.
-     * `Events\TransactionGenerations` is a singleton that keeps a count for the
-     * life of the process, never scoped, since an after-commit callback it
-     * guards can outlive the request that queued it. Every package class that
-     * logs is given `SanitizingLogger` by a contextual binding, never by
-     * binding `LoggerInterface` for the whole application.
+     * `Events\StrandedTransactions` is a singleton, never scoped, since the
+     * listener the provider registers and the after-commit dispatch must share
+     * its marks. Every package class that logs is given `SanitizingLogger` by a
+     * contextual binding, never by binding `LoggerInterface` for the whole
+     * application.
      *
      * @return void
      */
@@ -264,7 +266,7 @@ final class SsoServiceProvider extends ServiceProvider
         $this->app->scopedIf(HandoffIssuer::class, DatabaseHandoffStore::class);
         $this->app->singletonIf(ProtocolManager::class);
         $this->app->scoped(DriverScope::class);
-        $this->app->singleton(TransactionGenerations::class);
+        $this->app->singleton(StrandedTransactions::class);
         $this->app->when(self::LOGGING_CLASSES)->needs(LoggerInterface::class)->give(SanitizingLogger::class);
         $this->app->singleton(ConfigurationChecks::class, static fn (): ConfigurationChecks => new ConfigurationChecks(self::CONFIGURATION_CHECKS));
         $this->app->bindIf(
@@ -284,26 +286,53 @@ final class SsoServiceProvider extends ServiceProvider
 
         $this->registerPublishing();
         $this->registerCommands();
-        $this->countOutermostTransactions();
+        $this->markStrandedTransactions();
         $this->checkConfiguration();
     }
 
     /**
-     * Count each outermost transaction begun on a connection, once, for the
-     * after-commit dispatch (see `Events\TransactionGenerations`), as soon as
-     * the events dispatcher is resolved. The counter is resolved here, as the
-     * application boots, so every request and job the process serves shares it,
-     * an Octane sandbox included.
+     * Mark the records a failed commit left behind when the next outermost
+     * transaction begins on their connection, for the after-commit dispatch
+     * (see `Events\StrandedTransactions`), as soon as the events dispatcher is
+     * resolved. It is resolved here, as the application boots, so every request
+     * and job the process serves shares it, an Octane sandbox included.
      *
      * @return void
      */
-    private function countOutermostTransactions(): void
+    private function markStrandedTransactions(): void
     {
-        $generations = $this->app->make(TransactionGenerations::class);
+        $stranded = $this->app->make(StrandedTransactions::class);
 
-        $this->callAfterResolving('events', static function (Dispatcher $events) use ($generations): void {
-            $events->listen(TransactionBeginning::class, $generations->begun(...));
+        $this->callAfterResolving('events', static function (Dispatcher $events) use ($stranded): void {
+            $events->listen(TransactionBeginning::class, static function (TransactionBeginning $event) use ($stranded): void {
+                self::markStranded($stranded, $event);
+            });
         });
+    }
+
+    /**
+     * Mark the records stranded on the connection when the transaction begun is
+     * its outermost and a transactions manager is bound.
+     *
+     * @param  \SineMacula\Laravel\Sso\Events\StrandedTransactions  $stranded
+     * @param  \Illuminate\Database\Events\TransactionBeginning  $event
+     * @return void
+     */
+    private static function markStranded(StrandedTransactions $stranded, TransactionBeginning $event): void
+    {
+        if ($event->connection->transactionLevel() !== 1) {
+            return;
+        }
+
+        // Not the container captured at boot: under Octane this is the sandbox.
+        $container = Container::getInstance();
+        $manager   = $container->bound('db.transactions') ? $container->make('db.transactions') : null;
+
+        if (!$manager instanceof DatabaseTransactionsManager) {
+            return;
+        }
+
+        $stranded->begun($event, $manager);
     }
 
     /**

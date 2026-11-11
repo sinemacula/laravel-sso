@@ -15,7 +15,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
-use SineMacula\Laravel\Sso\Events\TransactionGenerations;
+use SineMacula\Laravel\Sso\Events\StrandedTransactions;
 use Tests\TestCase;
 
 /**
@@ -33,7 +33,7 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(AfterCommitDispatcher::class)]
-#[CoversClass(TransactionGenerations::class)]
+#[CoversClass(StrandedTransactions::class)]
 final class AfterCommitDispatcherTest extends TestCase
 {
     /** @var string The second connection, kept apart from the default. */
@@ -262,6 +262,113 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
+     * An earlier callback of the same commit that begins and commits an
+     * outermost transaction does not drop the event: it is dispatched once,
+     * after that callback, in one sequence with it.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAnEarlierCallbacksTransactionDoesNotDropTheEvent(): void
+    {
+        $event = self::event();
+
+        /** @var \ArrayObject<int, \SineMacula\Laravel\Sso\Contracts\SsoEvent|string> $sequence */
+        $sequence = new \ArrayObject;
+
+        Event::listen(SsoEvent::class, static function (SsoEvent $delivered) use ($sequence): void {
+            $sequence->append($delivered);
+        });
+
+        DB::beginTransaction();
+
+        DB::afterCommit(static function () use ($sequence): void {
+            DB::transaction(static function (): void {});
+
+            $sequence->append('callback');
+        });
+
+        $this->dispatcher()->dispatch($event);
+
+        DB::commit();
+
+        self::assertSame(['callback', $event], $sequence->getArrayCopy());
+
+        DB::transaction(static function (): void {});
+
+        self::assertSame(['callback', $event], $sequence->getArrayCopy());
+    }
+
+    /**
+     * An event dispatched in a transaction a callback of the committing one
+     * begins is dispatched once, on that transaction's commit, and each event
+     * of the committing transaction, its savepoint's included, once too.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testACallbacksOwnTransactionDispatchesBesideTheCommittingOne(): void
+    {
+        $outer     = self::event(FailureReason::REPLAYED);
+        $savepoint = self::event(FailureReason::SIGNATURE_INVALID);
+        $inner     = self::event(FailureReason::REPLAYED);
+
+        DB::beginTransaction();
+
+        DB::afterCommit(function () use ($inner): void {
+            DB::transaction(function () use ($inner): void {
+                $this->dispatcher()->dispatch($inner);
+            });
+        });
+
+        $this->dispatcher()->dispatch($outer);
+
+        DB::transaction(function () use ($savepoint): void {
+            $this->dispatcher()->dispatch($savepoint);
+        });
+
+        DB::commit();
+
+        self::assertCount(3, $this->delivered);
+
+        foreach ([$inner, $outer, $savepoint] as $event) {
+            self::assertContains($event, $this->delivered->getArrayCopy());
+        }
+
+        DB::transaction(static function (): void {});
+
+        self::assertCount(3, $this->delivered);
+    }
+
+    /**
+     * After a failed commit, the next transaction's own event is dispatched
+     * once though an earlier callback of its commit begins a transaction, and
+     * the event the failed commit left is still dropped.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAStrandedEventStaysDroppedBesideACallbacksTransaction(): void
+    {
+        $kept = self::event(FailureReason::SIGNATURE_INVALID);
+
+        $this->leaveATransactionBehind(self::event());
+
+        DB::transaction(function () use ($kept): void {
+            DB::afterCommit(static function (): void {
+                DB::transaction(static function (): void {});
+            });
+
+            $this->dispatcher()->dispatch($kept);
+        });
+
+        self::assertSame([$kept], $this->delivered->getArrayCopy());
+    }
+
+    /**
      * A transaction on another connection neither delays nor cancels an event
      * for the storage connection, whether it is the only one open or opened
      * inside the storage connection's own.
@@ -437,6 +544,18 @@ final class AfterCommitDispatcherTest extends TestCase
             DB::commit();
 
             self::assertCount(2, $this->delivered);
+
+            DB::beginTransaction();
+
+            DB::afterCommit(static function (): void {
+                DB::transaction(static function (): void {});
+            });
+
+            $this->dispatcher()->dispatch(self::event());
+
+            DB::commit();
+
+            self::assertCount(3, $this->delivered);
         } finally {
             $connection->rollBack();
             $app->instance('db.transactions', $previous);

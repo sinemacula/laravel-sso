@@ -21,14 +21,13 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
  * since the writes were not made in it.
  *
  * An event waits only for the transaction it was dispatched in. Laravel 12
- * leaves the callbacks of an outermost transaction whose commit failed pending,
- * to run on the next outermost commit on the connection, perhaps in another
- * request; so each callback carries the generation its connection was in
- * (`TransactionGenerations`) and dispatches nothing once a later outermost
- * transaction has begun, since only a failed commit leaves one behind. A record
- * such a transaction left is found only while the connection has a transaction
- * open, so an event dispatched outside one is dispatched at once. Laravel 13
- * drops those callbacks and records itself, and nothing changes there.
+ * leaves the records of an outermost transaction whose commit failed pending,
+ * to run their callbacks on the next outermost commit on the connection,
+ * perhaps in another request; so each callback holds its record and dispatches
+ * nothing once `StrandedTransactions` has marked it. A record such a
+ * transaction left is found only while the connection has a transaction open,
+ * so an event dispatched outside one is dispatched at once. Laravel 13 drops
+ * those records itself, and nothing changes there.
  *
  * The connection is the storage connection unless the caller names another,
  * since every package table lives there. No package event implements
@@ -87,12 +86,11 @@ final readonly class AfterCommitDispatcher
             return;
         }
 
-        $generations = $this->container->make(TransactionGenerations::class);
-        $generation  = $generations->current($name);
+        $stranded = $this->container->make(StrandedTransactions::class);
 
-        $pending->addCallback(function () use ($event, $generations, $name, $generation): void {
+        $pending->addCallback(function () use ($event, $stranded, $pending): void {
 
-            if ($generations->current($name) !== $generation) {
+            if ($stranded->isStranded($pending)) {
                 return;
             }
 
