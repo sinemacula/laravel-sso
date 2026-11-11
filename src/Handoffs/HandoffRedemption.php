@@ -108,8 +108,9 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * Any refusal after the code was consumed deletes that code's reservation, by
  * its identity and reference, in the same transaction, and queues one failure
  * event; the refusal commits, and the code stays spent. An exception rolls
- * everything back, the consumption and any activation together, and the
- * redemption is then retried only as the caller's whole transaction.
+ * everything back, the consumption and any activation together; inside a
+ * caller's transaction the redemption is then retried only as that whole
+ * transaction.
  *
  * `admit()` is the session-admission API: it requires the caller's transaction
  * open on the storage connection, keeps the locks until that commits, and the
@@ -128,13 +129,21 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * verified domain link in a connection it did not lock
  * (`Exceptions\LinkCandidatesChanged`), which taking the guard before any read
  * leaves to an isolation stricter than the default, is rolled back and
- * restarted once, from its transaction; a second time it propagates. Inside a
- * caller's transaction it always propagates, and the caller retries its whole
- * transaction.
+ * restarted once, from its transaction; a second time it propagates. A
+ * standalone transaction the database rolls back as a deadlock, a lock wait
+ * timeout or a serialisation failure is tried again, at most three times in
+ * all, and so is the restart; the redemption is counted against the limit once.
+ * Inside a caller's transaction both propagate, and the caller retries its
+ * whole transaction.
  *
  * On PostgreSQL under `REPEATABLE READ`, a redemption that waited on a rule
- * change may fail to serialise instead: the error propagates, never retried in
- * part, and a caller's transaction around it must be retried whole.
+ * change may fail to serialise instead: inside a caller's transaction the error
+ * propagates, never retried in part, and that transaction must be retried
+ * whole.
+ *
+ * The single-use store records the code before later work can fail, so a
+ * retried standalone attempt is refused as `replayed` unless the store's record
+ * rolled back with the failed attempt, as the default's does.
  *
  * Every refusal reports exactly one `FlowFailed` (`Flow::REDEMPTION`) with its
  * reason, after the transaction that consumed the code commits, and never when
@@ -165,6 +174,9 @@ final readonly class HandoffRedemption
 {
     /** @var string The single-use namespace a consumed code is recorded in. */
     public const string NAMESPACE = 'handoff_code';
+
+    /** @var int Times the standalone transaction is tried when the database rolls it back as a deadlock or serialisation failure. */
+    private const int ATTEMPTS = 3;
 
     /** @var string What a code that must commit with a session reaching the standalone path is. */
     private const string NOT_STANDALONE = 'A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).';
@@ -290,6 +302,7 @@ final readonly class HandoffRedemption
         $tenantId = is_string($tenantId) ? $tenantId : null;
         $attempt  = fn (): RedemptionResult => $database->transaction(
             fn (): RedemptionResult => $this->locked($found, $tenantId, $mismatch, $caller, $admitted, $purpose, $client),
+            self::ATTEMPTS,
         );
 
         return $admitted ? $attempt() : self::restartedOnce($attempt);

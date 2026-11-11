@@ -21,7 +21,9 @@ use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
  * expiry, and read from the write connection or primary (SSO-11.3). A key whose
  * expiry has passed may be recorded again. The default records keys in the
  * database under a unique index on the storage connection; an application may
- * bind another store only if it meets all of this.
+ * bind another store only if it meets all of this. A store must record within
+ * the caller's transaction for a rolled-back redemption to be retried; a record
+ * kept when that transaction rolls back makes the retry `replayed`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
