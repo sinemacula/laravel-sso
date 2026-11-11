@@ -18,10 +18,10 @@ allow, and the frozen clock a test binds in its place, so skew, expiry and maxim
   Laravel's clock freezes the package's. It is a `CarbonImmutable` itself whatever class the application's date factory
   makes (`Date::use()` with Laravel's `Carbon`, `Carbon`, `CarbonImmutable`, PHP's `DateTime` or `DateTimeImmutable`, or
   a callable), to the microsecond.
-- `SystemClock` holds nothing, so the provider binds it with `singletonIf`: one instance serves every request and job of
-  an Octane or queue worker, and no instant outlives the call that read it (SSO-11.2). A clock the application or
-  another package bound before the provider registers is kept; one bound afterwards replaces it, as any later binding
-  does.
+- `SystemClock` holds nothing, so the provider binds it as a singleton default: one instance serves every request and
+  job of an Octane or queue worker, and no instant outlives the call that read it (SSO-11.2). A clock the application
+  or another package bound before the provider registers is kept; one bound afterwards replaces it, as any later
+  binding does.
 - The clock skew is `Clock\ClockSkew::seconds()`, read from `sso.clock.skew_seconds` on each call: an integer from 0 to
   300 (`ClockSkew::MAX_SECONDS`, five minutes), or the digit string `env()` gives for one, defaulting to 60
   (`ClockSkew::DEFAULT_SECONDS`) when unset (SSO-6.5). It is read through `Config\IntegerSetting`, so the boot check and
@@ -37,7 +37,8 @@ allow, and the frozen clock a test binds in its place, so skew, expiry and maxim
 
 ## Success Path
 
-1. The provider binds `Contracts\Clock` to `SystemClock` with `singletonIf`, unless the application bound a clock first.
+1. The provider binds `Contracts\Clock` to `SystemClock` as a singleton default, unless the application bound a clock
+   first.
 2. A time check resolves the clock, reads `now()` once for the decision, and compares it with the protocol's instants,
    allowing `ClockSkew::seconds()` either side where the protocol allows a skew.
 3. A test freezes Laravel's clock (`travelTo()`, `Carbon::setTestNow()`) and the package's checks see the frozen
@@ -62,7 +63,7 @@ allow, and the frozen clock a test binds in its place, so skew, expiry and maxim
 - `src/Contracts/Clock.php`.
 - `src/Clock/SystemClock.php`, `src/Clock/ClockSkew.php`, `src/Clock/ClockCheck.php`.
 - `src/Testing/FrozenClock.php`.
-- `src/SsoServiceProvider.php`: `register()` (`singletonIf(Clock::class, SystemClock::class)`) and
+- `src/SsoServiceProvider.php`: `register()` (the singleton default `Support\PackageDefaults` lists) and
   `CONFIGURATION_CHECKS['clock']`; `config/sso.php`: `clock.skew_seconds`.
 
 ## Authoritative Tests

@@ -104,8 +104,8 @@ reasons by flow and the events each operation reports. Each part's own behaviour
 | `HandoffIssuer`            | `Handoffs\DatabaseHandoffStore`              | the package's own store                      |
 | `CompletionStage`          | one class per step                           | a stage refuses as a value, errors propagate |
 
-Each is bound with `singletonIf` when it holds nothing and `scopedIf` when it reads configuration or a connection, so an
-earlier binding is kept and nothing outlives a request (SSO-11.2).
+Each default is a singleton when it holds nothing and scoped when it reads configuration or a connection, so an earlier
+binding is kept and nothing outlives a request (SSO-11.2).
 
 ### The completion
 

@@ -90,7 +90,7 @@ connection and issuer, SSO-6.6), authorisation requests (SSO-5.1) and handoff co
 - `src/SingleUse/DatabaseSingleUseStore.php`: `record()`, `assertValid()`, `store()`, `deleteExpired()`, `format()`.
 - `src/Models/SingleUseKey.php`: `prunable()`; `src/Models/Casts/UtcDateTime.php`.
 - `database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php`.
-- `src/SsoServiceProvider.php`: the `scopedIf` binding of `SingleUseStore`.
+- `src/SsoServiceProvider.php`: the scoped default of `SingleUseStore`.
 
 ## Authoritative Tests
 
