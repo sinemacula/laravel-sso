@@ -110,10 +110,12 @@ $result = app(HandoffRedemption::class)->redeem(
 );
 ```
 
-A `link` writes no session, so it may use this standalone path, which commits before it answers. When your endpoint
-writes something of its own that must commit with the link, call `admit()` inside your transaction instead
-([Redeeming a Handoff](redeeming-a-handoff.md)). Never sign anyone in from a `link` result, whichever you call:
-`$result->linkedIdentity` is only the identity the link now belongs to.
+A `link` writes no session, so it may use this standalone path, which commits before it answers. A transaction the
+database rolls back as a deadlock, a lock wait timeout or a serialisation failure is tried again, at most three times in
+all, and the attempt is counted against the rate limit once. When your endpoint writes something of its own that must
+commit with the link, call `admit()` inside your transaction instead ([Redeeming a Handoff](redeeming-a-handoff.md)).
+Never sign anyone in from a `link` result, whichever you call: `$result->linkedIdentity` is only the identity the link
+now belongs to.
 
 What is asked, and when:
 

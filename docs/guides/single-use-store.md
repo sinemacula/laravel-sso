@@ -118,4 +118,5 @@ $this->app->scoped(SingleUseStore::class, ApplicationSingleUseStore::class);
 
 Bind it scoped (or as a plain binding), not as a singleton, if it holds anything from one request or job to the next.
 A store that records outside the storage connection is never part of the package's transactions: a record it makes
-inside one is kept when that transaction rolls back.
+inside one is kept when that transaction rolls back. A handoff redemption retried after such a rollback, by the package
+or by your own retry, is then refused as `replayed`.

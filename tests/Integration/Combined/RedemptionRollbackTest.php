@@ -64,7 +64,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  * failing. No event of TR escapes, and the redemption then goes through whole,
  * since the code was never spent. What is committed outside TR stays, and is
  * asserted to: an attempt counted on the counters' own connection, and one a
- * standalone `link` counted before its transaction opened.
+ * standalone `link` counted before its transaction opened, counted once when a
+ * deadlock rolled that transaction back and it was tried again.
  *
  * Cases `RedemptionTransactionTest` pins are not repeated: a rollback by the
  * caller with nothing failing, and a linker that throws.
@@ -431,6 +432,60 @@ final class RedemptionRollbackTest extends LinkingTestCase
 
         self::assertTrue($answer->isRedeemed());
         self::assertFalse($answer->isAdmitted());
+        $this->assertEventSequence(self::eventsOf(self::CREATING));
+    }
+
+    /**
+     * Rows of `[the verb, the table's key, whether it is a serialisation
+     * failure]`: the statement of a standalone `link` the database rolls back
+     * as a deadlock or cannot serialise, those in a savepoint of TR's included.
+     *
+     * @return iterable<string, array{0: string, 1: string, 2: bool}>
+     */
+    public static function provideStandaloneDeadlocks(): iterable
+    {
+        foreach (['a deadlock' => false, 'a serialisation failure' => true] as $failure => $serialization) {
+            yield "{$failure} at the single-use record" => ['insert', 'single_use.table', $serialization];
+            yield "{$failure} at the consumption" => ['update', 'handoff_codes.table', $serialization];
+            yield "{$failure} at the link" => ['insert', 'links.table', $serialization];
+        }
+    }
+
+    /**
+     * Rolls back TR, a standalone `link`'s, as a deadlock or a serialisation
+     * failure, and tries it again: nothing of the first attempt is kept or
+     * reported, the second redeems, and the attempt counted before TR opened is
+     * counted once.
+     *
+     * @param  string  $verb
+     * @param  string  $table
+     * @param  bool  $serialization
+     * @return void
+     */
+    #[DataProvider('provideStandaloneDeadlocks')]
+    public function testAStandaloneLinkDeadlockedIsTriedAgain(string $verb, string $table, bool $serialization): void
+    {
+        $redeeming = $this->flowOf(self::CREATING);
+        $attempts  = $this->attempts(null);
+        $statement = self::onTable($verb, StorageConnection::table($table));
+
+        $this->startRecordingEvents();
+
+        if ($serialization) {
+            $this->failToSerialiseStatement($statement);
+        } else {
+            $this->deadlockStatement($statement);
+        }
+
+        $answer = $this->redeemedAlone($redeeming);
+
+        self::assertTrue($answer->isRedeemed());
+        self::assertFalse($answer->isAdmitted());
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertSame($attempts + 1, $this->attempts(null));
+        self::assertSame(1, Link::query()->count());
+        self::assertNotNull(HandoffCode::query()->sole()->redeemed_at);
+        self::assertSame(1, DB::table(StorageConnection::table('single_use.table'))->where('namespace', HandoffRedemption::NAMESPACE)->count());
         $this->assertEventSequence(self::eventsOf(self::CREATING));
     }
 

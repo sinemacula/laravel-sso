@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -560,7 +561,7 @@ final readonly class DomainService
      */
     private function change(string $tenantId, string $connectionId, \Closure $change): DomainResult
     {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $connectionId, $change): DomainResult {
+        return RetriedTransaction::run(DB::connection(StorageConnection::name()), function () use ($tenantId, $connectionId, $change): DomainResult {
 
             $locked = $this->connections->findForUpdate($tenantId, $connectionId);
 

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Keys\Enums\ExpiryNotice;
@@ -186,7 +187,7 @@ final readonly class ExpiryNotifier
      */
     private function claim(ConnectionKey $key): ExpiryClaim|ExpiryNotice|null
     {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($key): ExpiryClaim|ExpiryNotice|null {
+        return RetriedTransaction::run(DB::connection(StorageConnection::name()), function () use ($key): ExpiryClaim|ExpiryNotice|null {
 
             $connection = Connection::query()->useWritePdo()->whereKey($key->connection_id)->lockForUpdate()->first();
             $locked     = $connection === null ? null : self::lockKey($connection, $key);

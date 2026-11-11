@@ -48,6 +48,7 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
@@ -80,7 +81,10 @@ use Tests\TestCase;
  * with the feature on, the connection and the code alone with it off, with no
  * enforcement statement and no inheritance asked; a code that no longer names
  * the connection or application its locks were taken for; a connection gone
- * before its lock; and an enforcing tenant that moved since the lock.
+ * before its lock; an enforcing tenant that moved since the lock; and a
+ * standalone `link` tried again after a deadlock or a serialisation failure in
+ * a savepoint, at most three times, where a caller's transaction is never
+ * retried in part.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -91,7 +95,7 @@ use Tests\TestCase;
 #[CoversClass(HandoffRecheck::class)]
 final class HandoffRedemptionTest extends TestCase
 {
-    use RecordsEventSequences, RecordsLockOrder, UsesConnections, UsesEnforcement;
+    use FailsDatabaseStatements, RecordsEventSequences, RecordsLockOrder, UsesConnections, UsesEnforcement;
 
     /** @var string The client's verifier (RFC 7636, appendix B). */
     private const string VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
@@ -1310,6 +1314,162 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
+     * Rows of `[how many attempts deadlock]`: each that leaves an attempt to go
+     * through.
+     *
+     * @return iterable<string, array{0: int}>
+     */
+    public static function provideStandaloneDeadlocks(): iterable
+    {
+        yield 'the first' => [1];
+        yield 'all but the last' => [2];
+    }
+
+    /**
+     * A standalone `link` whose transaction the database rolls back as a
+     * deadlock is tried again from its start and redeems: counted against the
+     * limit once, recorded and consumed once, and reported once.
+     *
+     * @param  int  $deadlocks
+     * @return void
+     *
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    #[DataProvider('provideStandaloneDeadlocks')]
+    public function testAStandaloneLinkIsTriedAgainAfterADeadlock(int $deadlocks): void
+    {
+        $this->readyForTheFlowsIdentity();
+
+        $code = $this->issue(Purpose::LINK);
+
+        config()->set('sso.rate_limits.redemption.per_ip', ['max' => 2, 'decay_seconds' => 60]);
+
+        $this->deadlockStatement(self::onTable('update', StorageConnection::table('handoff_codes.table')), $deadlocks);
+        $this->startRecordingEvents();
+
+        $answer = $this->redeemAlone($code);
+
+        self::assertTrue($answer->isRedeemed());
+        self::assertFalse($answer->isAdmitted());
+        self::assertSame($deadlocks, $this->databaseFailuresFired());
+        self::assertSame([HandoffRedeemed::class], array_map(static fn (object $event): string => $event::class, $this->recordedEvents()));
+        self::assertSame('2026-11-01T09:30:00+00:00', $this->stored($code)->redeemed_at?->toIso8601String());
+        self::assertCount(1, $this->singleUseKeys());
+        self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
+
+        self::assertSame(FailureReason::HANDOFF_UNKNOWN, $this->redeemAlone('not-a-code')->reason);
+        self::assertTrue($this->redeemAlone('not-a-code')->isRateLimited());
+    }
+
+    /**
+     * A standalone `link` whose single-use record, in a savepoint of its
+     * transaction, PostgreSQL cannot serialise is tried again from its start
+     * and redeems: Laravel throws that failure from the savepoint in a form it
+     * would not retry, so it is retried only because it is unwrapped.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    public function testAStandaloneLinkIsTriedAgainAfterASerializationFailureInASavepoint(): void
+    {
+        $this->readyForTheFlowsIdentity();
+
+        $code = $this->issue(Purpose::LINK);
+
+        $this->failToSerialiseStatement(self::onTable('insert', StorageConnection::table('single_use.table')));
+        $this->startRecordingEvents();
+
+        $answer = $this->redeemAlone($code);
+
+        self::assertTrue($answer->isRedeemed());
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertSame([HandoffRedeemed::class], array_map(static fn (object $event): string => $event::class, $this->recordedEvents()));
+        self::assertNotNull($this->stored($code)->redeemed_at);
+        self::assertCount(1, $this->singleUseKeys());
+    }
+
+    /**
+     * A standalone `link` whose transaction deadlocks on each of its three
+     * attempts propagates the last, with the code unconsumed and unrecorded,
+     * and nothing reported; the code then redeems.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    public function testAStandaloneLinkGivesUpAfterThreeDeadlocks(): void
+    {
+        $this->readyForTheFlowsIdentity();
+
+        $code = $this->issue(Purpose::LINK);
+
+        $this->deadlockStatement(self::onTable('update', StorageConnection::table('handoff_codes.table')), 4);
+        $this->startRecordingEvents();
+
+        try {
+            $this->redeemAlone($code);
+
+            self::fail('A redemption deadlocked three times was answered.');
+        } catch (QueryException $exception) {
+            self::assertTrue(self::isInjectedFailure($exception));
+        }
+
+        self::assertSame(3, $this->databaseFailuresFired());
+        self::assertNull($this->stored($code)->redeemed_at);
+        self::assertSame([], $this->singleUseKeys());
+        self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
+        $this->assertNoEvents();
+
+        $this->disarmDatabaseFailures();
+
+        self::assertTrue($this->redeemAlone($code)->isRedeemed());
+    }
+
+    /**
+     * Inside the caller's transaction a deadlock propagates from the first
+     * attempt, never retried in part, and the caller's transaction is left to
+     * roll back whole; retried whole, the code redeems.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     * @throws \Throwable
+     */
+    public function testInsideTheCallersTransactionADeadlockPropagates(): void
+    {
+        $this->readyForTheFlowsIdentity();
+
+        $code     = $this->issue(Purpose::LINK);
+        $database = DB::connection(StorageConnection::name());
+
+        $this->deadlockStatement(self::onTable('update', StorageConnection::table('handoff_codes.table')), 2);
+
+        $database->beginTransaction();
+
+        try {
+            $this->redeemAlone($code);
+
+            self::fail('A redemption deadlocked inside the caller\'s transaction was answered.');
+        } catch (\PDOException $exception) {
+            self::assertTrue(self::isInjectedFailure($exception));
+            self::assertSame(1, $database->transactionLevel());
+        } finally {
+            $database->rollBack();
+        }
+
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertNull($this->stored($code)->redeemed_at);
+
+        $this->disarmDatabaseFailures();
+
+        self::assertTrue($this->redeem($code, purpose: Purpose::LINK)->isRedeemed());
+    }
+
+    /**
      * Issue a code through the package's store for the purpose, linked to the
      * identity the test holds, with the challenge of the verifier, expiring a
      * minute from now unless given.
@@ -1372,6 +1532,28 @@ final class HandoffRedemptionTest extends TestCase
 
         return DB::connection(StorageConnection::name())->transaction(
             static fn (): RedemptionResult => $redemption->redeem($purpose, $application, $connection, $code, $verifier, $client, $caller),
+        );
+    }
+
+    /**
+     * Redeem the `link` code as the identity it was started for, with the
+     * client's verifier, in whatever transaction is open.
+     *
+     * @param  string  $code
+     * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
+     *
+     * @throws \Throwable
+     */
+    private function redeemAlone(string $code): RedemptionResult
+    {
+        return app(HandoffRedemption::class)->redeem(
+            Purpose::LINK,
+            'web',
+            $this->connection->id,
+            $code,
+            self::VERIFIER,
+            $this->client,
+            new Caller(new IdentityReference('App\Models\User', '7')),
         );
     }
 
