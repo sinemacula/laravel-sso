@@ -17,6 +17,8 @@ use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Contracts\LinkLimit;
+use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
@@ -45,7 +47,10 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
  * connection, on PostgreSQL and MySQL (SSO-8.4, SSO-8.6, SSO-11.3): against a
  * second racer provisioning the same subject, for the same identity or another;
  * against a connection's disable and a trust change, each ordered both ways;
- * and against an explicit link's creation.
+ * and against an explicit link's creation. And two first sign-ins through two
+ * connections, each provisioning a new identity in a listener transaction that
+ * retries: on MySQL their empty-range locking reads take gap locks, so their
+ * inserts deadlock and the one rolled back retries; both provision.
  *
  * The order is forced with signal files, never with timing, and a barrier that
  * times out fails loudly. Every race runs with each racer plain and inside a
@@ -320,6 +325,48 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
+     * Two first sign-ins through two connections, each listener provisioning a
+     * new identity in a transaction at `REPEATABLE READ` it retries, both
+     * provision once both have read the identity's links: on MySQL the gap
+     * locks of those reads deadlock the inserts, and exactly one retries.
+     *
+     * @return void
+     */
+    public function testTwoFirstSignInsThatDeadlockBothProvisionOnRetry(): void
+    {
+        $first  = $this->connection;
+        $second = $this->makeConnection([
+            'protocol'          => VerifyingDriver::NAME,
+            'enabled'           => true,
+            'settings'          => ['issuer' => VerifyingDriver::ISSUER],
+            'attribute_mapping' => ['email' => 'mail'],
+        ]);
+
+        [$firstState] = $this->startedFlow();
+
+        $this->connection = $second;
+
+        [$secondState] = $this->startedFlow();
+
+        $this->connection = $first;
+
+        $outcomes = $this->inProcesses([
+            fn (): array => $this->retried($firstState, $first, $this->person, 0, 1),
+            fn (): array => $this->retried($secondState, $second, $this->other, 1, 0),
+        ]);
+
+        $reported = self::reported(...$outcomes);
+
+        foreach ($outcomes as $outcome) {
+            self::assertSame('created', $outcome['helper'] ?? null, $reported);
+            self::assertSame('completed', $outcome['completion'] ?? null, $reported);
+        }
+
+        self::assertSame(2, Link::query()->count(), $reported);
+        self::assertSame(DB::connection()->getDriverName() === 'mysql' ? 3 : 2, array_sum(array_column($outcomes, 'attempts')), $reported);
+    }
+
+    /**
      * The helper made the link: the explicit link was refused, or failed to
      * serialise, and the completion resolved to the helper's identity.
      *
@@ -590,6 +637,94 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
             'completion' => $completion->status->value,
             'reason'     => $completion->reason?->value,
             'code'       => $completion->handoff?->code->reveal(),
+        ];
+    }
+
+    /**
+     * In a forked process: complete the flow on the connection, its listener
+     * provisioning the identity in a transaction at `REPEATABLE READ` that it
+     * retries up to three times, and the link limit, asked once the identity's
+     * links are read, waiting the first time for the peer to have read too.
+     * Report what the helper last answered, how often the listener tried, and
+     * how the completion ended.
+     *
+     * @param  string  $state
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  int  $mine
+     * @param  int  $peer
+     * @return array<string, mixed>
+     */
+    private function retried(string $state, Connection $connection, IdentityReference $identity, int $mine, int $peer): array
+    {
+        $this->connection = $connection;
+        $status           = null;
+        $attempts         = 0;
+        $read             = "{$this->outcomes}/read-{$mine}";
+        $peerRead         = "{$this->outcomes}/read-{$peer}";
+
+        $wait = static function () use ($read, $peerRead): void {
+            touch($read);
+            self::await($peerRead);
+        };
+
+        $this->app?->instance(LinkLimit::class, new class ($wait) implements LinkLimit {
+            /** @var bool Whether the limit has waited for the peer. */
+            private bool $waited = false;
+
+            /**
+             * Constructor.
+             *
+             * @param  \Closure(): void  $wait
+             */
+            public function __construct(
+
+                /** Signals this racer has read, and waits for the peer to have read too. */
+                private readonly \Closure $wait,
+            ) {}
+
+            /**
+             * Wait, the first time, for both racers to have read, and allow one
+             * link.
+             *
+             * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+             * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
+             * @return int
+             */
+            #[\Override]
+            public function maxLinks(IdentityReference $identity, SsoConnection $connection): int
+            {
+                unset($identity, $connection);
+
+                if (!$this->waited) {
+                    $this->waited = true;
+
+                    ($this->wait)();
+                }
+
+                return 1;
+            }
+        });
+
+        Event::listen(ResultUnlinked::class, function (ResultUnlinked $event) use ($identity, &$status, &$attempts): void {
+
+            $database = DB::connection(StorageConnection::name());
+
+            $database->statement(self::repeatableReadStatement($database->getDriverName()));
+
+            $database->transaction(function () use ($event, $identity, &$status, &$attempts): void {
+                $attempts++;
+                $status = app(ProvisioningHelper::class)->link($event->grant, $event->result, $identity, Clients::browser())->status->value;
+            }, 3);
+        });
+
+        $completion = $this->completion($state);
+
+        return [
+            'helper'     => $status,
+            'attempts'   => $attempts,
+            'completion' => $completion->status->value,
+            'reason'     => $completion->reason?->value,
         ];
     }
 

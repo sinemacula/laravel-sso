@@ -132,6 +132,20 @@ Take the package's locks before your own guards, in the same relative order as y
 identity needs no guard; a listener that locks shared rows of yours before it calls the helper risks a deadlock against
 a concurrent admission.
 
+### Retrying after a deadlock
+
+On MySQL's InnoDB at its default `REPEATABLE READ`, the helper's locking reads of a new identity's links lock the gap
+where its rows would go, so two first sign-ins at once can deadlock, and the database rolls one back. Retry the
+listener's whole transaction, as `DB::connection(StorageConnection::name())->transaction($work, 3)` does. The grant can
+be claimed again only once the package has seen that whole transaction roll back:
+
+- a claim stays spent when no transactions manager is bound, since the package then sees no transaction, and when its
+  commit failed on Laravel 12, which does not report it;
+- any refused call, a reentrant one or a second listener's included, spends the grant, so the original attempt cannot be
+  retried after it.
+
+Running the listener's transaction at `READ COMMITTED` takes no such gap locks, and is recommended.
+
 ## The helper
 
 `ProvisioningHelper::link()` takes the grant, the exact result the event carried and the new identity, and answers a
@@ -152,6 +166,9 @@ a concurrent admission.
 The grant allows one use, claimed before anything else is attempted:
 
 - A refused attempt cannot be repeated, for this identity or another.
+- A claim is given back only when the transaction it was made in rolls back as a whole: your outermost transaction on
+  the storage connection, or the helper's own when you have none. A commit, or a rollback of a savepoint inside it,
+  leaves the grant used.
 - A second listener, and a call made from inside the helper's own work, get `grant_invalid`. Every listener shares the
   one grant, so register one listener that provisions.
 - The grant is bound to the exact result object, not to its fields: a result rebuilt from the same values is
@@ -224,5 +241,5 @@ reading it. Everything else follows its transaction's commit, so `LinkCreated` w
 and never comes on its rollback. `ResultVerified` is reported once per verified response.
 
 On PostgreSQL under `REPEATABLE READ`, a listener's transaction whose snapshot predates a change it then waits on fails
-to serialise (SQLSTATE `40001`) rather than refusing. The error propagates as a server error, and the person starts
-again.
+to serialise (SQLSTATE `40001`) rather than refusing. Unless the listener retries its whole transaction, the error
+propagates as a server error, and the person starts again.
