@@ -9,16 +9,10 @@ use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
 
 /**
- * Runs the registered configuration checks (SSO-12.3): at boot, and as a worker
- * or scheduler command starts, where any problem stops the application or the
- * command with an `InvalidConfigurationException`, and in `sso:check`, which
- * lists them.
+ * Runs the registered configuration checks at boot, as worker commands start,
+ * and for `sso:check`.
  *
- * Each check is resolved from the container when the configuration is checked,
- * never before, so registering a check costs nothing until then, and a check
- * that cannot be resolved, or is not a `ConfigurationCheck`, is itself a
- * problem rather than a check skipped. A check that does not apply (what it
- * covers is off) is not run.
+ * A check that cannot be resolved is reported as a problem, never skipped.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,8 +35,7 @@ final readonly class ConfigurationChecker
     ) {}
 
     /**
-     * What each check found, by subject: `null` for a check that does not
-     * apply, otherwise its problems, `[]` for none.
+     * Each check's problems by subject; `null` for a check that does not apply.
      *
      * @return array<string, ?list<string>>
      */
@@ -109,8 +102,7 @@ final readonly class ConfigurationChecker
     }
 
     /**
-     * The check the class names, or the problem that stops it being used: it
-     * cannot be built, or it is not a check.
+     * The check the class names, or why it cannot be used.
      *
      * @param  string  $class
      * @return \SineMacula\Laravel\Sso\Contracts\ConfigurationCheck|string
@@ -127,8 +119,7 @@ final readonly class ConfigurationChecker
     }
 
     /**
-     * Run every one of the check's checks, and return the problem each that
-     * failed found, in order.
+     * Run every closure, so one run reports every problem.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\ConfigurationCheck  $check
      * @return list<string>

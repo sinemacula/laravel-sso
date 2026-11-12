@@ -10,11 +10,8 @@ use SineMacula\Laravel\Sso\Config\Enums\Feature;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[features]`: the switches in `sso.features`. It always applies, since it is
- * what decides whether anything else does: each switch must be true or false,
- * the block may hold no switch the package does not have (a misspelt one would
- * leave the feature meant off), and a feature that is on needs the protocol it
- * runs over (see `Feature::needs()`).
+ * Checks the switches in `sso.features`, refusing unknown keys so a misspelt
+ * switch never silently leaves a feature off.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -33,7 +30,7 @@ final readonly class FeaturesCheck implements ConfigurationCheck
     ) {}
 
     /**
-     * The switches are always checked.
+     * Always applies, since the switches decide whether anything else does.
      *
      * @return bool
      */
@@ -90,8 +87,7 @@ final readonly class FeaturesCheck implements ConfigurationCheck
     }
 
     /**
-     * The switch: true or false, and, when on, with a protocol it runs over on
-     * too.
+     * The switch is a boolean and, when on, has a protocol it needs on too.
      *
      * @param  \SineMacula\Laravel\Sso\Config\Enums\Feature  $feature
      * @return void

@@ -7,20 +7,8 @@ namespace SineMacula\Laravel\Sso\Connections;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Finds a tenant's connections for the management helpers (SSO-1.2, SSO-2.11),
- * always on the write connection (SSO-11.3), so a change is never judged
- * against a lagging replica.
- *
- * Every lookup is scoped to a tenant: a connection of another tenant is not
- * found, exactly as an unknown one is not, so a helper never acts on, or
- * reveals, another tenant's connection. The tenant is matched exactly, whatever
- * the column's collation: the statement narrows by `tenant_id`, and a row whose
- * recorded tenant id is not byte for byte the one given is treated as absent,
- * since a collation such as MySQL's default `_ci` counts `acme`, `Acme` and
- * `acme ` as equal. An id that cannot be a connection's (empty, or longer than
- * a ULID) finds nothing without a query. The tenant id is the application's, so
- * an empty or overlong one is an `InvalidArgumentException`. A database error
- * propagates (SSO-11.4).
+ * Finds a tenant's connections on the write connection, treating another
+ * tenant's connection exactly as an unknown one.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,9 +38,8 @@ final readonly class ConnectionFinder
     }
 
     /**
-     * The tenant's connection with the id, locked for update until the
-     * transaction the caller has open on the storage connection ends, or `null`
-     * when it has none.
+     * The tenant's connection with the id, locked for update in the caller's
+     * transaction, or `null` when it has none.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -83,9 +70,7 @@ final readonly class ConnectionFinder
     }
 
     /**
-     * The tenant's connection with the id, locked or not. A row of a tenant the
-     * collation merely counts as equal is not found; when locked, it stays
-     * locked until the caller's transaction ends, which changes nothing.
+     * The tenant's connection with the id, locked or not.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -110,9 +95,8 @@ final readonly class ConnectionFinder
     }
 
     /**
-     * Whether the connection records exactly the tenant id. The statement that
-     * found it compares under the column's collation, which may count distinct
-     * ids, such as `acme` and `Acme`, as equal.
+     * Byte-exact tenant match, since a case-insensitive collation such as
+     * MySQL's `_ci` counts `acme` and `Acme` as equal.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $tenantId

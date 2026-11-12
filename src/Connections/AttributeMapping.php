@@ -9,31 +9,10 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\OidcDriver;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 
 /**
- * A connection's attribute mapping (SSO-2.10): each attribute of the result,
- * its target, by the SAML attribute or OIDC claim it is read from, its source.
+ * A connection's attribute mapping: each result attribute keyed by the SAML
+ * attribute or OIDC claim it is read from.
  *
- * The standard targets are `email`, `given_name`, `family_name`, `display_name`
- * and `groups`. A custom target is a lower-case name (a letter, then up to 63
- * letters, digits or underscores), and a mapping names one only when the
- * application declared it in `sso.mapping.custom_attributes`
- * (`MappingLimits::customAttributes()`): any other is `not_allowed`, so a
- * tenant administrator never invents a key the application does not read. A
- * target never names one of the result's own fields (its issuer, subject,
- * connection, tenant, authentication context, session or identity), and, over
- * OIDC, a source never names a protocol value or a token, so a mapping can
- * neither forge what the package verified nor carry a credential. A stored
- * mapping naming a custom target the application has since stopped declaring
- * maps nothing to it.
- *
- * Mapped values are profile data: each is cut to
- * `MappingLimits::maxValueLength()` characters, a list keeps at most
- * `MappingLimits::maxValues()` strings, groups are passed on as a list without
- * interpretation, and nothing mapped ever selects an identity (SSO-8.2) or
- * gives the email a link is made by (SSO-8.8).
- *
- * Built from what was given or stored with `fromArray()`, which never throws on
- * bad input: `violations()` reports every problem at `attribute_mapping.` and
- * the target, never echoing a source.
+ * Mapped values are profile data only and never select an identity.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,7 +25,7 @@ final readonly class AttributeMapping
     /** @var list<string> The standard targets, in the order the result lists them. */
     public const array STANDARD_TARGETS = ['email', 'given_name', 'family_name', 'display_name', 'groups'];
 
-    /** @var list<string> The targets that would name one of the result's own fields (SSO-2.10). */
+    /** @var list<string> The targets that would name one of the result's own fields. */
     public const array RESERVED_TARGETS = [
         'issuer',
         'subject',
@@ -105,7 +84,7 @@ final readonly class AttributeMapping
     /** @var int The longest source, in bytes. */
     public const int MAX_SOURCE_LENGTH = 1024;
 
-    /** @var string A custom target: a lower-case letter, then up to 63 lower-case letters, digits or underscores. */
+    /** @var string A custom target's form. */
     private const string CUSTOM_TARGET = '/^[a-z][a-z0-9_]{0,63}$/D';
 
     /** @var string The target whose values are always a list. */
@@ -149,8 +128,8 @@ final readonly class AttributeMapping
     ) {}
 
     /**
-     * The default mapping of the protocol: the OIDC standard claims, or the
-     * common SAML attributes by their OIDs; none for another protocol.
+     * The protocol's default mapping; none for a protocol the package does not
+     * ship.
      *
      * @param  string  $protocol
      * @return array<string, string>
@@ -161,7 +140,7 @@ final readonly class AttributeMapping
     }
 
     /**
-     * The mapping the values give, whatever their shape.
+     * Never throws on bad input; `violations()` reports it.
      *
      * @param  string  $protocol
      * @param  array<array-key, mixed>  $mapping
@@ -174,7 +153,7 @@ final readonly class AttributeMapping
     }
 
     /**
-     * The mapping to store: each target by its source.
+     * The mapping to store.
      *
      * @return array<array-key, mixed>
      */
@@ -184,8 +163,8 @@ final readonly class AttributeMapping
     }
 
     /**
-     * Whether the name is of a custom target's form and names neither a
-     * standard target nor one of the result's own fields.
+     * Whether the name has a custom target's form and is neither standard nor
+     * reserved.
      *
      * @param  string  $target
      * @return bool
@@ -196,10 +175,8 @@ final readonly class AttributeMapping
     }
 
     /**
-     * Every problem with the mapping, target by target in the order given: a
-     * target that is reserved or malformed, then a custom target the
-     * application did not declare (`not_allowed`), then a source that cannot be
-     * read from.
+     * Every problem with the mapping, in the order given, never echoing a
+     * source.
      *
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
      *
@@ -222,16 +199,8 @@ final readonly class AttributeMapping
     }
 
     /**
-     * The profile data the mapping reads from validated claims or attributes,
-     * for each target whose source is present and holds a string.
-     *
-     * A custom target the application does not declare now keeps nothing. A
-     * standard target other than `groups` takes the string, or the first string
-     * of a list. `groups` and custom targets keep a string as it is (`groups`
-     * as a list of one), or a list of at most `MappingLimits::maxValues()`
-     * strings in order, anything not a string dropped. Every string is cut to
-     * `MappingLimits::maxValueLength()` characters. A target with nothing to
-     * keep is left out.
+     * The capped profile data read from validated claims or attributes; a
+     * custom target no longer declared keeps nothing.
      *
      * @param  array<string, mixed>  $values
      * @return array<string, list<string>|string>
@@ -266,9 +235,7 @@ final readonly class AttributeMapping
     }
 
     /**
-     * Why the target cannot be mapped to, or `null` when it can: one of the
-     * result's own fields is `reserved`, and a name not of a target's form,
-     * which every standard target has, is `invalid_format`.
+     * Why the target cannot be mapped to, or `null` when it can.
      *
      * @param  string  $target
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
@@ -282,11 +249,8 @@ final readonly class AttributeMapping
     }
 
     /**
-     * `null` for a standard target or one the application declares, and
-     * `not_allowed` for any other: an undeclared custom target, and a reserved
-     * or malformed name too, which `target()` reports first when a mapping is
-     * judged. The declared keys are all of a custom target's form, so nothing
-     * this admits is reserved or malformed.
+     * `not_allowed` unless the target is standard or declared by the
+     * application.
      *
      * @param  string  $target
      * @param  list<string>  $declared
@@ -298,9 +262,8 @@ final readonly class AttributeMapping
     }
 
     /**
-     * Why the source cannot be read from, or `null` when it can: a name of at
-     * most 1024 bytes with no control character that, over OIDC, is not a
-     * protocol value or a token.
+     * Why the source cannot be read from, or `null`; over OIDC it must not be a
+     * protocol value or token.
      *
      * @param  mixed  $source
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
@@ -317,8 +280,8 @@ final readonly class AttributeMapping
     }
 
     /**
-     * The value a target keeps of what its source holds, or `null` when it
-     * keeps nothing.
+     * The capped value a target keeps: the first string for a standard target
+     * other than `groups`, else a string or list. `null` for none.
      *
      * @param  string  $target
      * @param  mixed  $value
@@ -346,8 +309,7 @@ final readonly class AttributeMapping
     }
 
     /**
-     * The strings a value holds: the value itself when it is one, the strings
-     * of a list in order, or none.
+     * The value as a list of strings, dropping anything else.
      *
      * @param  mixed  $value
      * @return list<string>

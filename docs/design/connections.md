@@ -47,10 +47,11 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
 - `has_completed_sign_in` has exactly one writer: the redemption of a `sign_in` handoff code, by the package's own
   redemption or an adapter's acknowledgement in its redemption transaction. `link`, `reauthenticate`, an issued but
   unredeemed code and an unlinked handoff never set it.
-- `links_version` has exactly one writer: `Links\LinkStore::create()`, which raises it by one, under the connection's
-  lock, for each link it inserts. It means nothing on its own; it makes a link's insert also write the connection's row,
-  so a PostgreSQL `REPEATABLE READ` transaction that locks the row after the creation commits fails to serialise rather
-  than go on without the link (see `flows.md`'s lock order).
+- `links_version` is raised by one, under the connection's lock, whenever a link or reservation of the connection is
+  written: by `Links\LinkStore` (create, confirm, suspend), `Links\LinkReservations`, `Links\ReservationWithdrawal`
+  and `Links\LinkService::delete()`. It means nothing on its own; it makes a link's write also write the connection's
+  row, so a PostgreSQL `REPEATABLE READ` transaction that locks the row after the write commits fails to serialise
+  rather than go on without it (see `flows.md`'s lock order).
 - `flows_version` has exactly two writers, each raising it by one under the connection's lock:
   `Flows\AuthorizationRequestService` for each authorisation request it stores, and `Handoffs\DatabaseHandoffStore` for
   each handoff code it issues. It means nothing on its own; it makes either insert also write the connection's row, so

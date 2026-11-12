@@ -10,19 +10,7 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[applications]`: the applications in `sso.applications`, while the package
- * is in use, each named by a lower-case key.
- *
- * Each application is judged by `Applications\Application::fromSettings()`, the
- * one way the flows judge it too: exactly one redirect URI, compared later as
- * an exact string (see `UrlSetting::redirect()`); whether it allows sign-in
- * through an external provider (off unless set); whether the handoff code is
- * delivered in the fragment (the default) or the query; whether it offers
- * discovery and the fallback URL a miss leads to (required while discovery is
- * on for it and the `discovery` feature is on); whether it accepts unlinked
- * handoffs (off unless set); and the handoff code's lifetime (1 to 300 seconds,
- * 60 by default). Any other key is refused, so a misspelt setting is never
- * silently left at its default.
+ * Checks each application in `sso.applications` the way the flows read it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,7 +29,7 @@ final readonly class ApplicationsCheck implements ConfigurationCheck
     ) {}
 
     /**
-     * The applications are checked while the package is in use.
+     * Applies while the package is in use.
      *
      * @return bool
      */

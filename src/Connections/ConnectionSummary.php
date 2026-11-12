@@ -10,16 +10,8 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Secrets\MaskedSecret;
 
 /**
- * What a management helper returns for a connection (SSO-2.5, SSO-2.11): its
- * id, tenant and protocol, its display name, its settings, each secret its
- * protocol declares masked as `Secrets\MaskedSecret` (set or not, and nothing
- * of it), its attribute mapping, whether it is enabled, whether a sign-in
- * through it has been completed, whether it is usable now (SSO-2.1), and when
- * it was created and last changed.
- *
- * It never holds a secret or a ciphertext: the settings hold none, and the
- * secrets are read by name alone, without decrypting one. A connection whose
- * protocol is not registered declares no secrets and is never usable.
+ * What a management helper returns for a connection, with each secret masked
+ * and never decrypted.
  *
  * @api
  *
@@ -73,7 +65,7 @@ final readonly class ConnectionSummary implements \JsonSerializable
         /** Whether a sign-in through it has been completed. */
         public bool $hasCompletedSignIn,
 
-        /** Whether it may be used now: enabled, its protocol available and its settings complete. */
+        /** Whether it is enabled, complete and its protocol available. */
         public bool $usable,
 
         /** When it was created, in UTC. */
@@ -84,8 +76,7 @@ final readonly class ConnectionSummary implements \JsonSerializable
     ) {}
 
     /**
-     * The summary of the connection, its secrets masked by the names its
-     * protocol declares and its usability read from the protocols.
+     * An unregistered protocol declares no secrets and is never usable.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\ProtocolManager  $protocols

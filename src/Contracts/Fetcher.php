@@ -8,29 +8,10 @@ use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 
 /**
- * Fetcher contract (SSO-2.9): every outbound request to an address an
- * administrator entered, or that metadata or discovery supplied (metadata,
- * discovery, JWKS, token and UserInfo endpoints), goes through it.
+ * Sends every outbound request to an administrator- or provider-supplied
+ * address.
  *
- * Whatever its transport, an implementation:
- *
- * - allows only `https`, and verifies the server's certificate and host name
- *   even though it connects to a checked address;
- * - resolves the host, refuses loopback, private, link-local, unique-local,
- *   multicast and cloud metadata addresses (IPv4 and IPv6, mapped forms
- *   included), and any range the application adds, and connects to the address
- *   it checked, so a second resolution cannot change it;
- * - follows no redirect for a request that carries a credential, and checks
- *   each redirect of any other request the same way;
- * - caps the time taken, and the response's size: at the request's own cap when
- *   it carries one (`FetchRequest::$maxBytes`, a metadata request's), and at
- *   the configured cap otherwise, stopping the transfer once it is passed;
- * - sends the request's one credential as its kind says, and no other.
- *
- * A refused or failed request is a result (`fetch_refused`, `fetch_failed`),
- * never an exception, and its detail goes only to the logs, without the
- * request's form, credential or the response's body. An application may bind
- * its own fetcher (to use an egress proxy, say) that keeps these rules.
+ * An implementation must keep the rules in `docs/design/outbound-requests.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,7 +19,7 @@ use SineMacula\Laravel\Sso\Fetching\FetchResult;
 interface Fetcher
 {
     /**
-     * Send the request, or refuse it.
+     * Answer a refusal or failure as a result, never an exception.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return \SineMacula\Laravel\Sso\Fetching\FetchResult

@@ -7,17 +7,8 @@ namespace SineMacula\Laravel\Sso\Connections;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 
 /**
- * The checks every settings class and the management helpers judge a value by,
- * so the SAML settings, the OIDC settings, the attribute mapping and the
- * helpers refuse alike: a string of bounded length with no control characters,
- * an `https` URL, a boolean, a value from an allow-list, and a list.
- *
- * Each check answers the code of the first problem it finds, or `null` for a
- * value it accepts; it never throws and never keeps the value. `at()` turns the
- * answer into the violation at a setting's path, and `path()` builds that path
- * so a key that cannot be named (empty, overlong or carrying a control
- * character) is reported at its parent instead. `isSame()` tells whether a
- * stored value is the one given, whatever the key order of a map within it.
+ * Shared value checks, so every settings class and helper refuses alike; each
+ * answers the first problem's code or `null`, and never throws.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,7 +29,7 @@ final class SettingRules
     /** @var string The start of a URL with an authority: a scheme, then `://`. */
     private const string AUTHORITY = '#^[A-Za-z][A-Za-z0-9+.-]*://#';
 
-    /** @var string A URL's host: a bracketed IP literal, or labels of letters, digits and hyphens joined by dots. */
+    /** @var string A URL's host: a bracketed IP literal or dotted DNS labels. */
     private const string HOST = '/^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*)$/D';
 
     /**
@@ -47,9 +38,8 @@ final class SettingRules
     private function __construct() {}
 
     /**
-     * A non-empty string of at most the bytes given, valid UTF-8 with no
-     * control character and, unless allowed, no whitespace. The value may be a
-     * secret, so a trace shows it redacted.
+     * A non-empty, bounded UTF-8 string with no control character and, unless
+     * allowed, no whitespace.
      *
      * @param  mixed  $value
      * @param  int  $maxBytes
@@ -73,10 +63,8 @@ final class SettingRules
     }
 
     /**
-     * An absolute `https` URL with a host, no userinfo and no fragment, of at
-     * most `MAX_URL_LENGTH` bytes, with a query only when one is allowed. A
-     * well-formed URL of another scheme is `NOT_HTTPS`; anything else that is
-     * not such a URL is `INVALID_FORMAT`.
+     * An absolute `https` URL with a host, no userinfo and no fragment, and a
+     * query only when allowed.
      *
      * @param  mixed  $value
      * @param  bool  $query
@@ -129,7 +117,7 @@ final class SettingRules
     }
 
     /**
-     * A list: an array whose keys are 0, 1, 2 and on, in order.
+     * A list, as `array_is_list()` judges one.
      *
      * @param  mixed  $value
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
@@ -140,11 +128,7 @@ final class SettingRules
     }
 
     /**
-     * The problems with a list whose entries each come from an allow-list:
-     * `REQUIRED` at the list when it is empty and must not be, and at each
-     * entry `INVALID_TYPE` for one that is not a string, `NOT_ALLOWED` for one
-     * outside the allow-list, and `DUPLICATE` for one that repeats an earlier
-     * entry.
+     * The problems with a list whose entries each come from an allow-list.
      *
      * @param  string  $path
      * @param  mixed  $value
@@ -194,10 +178,8 @@ final class SettingRules
     }
 
     /**
-     * The dotted path of the key under the parent (the key alone at the top),
-     * or the parent itself when the key cannot be named: empty, carrying a
-     * control character, or making a path longer than a violation holds. At the
-     * top, such a key is reported at `settings`.
+     * The dotted path of the key, or the parent (`settings` at the top) when
+     * the key is empty, unprintable or makes the path too long.
      *
      * @param  ?string  $parent
      * @param  int|string  $key
@@ -216,10 +198,8 @@ final class SettingRules
     }
 
     /**
-     * Whether two values are the same, each map in them compared whatever its
-     * key order and each list in order, so a map given again in another order,
-     * or read back from a native JSON column that orders keys its own way, is
-     * the value stored.
+     * Compare maps regardless of key order, since a native JSON column may
+     * reorder keys; lists are compared in order.
      *
      * @param  mixed  $one
      * @param  mixed  $other
@@ -242,8 +222,7 @@ final class SettingRules
     }
 
     /**
-     * The parts of a URL with a scheme and a host of letters, digits, hyphens
-     * and dots or a bracketed IP literal, or `null` for anything else.
+     * The parts of a URL with a scheme and a valid host, or `null`.
      *
      * @param  string  $value
      * @return ?array{scheme: string, host: string, port?: int<0, 65535>, user?: string, pass?: string, path?: string, query?: string, fragment?: string}
@@ -260,8 +239,7 @@ final class SettingRules
     }
 
     /**
-     * The value with every map in it ordered by key, each list kept in its
-     * order.
+     * The value with every map in it ordered by key.
      *
      * @param  mixed  $value
      * @return mixed

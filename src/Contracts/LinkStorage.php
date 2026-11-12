@@ -15,33 +15,10 @@ use SineMacula\Laravel\Sso\Links\LinkReservations;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 
 /**
- * Link storage contract (SSO-8.2 to SSO-8.8, `docs/design/linking.md`): a
- * `Contracts\Linker` whose resolution and whose writes are one store, in the
- * caller's transaction on the storage connection. A link written through it is
- * a link its `resolve()` answers, so nothing is ever written that the resolver
- * ignores.
+ * A `Contracts\Linker` whose resolution and writes are one store, so nothing is
+ * written that the resolver ignores.
  *
- * It covers what mutation and resolution must agree on:
- *
- * - ownership: `holdings()` counts what an identity holds in a connection by a
- *   locking read, and `create()` keeps the limit and the subject's uniqueness;
- * - generations: `resolve()` answers the id of the link holding a subject, and
- *   a link removed and made again has another, so continuity is compared by it;
- * - reservations: `reservations()` answers the one writer of a reserved row;
- * - confirmation and suspension: `confirm()`, `suspend()` and
- *   `revokeSessions()`, each inside the caller's transaction, under the
- *   connection's lock.
- *
- * `Links\LinkStore` implements it. A wrapper implements it by delegating every
- * method to the store it wraps, adding what it needs around them;
- * `Links\NoLinks` does not, since it links nothing. The `link` purpose, the
- * provisioning helper and linking by a verified domain each ask for it
- * (`Links\LinkStorageBinding`) and refuse with a `LogicException` before
- * writing anything when the bound `Contracts\Linker` does not implement it, and
- * the boot check reports it while the `domain_linking` feature is on.
- *
- * An implementation keeps nothing of one call for the next (SSO-11.2) and lets
- * a database error propagate.
+ * Every write runs in the caller's transaction on the storage connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,8 +26,7 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 interface LinkStorage extends Linker
 {
     /**
-     * The number of links the identity holds in the connection, by a locking
-     * read: active and suspended ones, and reserved ones that have not expired.
+     * Count active, suspended and unexpired reserved links by a locking read.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -59,9 +35,8 @@ interface LinkStorage extends Linker
     public function holdings(string $connectionId, IdentityReference $identity): int;
 
     /**
-     * Make an active link of the subject, through the connection, to the
-     * identity, unless the subject is linked already or the identity holds as
-     * many links in the connection as it may.
+     * Link the subject to the identity unless the subject is linked already or
+     * the identity is at its link limit.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
@@ -89,8 +64,8 @@ interface LinkStorage extends Linker
     ): LinkCreation;
 
     /**
-     * Clear the link's suspension and verified domain provenance for good, once
-     * the person confirmed it, under the locks of the redemption.
+     * Clear the link's suspension and domain provenance for good, under the
+     * redemption's locks.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $locked
      * @param  string  $linkId
@@ -102,8 +77,8 @@ interface LinkStorage extends Linker
     public function confirm(SsoConnection $locked, string $linkId, ClientContext $client, ?string $application = null, ?RequestReference $reference = null): void;
 
     /**
-     * Store the locked link's suspension, latched, raise the connection's links
-     * version and report it.
+     * Latch the locked link's suspension and raise the connection's links
+     * version.
      *
      * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -116,8 +91,7 @@ interface LinkStorage extends Linker
     public function suspend(string $linkId, IdentityReference $identity, string $connectionId, string $tenantId, string $protocol, ClientContext $client): void;
 
     /**
-     * Revoke the sessions established through the locked link, in the caller's
-     * transaction. Asking twice for one link is safe.
+     * Revoke the sessions established through the locked link, idempotently.
      *
      * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity

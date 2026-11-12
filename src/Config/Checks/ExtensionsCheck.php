@@ -14,17 +14,8 @@ use SineMacula\Laravel\Sso\Exceptions\MissingExtensionException;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\ElementRegistries;
 
 /**
- * `[extensions]`: the PHP extensions and functions the package needs, while it
- * is in use. Composer requires them, but an install that ignored the platform,
- * or a runtime built without one, would otherwise fail on the first request
- * that reached for it; this names the missing one at boot instead.
- *
- * While the `saml2` feature is on, or its switch is malformed, it also checks
- * that the XML library will load each XML provider package's element registry
- * exactly once. The Composer plugin
- * `simplesamlphp/composer-xmlprovider-installer` puts them in place; an install
- * that skipped it would otherwise fail on the first SAML message parsed. It
- * reads files only.
+ * Checks at boot for the PHP extensions the package needs and, for SAML, the
+ * XML element registries, which an install can skip despite Composer.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,10 +37,10 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
     /** @var string The Composer package type whose element registries the XML library loads. */
     private const string XML_PROVIDER = 'simplesamlphp-xmlprovider';
 
-    /** @var string A file name `ElementRegistry` loads, as it matches one. */
+    /** @var string A file name `ElementRegistry` loads. */
     private const string LOADED_REGISTRY = '/^element\.registry\.(.*)\.php$/';
 
-    /** @var string How to put the registries in place, ending each registry problem. */
+    /** @var string The fix that ends each registry problem. */
     private const string REINSTALL = 'run `composer install` with plugins enabled and `simplesamlphp/composer-xmlprovider-installer`'
         . ' allowed in `allow-plugins`, into a fresh vendor directory if the plugin has run before.';
 
@@ -62,10 +53,10 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
     /** @var string The problem of a package's registry that cannot be read. */
     private const string UNREADABLE = 'The XML element registry of `%s` cannot be read; ' . self::REINSTALL;
 
-    /** @var string The problem of a registry file the library loads that is no installed package's. */
+    /** @var string The problem of a loaded registry file no installed package owns. */
     private const string STALE = 'The SAML library loads the XML element registry `%s`, which is no installed package\'s; ' . self::REINSTALL;
 
-    /** @var string The problem of a registry file the library loads that cannot be read. */
+    /** @var string The problem of a loaded registry file that cannot be read. */
     private const string UNREADABLE_LOADED = 'The XML element registry `%s` the SAML library loads cannot be read; ' . self::REINSTALL;
 
     /** @var \Closure(string): bool Whether an extension is loaded. */
@@ -74,7 +65,7 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
     /** @var \Closure(string): bool Whether a function exists. */
     private \Closure $exists;
 
-    /** @var \Closure(): array<string, string> Each XML provider package's element registry file, by package. */
+    /** @var \Closure(): array<string, string> Each XML provider's registry file, by package. */
     private \Closure $registries;
 
     /** @var \Closure(): string The directory the XML library loads element registries from. */
@@ -94,16 +85,16 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
         /** The configuration that says what is in use. */
         private Repository $config,
 
-        // Not promoted: `extension_loaded()` stands in when none is given
+        // Not promoted: defaults to `extension_loaded()`
         ?\Closure $loaded = null,
 
-        // Not promoted: `function_exists()` stands in when none is given
+        // Not promoted: defaults to `function_exists()`
         ?\Closure $exists = null,
 
-        // Not promoted: the installed registries stand in when none is given
+        // Not promoted: defaults to the installed registries
         ?\Closure $registries = null,
 
-        // Not promoted: the library's directory stands in when none is given
+        // Not promoted: defaults to the library's directory
         ?\Closure $registryDirectory = null,
     ) {
         $this->loaded            = $loaded            ?? extension_loaded(...);
@@ -113,7 +104,7 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
     }
 
     /**
-     * The extensions are checked while the package is in use.
+     * Applies while the package is in use.
      *
      * @return bool
      */
@@ -124,9 +115,8 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
     }
 
     /**
-     * One check per extension, then the IDNA conversion domains are normalised
-     * with (SSO-3.1), from `ext-intl` or `symfony/polyfill-intl-idn`, then,
-     * while SAML is on, the XML element registries.
+     * Each extension, then `idn_to_ascii()`, then the registries while SAML is
+     * requested.
      *
      * @return list<\Closure(): mixed>
      */
@@ -161,10 +151,8 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
     }
 
     /**
-     * Every XML provider package's registry is loaded by the XML library
-     * exactly once, and nothing else is: a missing one leaves its elements
-     * unparsed, and one loaded twice, or beside a stale copy, is merged into
-     * lists where the library expects class names.
+     * Each registry must load exactly once: a duplicate or stale copy is merged
+     * into lists where the library expects class names.
      *
      * @return void
      *
@@ -198,9 +186,8 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
     }
 
     /**
-     * The contents of each registry file in the directory, by file name, found
-     * as `ElementRegistry` finds them; a directory that does not exist holds
-     * none.
+     * The contents of each registry file `ElementRegistry` would load, by file
+     * name.
      *
      * @param  string  $directory
      * @return array<string, string>
@@ -228,9 +215,7 @@ final readonly class ExtensionsCheck implements ConfigurationCheck
     }
 
     /**
-     * Each installed XML provider package's `classes/element.registry.php`, by
-     * package; a package without one has nothing for the plugin to put in
-     * place.
+     * Each installed XML provider's `classes/element.registry.php`, by package.
      *
      * @return array<string, string>
      */

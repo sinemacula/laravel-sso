@@ -7,13 +7,8 @@ namespace SineMacula\Laravel\Sso\Config;
 use Illuminate\Contracts\Config\Repository;
 
 /**
- * Reads a numeric package setting the one way every settings class reads one:
- * an integer, or the canonical decimal string `env()` returns for one (no plus
- * sign, padding, whitespace, exponent or fraction, and nothing past the integer
- * range), within its range. Anything else fails closed with an
- * `InvalidArgumentException` naming the key and the range. A reader whose
- * message names a guard, or another setting, parses with `parse()` and keeps
- * its own message.
+ * Reads a bounded integer setting as an int or the canonical decimal string
+ * `env()` gives, failing closed on anything else.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,8 +23,7 @@ final class IntegerSetting
     private function __construct() {}
 
     /**
-     * The setting under the key, or the default when it is not set, as an
-     * integer from its least to its greatest value.
+     * The setting under the key, or the default when it is not set.
      *
      * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  string  $key
@@ -46,8 +40,7 @@ final class IntegerSetting
     }
 
     /**
-     * The value already read for the key, as an integer from its least to its
-     * greatest value.
+     * The value already read for the key, within its range.
      *
      * @param  string  $key
      * @param  mixed  $value
@@ -69,10 +62,8 @@ final class IntegerSetting
     }
 
     /**
-     * The integer the value names, or `null` when it names none. A string must
-     * be exactly the decimal form of the integer it casts to, so one that
-     * overflows the integer range is refused rather than saturated. A negative
-     * value reads as negative, which every package range rejects.
+     * The integer the value names, or `null`; the round-trip test refuses an
+     * overflowing string rather than saturating it.
      *
      * @param  mixed  $value
      * @return ?int

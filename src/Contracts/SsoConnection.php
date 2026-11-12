@@ -5,15 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Contracts;
 
 /**
- * One connection, as a protocol driver and the package's helpers read it
- * (SSO-2.1): its id, its tenant and protocol (both fixed at creation), its
- * display name, its settings, its attribute mapping, whether it is enabled, and
- * whether a sign-in through it has ever been completed (SSO-4.3).
+ * One connection as a protocol driver and the package's helpers read it.
  *
- * It never exposes a secret: a client secret or a private key is decrypted only
- * by the code that must use it, through `Contracts\SecretEncrypter`, and the
- * settings it answers hold none (SSO-2.5). The package's model,
- * `Models\Connection`, implements it.
+ * Never expose a secret; settings answered here hold none.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -21,23 +15,21 @@ namespace SineMacula\Laravel\Sso\Contracts;
 interface SsoConnection
 {
     /**
-     * The connection's id: an opaque string, the `{connection}` of its
-     * endpoints.
+     * An opaque id, the `{connection}` of its endpoints.
      *
      * @return string
      */
     public function getConnectionId(): string;
 
     /**
-     * The opaque id of the tenant the connection belongs to.
+     * The opaque tenant id, fixed at creation.
      *
      * @return string
      */
     public function getTenantId(): string;
 
     /**
-     * The name of the driver the connection runs over: `saml2`, `oidc` or one
-     * an application registered.
+     * The driver name, fixed at creation: `saml2`, `oidc` or a registered one.
      *
      * @return string
      */
@@ -51,52 +43,44 @@ interface SsoConnection
     public function getDisplayName(): string;
 
     /**
-     * The settings as stored, by name, with no secret among them.
+     * The settings as stored, with no secret.
      *
      * @return array<string, mixed>
      */
     public function getSettings(): array;
 
     /**
-     * The attribute mapping as stored: each target attribute of the result, by
-     * the SAML attribute or OIDC claim it is read from (SSO-2.10).
+     * Each result attribute, keyed by the SAML attribute or OIDC claim it is
+     * read from.
      *
      * @return array<string, mixed>
      */
     public function getAttributeMapping(): array;
 
     /**
-     * Whether the connection is enabled. A connection is used only while it is
-     * enabled and its settings are complete (SSO-2.1).
+     * Whether the connection is enabled; it is used only when also complete.
      *
      * @return bool
      */
     public function isEnabled(): bool;
 
     /**
-     * Whether a `sign_in` through the connection has ever been redeemed, which
-     * enforcement needs before it can be turned on (SSO-4.3).
+     * Whether a `sign_in` through it was ever redeemed; enforcement needs one.
      *
      * @return bool
      */
     public function hasCompletedSignIn(): bool;
 
     /**
-     * The connection's settings for linking by a verified domain (SSO-8.8),
-     * apart from its protocol settings: whether it is on, the issuer's
-     * classification, the organisation claim and its expected value, the SAML
-     * attribute's exact `Name` and `NameFormat`, whether the administrator
-     * acknowledged that the provider decides who holds each address, and the
-     * version a change raises.
+     * The settings for linking by a verified domain, kept apart from the
+     * protocol settings.
      *
      * @return array<string, bool|int|string|null>
      */
     public function getLinkingSettings(): array;
 
     /**
-     * The authentication context the connection accepts as evidence (SSO-8.7):
-     * the accepted `amr`, `acr` and `AuthnContextClassRef` values and their
-     * combinations, empty when it accepts nothing.
+     * The authentication context values accepted as evidence, empty for none.
      *
      * @return array<string, mixed>
      */
