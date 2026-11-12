@@ -39,23 +39,8 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Keys\Certificates;
 
 /**
- * Bounded growth across many rows and connections (SSO-11.11, SSO-11.12), which
- * a small fixed fixture cannot show: each operation is measured at N and at 3N,
- * each budget being its fixed cost plus its documented cost per unit times the
- * units, so the difference is exactly that cost and an N+1 fails it.
- *
- * - The expiry report costs two reads per page, its keys' and its connections',
- *   and one read for the empty page after a full one: nothing per key it has
- *   already notified, however many connections they span. A key warned of costs
- *   two reads and three writes of its own.
- * - The due-connection listing costs one read per chunk and one read of the
- *   anchors for a chunk holding a connection its switch leaves undecided, and
- *   one read for the empty chunk after a full one: nothing per connection.
- * - The domain recheck costs three reads and two writes per claim, one read per
- *   chunk, and one read for the empty chunk after a full one.
- * - Pruning reservations costs one read and two writes per connection in a
- *   batch, one read per page, and one read for the empty page after a full one:
- *   nothing per reservation of a connection.
+ * Query growth across many rows and connections: each operation is measured at
+ * N and 3N, so a cost per unit that is not budgeted fails.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -105,7 +90,7 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     private FakeDnsResolver $dns;
 
     /**
-     * Bind a fake resolver and send the runs' log lines nowhere.
+     * Bind a fake resolver and silence the runs' log.
      *
      * @return void
      */
@@ -122,8 +107,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * Keys already notified cost nothing each, however many connections they
-     * span: 10 keys and 30 are one page's two reads.
+     * Notified keys cost nothing each, across any connections: 10 and 30 are
+     * one page's two reads.
      *
      * @return void
      */
@@ -139,8 +124,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * Pages cost their two reads each: a page's worth of keys and three are one
-     * full page and three, with the one empty page after them.
+     * Pages cost two reads each: one page of keys and three, each with the
+     * empty page after.
      *
      * @return void
      */
@@ -157,7 +142,7 @@ final class QueryGrowthTest extends PerformanceContractTestCase
 
     /**
      * A key warned of, each of its own connection, costs its two reads and
-     * three writes and nothing more, beside the page's two reads.
+     * three writes, beside the page's two reads.
      *
      * @return void
      */
@@ -193,9 +178,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * The due-connection listing costs its two reads per chunk: a chunk's worth
-     * of connections and three are one chunk and three, with the one empty
-     * chunk after them.
+     * The listing costs two reads per chunk: one chunk of connections and
+     * three, each with the empty chunk after.
      *
      * @return void
      */
@@ -211,8 +195,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * A recheck costs each claim its three reads and two writes and nothing
-     * more, beside the chunk's one read, each claim of its own connection.
+     * Each claim, of its own connection, costs three reads and two writes
+     * beside the chunk's read.
      *
      * @return void
      */
@@ -231,8 +215,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * A recheck of a chunk's worth of claims and of three reads one chunk more
-     * for each, and the one empty chunk after them.
+     * One chunk of claims and three read one more per chunk, and the empty
+     * chunk after.
      *
      * @return void
      */
@@ -253,8 +237,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * Pruning reservations costs each connection in a batch its lock, its
-     * delete and its update and nothing more, beside one select of each kind.
+     * Each connection in a batch costs its lock, delete and update, beside one
+     * select of each kind.
      *
      * @return void
      */
@@ -273,8 +257,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * Pruning reservations costs nothing per reservation of one connection: 5
-     * and 15 in a batch are one lock, one delete and one update.
+     * Nothing per reservation of one connection: 5 and 15 in a batch are one
+     * lock, one delete and one update.
      *
      * @return void
      */
@@ -291,9 +275,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * Pruning reservations in batches of five reads one page more for each full
-     * batch, and the one empty page after them, beside what each connection
-     * costs.
+     * Batches of five read one page more per full batch and the empty page
+     * after, beside each connection's cost.
      *
      * @return void
      */
@@ -316,8 +299,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * Replace every key with that many of the connections given, each already
-     * warned of the threshold it has reached.
+     * Replace every key with that many across the connections, each warned of
+     * the threshold it has reached.
      *
      * @param  int  $keys
      * @param  int  $connections
@@ -359,7 +342,7 @@ final class QueryGrowthTest extends PerformanceContractTestCase
 
     /**
      * Insert that many certificates ending within a threshold among the
-     * connections, in one statement per hundred.
+     * connections, a hundred per statement.
      *
      * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $connections
      * @param  int  $keys
@@ -405,9 +388,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * Replace every connection with that many due SAML connections, whose
-     * switch is on or, for every second one, undecided and anchored, so a chunk
-     * reads the anchors and every connection is due.
+     * Replace every connection with that many due SAML connections, every
+     * second one undecided and anchored so a chunk reads the anchors.
      *
      * @param  int  $connections
      * @return void
@@ -430,7 +412,7 @@ final class QueryGrowthTest extends PerformanceContractTestCase
 
     /**
      * Make one due SAML connection, undecided and anchored when its number is
-     * even and switched on otherwise.
+     * even.
      *
      * @param  int  $number
      * @return void
@@ -478,9 +460,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * Replace every claim with that many verified claims among that many
-     * connections, each last checked a day ago with its record still there, and
-     * move the clock on an hour so they are due.
+     * Replace every claim with that many verified across the connections,
+     * checked a day ago, and move the clock an hour on so they are due.
      *
      * @param  int  $claims
      * @param  int  $connections
@@ -504,8 +485,8 @@ final class QueryGrowthTest extends PerformanceContractTestCase
     }
 
     /**
-     * Make the connection's verified claim of a domain of its own, whose record
-     * still carries its token.
+     * Make the connection's verified claim of its own domain, its record still
+     * carrying the token.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  int  $number

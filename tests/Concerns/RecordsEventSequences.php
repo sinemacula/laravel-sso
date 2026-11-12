@@ -12,17 +12,8 @@ use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 
 /**
- * Records every package event a flow dispatches, in order, so a flow test can
- * assert what it reported: the sequence of event classes, and that a refused
- * operation fired exactly one `FlowFailed` with its flow and reason (SSO-10.2).
- *
- * One listener on the `SsoEvent` contract receives every package event, since
- * Laravel dispatches an event to the listeners of the interfaces it
- * implements; an event that is not a package event is never recorded. The
- * listener is registered on the dispatcher bound when recording first starts,
- * so a test that fakes events afterwards records nothing. An event dispatched
- * after commit is recorded when it is dispatched, so a test reads the sequence
- * once the flow's transaction has ended.
+ * Records every package event a flow dispatches, in order. Faking events after
+ * recording starts replaces the dispatcher it listens on.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,8 +59,7 @@ trait RecordsEventSequences
     }
 
     /**
-     * Assert the events recorded are of these classes, in this order, and no
-     * others.
+     * Assert the events recorded are exactly these classes, in this order.
      *
      * @param  list<class-string<\SineMacula\Laravel\Sso\Contracts\SsoEvent>>  $classes
      * @return void
@@ -82,8 +72,7 @@ trait RecordsEventSequences
     }
 
     /**
-     * Assert exactly one failure event was recorded, for this flow and reason,
-     * and return it.
+     * Assert exactly one failure event was recorded, for this flow and reason.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason

@@ -5,8 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Concerns;
 
 /**
- * Runs part of a test with PHP's default timezone, the one Laravel sets from
- * `app.timezone`, set to another, and restores it afterwards whatever happens.
+ * Runs part of a test under another PHP default timezone, then restores it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

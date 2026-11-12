@@ -24,11 +24,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for the fake OpenID provider (SSO-12.4): its discovery document
- * and endpoints, its JWKS read when fetched (rotation, additions, removals),
- * the grant `authorize()` makes from the package's authorisation URL, its token
- * endpoint's strict client authentication and grant checks for each method, its
- * UserInfo endpoint, and the responses a test puts in place of each.
+ * Unit tests for the fake OpenID provider.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -163,9 +159,8 @@ final class FakeOpenIdProviderTest extends TestCase
     }
 
     /**
-     * A grant reads the authorisation URL's parameters and issues a code whose
-     * ID token carries the nonce and the access token's `at_hash`, and a
-     * callback query with the RFC 9207 `iss`.
+     * A grant issues a code whose ID token carries the nonce and `at_hash`, and
+     * a callback query with the RFC 9207 `iss`.
      *
      * @return void
      *
@@ -223,9 +218,8 @@ final class FakeOpenIdProviderTest extends TestCase
     }
 
     /**
-     * The token endpoint answers a code exchanged with `client_secret_basic`
-     * once, with the ID token signed under the published key, the access token,
-     * a refresh token and `Bearer`; the code is then used.
+     * The token endpoint answers a `client_secret_basic` exchange once, with
+     * the signed ID token, access and refresh tokens and `Bearer`.
      *
      * @return void
      *
@@ -311,9 +305,8 @@ final class FakeOpenIdProviderTest extends TestCase
     }
 
     /**
-     * A `private_key_jwt` client authenticates with an assertion the package
-     * signs; one with another audience, another key, or a `jti` seen before is
-     * refused.
+     * A `private_key_jwt` assertion is accepted; another audience, another key
+     * or a reused `jti` is refused.
      *
      * @return void
      *

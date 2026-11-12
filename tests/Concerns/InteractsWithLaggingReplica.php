@@ -9,25 +9,8 @@ use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Builds a read/write split connection whose read replica lags behind the
- * primary, with sticky reads off, so nothing but `useWritePdo()` can reach the
- * primary (SSO-11.3).
- *
- * The default connection becomes `split`, which writes to one SQLite file (the
- * primary) and reads from another (the replica). The shipped tables are created
- * on both, and every row written through `split` lands on the primary only, so
- * a read served by the replica does not see it: a row missing from the replica
- * stands for one newly created. `copyRowToReplica()` puts a row's present
- * version on the replica, so that once the test changes it on the primary the
- * replica holds the stale version: enabled where the primary has disabled,
- * unredeemed where the primary has redeemed, and so on, in both directions.
- *
- * It is SQLite whatever `DB_CONNECTION` says, since two files are the cheapest
- * replica there is. A test calls `configureLaggingReplica()` from its
- * `defineEnvironment()`, `migrateSsoTablesOnPrimaryAndReplica()` from its
- * `setUp()` and `removeLaggingReplicaFiles()` from its `tearDown()`. Counters
- * on a connection of their own get a pair of their own, through
- * `configureLaggingCounters()`.
+ * Builds a split SQLite connection whose replica never catches up, with sticky
+ * reads off, so only `useWritePdo()` reaches the primary.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,7 +37,7 @@ trait InteractsWithLaggingReplica
     /** @var string Direct connection to the counters' primary file. */
     protected const string COUNTERS_PRIMARY_CONNECTION = 'counters_primary';
 
-    /** @var list<string> The shipped migrations of every table on the storage connection, in the order they run. */
+    /** @var list<string> The storage connection's shipped migrations, in order. */
     private static array $replicaMigrations = [
         '2026_10_31_000000_create_sso_single_use_keys_table.php',
         '2026_11_01_000000_create_sso_connections_table.php',
@@ -71,8 +54,7 @@ trait InteractsWithLaggingReplica
     private array $laggingReplicaFiles = [];
 
     /**
-     * Register the primary, replica and split connections and make the split
-     * connection the default.
+     * Register the primary, replica and default split connections.
      *
      * @param  \Illuminate\Config\Repository  $config
      * @return void
@@ -85,8 +67,7 @@ trait InteractsWithLaggingReplica
     }
 
     /**
-     * Register a second lagging split connection for the rate limit counters,
-     * and point `sso.rate_limits.connection` at it.
+     * Register a second lagging pair for the rate limit counters.
      *
      * @param  \Illuminate\Config\Repository  $config
      * @return void
@@ -99,8 +80,7 @@ trait InteractsWithLaggingReplica
     }
 
     /**
-     * Run the shipped migrations on the primary and the replica, the counters'
-     * on their own pair when they have one, and on the storage pair otherwise.
+     * Run the shipped migrations on every primary and replica.
      *
      * @return void
      */
@@ -136,10 +116,8 @@ trait InteractsWithLaggingReplica
     }
 
     /**
-     * Copy a row as it stands on a primary into its replica (the storage pair
-     * unless others are named), replacing any version there, so the replica
-     * holds this version until the test copies it again. The column is the
-     * table's primary key: `key` for the counters, `id` for the rest.
+     * Copy the row as it stands on the primary to the replica, so a later
+     * change on the primary leaves the replica stale.
      *
      * @param  string  $table
      * @param  mixed  $key
@@ -164,8 +142,7 @@ trait InteractsWithLaggingReplica
     }
 
     /**
-     * Delete the row from the replica only, so the replica has lost what the
-     * primary still holds.
+     * Delete the row from the replica only.
      *
      * @param  string  $table
      * @param  mixed  $key
@@ -198,9 +175,8 @@ trait InteractsWithLaggingReplica
     }
 
     /**
-     * Register a direct connection to a new primary file, one to a new replica
-     * file, and a split connection that writes to the primary and reads from
-     * the replica, sticky reads off.
+     * Register direct connections to new primary and replica files, and a split
+     * connection over them.
      *
      * @param  \Illuminate\Config\Repository  $config
      * @param  string  $split
@@ -216,8 +192,7 @@ trait InteractsWithLaggingReplica
         $config->set('database.connections.' . $primaryName, ['driver' => 'sqlite', 'database' => $primary, 'prefix' => '']);
         $config->set('database.connections.' . $replicaName, ['driver' => 'sqlite', 'database' => $replica, 'prefix' => '']);
 
-        // The top-level `database` is what Testbench inspects; Laravel uses the
-        // `read` and `write` entries for the two PDOs.
+        // Testbench inspects the top-level `database`; Laravel uses read/write.
         $config->set('database.connections.' . $split, [
             'driver'   => 'sqlite',
             'database' => $primary,

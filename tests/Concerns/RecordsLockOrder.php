@@ -11,19 +11,8 @@ use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * Records, on the storage connection, the statements that take a lock, in the
- * order they ran, so a test can assert the package's lock order: the upsert of
- * an identity's guard (`identity guard`) and of a tenant's enforcement row
- * (`enforcement upsert`), and each locking read, named by its table
- * (`enforcement`, `code`, `request`, `link`, and `identity mark` for the read
- * of whether the guarded identity has held a domain link), the connections'
- * with the ids it locks in the order bound (`connections a, b`). Every
- * statement that names the enforcement table is counted too, so a test can
- * assert none ran.
- *
- * SQLite has no locking read, so there a lock for update is compiled to a
- * marker comment that shows it was asked for; MySQL and PostgreSQL compile
- * their own.
+ * Records the locks taken on the storage connection, in order. SQLite has no
+ * locking read, so a lock for update compiles to a marker comment.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -139,8 +128,7 @@ trait RecordsLockOrder
     }
 
     /**
-     * The lock an insert into the table takes as an upsert, or `null` when it
-     * takes none the order names.
+     * The lock an upsert into the table takes, or `null` for any other table.
      *
      * @param  ?string  $table
      * @return ?string

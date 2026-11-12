@@ -5,15 +5,8 @@ declare(strict_types = 1);
 namespace Tests\Concerns;
 
 /**
- * Reads the names a PHP source writes in a library's namespaces, so an
- * architecture test can hold the package to the adapter it chose for that
- * library: each name as written (qualified, fully qualified, a member of a
- * group `use` joined to its prefix, or quoted, a doubled backslash read as
- * one), with whether a `use` imports it.
- *
- * The source is tokenised, not parsed: a name built at run time is not seen.
- * The scan is a backstop for the rules, not a proof of them; the adversarial
- * fixtures prove the behaviour.
+ * Reads the library names a PHP source writes, for the architecture tests. The
+ * source is tokenised, so a name built at run time is not seen.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +19,7 @@ trait ScansLibraryNames
     private static ?array $shippedSources = null;
 
     /**
-     * Every library name in the source that the pattern matches, in order, and
-     * whether a `use` imports it.
+     * Every name the pattern matches, in order, and whether a `use` imports it.
      *
      * @param  string  $source
      * @param  string  $pattern
@@ -85,8 +77,7 @@ trait ScansLibraryNames
     }
 
     /**
-     * Where the scan is once the token is read: inside a `use` statement until
-     * its `;`, and inside a group `use`'s braces, with its prefix, until `}`.
+     * The state after the token: in a `use` until `;`, in a group until `}`.
      *
      * @param  array{use: bool, group: ?string}  $state
      * @param  array{0: int, 1: string, 2: int}|string  $token
@@ -105,8 +96,7 @@ trait ScansLibraryNames
     }
 
     /**
-     * Whether the token opens a `use` statement: an import or a trait's, never
-     * a closure's `use (`.
+     * Whether the token opens an import or trait `use`, not a closure's.
      *
      * @param  array{0: int, 1: string, 2: int}|string  $token
      * @param  array{0: int, 1: string, 2: int}|string|null  $next
@@ -118,8 +108,7 @@ trait ScansLibraryNames
     }
 
     /**
-     * Whether the token is a group `use`'s prefix: a name followed by `\` and
-     * an opening brace.
+     * Whether the token is a group `use`'s prefix.
      *
      * @param  array{0: int, 1: string, 2: int}|string  $token
      * @param  array{0: int, 1: string, 2: int}|string|null  $next
@@ -133,9 +122,8 @@ trait ScansLibraryNames
     }
 
     /**
-     * The name the token writes, or `null` when it writes none: a qualified
-     * name as written, unless it is a group `use`'s prefix; a member of a group
-     * joined to its prefix, never its alias; and a quoted string unquoted.
+     * The name the token writes, or `null`: a group member joined to its
+     * prefix, never its alias, and a quoted string unquoted.
      *
      * @param  array{0: int, 1: string, 2: int}|string  $token
      * @param  array{use: bool, group: ?string}  $state

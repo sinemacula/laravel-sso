@@ -21,29 +21,8 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
 
 /**
- * Query budgets for the key helpers (SSO-2.6, SSO-2.7, SSO-2.11). Every change
- * reads the connection and what it checks once before freshness is asked, then
- * again in its transaction, under the connection's lock, and writes only what
- * it changes:
- *
- * - `addNext()`: 4 reads (the connection and the use's states, twice), 1 write
- *   (the insert);
- * - `makeCurrent()`: 5 reads (the connection and the key, twice, and the
- *   current key of the use), 2 writes (the current key made retiring, the next
- *   made current);
- * - `retire()`: 4 reads (the connection and the key, twice), 1 write (the
- *   delete);
- * - `distrustCertificate()`: 4 reads (the connection and the key, twice), 4
- *   writes (the delete, then the requests and the handoff codes in flight
- *   voided, and the connection's trust version raised);
- * - `trustCertificate()` of a signing certificate: 4 reads (the connection and
- *   the fingerprints trusted, twice), 1 write (the insert), since an additive
- *   certificate voids nothing; of a metadata signing anchor, the insert, the
- *   two voiding updates and the trust version, 4 writes;
- * - `keys()`: 2 reads (the connection, then its rows), no write.
- *
- * A refusal stops where it is decided, with no write: a stale caller costs the
- * reads before freshness was asked.
+ * Query budgets for the key helpers. A change reads before freshness is asked,
+ * then again under the connection's lock.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,8 +44,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     private Connection $connection;
 
     /**
-     * Bind a freshness contract that answers `fresh`, and make a SAML
-     * connection.
+     * Answer `fresh` to every freshness check and make a SAML connection.
      *
      * @return void
      */
@@ -83,7 +61,8 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Adding the first key is four reads and one insert; so is adding the next.
+     * The connection and the use's states, twice, and the insert; the same for
+     * the first key and the next.
      *
      * @return void
      */
@@ -97,7 +76,8 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Making the next key current is five reads and two updates.
+     * The connection and key twice and the use's current key; the current made
+     * retiring and the next current.
      *
      * @return void
      */
@@ -112,7 +92,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Retiring a key is four reads and one delete.
+     * The connection and the key, twice, and the delete.
      *
      * @return void
      */
@@ -127,7 +107,8 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Trusting a signing certificate is four reads and the insert alone.
+     * The connection and the trusted fingerprints, twice, and the insert; an
+     * additive certificate voids nothing.
      *
      * @return void
      */
@@ -143,8 +124,8 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Trusting a metadata signing anchor is four reads, the insert, the two
-     * voiding updates and the trust version.
+     * A metadata signing anchor adds the voiding's four writes to the insert:
+     * requests, codes, trust version and reservations.
      *
      * @return void
      */
@@ -161,8 +142,8 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Distrusting a certificate is four reads, one delete, the two voiding
-     * updates and the trust version.
+     * The connection and the key, twice, the delete and the voiding's four
+     * writes.
      *
      * @return void
      */
@@ -179,7 +160,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Listing the keys is two reads, however many there are.
+     * The connection, then its keys, however many there are.
      *
      * @return void
      */
@@ -195,8 +176,7 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A stale caller costs the reads made before freshness is asked, and no
-     * write.
+     * A stale caller costs the reads before freshness is asked, and no write.
      *
      * @return void
      */

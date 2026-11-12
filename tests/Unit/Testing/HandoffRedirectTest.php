@@ -11,12 +11,7 @@ use SineMacula\Laravel\Sso\Responses\CompletionResponse;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
 
 /**
- * Unit tests for the redirect a completion sends the browser back with, as the
- * client reads it: the code, the reference and the failure code, from the
- * fragment or the query, the fragment winning; a value that is not a string
- * read as none; a completion with no redirect, and a code asked of a redirect
- * without one, refused with a `LogicException` saying why; and a dump that
- * never shows the code.
+ * Unit tests for the handoff redirect as the client reads it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

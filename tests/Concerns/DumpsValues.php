@@ -8,10 +8,8 @@ use Symfony\Component\VarDumper\Cloner\VarCloner;
 use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /**
- * Dumps a value every way a developer or a log might, so a test can assert that
- * none of them shows a protocol or provider value: PHP's `var_dump()`,
- * `print_r()` and `var_export()`, and Symfony's VarDumper, which Laravel's dump
- * helpers use and which also lists private properties.
+ * Dumps a value every way a developer or a log might, including VarDumper,
+ * which also lists private properties.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

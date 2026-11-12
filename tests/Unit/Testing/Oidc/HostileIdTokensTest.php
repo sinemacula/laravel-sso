@@ -20,13 +20,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Runs every hostile ID token of the JOSE library spike through the package's
- * JOSE adapter, as the ID token validation reaches it (SSO-7.3, SSO-7.4): each
- * is refused at exactly the stage it names, and none is ever accepted, so the
- * risks the spike found in the library (`verifyWithKeySet()` ignoring `kid`,
- * `"0"` reaching a key by position, ES512 on a P-256 key, 1024-bit keys, `crit`
- * ignored, the `exp` boundary) are closed by the adapter. The completion's own
- * suite (BL-54) runs the same cases through the public callback path.
+ * Runs each hostile ID token through the JOSE adapter to its named stage.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -79,9 +73,8 @@ final class HostileIdTokensTest extends TestCase
     }
 
     /**
-     * The suite covers every stage, and the reasons follow them: a token not
-     * read is `id_token_invalid`, a key or signature refusal
-     * `signature_invalid`.
+     * Every stage is covered: an unread token is `id_token_invalid`, a key or
+     * signature refusal `signature_invalid`.
      *
      * @return void
      */

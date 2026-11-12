@@ -31,27 +31,8 @@ use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Query budgets for completing a flow (SSO-5.6, SSO-11.3, SSO-11.5, SSO-11.8),
- * each measured once the IP address's and the connection's counters exist, so
- * every completion first costs their two updates:
- *
- * - a completion reads the connection, then, in the consumption's
- *   transaction, locks the connection and the request and writes the
- *   single-use record and the request's mark; reads the email's domain claim
- *   to build the result; then, in the locked transaction, locks the
- *   connection and the request again and marks the request completed; the
- *   linker, enforcement while it is off, the policy, the deadline contract and
- *   the issuer bound here cost nothing;
- * - with enforcement on, the locked transaction first upserts and locks the
- *   tenant's enforcement row, and locks the connection with the rule's
- *   connections in one statement;
- * - a refused response and a refused consumption cost the same but the domain's
- *   read, and a connection disabled since the start the same as a
- *   refused response;
- * - a replay and a state no request has stop at the consumption's two locking
- *   reads, a response that names no request at the connection's read, and a
- *   method the endpoint does not take, an empty id and an id longer than a ULID
- *   read nothing; an unknown connection of a ULID's length is one read.
+ * Query budgets for completing a flow, measured once the IP and connection
+ * counters exist, so each costs their two updates.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -74,9 +55,8 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
     private Connection $connection;
 
     /**
-     * Bind the recording issuer, a linker and a request from an IP address,
-     * register the application and the driver, make a usable connection that
-     * maps the email, and create the counters.
+     * Register the driver, make a usable connection that maps the email, and
+     * create the counters.
      *
      * @return void
      */
@@ -124,7 +104,8 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A completion is six reads and five writes.
+     * The connection; the consumption's two locks, single-use record and mark;
+     * the domain claim; the two locks again and the completed mark.
      *
      * @return void
      */
@@ -138,11 +119,8 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * With enforcement on, a completion is seven reads and six writes: the
-     * locked transaction first upserts and locks the tenant's enforcement row,
-     * then locks the connection and the rule's connections in the one statement
-     * that locked the connection alone; a tenant with a rule stored costs the
-     * same.
+     * Enforcement adds the rule row's upsert and lock, and locks the rule's
+     * connections with the connection; a stored rule costs the same.
      *
      * @return void
      */
@@ -166,7 +144,7 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * A refused response, a refused consumption and a connection disabled since
-     * the start are each five reads and five writes.
+     * the start skip only the domain's read.
      *
      * @return void
      */
@@ -192,8 +170,8 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A replay and a state no request has stop at the consumption's two locking
-     * reads; a response that names no request at the connection's read.
+     * A replay and an unknown state stop at the consumption's two locking
+     * reads; an uncorrelated response at the connection's read.
      *
      * @return void
      */
@@ -212,8 +190,8 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A method the endpoint does not take, an empty id and an id longer than a
-     * ULID read nothing; an unknown connection of a ULID's length is one read.
+     * A wrong method, an empty id and an id longer than a ULID read nothing; an
+     * unknown ULID-length id is one read.
      *
      * @return void
      */
@@ -239,8 +217,7 @@ final class CompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Complete at the callback, with the state in the query unless none is
-     * given.
+     * Complete at the callback, with the state in the query when given.
      *
      * @param  ?string  $state
      * @param  ?string  $connectionId

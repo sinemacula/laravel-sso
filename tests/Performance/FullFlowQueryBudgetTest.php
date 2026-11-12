@@ -51,48 +51,8 @@ use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Clients;
 
 /**
- * Query budgets for whole flows through the real orchestration (SSO-5.1,
- * SSO-5.6, SSO-6.2, SSO-7.3, SSO-9.2, SSO-11.3, SSO-11.5, SSO-11.8), which the
- * budgets of each stage alone leave uncombined: the real drivers and validators
- * against the fake providers, the package's own handoff store, the package's
- * own link store resolving a stored link, a tenant's enforcement rule on and
- * satisfied, and the counters on a connection of their own, so each budget says
- * what went to which. Each is measured once its counters exist, so a start
- * costs one counter's update (a discovery start two), a completion two and a
- * redemption one.
- *
- * On the storage connection, a client secret's start is the connection's read
- * and its lock, and the insert of the request and the raise of the flows
- * version. `private_key_jwt` adds the current key's read, since judging the
- * connection complete needs it; SAML its trusted certificates', and an
- * encrypted connection the current encryption key's beside them. A discovery
- * start adds the claim's read.
- *
- * A completion by a client secret is eight reads and seven writes:
- *
- * - the connection's read; the consumption's locks of the connection and the
- *   request, its single-use record and its mark;
- * - the stored JWKS's read, as the ID token is validated;
- * - the enforcement row's upsert and its lock, the connections' lock and the
- *   request's;
- * - the link's locking read and its last-used stamp, the code's insert, the
- *   raise of the flows version, and the request's completed mark.
- *
- * `private_key_jwt` adds the current key's read as it judges the connection
- * before it validates, again as it signs, and again under the lock, and the
- * private half's: twelve reads. A mapped email of a real domain adds the
- * claim's read. SAML reads no JWKS; it reads its trusted certificates before it
- * validates, for the adapter's policy and under the lock, and writes the replay
- * record: eleven reads with the mapped email, and eight writes. An encrypted
- * connection adds the current encryption key's read to judging it complete,
- * twice, and the decryption keys' read and the private key's: fifteen reads.
- *
- * A linked `sign_in` redeemed is six reads and five writes: the code by its
- * digest, the connection's tenant, the enforcement row's upsert and lock, the
- * connections' lock, the code's lock, its single-use record and its mark, the
- * link's locking read and stamp, and the first sign-in's mark on the
- * connection, which a later sign-in does not write. A driver that reads keys to
- * judge a connection complete reads them once more here.
+ * Query budgets for whole flows through the real drivers and stores, with
+ * enforcement on and the counters apart, measured once the counters exist.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -141,10 +101,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     private FakeOpenIdProvider $provider;
 
     /**
-     * Move the counters to their own connection, bind the fake fetcher, the
-     * package's link store as the linker and a request from an IP address, and
-     * configure every protocol, the endpoints, enforcement, discovery and the
-     * applications.
+     * Move the counters apart, bind the fake fetcher and the package's link
+     * store, and configure the protocols, enforcement and discovery.
      *
      * @return void
      */
@@ -180,9 +138,11 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * OIDC by a client secret, with real ID token validation, from the start
-     * through the callback to a linked sign-in redeemed; a later sign-in costs
-     * the same but the first sign-in's mark on the connection.
+     * Start: the connection and its lock; the request and flows version.
+     * Completion: the connection, two locks, JWKS, rule row, three locks, link;
+     * use record, mark, rule upsert, link stamp, code, flows version, completed
+     * mark. Redemption: code, tenant, rule row, two locks, link; rule upsert,
+     * use record, mark, link stamp and the first sign-in's mark.
      *
      * @return void
      *
@@ -214,8 +174,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * OIDC by `private_key_jwt`, from the start to a linked sign-in redeemed,
-     * with the client assertion the provider's token endpoint verifies.
+     * `private_key_jwt` adds the current key's read to the start and
+     * redemption, and to the completion thrice plus its private half.
      *
      * @return void
      *
@@ -241,8 +201,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * SAML, with a real signed assertion, from the start to a linked sign-in
-     * redeemed.
+     * SAML reads its certificates at the start and redemption, and thrice in
+     * the completion instead of the JWKS, plus the claim and replay record.
      *
      * @return void
      */
@@ -264,8 +224,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * SAML with encrypted assertions required, from the start to a linked
-     * sign-in redeemed.
+     * Encryption adds the current encryption key's read to each judgement, and
+     * the decryption keys and private key to the completion.
      *
      * @return void
      */
@@ -288,8 +248,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A discovery start by an email's verified domain, completed by a client
-     * secret with the mapped email's claim read.
+     * A discovery start adds the claim's read and the domain counter; its
+     * completion the mapped email's claim.
      *
      * @return void
      *
@@ -315,8 +275,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Create the IP address's and the connection's counters with a start, a
-     * callback the correlator refuses and a value that is no code.
+     * Create the IP and connection counters with a start, a refused callback
+     * and a value that is no code.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return void
@@ -329,8 +289,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Create the IP address's and the connection's counters with a start, a
-     * post with no response and a value that is no code.
+     * Create the IP and connection counters with a start, an empty post and a
+     * value that is no code.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return void
@@ -419,8 +379,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Redeem the completion's code as a `sign_in` for `web`, in the caller's
-     * transaction, with the verifier the start generated.
+     * Redeem the code as a `sign_in` for `web` in the caller's transaction,
+     * with the start's verifier.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $completion
@@ -453,8 +413,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A usable OIDC connection of the provider, its JWKS stored, whose subject
-     * holds a link, authenticating by its client secret unless told otherwise.
+     * A usable OIDC connection with its JWKS stored and its subject linked, by
+     * client secret unless told otherwise.
      *
      * @param  array<string, mixed>  $settings
      * @param  bool  $secret
@@ -491,7 +451,7 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * A usable SAML connection trusting the identity provider and mapping the
-     * email, whose subject holds a link.
+     * email, its subject linked.
      *
      * @param  array<string, mixed>  $settings
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -518,7 +478,7 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * Turn the tenant's enforcement on, satisfied by the connection, and answer
-     * the version of the rule.
+     * the rule's version.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return ?string
@@ -582,8 +542,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A valid response from the trusted identity provider, made now, answering
-     * the request the start stored, asserting the email of a real domain.
+     * A valid response answering the start's request and asserting an email of
+     * a real domain.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
@@ -600,8 +560,8 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * What arrives at the assertion consumer service when the browser posts the
-     * response, with the `RelayState` the start sent it away with.
+     * The browser's post of the response to the assertion consumer service,
+     * with the start's `RelayState`.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response

@@ -21,22 +21,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\StartingDriver;
 
 /**
- * Query budgets for starting a flow by email domain (SSO-3.4, SSO-3.5,
- * SSO-11.3, SSO-11.8):
- *
- * - the attempt is counted against the IP address and the email's domain, an
- *   update and an insert for each new counter and one update for each after;
- * - a match then reads the domain's verified claim and its connection, and, in
- *   the transaction that stores the request, locks the connection again,
- *   inserts the request and raises the connection's flows version: three
- *   reads, an insert and an update;
- * - a miss reads the claim alone, and the connection too when the claim's
- *   connection is unusable; an email whose domain does not normalise reads
- *   nothing and counts the IP address alone;
- * - a refusal before routing reads nothing; a full IP counter stops at the
- *   limiter (its update, the insert its key refuses, the update again and one
- *   read); a full domain counter costs the same after the IP's slot, which is
- *   then given back.
+ * Query budgets for starting a flow by email domain.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,9 +35,7 @@ final class DiscoveryQueryBudgetTest extends PerformanceContractTestCase
     use UsesConnections, UsesDomains;
 
     /**
-     * Bind a request from an IP address, turn discovery on at its least floor,
-     * register the applications and the driver, and make a usable connection
-     * with its verified domain.
+     * Turn discovery on and make a usable connection with its verified domain.
      *
      * @return void
      */
@@ -83,10 +66,8 @@ final class DiscoveryQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * The first match creates the IP address's and the domain's counters; a
-     * later one updates them. Each reads the claim and the connection, locks
-     * the connection again, inserts the request and raises the connection's
-     * flows version.
+     * The first match creates both counters, a later one updates them; then the
+     * claim, connection, its lock, the request and flows version.
      *
      * @return void
      */
@@ -103,9 +84,8 @@ final class DiscoveryQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A miss reads the claim alone, or the claim and its unusable connection,
-     * and writes nothing but its attempt; one whose domain does not normalise
-     * reads nothing.
+     * A miss reads the claim, or the claim and its unusable connection, and
+     * writes only its attempt; an email that does not normalise reads nothing.
      *
      * @return void
      */
@@ -126,8 +106,8 @@ final class DiscoveryQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refusal before routing reads nothing; a full IP counter stops at the
-     * limiter; a full domain counter after the IP's slot, which it gives back.
+     * A refusal before routing reads nothing; a full counter stops at the
+     * limiter, and a full domain gives the IP slot back.
      *
      * @return void
      */

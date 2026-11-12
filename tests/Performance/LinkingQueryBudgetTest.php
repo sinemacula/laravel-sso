@@ -61,42 +61,8 @@ use Tests\Fixtures\Linking\ScriptedTenantMembership;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Query budgets for linking by a verified domain (SSO-8.8, SSO-11.3, SSO-11.5),
- * each measured once the counters exist, so a completion first costs two
- * updates and a redemption one; the scripted contracts cost nothing:
- *
- * - a reservation is what a completion is (six reads, five writes), and: before
- *   the locks, the plain reads of the subject's row and the claim; in T2 the
- *   identity's guard, the claim's lock, the subject's row, what the identity
- *   holds, the subject's reserved row and what it holds again, the row and the
- *   links version, the code and the flows version, and the binding: thirteen
- *   reads, eleven writes;
- * - an ordinary linked sign-in through a connection with linking on takes no
- *   guard and no claim: the plain read of its row stands where the claim's lock
- *   stood, so it costs what it did; with the feature off, or linking off, it
- *   reads neither;
- * - an activation is what a redemption is (four reads, four writes), and: the
- *   reservation's identity and domain id, its guard, the claim's lock, the row
- *   twice and what the identity holds, the row, the links version and the
- *   guard's mark that the identity has held a domain link: nine reads, eight
- *   writes;
- * - a refusal at redemption: nine reads (what the identity holds, read before
- *   any contract is asked; the row again to delete it), and the guard, the
- *   counter, the single-use record, the code, the row and the links version;
- * - a domain's removal is what it is (four reads, two writes), and the links
- *   version when it deleted anything;
- * - each withdrawal is one delete, and the links version when it deleted
- *   anything;
- * - a settings change: the plain read and the lock, the save and the delete,
- *   and the links version when it deleted anything; a change of nothing writes
- *   nothing; a stale caller reads once;
- * - a resolution is one locking read, and for an active link of a `sign_in` the
- *   stamp, or for one found outside the tenant the connection's lock, the row
- *   read again locked, and the row and the links version; of unknown scope it
- *   is the read alone, and of another purpose too;
- * - a widening: the guard, the rows, the connections' lock, the rows locked,
- *   and the row and the links version; with none it is the guard and the two
- *   reads of the rows.
+ * Query budgets for linking by a verified domain, measured once the counters
+ * exist; the scripted contracts cost nothing.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -140,8 +106,8 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     private ScriptedPrincipalScope $scope;
 
     /**
-     * Bind the store and the contracts, register the driver and create the
-     * connection, its claim and the counters.
+     * Bind the store and contracts, and create the connection, its claim and
+     * the counters.
      *
      * @return void
      */
@@ -200,7 +166,10 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A reservation is thirteen reads and eleven writes.
+     * A completion's cost, the row and claim read before the locks, and in T2
+     * the guard, the claim's lock, the row, the holdings, the reserved row, the
+     * holdings again, then the row, links version, code, flows version and
+     * binding.
      *
      * @return void
      */
@@ -215,10 +184,8 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An activation is nine reads and eight writes, the guard, its mark that
-     * the identity has held a domain link and the first sign-in's mark among
-     * them; the next through the connection is seven, the guard's mark sent
-     * again and changing nothing.
+     * A redemption's cost, the reservation, claim lock, row twice and holdings;
+     * the guard, row, links version and guard's mark. Then one write fewer.
      *
      * @return void
      */
@@ -238,8 +205,8 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refusal at redemption is nine reads and six writes: no link is made,
-     * and the row is deleted.
+     * The holdings before any contract, the row again to delete it; the guard,
+     * counter, use record, code, row and links version.
      *
      * @return void
      */
@@ -255,8 +222,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A domain's removal is four reads and two writes, and the links version
-     * when it deleted anything.
+     * A domain's removal, and the links version when it deleted anything.
      *
      * @return void
      */
@@ -270,8 +236,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Each withdrawal is one delete, and the links version when it deleted
-     * anything.
+     * One delete, and the links version when it deleted anything.
      *
      * @return void
      */
@@ -295,9 +260,8 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A settings change is two reads and two writes, and the links version when
-     * it deleted anything; a change of nothing writes nothing; a stale caller
-     * reads once.
+     * The plain read and lock, the save and delete, and the links version if it
+     * deleted; nothing changed writes nothing, a stale caller reads once.
      *
      * @return void
      */
@@ -322,11 +286,8 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A resolution is one locking read, and for an active link by a verified
-     * domain the stamp, or, found outside the tenant, two reads more (the
-     * connection's lock and the row read again locked) and the row and the
-     * links version; of unknown scope, suspended or reserved it is the read
-     * alone.
+     * One locking read, and an active domain link's stamp; outside the tenant,
+     * the lock, a locked reread, the row and links version.
      *
      * @return void
      */
@@ -357,9 +318,8 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A widening with nothing to do is its guard and two reads of the rows;
-     * with a link, three reads, the connections' lock among them, and the
-     * guard, the row and the links version.
+     * With nothing to do, the guard and two reads of the rows; with a link, the
+     * connections' lock too, and the row and links version.
      *
      * @return void
      */
@@ -376,10 +336,8 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An ordinary linked sign-in through a connection with linking on takes no
-     * guard and locks no claim: the plain read of its row stands where the
-     * claim's lock stood, so its cost is unchanged. With the feature off it
-     * reads neither, one read fewer, and takes no guard.
+     * With linking on, the row's plain read replaces the claim's lock at the
+     * same cost; with the feature off it reads neither and takes no guard.
      *
      * @return void
      */
@@ -456,7 +414,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * What the connection's result is, for a resolution.
+     * The connection's result, for a resolution.
      *
      * @return \SineMacula\Laravel\Sso\Results\VerifiedResult
      */

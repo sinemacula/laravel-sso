@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Models\Link;
 
 /**
- * Gives a test the engine an application may run the package on, whose
- * collation finds a link's identity whatever its case, so that what the package
- * compares byte for byte, after the query, is what decides.
+ * Gives a test a case-insensitive identity collation, as MySQL's default is.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -20,9 +18,8 @@ use SineMacula\Laravel\Sso\Models\Link;
 trait ComparesIdentitiesWithoutCase
 {
     /**
-     * Make the links table find an identity id whatever its case: SQLite's
-     * column is made so, MySQL's default collation already is, and a test on
-     * PostgreSQL, whose comparisons are exact, has nothing to show.
+     * Make the links table match identity ids without case; skipped on
+     * PostgreSQL, whose comparisons are exact.
      *
      * @return void
      */

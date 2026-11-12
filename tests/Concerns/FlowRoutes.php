@@ -60,27 +60,8 @@ use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
 
 /**
- * What the operational acceptance tests stand on: the routes an application
- * would add, none in a middleware group, each calling one public helper of the
- * package, since the package adds no route; the contracts a real application
- * binds; connections of real SAML and OIDC providers, each a tenant of its own;
- * and a client for the routes, which holds what a browser or a client holds and
- * nothing else. A test decides how a request reaches the routes
- * (`sendFlowRequest()`): the HTTP kernel, unless it serves them through a
- * long-lived worker.
- *
- * Contracts the provider binds as scoped are given through a closure and never
- * through `instance()`: a worker forgets every scoped instance after each
- * request or job, and would then answer the default.
- *
- * The fetcher is a wrapper of the fake. A worker test asks what the root
- * application retains of a flow, and the fake, a package object, records every
- * request it answers for the test to read; the wrapper keeps that outside the
- * walk, and runs what a test arms just before the token request, which is after
- * the request's consumption and before the completion's locked transaction.
- *
- * Every value is the full width of its column, so a test runs on PostgreSQL and
- * MySQL as on SQLite.
+ * The routes an application adds, its contracts, fake providers and a client.
+ * Scoped contracts are bound by closure: a worker forgets scoped instances.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -137,8 +118,7 @@ trait FlowRoutes
     private array $flowIdpOf = [];
 
     /**
-     * Send the request to the routes, through the HTTP kernel. A test that
-     * serves them through a long-lived worker declares its own.
+     * Send the request to the routes through the HTTP kernel.
      *
      * @param  string  $method
      * @param  string  $uri
@@ -151,9 +131,7 @@ trait FlowRoutes
     }
 
     /**
-     * Bind the clock, the fetcher and the contracts of a real application, and
-     * configure both protocols, discovery, IdP-initiated sign-in, the
-     * endpoints, the applications and limits no test reaches by accident.
+     * Bind a real application's contracts and configure every flow.
      *
      * @return void
      */
@@ -196,9 +174,7 @@ trait FlowRoutes
     }
 
     /**
-     * Set each limit, high enough for a test to count its own: a test that
-     * names the counters' connection in its environment leaves the package's
-     * limits to be given here.
+     * Set each limit high enough that no test reaches one by accident.
      *
      * @return void
      */
@@ -230,8 +206,7 @@ trait FlowRoutes
     }
 
     /**
-     * An enabled OIDC connection of a provider of its own, under the tenant and
-     * at the host, storing the key the provider signs with.
+     * An enabled OIDC connection to a provider of its own at the host.
      *
      * @param  string  $tenant
      * @param  string  $host
@@ -274,8 +249,7 @@ trait FlowRoutes
     }
 
     /**
-     * An enabled SAML connection trusting a provider of its own, at the host,
-     * under the tenant.
+     * An enabled SAML connection trusting a provider of its own at the host.
      *
      * @param  string  $tenant
      * @param  string  $host
@@ -397,8 +371,7 @@ trait FlowRoutes
     }
 
     /**
-     * Start a flow through the connection, and answer what the client holds of
-     * it: its reference, its verifier and where the browser goes.
+     * Start a flow through the connection and answer what the client holds.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $purpose
@@ -415,8 +388,8 @@ trait FlowRoutes
     }
 
     /**
-     * Have the provider answer the start, and send the browser back with its
-     * answer: a tailor changes the ID token or the SAML response.
+     * Have the provider answer the start and send the browser back; a tailor
+     * changes the ID token or the SAML response.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array{navigation: array{url: string}}  $start
@@ -462,8 +435,8 @@ trait FlowRoutes
     }
 
     /**
-     * A response of the connection's SAML provider, made now for its service
-     * provider, unsolicited until told what it answers.
+     * A response of the connection's SAML provider, unsolicited until told what
+     * it answers.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
@@ -518,8 +491,7 @@ trait FlowRoutes
     }
 
     /**
-     * Start, complete and redeem one `sign_in`, answering what the redemption
-     * says of the result.
+     * Start, complete and redeem one `sign_in`, answering the redeemed result.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\Closure  $tailor
@@ -551,8 +523,7 @@ trait FlowRoutes
     }
 
     /**
-     * Renew the session through a `reauthenticate` flow, answering what the
-     * redemption says of the result.
+     * Renew the session through a `reauthenticate` flow, answering the result.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -572,8 +543,7 @@ trait FlowRoutes
     }
 
     /**
-     * The handoff code the completed response carries, once it is a redirect
-     * with no error.
+     * The handoff code of a completed, successful redirect.
      *
      * @param  \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>  $response
      * @return string
@@ -603,8 +573,7 @@ trait FlowRoutes
     }
 
     /**
-     * Have the fetcher answer the URL with the document, as a provider's
-     * metadata endpoint does.
+     * Have the fetcher answer the URL with the document.
      *
      * @param  string  $url
      * @param  string  $document
@@ -628,8 +597,7 @@ trait FlowRoutes
     }
 
     /**
-     * The value when it is a string, and nothing otherwise, for what an answer
-     * decoded from JSON holds.
+     * The value when it is a string, `null` otherwise.
      *
      * @param  mixed  $value
      * @return string
@@ -781,8 +749,8 @@ trait FlowRoutes
     }
 
     /**
-     * What the redemption route answers: a `link` standalone, and any other in
-     * the transaction that writes the session.
+     * What the redemption route answers; all but a `link` run in the
+     * transaction that writes the session.
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  string  $connection
@@ -832,8 +800,7 @@ trait FlowRoutes
     }
 
     /**
-     * A description as an application serves it: its document, or a 404 with
-     * why it cannot be given.
+     * A description as an application serves it, or a 404 with the reason.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription  $description
      * @return \Illuminate\Http\Response
@@ -864,8 +831,8 @@ trait FlowRoutes
     }
 
     /**
-     * The fetcher the package is given: the fake, behind a wrapper that runs
-     * what is armed just before a token request.
+     * The fake fetcher behind a wrapper that runs what is armed before a token
+     * request, and keeps the fake's records out of a worker test's walk.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\Fetcher
      */
@@ -886,9 +853,8 @@ trait FlowRoutes
 
         return new readonly class ($this->flowFetcher, $before) implements Fetcher {
             /**
-             * Constructor. The type of what runs first stays open, since the
-             * static analysis reads no docblock of an anonymous class in a
-             * trait.
+             * Constructor; `$before` is `mixed` since static analysis reads no
+             * docblock of an anonymous class in a trait.
              *
              * @param  \SineMacula\Laravel\Sso\Testing\FakeFetcher  $fake
              * @param  mixed  $before

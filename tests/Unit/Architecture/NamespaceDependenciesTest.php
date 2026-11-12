@@ -9,41 +9,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Holds the package's namespaces to the dependency rules its design states:
- * which classes may not name which others. Each rule is data in `RULES`, so a
- * change that moves a class or narrows a dependency adds or tightens a rule
- * there. A rule applies to the classes in its `from` namespaces or classes (`*`
- * for every class of the package) except those in `except`, and forbids them to
- * name anything in its `forbids` namespaces or classes except what `allows`
- * lists; every name is relative to the package.
- *
- * A class names another through an import (`use`, grouped or aliased), a
- * qualified or fully qualified name in its code, or a fully qualified type in a
- * docblock. Names resolve as PHP resolves them, without regard to case, and a
- * qualified name only through a class or namespace import. The source is
- * tokenised, not parsed, so a name built at run time (a class name in a string,
- * say) and an unqualified name of a class in the same namespace are not seen:
- * the test is a backstop for the rules, not a proof of them.
- *
- * One rule names what is outside the package: only `Logging` names the log
- * manager, a logger, the `Log` facade or the `logger()` and `info()` helpers,
- * so every log call the package makes goes through `Logging\SanitizingLogger`.
- * Another holds the request to the edge: only `Http\ClientContext` and
- * `Protocols\CompletionRequest` name `Illuminate\Http\Request`, each given it
- * by the application, and nothing resolves the request being served from the
- * container or calls the `request()` helper, so every core action takes its
- * client as a plain value.
- *
- * One rule is about the suite rather than the package: the package stands
- * alone, so nothing it ships (its classes, configuration, migrations and
- * translations) names a sibling package's namespace (`SineMacula\Laravel\*`
- * other than `Sso`) or reads a sibling's configuration (`authentication.`,
- * `authorization.`, `mfa.`, `iam.`, `audit-log.`), names a sibling by its
- * package name (`laravel-authentication`, ...) or cites a sibling's requirement
- * (`AUTH-3.10`, ...), and `composer.json` requires no sibling. That rule reads
- * the raw text, strings and comments included, so a name a class builds at run
- * time, and a docblock that describes a sibling's wiring, are caught too: only
- * the documentation names a sibling.
+ * Architecture tests holding the package's namespaces to the rules in `RULES`.
+ * Names in the same namespace or built at run time are not seen.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -59,7 +26,7 @@ final class NamespaceDependenciesTest extends TestCase
     /** @var string A fully qualified package name in a docblock. */
     private const string DOCBLOCK_NAME = '/\\\(SineMacula\\\Laravel\\\Sso\\\[A-Za-z0-9_\\\]+)/i';
 
-    /** @var string A sibling package's namespace: `SineMacula\Laravel\` and any member but `Sso`, with any number of backslashes, as code or a string writes it. */
+    /** @var string A sibling package's namespace, however many backslashes are written. */
     private const string SIBLING_NAMESPACE = '/SineMacula\\\+Laravel\\\+(?!Sso(?![A-Za-z0-9_]))[A-Za-z_][A-Za-z0-9_]*/i';
 
     /** @var string A string that reads a sibling package's configuration. */
@@ -74,7 +41,7 @@ final class NamespaceDependenciesTest extends TestCase
     /** @var list<string> The directories the package ships code, configuration, migrations and translations in. */
     private const array SHIPPED = ['src', 'config', 'database', 'lang'];
 
-    /** @var array<string, array{from: non-empty-list<string>, except: list<string>, forbids: non-empty-list<string>, allows: list<string>}> The rules, by what each holds. */
+    /** @var array<string, array{from: non-empty-list<string>, except: list<string>, forbids: non-empty-list<string>, allows: list<string>}> The rules, by what each holds; `*` is the whole package. */
     private const array RULES = [
         'contracts name no implementation' => [
             'from'    => ['Contracts'],
@@ -132,13 +99,13 @@ final class NamespaceDependenciesTest extends TestCase
         ],
     ];
 
-    /** @var list<string> The classes that read the request being served, given it by the application: what arrived at a completion endpoint, and the client it came from. */
+    /** @var list<string> The classes the application gives the request being served. */
     private const array REQUEST_READERS = ['Http\ClientContext', 'Protocols\CompletionRequest'];
 
-    /** @var string A read of the request being served through the container: `make('request')`, `bound('request')` and the like. */
+    /** @var string A read of the request being served through the container. */
     private const string CONTAINER_REQUEST = '/->\s*(?:make|bound|get|has|resolved)\s*\(\s*[\'"]request[\'"]/i';
 
-    /** @var list<string> What writes to the application's logs directly, by its lower-case name: the log manager, its loggers, the `Log` facade (imported or by its global alias) and the `logger()` and `info()` helpers. Only `Logging` names them, so every log call the package makes goes through `Logging\SanitizingLogger`. */
+    /** @var list<string> What writes to the application's logs directly, by lower-case name. */
     private const array LOG_WRITERS = [
         'illuminate\log\logmanager',
         'illuminate\log\logger',
@@ -182,8 +149,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Every namespace or class a rule names has a class in it, so a rule left
-     * behind by a move fails rather than holding over nothing.
+     * Every namespace or class a rule names still has a class in it.
      *
      * @param  list<string>  $from
      * @param  list<string>  $except
@@ -202,9 +168,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Nothing the package ships names a sibling package's namespace or reads a
-     * sibling's configuration: the package stands alone, and `laravel-iam`
-     * adapts it.
+     * Nothing the package ships, comments included, names or configures a
+     * sibling package.
      *
      * @return void
      */
@@ -220,8 +185,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * `composer.json` requires no sibling package, at run time or in
-     * development.
+     * `composer.json` requires no sibling package, even in development.
      *
      * @return void
      */
@@ -236,9 +200,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Only `Logging` writes to the application's logs directly: every other
-     * class logs through `Logging\SanitizingLogger`, so nothing it logs skips
-     * sanitisation and redaction.
+     * Only `Logging` writes to the application's logs directly, so nothing
+     * skips sanitisation and redaction.
      *
      * @return void
      */
@@ -260,11 +223,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * No core service reads the request being served: each takes plain values,
-     * and only the client context and the completion request name
-     * `Illuminate\Http\Request`, each given the request by the application, and
-     * nothing resolves the request from the container or calls the `request()`
-     * helper.
+     * No core service reads the request being served; only the client context
+     * and the completion request are given it.
      *
      * @return void
      */
@@ -301,11 +261,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The log scan finds the log manager, a logger and the `Log` facade however
-     * a class names them (imported, aliased, fully qualified, by the global
-     * alias) and a call to the `logger()` or `info()` helper, and nothing for a
-     * PSR-3 logger, a method or a function of the same name, or a name that
-     * only starts like one.
+     * The log scan finds Laravel's loggers however named and the log helpers,
+     * and skips PSR-3, methods, declarations and lookalikes.
      *
      * @return void
      */
@@ -352,13 +309,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The sibling scan finds a sibling's namespace however it is written (in an
-     * import, fully qualified, in a docblock, in a string with doubled
-     * backslashes, in any case) and a read of a sibling's configuration through
-     * any helper, a sibling named in prose by its package name, and a sibling's
-     * requirement cited by id; and nothing for the package's own namespace or
-     * requirements, a name that only starts like a sibling's, or a word that
-     * only ends like a requirement's id.
+     * The sibling scan finds a sibling however it is named, and skips the
+     * package's own names and lookalikes.
      *
      * @return void
      */
@@ -414,11 +366,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The scanner finds a package name however a class names it: imported
-     * alone, aliased, grouped, as a function or a constant (alone or within a
-     * group), through an alias or relative to its namespace, fully qualified in
-     * code or in a docblock; and nothing for an unqualified name, a closure's
-     * `use`, or a name outside the package.
+     * The scanner finds a package name however a class names it, and skips
+     * unqualified names, a closure's `use` and names outside the package.
      *
      * @return void
      */
@@ -485,10 +434,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The scanner reads the imports of a bracketed namespace as imports, gives
-     * each namespace its own aliases, reads a closure's `use` at the top of a
-     * namespace as code, and resolves names in the global namespace from its
-     * root.
+     * The scanner gives each bracketed namespace its own imports, and resolves
+     * global names from the root.
      *
      * @return void
      */
@@ -535,11 +482,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * A qualified name resolves through the class or namespace import its first
-     * segment names, whatever its case, and not through a function's or a
-     * constant's import of the same name, alone or within a group; a rule
-     * catches a forbidden name whatever its case, fully qualified in code or in
-     * a docblock.
+     * A qualified name resolves case-insensitively through class imports only,
+     * and a rule catches a forbidden name whatever its case.
      *
      * @return void
      */
@@ -601,8 +545,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Every file the package ships, by its path relative to the package, with
-     * its contents.
+     * Every file the package ships, by relative path, with its contents.
      *
      * @return array<string, string>
      */
@@ -631,9 +574,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The references to a sibling package the text holds, in order: each
-     * sibling namespace, then each read of a sibling's configuration, then each
-     * sibling named in prose or requirement of one cited.
+     * The references to a sibling package the text holds, grouped by kind.
      *
      * @param  string  $text
      * @return list<string>
@@ -681,8 +622,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Every class of the package and the package names it names, relative to
-     * the package, read once.
+     * Every class of the package and the package names it names, read once.
      *
      * @return array<string, list<string>>
      */
@@ -692,8 +632,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Every class of the package and its source, by its name relative to the
-     * package, read once.
+     * Every class of the package and its source, read once.
      *
      * @return array<string, string>
      */
@@ -739,13 +678,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Every distinct fully qualified name the source names, in or outside the
-     * package, in the order it first names each.
-     *
-     * An import is read as one statement, so its names are not read again as
-     * names in code; each namespace's body, whether it ends at the next
-     * `namespace` or at its closing brace, has its own aliases. The names of a
-     * trait's or a closure's `use` are read as names in code.
+     * Every distinct fully qualified name the source names, in order of first
+     * use; a trait's or closure's `use` counts as code.
      *
      * @param  string  $source
      * @return list<string>
@@ -782,9 +716,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The names of what writes to the application's logs directly that the
-     * source names, in the order it first names each: through an import or a
-     * qualified name, or as a call of an unqualified function.
+     * The direct log writers the source names or calls, in order of first use.
      *
      * @param  string  $source
      * @return list<string>
@@ -809,8 +741,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The lower-case names of the functions the source calls by a plain name:
-     * none of a method, a static method, a declaration or a `new`.
+     * The lower-case names of the plain functions the source calls.
      *
      * @param  string  $source
      * @return list<string>
@@ -837,8 +768,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Whether the token before a name makes it a member or a declaration rather
-     * than a call of a function: `->`, `?->`, `::`, `function` or `new`.
+     * Whether the token before a name makes it a member, declaration or `new`.
      *
      * @param  array{0: int, 1: string, 2: int}|string|null  $previous
      * @return bool
@@ -849,8 +779,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The namespace declared at the index, the depth of the braces its imports
-     * sit in, and the index of its last token before its body.
+     * The namespace declared at the index, its imports' brace depth, and where
+     * its body starts.
      *
      * @param  list<array{0: int, 1: string, 2: int}|string>  $tokens
      * @param  list<int>  $depths
@@ -866,9 +796,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Whether the `use` at the index is an import: one directly in the
-     * namespace's body, not a trait's in a class or a closure's after its
-     * parameters.
+     * Whether the `use` at the index is an import, not a trait's or closure's.
      *
      * @param  list<array{0: int, 1: string, 2: int}|string>  $tokens
      * @param  list<int>  $depths
@@ -920,8 +848,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The import statement that starts at the index, as text without its
-     * whitespace, and the index of its `;`.
+     * The import statement at the index, without whitespace, and where it ends.
      *
      * @param  list<array{0: int, 1: string, 2: int}|string>  $tokens
      * @param  int  $index
@@ -939,8 +866,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The text of the token, with a space around `as` and after `function` or
-     * `const`, the words an import statement may hold.
+     * The text of the token, spacing the keywords an import may hold.
      *
      * @param  array{0: int, 1: string, 2: int}|string  $token
      * @return string
@@ -959,10 +885,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The names an import statement imports, recording the alias each class or
-     * namespace import gives by its lower case. A qualified name resolves only
-     * through those, without regard to case: a function's or a constant's
-     * import of the same name is kept apart from them.
+     * The names an import statement imports, recording class and namespace
+     * aliases by lower case apart from function and constant imports.
      *
      * @param  string  $statement
      * @param  array<string, string>  $aliases
@@ -1001,10 +925,8 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * What the import imports, `function`, `const` or `''` for a class or a
-     * namespace, and the import without the word that gives it: a whole
-     * statement's, or one member's of a group, which imports what its statement
-     * does unless it gives its own.
+     * The import's kind (`function`, `const` or `''` for a class) and the
+     * import without that word; a group member inherits its statement's kind.
      *
      * @param  string  $import
      * @param  string  $kind
@@ -1020,9 +942,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The fully qualified name a name token stands for: a qualified name
-     * through the alias its first segment names, whatever its case, or else
-     * relative to the namespace; `null` for any other token.
+     * The fully qualified name a name token stands for, or `null`.
      *
      * @param  int  $id
      * @param  string  $text
@@ -1065,8 +985,7 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * Whether the name is one of the namespaces or classes, or inside one of
-     * them, without regard to case; `*` stands for the whole package.
+     * Whether the name is in one of the namespaces or classes, ignoring case.
      *
      * @param  string  $name
      * @param  list<string>  $scopes

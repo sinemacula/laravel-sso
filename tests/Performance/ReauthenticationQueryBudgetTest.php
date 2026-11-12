@@ -36,24 +36,8 @@ use Tests\Fixtures\Links\FixedLinker;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Query budgets for redeeming a `reauthenticate` code (SSO-5.10, SSO-9.5,
- * SSO-9.9, SSO-11.3, SSO-11.5), each measured once the IP address's counter
- * exists, so every redemption first costs its update. The linker and the
- * session contract bound here cost nothing, as an application's own session
- * rows are its own to count:
- *
- * - a redemption reads the code by its digest and the connection's tenant,
- *   then, in the caller's transaction, locks the connection and the code,
- *   writes the single-use record and the code's mark, and acknowledges no
- *   sign-in: four reads and three writes;
- * - with enforcement on, the recheck's lock adds the upsert of the tenant's
- *   enforcement row and its locking read, the connections being locked in the
- *   same one statement: five reads and four writes;
- * - a refusal once the code is consumed, by the session or by the link, costs
- *   what a redemption costs and renews nothing;
- * - a replay stops at the two locking reads, and writes only the counter;
- * - with the counters on their own connection, the counter's update goes there
- *   and the rest stays on the storage connection.
+ * Query budgets for redeeming a `reauthenticate` code, measured once the IP
+ * counter exists, so each costs its update.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -83,8 +67,8 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
     private Connection $connection;
 
     /**
-     * Bind a linker answering the identity, the session contract and a request
-     * from an IP address, register the driver, and make a usable connection.
+     * Bind a linker answering the identity and the session contract, and make a
+     * usable connection.
      *
      * @return void
      */
@@ -110,8 +94,8 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A redemption is four reads and three writes, renews the session once and
-     * acknowledges no sign-in.
+     * The code by digest and the tenant, then the connection and code locked,
+     * the single-use record and the mark; the session is renewed once.
      *
      * @return void
      *
@@ -131,9 +115,8 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * With enforcement on, a redemption satisfying a stored rule is five reads
-     * and four writes, and one the locked rule refuses the same, renewing
-     * nothing.
+     * Enforcement adds the rule row's upsert and locking read, whether the
+     * locked rule is satisfied or refuses.
      *
      * @return void
      *
@@ -163,9 +146,8 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refusal once the code is consumed costs what a redemption costs: a
-     * session bound to another link and a subject resolving to another identity
-     * are each four reads and three writes, and renew nothing.
+     * A session bound to another link and a subject resolving to another
+     * identity cost a redemption, and renew nothing.
      *
      * @return void
      *
@@ -194,8 +176,8 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A code already consumed is refused as a replay at its two locking reads,
-     * and writes only the counter.
+     * A consumed code is refused as a replay at its two locking reads and
+     * writes only the counter.
      *
      * @return void
      *
@@ -216,8 +198,8 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * With the counters on their own connection, its update goes there and the
-     * rest of the redemption stays on the storage connection.
+     * With the counters apart, their update goes there and the rest stays on
+     * the storage connection.
      *
      * @return void
      *
@@ -246,8 +228,8 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Issue a `reauthenticate` code for the identity on the session, linked
-     * through the identity's link.
+     * Issue a `reauthenticate` code for the identity on the session, through
+     * its link.
      *
      * @return string
      *
@@ -296,8 +278,8 @@ final class ReauthenticationQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Redeem the code as a `reauthenticate` for `web` through the connection,
-     * in the caller's transaction, with the client's verifier.
+     * Redeem the code as a `reauthenticate` for `web` in the caller's
+     * transaction.
      *
      * @param  string  $code
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult

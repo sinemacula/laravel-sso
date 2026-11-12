@@ -10,16 +10,8 @@ use PHPUnit\Framework\TestCase;
 use Tests\Concerns\ScansLibraryNames;
 
 /**
- * Holds the package to needing no cache (SSO-11.6): nothing it ships names the
- * cache's classes, its facades or its rate limiter, calls the `cache()` helper
- * or resolves the cache from the container; and only
- * `Operations\OperationsSchedule`, behind an explicit opt-in, names the
- * scheduler's cache mutexes.
- *
- * Names are read as `ScansLibraryNames` reads them, and calls and container
- * keys from the source's tokens, so a comment that mentions the cache is not
- * one that uses it. The scan is a backstop:
- * `Integration\Failures\CacheOutageTest` proves the behaviour.
+ * Architecture tests holding the package to needing no cache. Only the opt-in
+ * operations schedule may name the scheduler's cache mutexes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,7 +26,7 @@ final class NoCacheDependencyTest extends TestCase
     /** @var string The one class that may name a mutex. */
     private const string MUTEX_OWNER = 'src/Operations/OperationsSchedule.php';
 
-    /** @var string A name of the cache: its namespaces, its contracts, its facades and its aliases. */
+    /** @var string A name of the cache, however imported. */
     private const string CACHE_NAME = '/^\\\?(?:Illuminate\\\(?:Contracts\\\)?Cache\\\|(?:Illuminate\\\Support\\\Facades\\\)?(?:Cache|RateLimiter)$)/';
 
     /** @var list<string> What a source resolving the cache from the container says. */
@@ -68,8 +60,7 @@ final class NoCacheDependencyTest extends TestCase
     }
 
     /**
-     * Nothing calls the `cache()` helper or resolves the cache from the
-     * container.
+     * Nothing calls `cache()` or resolves the cache from the container.
      *
      * @param  string  $path
      * @return void
@@ -127,8 +118,8 @@ final class NoCacheDependencyTest extends TestCase
     }
 
     /**
-     * The use scan catches the helper and the container's keys, and passes over
-     * a comment, a method of that name and a header of a similar one.
+     * The use scan catches the helper and container keys, and skips comments,
+     * methods of that name and lookalikes.
      *
      * @return void
      */
@@ -141,8 +132,7 @@ final class NoCacheDependencyTest extends TestCase
     }
 
     /**
-     * What resolves the cache in the source: a call of the `cache()` helper, or
-     * a string that is a key of the cache in the container.
+     * What resolves the cache in the source: `cache()` or a container key.
      *
      * @param  string  $source
      * @return list<string>
@@ -173,8 +163,7 @@ final class NoCacheDependencyTest extends TestCase
     }
 
     /**
-     * Whether the token is a call of the `cache()` helper, and not a method or
-     * a function of that name being declared.
+     * Whether the token calls the `cache()` helper.
      *
      * @param  array{0: int, 1: string, 2: int}  $token
      * @param  array{0: int, 1: string, 2: int}|string|null  $previous

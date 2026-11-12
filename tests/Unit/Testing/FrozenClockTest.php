@@ -12,9 +12,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Testing\FrozenClock;
 
 /**
- * Unit tests for the frozen clock: it holds its instant until a test moves it,
- * forwards, backwards or to an instant given, takes an instant as a string or
- * any date, and defaults to the instant it was built at.
+ * Unit tests for the frozen clock.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -151,8 +149,7 @@ final class FrozenClockTest extends TestCase
     }
 
     /**
-     * A mutable date the clock was given or set to can change afterwards
-     * without moving the clock.
+     * A mutable date given to the clock can change without moving the clock.
      *
      * @return void
      */
@@ -204,9 +201,8 @@ final class FrozenClockTest extends TestCase
     }
 
     /**
-     * A string that names no instant is refused with an
-     * `InvalidArgumentException`, rather than freezing the clock at some other
-     * time.
+     * A string that names no instant throws `InvalidArgumentException` instead
+     * of freezing at another time.
      *
      * @return void
      */

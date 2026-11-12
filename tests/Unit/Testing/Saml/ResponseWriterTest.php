@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use SineMacula\Laravel\Sso\Testing\Saml\ResponseWriter;
 
 /**
- * Unit tests for the XML the fake SAML identity provider writes: the response
- * and the assertion byte for byte, every part in its schema position and order,
- * every value escaped for XML, every instant in UTC, and each part the options
- * leave out left out.
+ * Unit tests for the XML the fake SAML identity provider writes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,9 +50,8 @@ final class ResponseWriterTest extends TestCase
     }
 
     /**
-     * A response with every part writes its attributes in order, the issuer,
-     * the status with its sub-status and message, then the assertion part,
-     * every value escaped and the instant in UTC.
+     * A response with every part is written in schema order, every value
+     * escaped and the instant in UTC.
      *
      * @return void
      */
@@ -103,9 +99,8 @@ final class ResponseWriterTest extends TestCase
     }
 
     /**
-     * An assertion with every part writes its issuer, subject, conditions,
-     * advice, statements and attributes in their schema order, each repeated
-     * part in the order given, every value escaped and every instant in UTC.
+     * An assertion with every part is written in schema order, repeats as
+     * given, values escaped and instants in UTC.
      *
      * @return void
      */
@@ -153,9 +148,8 @@ final class ResponseWriterTest extends TestCase
     }
 
     /**
-     * A subject, conditions and attribute that have nothing optional are
-     * written bare: a `NameID` without a format or qualifiers, empty `Subject`
-     * and `Conditions` elements, and an attribute without a name format.
+     * A subject, conditions and attribute with nothing optional are written
+     * bare.
      *
      * @return void
      */
@@ -198,10 +192,8 @@ final class ResponseWriterTest extends TestCase
     }
 
     /**
-     * The subject of the full assertion: an escaped `NameID` with its format
-     * and qualifiers, then a bearer confirmation with every data attribute, a
-     * confirmation without data (whose data values are ignored), and one with
-     * empty data.
+     * The full assertion's subject: a qualified, escaped `NameID`, then
+     * confirmations with all, no and empty data.
      *
      * @return string
      */

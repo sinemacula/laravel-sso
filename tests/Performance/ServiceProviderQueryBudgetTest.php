@@ -11,9 +11,7 @@ use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\TestCase;
 
 /**
- * Query budget for registering and booting the package, which every request and
- * worker pays: it must touch no database. The test application leaves the
- * provider out, so the registration and boot measured are its first.
+ * Query budget for registering and booting the package: no query at all.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,8 +45,7 @@ final class ServiceProviderQueryBudgetTest extends TestCase
     }
 
     /**
-     * Leave the package's provider out of the test application, so the test
-     * registers and boots it for the first time.
+     * Leave the provider out, so the test registers and boots it first.
      *
      * @param  mixed  $app
      * @return array<int, class-string<\Illuminate\Support\ServiceProvider>>

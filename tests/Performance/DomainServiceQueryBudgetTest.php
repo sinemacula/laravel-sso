@@ -21,23 +21,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 
 /**
- * Query budgets for the domain helpers (SSO-3.1, SSO-3.2, SSO-11.8). Every
- * change reads the connection, and the claim when it acts on one, before
- * freshness is asked, then again in its transaction under the connection's
- * lock, and writes only what it changes:
- *
- * - `claim()`: 3 reads (the connection; then, locked, the connection and every
- *   claim of the domain), 1 write (the insert);
- * - `verify()`: 4 reads (the connection and the claim; then, locked, the
- *   connection and every claim of the domain), the domain check counted (an
- *   update, and an insert the first time), and 1 write (the update);
- * - `remove()`: 4 reads (the connection and the claim, twice), 1 write (the
- *   delete);
- * - `get()` and `list()`: 2 reads (the connection, then its claims), no write.
- *
- * A refusal stops where it is decided, with no write of a claim: a stale caller
- * costs the reads before freshness was asked, a verified domain is unchanged
- * after them, and a failed lookup after its domain check.
+ * Query budgets for the domain helpers.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,8 +47,8 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
     private Connection $connection;
 
     /**
-     * Bind a freshness contract that answers `fresh` and a fake resolver, and
-     * make a connection.
+     * Answer `fresh` to every freshness check, bind a fake resolver and make a
+     * connection.
      *
      * @return void
      */
@@ -83,8 +67,8 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A claim is three reads and an insert; a duplicate the same reads and no
-     * write; a stale caller one read.
+     * The connection, then it and the domain's claims locked, and the insert; a
+     * duplicate writes nothing, a stale caller reads once.
      *
      * @return void
      */
@@ -103,8 +87,8 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A verification is four reads, its domain check, and an update: the first
-     * check of a connection creates its counter, a later one is one update.
+     * The connection and claim, both again locked, the domain check's counter
+     * (an insert too the first time) and the update.
      *
      * @return void
      */
@@ -146,7 +130,7 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A removal is four reads and a delete.
+     * The connection and claim, both again locked, and the delete.
      *
      * @return void
      */
@@ -160,7 +144,7 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Reading one claim, or every claim of a connection, is two reads.
+     * The connection, then one claim or all of them.
      *
      * @return void
      */

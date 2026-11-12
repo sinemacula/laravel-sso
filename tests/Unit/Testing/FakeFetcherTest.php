@@ -16,10 +16,7 @@ use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 
 /**
- * Unit tests for the fake fetcher: it answers each URL with the response given
- * for it, exactly, or with what a closure builds from the request; it records
- * every request in order; a stray request throws naming its URL; and its
- * assertions pass and fail as they say.
+ * Unit tests for the fake fetcher.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,8 +43,7 @@ final class FakeFetcherTest extends TestCase
     }
 
     /**
-     * Each URL is answered with its own response, and `respond()` returns the
-     * fake for chaining.
+     * Each URL is answered with its own response, and `respond()` chains.
      *
      * @return void
      */
@@ -125,9 +121,8 @@ final class FakeFetcherTest extends TestCase
     }
 
     /**
-     * A request that carries its own cap fails when the body it would be
-     * answered with is longer, and is answered at the cap; a request with none
-     * is answered whatever the body's length.
+     * A body longer than the request's own cap fails the fetch; one within it,
+     * or a request with no cap, is answered whole.
      *
      * @return void
      */

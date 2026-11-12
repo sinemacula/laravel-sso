@@ -12,26 +12,8 @@ use Illuminate\Support\Facades\Event;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * Makes a named database statement, or a commit, fail as a real one does, on
- * any step of a flow and not only its first lookup (SSO-11.4). The statement is
- * never sent; a `QueryException` naming SQLSTATE `HY000` is thrown in its
- * place, with a message a test can tell apart. Nothing else about the
- * connection changes, so whatever a flow does next it does for real, and a
- * transaction the failure unwinds really rolls back.
- *
- * `failStatement()` takes a regular expression, tried on the statement in lower
- * case, with the occurrence to fail at: `onTable()` builds one from a verb and
- * a table through the connection's grammar, so it works on every engine.
- * Whatever was armed is disarmed by the failure, so a retry or the next step
- * runs. `deadlockStatement()` fails a statement as a MySQL deadlock instead,
- * and `failToSerialiseStatement()` as a PostgreSQL serialisation failure, with
- * SQLSTATE `40001` as its code. `failCommit()` fails the outermost commit on
- * the connection instead, rolling the transaction back in the database first,
- * as a failed commit leaves it.
- *
- * Each call arms one failure; `disarmDatabaseFailures()` drops any not yet
- * reached, and `databaseFailuresFired()` says how many fired, so a test can
- * show the step it meant to fail was reached.
+ * Makes a matching database statement, or a commit, fail as a real one does.
+ * The statement is never sent and each armed failure fires once.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,15 +25,14 @@ trait FailsDatabaseStatements
     /** @var string The driver's message on an injected failure. */
     protected const string INJECTED_FAILURE = 'injected database failure';
 
-    /** @var ?\ArrayObject<string, mixed> What is armed, shared with the callbacks the connections hold. */
+    /** @var ?\ArrayObject<string, mixed> What is armed, shared with the connections' hooks. */
     private ?\ArrayObject $databaseFailures = null;
 
     /** @var array<string, true> The connections a statement hook is installed on. */
     private array $failingConnections = [];
 
     /**
-     * Fail the occurrence of the statement matching the pattern on the
-     * connection, the storage connection unless another is named.
+     * Fail the nth statement matching the lower-case pattern.
      *
      * @param  string  $pattern
      * @param  int  $occurrence
@@ -68,9 +49,7 @@ trait FailsDatabaseStatements
     }
 
     /**
-     * Make the next statements matching the pattern fail as the database does
-     * when it rolls one back as a deadlock, the given number of times: a
-     * transaction that retries such failures is tried again.
+     * Fail the next matching statements as MySQL deadlocks.
      *
      * @param  string  $pattern
      * @param  int  $times
@@ -89,9 +68,7 @@ trait FailsDatabaseStatements
     }
 
     /**
-     * Make the next statements matching the pattern fail as PostgreSQL does
-     * when it cannot serialise one (SQLSTATE `40001`), the given number of
-     * times: a transaction that retries such failures is tried again.
+     * Fail the next matching statements as PostgreSQL serialisation failures.
      *
      * @param  string  $pattern
      * @param  int  $times
@@ -110,8 +87,7 @@ trait FailsDatabaseStatements
     }
 
     /**
-     * Fail the occurrence of the outermost commit on the connection, the
-     * storage connection unless another is named.
+     * Fail the nth outermost commit, rolled back first as a failed one is.
      *
      * @param  int  $occurrence
      * @param  ?string  $connection
@@ -139,8 +115,7 @@ trait FailsDatabaseStatements
     }
 
     /**
-     * A pattern matching a statement of the verb on the table, through the
-     * connection's grammar.
+     * A pattern for the verb on the table, quoted by the connection's grammar.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -202,8 +177,7 @@ trait FailsDatabaseStatements
     }
 
     /**
-     * Install the hook that throws in place of an armed statement, once on each
-     * connection.
+     * Install the hook that throws for an armed statement, once per connection.
      *
      * @param  string  $name
      * @return void
@@ -280,8 +254,7 @@ trait FailsDatabaseStatements
     }
 
     /**
-     * The exception a statement PostgreSQL cannot serialise raises: SQLSTATE
-     * `40001` as its code, as PDO gives it.
+     * The exception PDO raises for a PostgreSQL serialisation failure.
      *
      * @param  \Illuminate\Database\Connection  $connection
      * @param  string  $query

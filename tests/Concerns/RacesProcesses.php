@@ -8,34 +8,8 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Assert;
 
 /**
- * Races forked processes on a shared database server, each with its own
- * connection, and establishes the order a test claims with explicit signals,
- * never with timing (BL-73 and the races of every other item).
- *
- * `setUpRace()` skips where processes cannot share a database, on SQLite or
- * without `pcntl`, and makes a directory for the signals and the reports;
- * `tearDownRace()` removes it. Anything expensive that fixtures cache per
- * process (a certificate, a key) is made before `race()`, or each child makes
- * its own.
- *
- * `race()` forks one process per racer. Each opens its own connection, runs
- * `$before` if given (an open transaction's reads, say), signals that it is
- * ready and waits for the rest, so all start together, then runs its racer and
- * reports. A racer that must find a lock held waits for an explicit signal from
- * the holder through `awaitSignal()`; the holder raises it with `signal()` once
- * it holds the lock, and not merely once it has started. Every wait fails
- * loudly at `RACE_DEADLINE_SECONDS`.
- *
- * With `inTransaction`, each racer runs inside a transaction of its own on the
- * connection named, opened before the start, with `$before` run in it, so its
- * snapshot predates every change, and committed after its work: a re-read that
- * decides a write must then be a locking one.
- *
- * A report carries the racer's `result`, JSON-encodable, and `error`: the
- * exception's class and message, or `RACE_SERIALIZATION_FAILURE` for a
- * PostgreSQL serialisation failure (SQLSTATE 40001, possibly wrapped in a
- * `DeadlockException`: the chain is walked), which is an accepted safe outcome
- * on PostgreSQL only, and so reported as a failure anywhere else.
+ * Races forked processes on a shared database server, ordered by signals. A
+ * holder signals once it holds the lock, never merely once it has started.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,8 +28,7 @@ trait RacesProcesses
     private ?string $raceDirectory = null;
 
     /**
-     * Skip where processes cannot share the database, and make the directory
-     * the processes use.
+     * Skip where processes cannot share the database, and make the directory.
      *
      * @return void
      *
@@ -93,8 +66,8 @@ trait RacesProcesses
     }
 
     /**
-     * Race the racers and answer each one's report, in the order given. Each
-     * racer is given its index.
+     * Race the racers, started together, and answer their reports in order.
+     * `$inTransaction` runs each racer and its `$before` in one transaction.
      *
      * @param  list<\Closure(int): mixed>  $racers
      * @param  ?string  $inTransaction
@@ -164,9 +137,8 @@ trait RacesProcesses
     }
 
     /**
-     * Assert no racer failed but for a serialisation failure, on PostgreSQL
-     * alone where it is accepted, and answer the results of those that
-     * finished.
+     * Assert no racer failed, bar a serialisation failure on PostgreSQL, and
+     * answer the results of those that finished.
      *
      * @param  list<array{result: mixed, error: ?string}>  $reports
      * @return list<mixed>
@@ -209,8 +181,7 @@ trait RacesProcesses
     }
 
     /**
-     * In a forked process: open a connection of its own, signal it is ready,
-     * wait for the rest, run the racer, report, and end without running the
+     * Run the racer in the forked child, report, and die without running the
      * parent's shutdown.
      *
      * @param  int  $index

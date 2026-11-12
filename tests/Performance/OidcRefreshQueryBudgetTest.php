@@ -39,53 +39,7 @@ use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Clients;
 
 /**
- * Query budgets for an import, a refetch and a refresh of an OIDC connection
- * (SSO-2.8, SSO-7.3, SSO-11.12).
- *
- * A selection reads the connection on the write connection. Only one that is
- * unknown refetches: it claims the cooldown with one conditional update, then,
- * in one transaction, reads the connection locked and writes only what changed:
- *
- * - a key the stored JWKS holds: 1 read;
- * - a token already disqualified on its unverified claims, whose `kid` the
- *   stored JWKS does not hold: 1 read, nothing claimed or fetched;
- * - a refetch adding a key: 2 reads (the connection, then locked) and 2 writes
- *   (the claim, the keys);
- * - a refetch removing a key: 2 reads and 5 writes (the claim, the keys, the
- *   requests and the handoff codes voided, the trust version raised), and 3
- *   reads when a consumed request asked, its row read with a lock;
- * - a failed refetch: 2 reads and 2 writes (the claim, the token cleared);
- * - a refetch the cooldown holds: 2 reads (the connection, what is stored now)
- *   and 2 writes (the claim's update, which changes no row, and the count of
- *   what it turned away), or 1 write once that count is at its cap.
- *
- * A refresh reads nothing for its snapshot, which its connection holds:
- *
- * - a scheduled refresh adding a key: 2 reads (the listing, the connection
- *   locked) and 2 writes (the claim, the refresh);
- * - a refresh now adding a key: 2 reads (the connection, then locked) and 4
- *   writes (the counter's two, the claim, the refresh);
- * - a refresh now removing a key and moving an endpoint: 2 reads and 7 writes
- *   (the counter's two, the claim, the requests and handoff codes voided, the
- *   trust version raised once, the refresh in one update);
- * - a failed refresh now: 2 reads and 4 writes (the counter's two, the claim,
- *   the failure);
- * - a refresh now whose claim another server holds: 1 read and 3 writes (the
- *   counter's two, the claim's update, which changes no row);
- * - a refresh now past the metadata limit: 2 reads (the connection, the full
- *   counter for its wait) and the counter's 3 writes, none of which changes a
- *   row;
- * - a stale administrator's refresh the schedule would not make: 1 read and no
- *   write, nothing counted or claimed;
- * - a scheduled refresh of keys alone adding a key: 2 reads and 2 writes;
- * - a refresh now of keys alone removing a key: 2 reads and 7 writes (the
- *   counter's two, the claim, the requests and handoff codes voided, the trust
- *   version raised once, the refresh);
- * - a document that fails, then the saved JWKS: as one that does not fail, the
- *   fallback reading and writing nothing more.
- *
- * An import reads nothing naming no connection; naming one, it reads it once
- * and writes the counter's two.
+ * Query budgets for importing, refetching and refreshing an OIDC connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -152,8 +106,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A token already disqualified whose `kid` is unknown is one read and no
-     * write: nothing is claimed or fetched.
+     * A token already disqualified whose `kid` is unknown is one read: nothing
+     * is claimed or fetched.
      *
      * @return void
      */
@@ -176,7 +130,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refetch adding a key is two reads and two writes.
+     * The connection, then locked; the cooldown claim and the keys.
      *
      * @return void
      */
@@ -193,8 +147,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refetch removing a key is two reads and six writes, the trust version
-     * raised once.
+     * The claim, the keys and the voiding's four writes: requests, codes, trust
+     * version and reservations.
      *
      * @return void
      */
@@ -208,8 +162,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refetch removing a key for the consumed request whose token asked adds
-     * the locking read of that request, and answers its receipt.
+     * A consumed request whose token asked adds its locking read, and answers
+     * its receipt.
      *
      * @return void
      */
@@ -230,7 +184,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A failed refetch is two reads and two writes.
+     * The connection, then locked; the claim and the token cleared.
      *
      * @return void
      */
@@ -244,8 +198,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refetch the cooldown holds is two reads and two writes, and fetches
-     * nothing.
+     * The connection and what is stored now; the claim's update, which changes
+     * no row, and the count of what it turned away.
      *
      * @return void
      */
@@ -259,9 +213,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Once the count of what the cooldown turned away is at its cap, a token is
-     * two reads and the failed claim, which changes no row: the row is not
-     * written at all.
+     * Once that count is at its cap, only the claim's update, which changes no
+     * row.
      *
      * @return void
      */
@@ -275,7 +228,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A scheduled refresh adding a key is two reads and two writes.
+     * The listing and the locked connection, which holds the snapshot; the
+     * claim and the refresh.
      *
      * @return void
      */
@@ -290,7 +244,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now adding a key is two reads and four writes.
+     * The connection, then locked; the counter's two writes, the claim and the
+     * refresh.
      *
      * @return void
      */
@@ -306,8 +261,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now removing a key and moving an endpoint is two reads and
-     * eight writes, the trust version raised once.
+     * The counter's two writes, the claim, the voiding's four and one update
+     * for the refresh; the trust version is raised once.
      *
      * @return void
      */
@@ -324,7 +279,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A failed refresh now is two reads and four writes.
+     * The counter's two writes, the claim and the failure.
      *
      * @return void
      */
@@ -357,8 +312,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now past the metadata limit is two reads and the counter's
-     * three writes, and claims and fetches nothing.
+     * The connection and the full counter; the counter's three writes change no
+     * row, and nothing is claimed or fetched.
      *
      * @return void
      */
@@ -378,8 +333,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A stale administrator's refresh the schedule would not make is the read
-     * of the connection alone: nothing is counted, claimed or fetched.
+     * A stale administrator's refresh the schedule would not make reads the
+     * connection alone.
      *
      * @return void
      */
@@ -413,8 +368,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now of keys alone removing a key is two reads and eight writes,
-     * the trust version raised once.
+     * The counter's two writes, the claim, the voiding's four and the refresh.
      *
      * @return void
      */
@@ -429,8 +383,8 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A document that fails, then the saved JWKS, costs what a refresh of keys
-     * alone does: the fallback reads and writes nothing more.
+     * A failing document then the saved JWKS costs a keys-alone refresh; the
+     * fallback adds nothing.
      *
      * @return void
      */
@@ -471,7 +425,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * What selecting the key of a token under the `kid` chose.
+     * Select the key of a token under the `kid`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $kid
@@ -483,8 +437,7 @@ final class OidcRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refreshing connection of the tenant storing the keys, with the
-     * attributes and settings given.
+     * A refreshing connection of the tenant storing the keys.
      *
      * @param  list<\SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey>  $keys
      * @param  array<string, mixed>  $attributes

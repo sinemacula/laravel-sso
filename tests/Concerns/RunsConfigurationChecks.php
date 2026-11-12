@@ -7,8 +7,7 @@ namespace Tests\Concerns;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 
 /**
- * Runs one configuration check through the checker, as the boot check and
- * `sso:check` run it, against the test application's configuration.
+ * Runs one configuration check through the checker, as `sso:check` does.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -18,8 +17,7 @@ use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 trait RunsConfigurationChecks
 {
     /**
-     * What the check found: `null` when it does not apply, otherwise its
-     * problems, `[]` for none.
+     * The check's problems: `null` when it does not apply, `[]` for none.
      *
      * @param  class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>  $check
      * @return ?list<string>
@@ -33,8 +31,7 @@ trait RunsConfigurationChecks
     }
 
     /**
-     * Turn the package on with a protocol, the base URL its endpoints are built
-     * from and one valid application, so a test changes only what it checks.
+     * Configure a valid baseline, so a test changes only what it checks.
      *
      * @return void
      */

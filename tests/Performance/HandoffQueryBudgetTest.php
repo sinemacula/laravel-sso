@@ -42,30 +42,8 @@ use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Query budgets for issuing and redeeming handoff codes (SSO-9.2, SSO-11.3,
- * SSO-11.5, SSO-11.8), each redemption measured once the IP address's counter
- * exists, so every redemption first costs its update:
- *
- * - issuing a code is one insert and the update that raises its connection's
- *   flows version;
- * - a linked `sign_in` redeemed reads the code by its digest and the
- *   connection's tenant, then, in its transaction, locks the connection and the
- *   code, writes the single-use record and the code's mark, and marks the
- *   connection's first completed sign-in on the row it holds locked; once
- *   marked, the connection is not written again; the linker and enforcement
- *   while it is off cost nothing;
- * - a `link` is not acknowledged; it upserts its identity's guard first, reads
- *   by a locking read whether the identity has held a verified domain link,
- *   finds by a plain read the connections holding its verified domain links,
- *   and reads those links in its judgement and again in its admission;
- * - with enforcement on, the recheck's lock adds the upsert of the tenant's
- *   enforcement row and its locking read, and the connections are locked in the
- *   same one statement, the rule's with them;
- * - a refusal once the code is consumed stops before the recheck, and one by
- *   the recheck after it, with no lock more;
- * - a replay and a voided code stop at the two locking reads, a code whose
- *   connection is gone at the read of its tenant, a code never issued at its
- *   read, and a value that is not a code reads nothing.
+ * Query budgets for issuing and redeeming handoff codes, each redemption
+ * measured once the IP counter exists, so it costs its update.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -86,9 +64,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     private Connection $connection;
 
     /**
-     * Bind a linker that links every result to one identity and a request from
-     * an IP address, register the driver, make a usable connection, and create
-     * the IP address's counter.
+     * Bind a linker that links every result to one identity, make a usable
+     * connection and create the IP counter.
      *
      * @return void
      */
@@ -127,8 +104,7 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Issuing a code is one insert, and one update that raises its connection's
-     * flows version.
+     * The insert and the raise of the connection's flows version.
      *
      * @return void
      */
@@ -142,8 +118,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * The first linked `sign_in` redeemed through a connection is four reads
-     * and four writes; the next is four reads and three writes.
+     * The code and tenant, the connection and code locked, the use record, the
+     * mark and the first sign-in mark, which a later one skips.
      *
      * @return void
      *
@@ -162,11 +138,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * With enforcement on, the first linked `sign_in` redeemed for a tenant
-     * with no rule is five reads and five writes (the guard's upsert, which
-     * inserts the unconfigured row, among them); with a rule stored, the next
-     * is five reads and four writes; and a redemption the locked rule refuses
-     * is five reads and four writes too.
+     * Enforcement adds the rule row's upsert (an insert for a tenant with no
+     * rule) and lock; a stored rule and a refusal by it cost the same reads.
      *
      * @return void
      *
@@ -196,12 +169,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A `link` redeemed is nine reads and four writes: it acknowledges no
-     * sign-in; it upserts the identity's guard (the fourth write), reads by a
-     * locking read whether the identity has ever held a verified domain link,
-     * and finds by a plain read the connections holding its verified domain
-     * links; it reads the link it confirms, and the identity's verified domain
-     * links in its judgement and again in its admission.
+     * A `link` acknowledges no sign-in; it upserts its guard and reads its
+     * domain link history, the connections, the link and the links twice.
      *
      * @return void
      *
@@ -223,8 +192,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refusal once the code is consumed is four reads and three writes, and a
-     * refusal by the recheck the same: it locks nothing more.
+     * A refusal once consumed, or by the recheck, costs a later redemption and
+     * locks nothing more.
      *
      * @return void
      *
@@ -249,8 +218,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A replay and a voided code are four reads and the counter's write; a code
-     * whose connection is gone two reads.
+     * A replay and a voided code stop at the two locking reads; a code whose
+     * connection is gone at the tenant's read.
      *
      * @return void
      *
@@ -276,8 +245,8 @@ final class HandoffQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A code never issued is one read and the counter's write; a value that is
-     * not a code reads nothing.
+     * A code never issued is one read; a value that is not a code reads
+     * nothing.
      *
      * @return void
      */
