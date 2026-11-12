@@ -12,19 +12,10 @@ use SineMacula\Laravel\Sso\Pruning\PruneReport;
 use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
- * `sso:prune`: deletes the authorisation requests, handoff codes, single-use
- * keys, link reservations, pending domain claims and rate limit counters the
- * package no longer needs (SSO-11.11), through `Pruning\Pruner`. Schedule it
- * hourly; it is idempotent and safe to run on several servers at once.
+ * `sso:prune`: deletes the expired rows the package no longer needs.
  *
- * It prints one line with the count of each kind and how the run ended. It exits
- * 0 when the run is complete, and when it is incomplete, stopped by the work cap
- * with more eligible, which it says, since the next run goes on; `--drain` goes
- * past the cap. It exits 1 when a kind stopped on an exception, printing what
- * committed before it and naming the kind and the exception by class alone,
- * since a message could carry a value read from the database. It exits 1 too
- * when the run's summary could not be logged, printing the counts as ever and
- * naming the logger's exception by class.
+ * Exceptions are named by class alone, since a message could carry a stored
+ * value.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +53,7 @@ final class PruneCommand extends Command
     }
 
     /**
-     * Print what committed, every kind that stopped, and the way on when more
-     * is eligible.
+     * Print what committed, every kind that failed, and a hint when incomplete.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\PruneReport  $report
      * @return void
@@ -84,8 +74,7 @@ final class PruneCommand extends Command
     }
 
     /**
-     * Print the report of the run that failed, and the logger's failure when
-     * the summary could not be logged.
+     * Print the failed run's report and any logger failure.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\PruneFailedException  $exception
      * @return int

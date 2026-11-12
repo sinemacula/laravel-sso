@@ -7,28 +7,10 @@ namespace SineMacula\Laravel\Sso\Http;
 use Illuminate\Http\Request;
 
 /**
- * The client an action is taken for: the IP address it came from and the user
- * agent it sent, as plain values (SSO-11.2, SSO-11.8). Every public action that
- * counts an attempt against the client or records an event takes one, and none
- * reads the request being served itself: the application builds the context
- * where it reads the request, with `fromRequest()`, or from values it trusts,
- * with the constructor.
+ * The client's IP address and user agent, cleaned so they are safe to store.
  *
- * The IP address and the user agent come from the client and are made safe to
- * keep rather than trusted, by the constructor, so a context built by hand is
- * held to the same rules as one read from a request: an IP address is kept only
- * when it is a valid IPv4 or IPv6 address, and a user agent has invalid UTF-8
- * replaced, its control characters (C0, NUL among them, DEL, C1) and Unicode
- * bidirectional marks and controls removed, and is then cut to 512 characters,
- * so characters that are removed never use up the length kept. PostgreSQL, and
- * MySQL in strict mode, reject invalid UTF-8 and an over-long value, and a
- * crafted header must not turn a request into a server error; PostgreSQL cannot
- * store a NUL byte in text, and through PDO a value is cut short at the first
- * one. A value that is missing, invalid, or empty after cleaning is `null`.
- *
- * Work with no client (a console command, a queued job, a scheduled task) takes
- * `new ClientContext(null, null)`, built where that work starts: it counts
- * against no IP address, and its events carry neither value.
+ * PostgreSQL and strict MySQL reject invalid UTF-8, NUL bytes and over-long
+ * values, and a crafted header must not become a server error.
  *
  * @api
  *
@@ -40,7 +22,7 @@ final readonly class ClientContext
     /** @var int Longest user agent kept, in characters. */
     private const int USER_AGENT_MAX_LENGTH = 512;
 
-    /** @var string Characters removed from a user agent: C0 controls, DEL, C1 controls, the Unicode bidirectional marks and the embeddings, overrides and isolates. */
+    /** @var string Control and Unicode bidirectional characters removed from a user agent. */
     private const string UNSAFE_CHARACTERS = '/[\x{0000}-\x{001F}\x{007F}-\x{009F}\x{061C}\x{200E}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
 
     /** @var ?string Validated IP address the client came from. */
@@ -84,9 +66,8 @@ final readonly class ClientContext
     }
 
     /**
-     * Clean a user agent: invalid UTF-8 replaced, control and bidirectional
-     * characters removed, then cut to `USER_AGENT_MAX_LENGTH` characters, and
-     * `null` when nothing is left.
+     * Clean a user agent, cutting it to length only after removals; `null` when
+     * nothing is left.
      *
      * @param  ?string  $userAgent
      * @return ?string

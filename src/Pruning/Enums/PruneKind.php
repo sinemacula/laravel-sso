@@ -5,8 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Pruning\Enums;
 
 /**
- * What `Pruning\Pruner` deletes (SSO-11.11), in the order a run gives each its
- * turn. The value names the kind in a report, the command's output and the log.
+ * What `Pruning\Pruner` deletes, in the order a run takes them.
  *
  * @api
  *

@@ -15,43 +15,21 @@ use SineMacula\Laravel\Sso\Models\SingleUseKey;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 
 /**
- * The default single-use store (SSO-11.5): records a key once in its namespace
- * by inserting its digest under the unique index of the single-use table, on
- * the storage connection.
+ * The default single-use store: the table's unique index, never a read, decides
+ * whether a key is held.
  *
- * The index answers, never a read: an insert that goes in is `recorded`. After
- * one the index refuses, the row it collided with is deleted if it has expired,
- * and the insert is tried once more, whatever the delete removed: a prune or
- * another record may have just deleted that row, so only the index can say
- * whether a holder is left. `seen` therefore always names a live row. Each
- * statement runs in a transaction of its own, which Laravel makes a savepoint
- * when the caller already has one open, so a refused insert never aborts the
- * caller's transaction (PostgreSQL would refuse every statement after it), and
- * a lost connection is thrown rather than the insert retried. Every statement
- * is a write, so it runs on the write connection (SSO-11.3).
- *
- * A statement the database rolls back as a deadlock or a serialisation failure
- * wrote nothing, so it is tried again, at most three times in all, when the
- * store opened the transaction itself (two racing inserts of a key whose
- * expired row was just deleted can deadlock on MySQL). Inside the caller's
- * transaction it is thrown, since the database has rolled that transaction back
- * too.
- *
- * Every other database error propagates unchanged, and the flow is refused as a
- * server error (SSO-11.4). A record made inside the caller's transaction is
- * undone with it.
- *
- * The store holds nothing between calls, and is bound scoped (SSO-11.2).
+ * Each statement runs in its own transaction, a savepoint inside the caller's,
+ * so a refused insert never aborts the caller's transaction on PostgreSQL.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class DatabaseSingleUseStore implements SingleUseStore
 {
-    /** @var string A namespace: 1 to 64 lower case letters, digits, `_`, `.`, `:` and `-`, with nothing after them, not even a newline. */
+    /** @var string A namespace of 1 to 64 safe characters. */
     private const string NAMESPACE_PATTERN = '/^[a-z0-9_.:\-]{1,64}$/D';
 
-    /** @var int Times a statement is tried when the database rolls it back as a deadlock or serialisation failure, in a transaction the store opened. */
+    /** @var int How many times a statement rolled back as a deadlock is tried in all. */
     private const int ATTEMPTS = 3;
 
     /**
@@ -61,16 +39,13 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
      */
     public function __construct(
 
-        /** The clock an expiry is checked and compared against */
+        /** The clock expiries are checked against. */
         private Clock $clock,
     ) {}
 
     /**
-     * Record the key in the namespace until the expiry, unless it is held
-     * there: `recorded` when it was not, `seen` when it was.
-     *
-     * The expiry is kept to the whole second, rounded up, so a key is never
-     * released before it; a key is released from the second its expiry names.
+     * Record the key until the expiry, rounded up to the second, unless it is
+     * already held.
      *
      * @param  string  $namespace
      * @param  string  $key
@@ -97,21 +72,22 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
         $row = [
             'namespace'  => $namespace,
             'key_digest' => $digest,
-            'expires_at' => $this->format($model, $until->ceilSecond()),
+            'expires_at' => UtcDateTime::format($model, $until->ceilSecond()),
         ];
 
         if ($this->store($connection, $table, $row)) {
             return SingleUseOutcome::RECORDED;
         }
 
-        $this->deleteExpired($connection, $table, $namespace, $digest, $this->format($model, $now));
+        // Insert again whatever the delete removed: only the index can say
+        // whether a live holder is left.
+        $this->deleteExpired($connection, $table, $namespace, $digest, UtcDateTime::format($model, $now));
 
         return $this->store($connection, $table, $row) ? SingleUseOutcome::RECORDED : SingleUseOutcome::SEEN;
     }
 
     /**
-     * Refuse a malformed namespace, an empty key or an expiry that is not after
-     * now, before any statement runs. No message names the key.
+     * Refuse a malformed namespace, an empty key or a past expiry.
      *
      * @param  string  $namespace
      * @param  string  $key
@@ -137,9 +113,7 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
     }
 
     /**
-     * Insert the row in a transaction of its own (a savepoint inside the
-     * caller's), unless the unique index refuses it. Returns whether it went
-     * in; any other error propagates.
+     * Insert the row, returning `false` when the unique index refuses it.
      *
      * @param  \Illuminate\Database\Connection  $connection
      * @param  string  $table
@@ -164,8 +138,7 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
     }
 
     /**
-     * Delete the key's row if its expiry has passed, in a transaction of its
-     * own (a savepoint inside the caller's). A row still held is never touched.
+     * Delete the key's row if its expiry has passed.
      *
      * @param  \Illuminate\Database\Connection  $connection
      * @param  string  $table
@@ -185,19 +158,5 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
             ->delete();
 
         RetriedTransaction::run($connection, $delete, self::ATTEMPTS);
-    }
-
-    /**
-     * Format an instant as the storage connection stores times, in UTC, to the
-     * whole second, so no daylight-saving change can make a held key read as
-     * expired (see `Models\Casts\UtcDateTime`).
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\SingleUseKey  $model
-     * @param  \Carbon\CarbonImmutable  $instant
-     * @return string
-     */
-    private function format(SingleUseKey $model, CarbonImmutable $instant): string
-    {
-        return UtcDateTime::format($model, $instant);
     }
 }

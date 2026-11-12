@@ -9,9 +9,8 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[pruning]`: the settings of the clean-up, while the package is in use
- * (SSO-11.11), each read as `PruneSettings` reads it, so the check and the
- * clean-up judge it the same way.
+ * `[pruning]`: checks the pruning settings the same way `PruneSettings` reads
+ * them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

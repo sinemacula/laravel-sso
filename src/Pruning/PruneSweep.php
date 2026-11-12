@@ -5,9 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Pruning;
 
 /**
- * How one kind's turn in a run ended: the rows deleted in the transactions that
- * committed, whether more was eligible when the work cap stopped it, and the
- * exception that stopped it, if one did.
+ * How one kind's turn in a prune run ended.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

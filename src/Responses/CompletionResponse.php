@@ -8,21 +8,10 @@ use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Http\Response;
 
 /**
- * The response a completion at an assertion consumer service or a callback
- * answers with (SSO-5.6, SSO-5.7, SSO-12.1), as `CompletionResponses::from()`
- * builds it: a status, the headers, the `Location` of a redirect and a plain
- * text body.
+ * A completion's HTTP response, whose `Location` may carry the handoff code.
  *
- * A redirect is a `302` or a `303`, never a `307` or a `308`, which would
- * forward the posted body. A refusal is a `400`, or a `429` with `Retry-After`,
- * and has no `Location`. Every response is sent with `Cache-Control: no-store`,
- * `Referrer-Policy: no-referrer` and a plain text `Content-Type`, since the
- * `Location` of a completed one carries the handoff code (SSO-9.8).
- *
- * The `Location` is held in a `\SensitiveParameterValue` and leaves the object
- * only through `location()` and `toResponse()`: a dump and `json_encode()` show
- * it with the code redacted, and the response refuses to be serialised or
- * unserialised, so the code never reaches a log, a cache, a queue or an event.
+ * Never a `307` or `308`, which would forward the posted body; the code is
+ * redacted in dumps and the response refuses serialisation.
  *
  * @api
  *
@@ -31,7 +20,7 @@ use Illuminate\Http\Response;
  */
 final readonly class CompletionResponse implements \JsonSerializable, Responsable
 {
-    /** @var array<string, string> The headers every completion response is sent with. */
+    /** @var array<string, string> The headers every response gets, since a `Location` may carry the code. */
     public const array HEADERS = [
         'Cache-Control'   => 'no-store',
         'Referrer-Policy' => 'no-referrer',
@@ -41,7 +30,7 @@ final readonly class CompletionResponse implements \JsonSerializable, Responsabl
     /** @var int The status of a redirect after a GET: `302 Found`. */
     public const int FOUND = 302;
 
-    /** @var int The status of a redirect after a POST or any other method: `303 See Other`. */
+    /** @var int The status of a redirect after any other method: `303 See Other`. */
     public const int SEE_OTHER = 303;
 
     /** @var int The status of a completion with no trusted redirect target. */
@@ -78,8 +67,7 @@ final readonly class CompletionResponse implements \JsonSerializable, Responsabl
         /** The plain text body, for a client that shows it. */
         public string $body,
 
-        // The `Location` of a redirect, which may carry the handoff code; held
-        // wrapped.
+        // Not promoted: may carry the handoff code, so held wrapped
         #[\SensitiveParameter]
         ?string $location = null,
     ) {
@@ -146,8 +134,7 @@ final readonly class CompletionResponse implements \JsonSerializable, Responsabl
     }
 
     /**
-     * A `400` with no redirect, for a completion with no trusted redirect
-     * target.
+     * A `400` for a completion with no trusted redirect target.
      *
      * @param  string  $body
      * @return self
@@ -158,7 +145,7 @@ final readonly class CompletionResponse implements \JsonSerializable, Responsabl
     }
 
     /**
-     * A `429` with no redirect, to be tried again after the seconds given.
+     * A `429` to be retried after the seconds given.
      *
      * @param  int  $retryAfter
      * @param  string  $body
@@ -176,8 +163,7 @@ final readonly class CompletionResponse implements \JsonSerializable, Responsabl
     }
 
     /**
-     * The `Location` of a redirect, carrying the handoff code of a completed
-     * one, or null for a refusal.
+     * The `Location` of a redirect, or null for a refusal.
      *
      * @return ?string
      */
@@ -188,8 +174,7 @@ final readonly class CompletionResponse implements \JsonSerializable, Responsabl
     }
 
     /**
-     * What `json_encode()` writes: the `Location` with the handoff code
-     * redacted.
+     * The response with the handoff code redacted.
      *
      * @return array{status: int, headers: array<string, string>, location: ?string, body: string}
      */
@@ -205,11 +190,10 @@ final readonly class CompletionResponse implements \JsonSerializable, Responsabl
     }
 
     /**
-     * The HTTP response: the status, the headers, the `Location` of a redirect
-     * and the body, and nothing else.
+     * The HTTP response.
      *
-     * Symfony adds a `Date` header, and writes `Cache-Control: no-store` as
-     * `no-store, private`, which only narrows it further.
+     * Symfony adds a `Date` header and writes `Cache-Control: no-store` as
+     * `no-store, private`, which only narrows it.
      *
      * @param  mixed  $request
      * @return \Illuminate\Http\Response
@@ -224,8 +208,7 @@ final readonly class CompletionResponse implements \JsonSerializable, Responsabl
     }
 
     /**
-     * The `Location` as a dump shows it: the value of every `code` parameter,
-     * in the query or the fragment, redacted.
+     * The `Location` with every `code` parameter's value redacted.
      *
      * @return ?string
      */

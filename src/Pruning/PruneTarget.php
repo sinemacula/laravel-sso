@@ -19,28 +19,10 @@ use SineMacula\Laravel\Sso\Models\SsoModel;
 use SineMacula\Laravel\Sso\Pruning\Enums\PruneKind;
 
 /**
- * One kind's eligibility at one run's cutoff, the one place it is written
- * (SSO-11.11), and the two statements that act on it:
+ * One kind's prune eligibility at a run's cutoff, and the queries that act on
+ * it.
  *
- * | Kind                     | Eligible when                                              |
- * | ------------------------ | ---------------------------------------------------------- |
- * | `authorization_requests` | `expires_at` <= now - retention, whatever its state        |
- * | `handoff_codes`          | `expires_at` <= now - retention, whatever its state        |
- * | `single_use_keys`        | `expires_at` <= now                                        |
- * | `reservations`           | `state` = reserved and `reservation_expires_at` <= now     |
- * | `pending_claims`         | `state` = pending and `pending_expires_at` <= now          |
- * | `rate_limits`            | `window_ends_at` <= now, on the counters' connection       |
- *
- * `candidates()` selects primary keys on the write connection, in the order of
- * the kind's index, by keyset on (time, key), never by offset. `delete()` names
- * those keys and repeats the eligibility, so a row renewed, activated or
- * verified since it was selected stands, and answers the rows affected, never
- * the rows selected. What it is given is one of `units()`, the rows that commit
- * together. A batch of reservations is a unit for each of its connections,
- * ascending, each deleted through `Links\ReservationWithdrawal::expired()` in a
- * short transaction of its own, since it raises the connection's links version;
- * a batch of any other kind is one unit and one statement, tried again when the
- * database rolled it back as a deadlock.
+ * Deletes repeat the eligibility, so a row renewed since it was selected stays.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -99,8 +81,7 @@ final readonly class PruneTarget
     }
 
     /**
-     * The next eligible rows after the one given, in the order of the kind's
-     * index.
+     * The next eligible rows after the one given, by keyset on (time, key).
      *
      * @param  ?\SineMacula\Laravel\Sso\Pruning\PruneCandidate  $after
      * @param  int  $limit
@@ -134,9 +115,8 @@ final readonly class PruneTarget
     }
 
     /**
-     * The batch split into what commits together, in the order it is deleted:
-     * so that a failure part of the way through a batch costs only the count of
-     * what did not commit.
+     * Split a batch into the units that commit together; reservations split by
+     * connection.
      *
      * @param  list<\SineMacula\Laravel\Sso\Pruning\PruneCandidate>  $candidates
      * @return list<non-empty-list<\SineMacula\Laravel\Sso\Pruning\PruneCandidate>>
@@ -160,8 +140,7 @@ final readonly class PruneTarget
     }
 
     /**
-     * Delete those of the rows of one unit that are still eligible, and answer
-     * how many went.
+     * Delete the unit's rows that are still eligible and return the count.
      *
      * @param  non-empty-list<\SineMacula\Laravel\Sso\Pruning\PruneCandidate>  $candidates
      * @return int
@@ -183,8 +162,7 @@ final readonly class PruneTarget
     }
 
     /**
-     * The target of the kind, with the cutoff as its model's connection stores
-     * times.
+     * The kind's target, with the cutoff formatted for its connection.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @param  \SineMacula\Laravel\Sso\Models\SsoModel  $model
@@ -228,7 +206,7 @@ final readonly class PruneTarget
     }
 
     /**
-     * Withdraw the reservations of one connection, and answer how many went.
+     * Withdraw one connection's reservations, raising its links version.
      *
      * @param  non-empty-list<\SineMacula\Laravel\Sso\Pruning\PruneCandidate>  $candidates
      * @return int

@@ -60,16 +60,15 @@ use SineMacula\Laravel\Sso\Secrets\SecretsCheck;
 use SineMacula\Laravel\Sso\Support\PackageDefaults;
 
 /**
- * Package service provider: registers the package's configuration, its
- * contracts' defaults, its translations, its publishing tags and console
- * command, and checks the configuration of what is enabled at boot.
+ * Registers the package's configuration, defaults, translations, publishing
+ * tags and commands, and checks the configuration at boot.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final class SsoServiceProvider extends ServiceProvider
 {
-    /** @var array<string, class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>> The package's configuration checks, by the subject its problems are reported under, in the order they run; a part of the package that adds settings adds its check here. A composing package or the application adds its own through `Config\ConfigurationChecks`. */
+    /** @var array<string, class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>> The configuration checks by subject, in run order. */
     public const array CONFIGURATION_CHECKS = [
         'features'     => FeaturesCheck::class,
         'extensions'   => ExtensionsCheck::class,
@@ -94,7 +93,7 @@ final class SsoServiceProvider extends ServiceProvider
         'operations'   => OperationsCheck::class,
     ];
 
-    /** @var list<class-string> Every package class that takes a PSR-3 logger. Each is given `Logging\SanitizingLogger`, so nothing the package logs skips sanitisation and redaction (SSO-5.7, SSO-9.8); the application's own `LoggerInterface` binding is left alone. A part of the package that logs adds its class here. */
+    /** @var list<class-string> Every package class that logs; each is given `Logging\SanitizingLogger` contextually. */
     public const array LOGGING_CLASSES = [
         GuzzleFetcher::class,
         SystemDnsResolver::class,
@@ -111,7 +110,7 @@ final class SsoServiceProvider extends ServiceProvider
         DomainRechecker::class,
     ];
 
-    /** @var list<string> The console commands that start long-running or scheduled work: the queue workers, Horizon, the scheduler and the Octane servers. Each is checked as it starts and refused on a problem, as a request is at boot (SSO-12.3); every other command runs, so a misconfigured application can still run `sso:check`, its migrations and the commands that repair it. */
+    /** @var list<string> Worker commands checked as they start; others run, so a misconfiguration can be repaired. */
     public const array WORKER_COMMANDS = [
         'queue:work',
         'queue:listen',
@@ -127,7 +126,7 @@ final class SsoServiceProvider extends ServiceProvider
         'octane:swoole',
     ];
 
-    /** @var list<string> File names of the shipped migrations, published under the `sso-migrations` tag and never run from the package (SSO-11.7). */
+    /** @var list<string> The shipped migrations, published and never run from the package. */
     private const array MIGRATIONS = [
         '2026_10_31_000000_create_sso_single_use_keys_table.php',
         '2026_10_31_000001_create_sso_rate_limits_table.php',
@@ -151,39 +150,10 @@ final class SsoServiceProvider extends ServiceProvider
     ];
 
     /**
-     * Register the configuration and the contracts' defaults.
+     * Register the configuration and the contracts' fail-closed defaults.
      *
-     * Every binding is a default: one the application or another package made
-     * before this provider registers is kept, and one made after replaces it,
-     * as any later binding does. Each default is bound under its private key
-     * (`Support\PackageDefaults`), and the contract to a transient closure that
-     * resolves that key, so the contract never holds an instance or a scope of
-     * the package's and a binding made over it stays wholly its maker's. A
-     * default that holds nothing between calls is a singleton; one that reads
-     * configuration or a connection is scoped, so nothing of one request or job
-     * outlives it under Octane or a queue worker (SSO-11.2). Each default fails
-     * closed: the freshness contract's refuses every operation (SSO-2.12); the
-     * DNS resolver's answers `lookup_failed` whenever the system resolver
-     * cannot answer (SSO-3.2); enforcement is read from the write connection on
-     * every question, inheritance applies each tenant's own setting, nobody is
-     * exempt (SSO-4.1, SSO-4.2, SSO-4.4); the session revocation revokes
-     * nothing, since the package keeps no sessions, which its documentation
-     * says (SSO-4.5); an application allows external sign-in only when its
-     * configuration says so, its redirect URI and the endpoints are the
-     * configured ones, never the request's (SSO-5.1, SSO-5.5); nothing is
-     * linked, an identity holds one link per connection, and no session is
-     * found for reauthentication (SSO-8.3, SSO-8.4, SSO-5.10); no identity may
-     * link, no email matches, no principal set or membership is known, and no
-     * evidence is accepted (SSO-8.5, SSO-8.7, SSO-8.8); the provider's session
-     * deadline limits the application's (SSO-6.10); and handoff codes are the
-     * package's own (SSO-9.2). The protocol registry is a singleton that builds
-     * its drivers with the application serving, in its present scope (see
-     * `ProtocolManager::driver()`). Each is resolved only when first used.
-     * `Events\StrandedTransactions` is a singleton, never scoped, since the
-     * listener the provider registers and the after-commit dispatch must share
-     * its marks. Every package class that logs is given `SanitizingLogger` by a
-     * contextual binding, never by binding `LoggerInterface` for the whole
-     * application.
+     * Each contract forwards to its default's private key through a transient
+     * closure, so a binding made over the contract stays wholly its maker's.
      *
      * @return void
      */
@@ -207,6 +177,7 @@ final class SsoServiceProvider extends ServiceProvider
         }
 
         $this->app->singletonIf(ProtocolManager::class);
+        // Never scoped: the listener and after-commit dispatch share its marks.
         $this->app->singleton(StrandedTransactions::class);
         $this->app->when(self::LOGGING_CLASSES)->needs(LoggerInterface::class)->give(SanitizingLogger::class);
         $this->app->singleton(ConfigurationChecks::class, static fn (): ConfigurationChecks => new ConfigurationChecks(self::CONFIGURATION_CHECKS));
@@ -217,12 +188,10 @@ final class SsoServiceProvider extends ServiceProvider
     }
 
     /**
-     * Determine whether the contract is still bound to the package's default,
-     * rather than to anything an application or another package bound over it.
+     * Determine whether the contract is still bound to the package's default.
      *
-     * The package binds each contract to a closure the provider declares, and
-     * never holds an instance under it, so an instance held, an alias, an
-     * unbound contract and any other binding answer false.
+     * Only a non-shared closure declared by this provider counts; an instance,
+     * alias or any other binding does not.
      *
      * @param  \Illuminate\Container\Container  $container
      * @param  string  $contract
@@ -255,8 +224,8 @@ final class SsoServiceProvider extends ServiceProvider
     }
 
     /**
-     * Return the closure a contract is bound to, resolving the private key of
-     * its default in the container that resolves the contract.
+     * Return the closure that resolves the default's private key in the
+     * resolving container.
      *
      * @param  string  $key
      * @return \Closure(\Illuminate\Contracts\Container\Container): mixed
@@ -267,11 +236,11 @@ final class SsoServiceProvider extends ServiceProvider
     }
 
     /**
-     * Mark the records a failed commit left behind when the next outermost
-     * transaction begins on their connection, for the after-commit dispatch
-     * (see `Events\StrandedTransactions`), as soon as the events dispatcher is
-     * resolved. It is resolved here, as the application boots, so every request
-     * and job the process serves shares it, an Octane sandbox included.
+     * Mark records a failed commit left behind as the next outermost
+     * transaction begins.
+     *
+     * Resolved at boot so every request and job, an Octane sandbox included,
+     * shares it.
      *
      * @return void
      */
@@ -287,8 +256,8 @@ final class SsoServiceProvider extends ServiceProvider
     }
 
     /**
-     * Mark the records stranded on the connection when the transaction begun is
-     * its outermost and a transactions manager is bound.
+     * Mark the connection's stranded records when an outermost transaction
+     * begins.
      *
      * @param  \SineMacula\Laravel\Sso\Events\StrandedTransactions  $stranded
      * @param  \Illuminate\Database\Events\TransactionBeginning  $event
@@ -354,10 +323,8 @@ final class SsoServiceProvider extends ServiceProvider
     }
 
     /**
-     * Check the configuration of what is enabled before the application does
-     * any work with it, failing with every problem found (SSO-12.3): once the
-     * application has booted to serve a request, and in the console as a worker
-     * or scheduler command starts.
+     * Check the configuration once booted for a request, or as a worker command
+     * starts.
      *
      * @return void
      */
@@ -375,13 +342,11 @@ final class SsoServiceProvider extends ServiceProvider
     }
 
     /**
-     * Check the configuration as each of `WORKER_COMMANDS` starts, so the
-     * command fails with the `InvalidConfigurationException` before it takes a
-     * job or runs a scheduled task. Every other command is left to run, with
-     * `sso:check` to report the problems.
+     * Check the configuration as each of `WORKER_COMMANDS` starts, before it
+     * takes any work.
      *
-     * The command is matched by the name Artisan resolved, so an alias or an
-     * abbreviation of a worker command is checked as the command itself.
+     * Matched by the name Artisan resolved, so aliases and abbreviations are
+     * caught.
      *
      * @return void
      */

@@ -5,20 +5,10 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Secrets;
 
 /**
- * What a helper returns for a stored key pair or certificate (SSO-2.5): whether
- * one is set and, when it is, the public half an application shows or gives to
- * an identity provider: the certificate, the public key and the fingerprint. It
- * never holds a private key; a PEM that carries one is refused rather than
- * masked.
+ * The public half of a stored key pair or certificate; never a private key.
  *
- * The fingerprint is the lower-case hex SHA-256 of the certificate's DER when
- * there is a certificate, and of the public key's DER (its
- * SubjectPublicKeyInfo) otherwise. Each PEM is the canonical form OpenSSL
- * writes, whatever line breaks it was given in.
- *
- * A PEM is read only when it is exactly one block of the expected type, so a
- * string that OpenSSL would take as a file path (`file://`) is refused before
- * OpenSSL sees it. A refusal never echoes the PEM it was given.
+ * A PEM must be exactly one block of the expected type, so OpenSSL never reads
+ * a `file://` path.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,12 +46,12 @@ final readonly class MaskedKey implements \JsonSerializable
         /** The public key, PEM-encoded, when one is set. */
         public ?string $publicKey,
 
-        /** The lower-case hex SHA-256 fingerprint, when one is set. */
+        /** The lower-case hex SHA-256 of the certificate's DER, else the public key's. */
         public ?string $fingerprint,
     ) {}
 
     /**
-     * The certificate, its public key and its fingerprint.
+     * The certificate, its public key and its fingerprint, in canonical PEM.
      *
      * @param  string  $pem
      * @return self
@@ -134,8 +124,7 @@ final readonly class MaskedKey implements \JsonSerializable
     }
 
     /**
-     * The four fields, under `set`, `certificate`, `public_key` and
-     * `fingerprint`.
+     * The fields with snake_case keys.
      *
      * @return array<string, bool|string|null>
      */
@@ -151,8 +140,7 @@ final readonly class MaskedKey implements \JsonSerializable
     }
 
     /**
-     * Refuse a PEM that holds a private key: a private key is never kept or
-     * shown here.
+     * Refuse a PEM that holds a private key.
      *
      * @param  string  $pem
      * @return void
@@ -181,8 +169,7 @@ final readonly class MaskedKey implements \JsonSerializable
     }
 
     /**
-     * The canonical PEM of the public key a certificate or public key PEM
-     * holds, or `null` when OpenSSL cannot read one.
+     * The canonical public key PEM, or `null` when OpenSSL cannot read one.
      *
      * @param  \OpenSSLCertificate|string  $source
      * @return ?string
@@ -197,7 +184,7 @@ final readonly class MaskedKey implements \JsonSerializable
     }
 
     /**
-     * The DER a single-block PEM encodes: its base64 body, decoded.
+     * The DER a single-block PEM encodes.
      *
      * @param  string  $pem
      * @return false|string
@@ -210,9 +197,8 @@ final readonly class MaskedKey implements \JsonSerializable
     }
 
     /**
-     * Run an OpenSSL read, with the warning it raises on malformed input
-     * silenced (its result says so) and its error queue cleared, so neither
-     * reaches a log or a later call.
+     * Run an OpenSSL read with its warning silenced and its error queue
+     * cleared, so neither reaches a log or a later call.
      *
      * @template TResult
      *

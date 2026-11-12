@@ -9,15 +9,10 @@ use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
- * `sso:check`: runs the configuration checks the web boot runs (SSO-12.3) and
- * exits non-zero on a problem, for deploy pipelines and readiness probes, and
- * for the console, where the check runs only as a worker or scheduler command
- * starts, so that a misconfigured application can still be inspected and fixed.
+ * `sso:check`: runs the boot configuration checks and exits non-zero on a
+ * problem.
  *
- * Every registered check is reported under its subject: `[<subject>] OK`,
- * `[<subject>] not enabled` for one that does not apply, or one line per
- * problem, `[<subject>] <message>`. The command reads configuration only: it
- * opens no database connection, makes no network request and prints no secret.
+ * Reads configuration only: no database connection, network request or secret.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

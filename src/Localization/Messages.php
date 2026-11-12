@@ -8,22 +8,10 @@ use Illuminate\Contracts\Translation\Translator;
 use SineMacula\Laravel\Sso\Localization\Enums\Message;
 
 /**
- * The messages the package can put in front of a consumer, translated through
- * Laravel's translator under the package's `sso` namespace (SSO-12.6).
+ * Translates the package's user-facing messages under the `sso` namespace.
  *
- * A message is read in the locale asked for, or the translator's current one,
- * and then in the application's fallback locale, as Laravel reads any line; a
- * line the application publishes to `lang/vendor/sso/{locale}/messages.php`
- * replaces the package's. When neither locale has a line, the message is read
- * again in English, the package's own fallback whatever the application's is. A
- * message without an English line is a bug in the package, and throws.
- *
- * The message is plain text: whoever renders it in HTML escapes it, since an
- * application's translation, and a replacement in particular, may hold
- * anything.
- *
- * It keeps only the translator it was given, and reads the locale on each call,
- * so nothing of one request or job outlives it (SSO-11.2).
+ * Falls back to English whatever the application's fallback locale is. The
+ * result is plain text for the caller to escape.
  *
  * @api
  *
@@ -35,7 +23,7 @@ final readonly class Messages
     /** @var string The prefix of every message's key: the namespace and the translation file. */
     private const string KEY_PREFIX = 'sso::messages.';
 
-    /** @var string The locale the package's own lines are written in, read when the locale asked for has no line. */
+    /** @var string The locale the package's own lines are written in. */
     private const string FALLBACK_LOCALE = 'en';
 
     /**
@@ -45,16 +33,12 @@ final readonly class Messages
      */
     public function __construct(
 
-        /** The application's translator */
+        /** The application's translator. */
         private Translator $translator,
     ) {}
 
     /**
-     * Translate the message in the locale given, or the current locale, with
-     * Laravel's `:placeholder` replacements, falling back to English when that
-     * locale and the application's fallback have no line.
-     *
-     * The answer is plain text, for the caller to escape.
+     * Translate the message in the given or current locale, else in English.
      *
      * @param  \SineMacula\Laravel\Sso\Localization\Enums\Message  $message
      * @param  array<string, int|string>  $replace
@@ -77,12 +61,11 @@ final readonly class Messages
     }
 
     /**
-     * Whether the translator has a line for the key in the locale or the
-     * application's fallback locale.
+     * Whether the locale, or the application's fallback, has a line for the
+     * key.
      *
-     * The translator answers a key it has no line for with the key itself, so
-     * the line is read without replacements: one could otherwise turn the key
-     * into something else and pass for a line.
+     * Read without replacements, since a replacement could alter the echoed key
+     * and pass for a line.
      *
      * @param  string  $key
      * @param  string  $locale

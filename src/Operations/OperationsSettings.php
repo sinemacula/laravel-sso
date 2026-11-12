@@ -10,24 +10,15 @@ use SineMacula\Laravel\Sso\Config\BooleanSetting;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The settings of the operations schedule (SSO-11.11, SSO-11.12), read from
- * `sso.operations` on each call (SSO-11.2), each failing closed with an
- * `InvalidArgumentException` naming its key when it is malformed; `[operations]`
- * reports the same at boot.
- *
- * - `cadence.<task>`: when `OperationsSchedule` runs each of `TASKS`, a cron
- *   expression, or `null` or empty to leave it to the application.
- * - `cache_mutexes`: whether each task opts in to Laravel's cache mutexes
- *   (default `false`). Every command is safe without them.
- * - `mutex_minutes`: how long a mutex a dead process left holds, 1 to 1440
- *   minutes (default 60).
+ * The `sso.operations` settings, read on each call and failing closed when
+ * malformed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class OperationsSettings
 {
-    /** @var array<string, string> Each task's key under `sso.operations.cadence`, and its default cron expression. */
+    /** @var array<string, string> Each task's cadence key and default cron expression. */
     public const array TASKS = [
         'prune'            => '0 * * * *',
         'domain_recheck'   => '0 * * * *',
@@ -53,8 +44,7 @@ final readonly class OperationsSettings
     ) {}
 
     /**
-     * The cron expression the task runs on, or `null` when it is left to the
-     * application.
+     * The task's cron expression, or `null` to leave it to the application.
      *
      * @param  string  $task
      * @return ?string
@@ -95,7 +85,7 @@ final readonly class OperationsSettings
     }
 
     /**
-     * How long a mutex a dead process left holds, in minutes.
+     * How long a dead process's mutex holds, in minutes.
      *
      * @return int
      *

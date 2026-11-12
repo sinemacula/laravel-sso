@@ -7,11 +7,10 @@ namespace SineMacula\Laravel\Sso\Applications;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * Whether a flow may run for the application a request names (SSO-5.1,
- * SSO-9.2): admitted, with the registered application, or refused with
- * `application_not_allowed`, whether the name is registered for no application
- * or the application does not allow sign-in through an external provider, so a
- * refusal says nothing of which.
+ * Whether a flow may run for the named application.
+ *
+ * Unknown and disallowed applications are refused alike, so a refusal reveals
+ * neither.
  *
  * @api
  *

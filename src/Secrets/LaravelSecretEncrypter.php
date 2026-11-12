@@ -8,15 +8,10 @@ use Illuminate\Contracts\Encryption\StringEncrypter;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 
 /**
- * The default secret encrypter (SSO-2.5): Laravel's encrypter, keyed by
- * `app.key`.
+ * The default secret encrypter: Laravel's encrypter, keyed by `app.key`.
  *
- * Laravel's encrypter tries `app.key` and then each of `app.previous_keys` when
- * it decrypts, so a secret encrypted under a key since rotated still decrypts
- * while that key is listed as a previous one, and rotating the key needs no
- * migration. A ciphertext no key decrypts throws Laravel's `DecryptException`,
- * a `RuntimeException` whose message names the failure, never the plaintext; it
- * propagates as a server error.
+ * Decryption also tries `app.previous_keys`, so rotating the key needs no
+ * migration.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,8 +44,7 @@ final readonly class LaravelSecretEncrypter implements SecretEncrypter
     }
 
     /**
-     * The secret the ciphertext holds, decrypted under `app.key` or any of
-     * `app.previous_keys`.
+     * The secret, decrypted under `app.key` or any of `app.previous_keys`.
      *
      * @param  string  $ciphertext
      * @return string

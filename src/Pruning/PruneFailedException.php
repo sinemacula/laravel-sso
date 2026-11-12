@@ -5,13 +5,10 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Pruning;
 
 /**
- * A run of `Pruning\Pruner` in which a kind stopped on an exception, or whose
- * summary line the logger refused, thrown once every kind has had its turn, so
- * a database error still propagates (SSO-11.4) and the report of what committed
- * is not lost. The first kind's exception is chained, or the logger's when no
- * kind failed, and the logger's is kept apart as well; the message names the
- * kinds and the classes alone, since another exception's message could carry a
- * value read from the database.
+ * A prune run in which a kind or the summary log line failed; holds the report.
+ *
+ * The message names exception classes alone, since a message could carry a
+ * stored value.
  *
  * @api
  *
@@ -29,7 +26,7 @@ final class PruneFailedException extends \RuntimeException
      */
     public function __construct(
 
-        /** What the run did before and after the failure. */
+        /** What the run committed. */
         public readonly PruneReport $report,
 
         // Not promoted: chained, and kept by the base class
@@ -42,8 +39,7 @@ final class PruneFailedException extends \RuntimeException
     }
 
     /**
-     * The message: each kind that stopped, then the logger's failure, each by
-     * its exception's class alone.
+     * The message, naming each failure by its exception class.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\PruneReport  $report
      * @param  ?\Throwable  $logFailure

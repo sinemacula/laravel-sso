@@ -14,20 +14,11 @@ use SineMacula\Laravel\Sso\Keys\ExpiryRun;
 use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
- * `sso:keys:expiring`: lists every key and certificate whose validity is about
- * to end or has ended, and sends the warning of each that has reached a
- * threshold and not yet been warned of it (SSO-2.6, SSO-11.12), through
- * `Keys\ExpiryReport`. Schedule it daily; it is safe to run on several servers
- * at once, and a warning may be sent twice but is never lost.
+ * `sso:keys:expiring`: lists keys nearing or past expiry and sends any warnings
+ * due.
  *
- * It prints one line per key, `[<expired|expiring>] key <id> (connection <id>,
- * <use>) ends <time>, threshold <days>: <notice>`, whatever was notified before,
- * so a problem nobody has solved stays visible, then the counts. Its output
- * carries identifiers and dates alone, never a key or a certificate. An expired
- * certificate is reported, never enforced, so the exit code does not depend on
- * finding one: it exits 0, unless a warning's dispatch threw, which a later run
- * sends again, or the run stopped on an exception, which it names by class alone,
- * since a message could carry a value read from the database.
+ * Exceptions are named by class alone, since a message could carry a stored
+ * value.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,7 +33,7 @@ final class ExpiringKeysCommand extends Command
     protected $description = 'List the laravel-sso keys and certificates nearing expiry, and warn of those that reached a threshold';
 
     /**
-     * Run the report, print each key as it is read, and print the counts.
+     * Run the report, printing each key as it is read, then the counts.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\ExpiryReport  $report
      * @return int
@@ -63,7 +54,7 @@ final class ExpiringKeysCommand extends Command
     }
 
     /**
-     * The days the `--days` option names, or `null` when it is not given.
+     * The `--days` option, or `null` when not given.
      *
      * @return ?int
      *

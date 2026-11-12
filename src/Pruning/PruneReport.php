@@ -9,13 +9,7 @@ use SineMacula\Laravel\Sso\Pruning\Enums\PruneKind;
 use SineMacula\Laravel\Sso\Pruning\Enums\PruneStatus;
 
 /**
- * What one run of `Pruning\Pruner` did (SSO-11.11): how it ended, the instant
- * it judged every row by, how long it took, the rows each kind deleted, the
- * kinds its work cap stopped with more eligible, and the kinds that stopped on
- * an exception, each with the exception's class alone.
- *
- * It holds counts, kinds and class names: never an identifier, a stored value
- * or an exception's message.
+ * What one run of `Pruning\Pruner` did, as counts, kinds and class names only.
  *
  * @api
  *
@@ -45,7 +39,7 @@ final readonly class PruneReport implements \JsonSerializable
         /** How long the run took, in milliseconds. */
         public int $durationMilliseconds,
 
-        /** The rows each kind deleted, by the kind's value, in the order they ran. */
+        /** The rows each kind deleted, by the kind's value, in run order. */
         public array $deleted,
 
         /** The kinds the work cap stopped with more eligible. */
@@ -87,8 +81,7 @@ final readonly class PruneReport implements \JsonSerializable
     }
 
     /**
-     * What the log line carries and `json_encode()` writes, with snake_case
-     * keys and the instant in UTC.
+     * The log line's context, with snake_case keys and the instant in UTC.
      *
      * @return array{outcome: string, now: string, duration_ms: int, deleted: array<string, int>, incomplete: list<string>, failures: array<string, class-string<\Throwable>>}
      */

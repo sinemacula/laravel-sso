@@ -10,30 +10,9 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 
 /**
- * Which sessions the package asks the `Contracts\SessionRevocation` contract to
- * revoke, and why (SSO-4.5, SSO-8.8): one of four scopes, built only through
- * its named constructors.
+ * Which sessions to revoke and why, built through its named constructors.
  *
- * - `tenant()`: after a change to a tenant's enforcement, the sessions active
- *   in it (or in a tenant whose rule it is) that the policy now in force no
- *   longer allows, carried as `policy`: those not established through one of
- *   its satisfying connections, unless the exemption contract exempts their
- *   identity.
- * - `connection()`: every session established through a connection that was
- *   disabled or deleted.
- * - `identityInConnection()`: the identity's sessions established through the
- *   link that was removed, by itself or by a subject migration of its
- *   connection; it names the connection and the link. An adapter whose sessions
- *   do not record their link revokes the identity's sessions through the
- *   connection instead, which is broader and never narrower.
- * - `identityLink()`: the identity's sessions established through one link by a
- *   verified domain, suspended because the identity came to hold a principal
- *   outside the connection's tenant (`Linking\ScopeWidening`). An adapter whose
- *   sessions do not record their link revokes the identity's sessions through
- *   the connection instead, which is broader and never narrower.
- *
- * It holds ids, enum cases and the policy, never a secret, so an adapter may
- * log it.
+ * It holds no secret, so an adapter may log it.
  *
  * @api
  *
@@ -64,21 +43,21 @@ final readonly class RevocationScope
         /** The tenant: the enforcing tenant, or the connection's. */
         public string $tenantId,
 
-        /** The connection the sessions were established through, for the connection and identity scopes only. */
+        /** The sessions' connection, for the connection and identity scopes. */
         public ?string $connectionId = null,
 
-        /** The identity whose sessions are revoked, for the identity scopes only. */
+        /** The identity whose sessions are revoked, for the identity scopes. */
         public ?IdentityReference $identity = null,
 
-        /** The enforcement now in force, for the tenant scope only. */
+        /** The enforcement now in force, for the tenant scope. */
         public ?EnforcementPolicy $policy = null,
 
-        /** The link the sessions were established through, for the identity scopes only. */
+        /** The sessions' link, for the identity scopes. */
         public ?string $linkId = null,
     ) {}
 
     /**
-     * The sessions the tenant's enforcement, as it now is, no longer allows.
+     * The sessions the tenant's current enforcement no longer allows.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @return self
@@ -110,8 +89,8 @@ final readonly class RevocationScope
     }
 
     /**
-     * The identity's sessions established through the connection's link, which
-     * was removed.
+     * The identity's sessions through a removed link; an adapter that does not
+     * record links may revoke by connection.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -129,8 +108,8 @@ final readonly class RevocationScope
     }
 
     /**
-     * The identity's sessions established through the link, suspended because
-     * the identity's scope widened.
+     * The identity's sessions through a domain link suspended because its scope
+     * widened.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId

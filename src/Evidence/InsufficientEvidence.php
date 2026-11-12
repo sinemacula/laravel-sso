@@ -10,10 +10,7 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * The default evidence contract (SSO-8.7): nothing the provider asserted
- * counts, so the application's further factor is never satisfied by it.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The default evidence contract: nothing the provider asserted counts.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

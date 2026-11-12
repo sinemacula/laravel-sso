@@ -5,14 +5,10 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Identities;
 
 /**
- * An identity as the package sees one: an opaque reference, a type and an id,
- * each a non-empty string the application gives (see FEATURES Terminology). The
- * package never loads, creates or interprets an identity; it passes the
- * reference to the contracts that do (exemption, revocation, linking).
+ * An opaque reference to an application identity: a type and an id.
  *
- * For an Eloquent identity the type is its morph class and the id its key, as
- * the application's authentication events give them. Two references are the
- * same identity only when both strings are equal byte for byte.
+ * The package never loads or interprets an identity; references match only byte
+ * for byte.
  *
  * @api
  *
@@ -46,8 +42,7 @@ final readonly class IdentityReference implements \JsonSerializable
     }
 
     /**
-     * The reference two nullable columns hold, or `null` when either is `null`:
-     * an identity is named by both parts or not at all.
+     * The reference two nullable columns hold, or `null` when either is `null`.
      *
      * @param  ?string  $type
      * @param  ?string  $id

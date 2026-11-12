@@ -5,11 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Revocation\Enums;
 
 /**
- * Why the package asks for sessions to be revoked (SSO-4.5), passed to the
- * `Contracts\SessionRevocation` contract with the scope, so an adapter can
- * record it against each session it revokes.
+ * Why sessions are revoked, for an adapter to record against each one.
  *
- * Backed, and stable once released: a value is never renamed or reused.
+ * Values are stable; never rename or reuse one.
  *
  * @api
  *
@@ -18,8 +16,7 @@ namespace SineMacula\Laravel\Sso\Revocation\Enums;
  */
 enum RevocationReason: string
 {
-    // A tenant's enforcement was turned on, or the connections that satisfy it
-    // changed
+    // A tenant's enforcement was turned on, or its connections changed
     case ENFORCEMENT_CHANGED = 'enforcement_changed';
 
     // The connection the sessions were established through was disabled
@@ -31,8 +28,7 @@ enum RevocationReason: string
     // The identity's link through the connection was removed
     case LINK_REMOVED = 'link_removed';
 
-    // The identity came to hold a principal outside the connection's tenant, so
-    // the link by a verified domain the sessions were established through was
-    // suspended (SSO-8.8)
+    // The identity gained a principal outside the tenant; its domain link is
+    // suspended
     case SCOPE_WIDENED = 'scope_widened';
 }

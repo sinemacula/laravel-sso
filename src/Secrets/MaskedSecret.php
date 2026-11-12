@@ -5,9 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Secrets;
 
 /**
- * What a helper returns for a stored client secret (SSO-2.5): whether one is
- * set, and nothing of it. Once set, a secret is never read back; an application
- * that has lost it sets a new one.
+ * Whether a client secret is stored; a stored secret is never read back.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
