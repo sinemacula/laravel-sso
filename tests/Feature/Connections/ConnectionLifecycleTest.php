@@ -48,14 +48,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Feature tests for disabling and deleting a connection (SSO-2.1, SSO-2.11,
- * SSO-2.12, SSO-4.5): every table before and after each; what is in flight
- * voided and what has finished kept; the revocation scope, inside the
- * transaction; the domain withdrawal of each verified claim deleted, with the
- * locked rows; the freshness each asks, a stale caller refused with nothing
- * written; another tenant's connection not found; a disabled connection
- * answered `unchanged`; and a change made between the first read and the lock
- * judged on the locked row.
+ * Feature tests for disabling and deleting a connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -100,9 +93,8 @@ final class ConnectionLifecycleTest extends TestCase
     private Connection $other;
 
     /**
-     * Bind a fixed clock, a recording freshness contract, revocation and domain
-     * withdrawal, create the tables and two enabled connections, and record
-     * events.
+     * Bind a fixed clock, freshness, revocation and domain withdrawal, and seed
+     * two connections.
      *
      * @return void
      */
@@ -132,10 +124,8 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * Disabling turns the connection off, voids its unfinished requests and
-     * unredeemed codes and nothing else, keeps its domains, links and keys,
-     * revokes its sessions inside the transaction, and reports it once, with
-     * the acting identity, once `sso.connection.disable` is fresh.
+     * Disabling voids only what is in flight, keeps the rest and revokes
+     * sessions inside the transaction.
      *
      * @return void
      */
@@ -201,9 +191,8 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * Disabling a disabled connection still asks freshness, then answers
-     * `unchanged` with its summary, writing, voiding, revoking and reporting
-     * nothing.
+     * Disabling a disabled connection asks freshness, then answers `unchanged`
+     * and does nothing.
      *
      * @return void
      */
@@ -229,8 +218,7 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * A connection disabled between the first read and the lock is judged on
-     * the locked row: `unchanged`, with nothing voided, revoked or reported.
+     * A connection disabled between the first read and the lock is `unchanged`.
      *
      * @return void
      */
@@ -251,8 +239,7 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * A connection deleted between the first read and the lock is not found, by
-     * a disable and a deletion alike, with nothing revoked or reported.
+     * A connection deleted between the first read and the lock is not found.
      *
      * @return void
      */
@@ -275,11 +262,8 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * Disabling or deleting the last connection that satisfies the tenant's
-     * enforcement is allowed (the P3 design decision): the rule is kept, still
-     * on and still naming the connection, so it is now satisfied by none and
-     * fails closed; and the sessions established through the connection are
-     * revoked in the same transaction.
+     * Removing the last connection that satisfies enforcement keeps the rule,
+     * which then fails closed.
      *
      * @param  string  $change
      * @param  \SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus  $status
@@ -310,8 +294,8 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * A stale caller is refused with `freshness_required`, by a disable and a
-     * deletion alike, and nothing is written, voided, revoked or reported.
+     * A stale caller is refused with `freshness_required` and nothing is
+     * written, voided or revoked.
      *
      * @return void
      */
@@ -340,8 +324,8 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * Another tenant's connection, and an unknown id, are not found, before
-     * freshness is asked, by a disable and a deletion alike.
+     * Another tenant's connection, and an unknown id, are not found before
+     * freshness is asked.
      *
      * @return void
      */
@@ -400,12 +384,8 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * Deleting removes the connection and its domains, authorisation requests,
-     * handoff codes, links and keys, and nothing of another connection;
-     * withdraws each verified claim with the locked rows before they go;
-     * revokes its sessions inside the transaction; and reports one
-     * `ConnectionDeleted` with the connection as it was, once
-     * `sso.connection.delete` is fresh.
+     * Deleting removes the connection and its rows, withdraws its verified
+     * claims and revokes its sessions.
      *
      * @return void
      */
@@ -439,8 +419,8 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * A deletion withdraws every verified claim of the connection, in id order,
-     * and no pending or lapsed one.
+     * A deletion withdraws every verified claim, in id order, and no pending or
+     * lapsed one.
      *
      * @return void
      */
@@ -481,10 +461,8 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * Give the connection a verified and a pending domain claim; a request
-     * pending, consumed but unfinished, finished, and voided earlier; a code
-     * unredeemed, redeemed, and voided earlier; a link; and a trusted
-     * certificate. Answers the ids by what each is.
+     * Seed the connection with domains, requests, codes, a link and a
+     * certificate in each state, by name.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return array<string, string>
@@ -525,8 +503,8 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * Assert the revocation contract was called once, inside the transaction,
-     * with the connection's scope and the reason.
+     * Assert one revocation, inside the transaction, with the connection's
+     * scope and the reason.
      *
      * @param  \SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason  $reason
      * @return void
@@ -550,8 +528,7 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * How many rows the connection holds in each table, the connection's own
-     * row included.
+     * How many rows the connection holds in each table, its own row included.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return array<string, int>
@@ -580,8 +557,7 @@ final class ConnectionLifecycleTest extends TestCase
     }
 
     /**
-     * Disabling and deleting, by name, each taking the tenant and the
-     * connection's id.
+     * Disabling and deleting, by name.
      *
      * @return array<string, \Closure(string, string): \SineMacula\Laravel\Sso\Connections\ConnectionResult>
      */

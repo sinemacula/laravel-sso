@@ -43,29 +43,9 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Races a trust change and a deletion against a flow that inserts through the
- * same connection after the change's snapshot was taken, each in a process of
- * its own with its own database connection, on PostgreSQL and MySQL (SSO-2.11,
- * SSO-2.13, SSO-9.2).
- *
- * The order is forced with signal files, never with timing: the changer runs
- * under `REPEATABLE READ`, inside a transaction of its own that reads the
- * connection, its requests and its codes first, and signals; the flow then
- * starts a request, or completes one inserted after that read and so issues a
- * code, commits and signals; only then does the changer change or delete the
- * connection, which voids what is in flight through it, and commit.
- *
- * On PostgreSQL the changer's updates cannot see a row inserted since its
- * snapshot, so the flow's insert raises the connection's flows version, and the
- * changer fails to serialise (SQLSTATE 40001) when it locks the connection,
- * leaving the connection, the request and the code as the flow left them. On
- * MySQL every locking read and update sees the latest rows, so the change
- * commits with the new request or code voided, or deleted with the connection.
- * Either way, no change commits with a request or code of the connection left
- * neither finished, redeemed nor voided.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Races a trust change or deletion against a flow committed after the changer's
+ * snapshot, across processes. Order is forced with signal files; skipped on
+ * SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -116,11 +96,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock, a
-     * fresh caller, a limiter that allows every attempt and a linker that links
-     * every result to one identity; register the application and the driver;
-     * create the tables, an enabled connection and the directory the processes
-     * use.
+     * Skip where processes cannot share the database, bind the collaborators,
+     * and seed an enabled connection.
      *
      * @return void
      *
@@ -220,10 +197,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
     }
 
     /**
-     * A request started, or a code issued, after the changer's snapshot is
-     * never left unvoided by a change that commits: on PostgreSQL the changer
-     * fails to serialise and changes nothing; on MySQL it commits, the request
-     * or code voided, or deleted with the connection.
+     * A flow committed after the snapshot is never left unvoided: PostgreSQL
+     * fails to serialise, MySQL voids it.
      *
      * @param  string  $change
      * @param  string  $flow
@@ -248,9 +223,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
     }
 
     /**
-     * In a forked process: under `REPEATABLE READ`, inside a transaction of its
-     * own, read the connection, its requests and its codes, signal, wait for
-     * the flow to commit, then make the change and commit; report the outcome.
+     * In a child: read under `REPEATABLE READ`, signal, wait for the flow, then
+     * change and commit.
      *
      * @param  string  $change
      * @param  string  $read
@@ -284,9 +258,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
     }
 
     /**
-     * In a forked process: wait for the changer's read, then start a request,
-     * or insert one and complete it, which issues a code; signal once that
-     * commits, or fails, and report the outcome.
+     * In a child: wait for the changer's read, then start or complete a request
+     * and signal.
      *
      * @param  string  $flow
      * @param  string  $read
@@ -311,8 +284,7 @@ final class ConcurrentFlowVoidingTest extends TestCase
     }
 
     /**
-     * Insert a `sign_in` request through the connection, bound to the client's
-     * challenge, then complete it at the callback with its state; answer how
+     * Insert a `sign_in` request and complete it at the callback; answer how
      * the completion ended.
      *
      * @return string
@@ -354,10 +326,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
     }
 
     /**
-     * The connection's issuer and the states of its requests and codes once
-     * both processes end: as the flow left them on PostgreSQL; on MySQL, the
-     * new issuer with the started request or the issued code voided, or nothing
-     * left of a deleted connection.
+     * The rows expected once both end: as the flow left them on PostgreSQL,
+     * voided or deleted on MySQL.
      *
      * @param  string  $change
      * @param  string  $flow
@@ -379,8 +349,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
     }
 
     /**
-     * The connection's issuer, `null` once it is deleted, and the state of each
-     * of its requests and codes, in id order.
+     * The connection's issuer, `null` once deleted, and each request and code
+     * state in id order.
      *
      * @return array{issuer: ?string, requests: list<string>, codes: list<string>}
      */
@@ -468,8 +438,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
     }
 
     /**
-     * Fork a process per body, have each run its body on a connection of its
-     * own, and collect what each reported, in order.
+     * Fork a process per body, each on its own connection, and collect what
+     * each reported, in order.
      *
      * @param  list<\Closure(): array<string, mixed>>  $bodies
      * @return list<array<string, mixed>>
@@ -508,9 +478,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, run the body, report
-     * what it answered, a PostgreSQL serialisation failure, or the error it
-     * threw, and end without running the parent's shutdown.
+     * In a child: open its own connection, run the body, report the outcome,
+     * and exit without the parent's shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): array<string, mixed>  $body
@@ -536,10 +505,8 @@ final class ConcurrentFlowVoidingTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure: SQLSTATE 40001 on PostgreSQL, where a deadlock is
-     * 40P01 instead. Inside the changer's own transaction, Laravel rethrows it
-     * as a `DeadlockException` whose previous error is the query's.
+     * SQLSTATE 40001 on PostgreSQL, where a deadlock is 40P01; inside a
+     * transaction Laravel wraps it in a `DeadlockException`.
      *
      * @param  \Throwable  $exception
      * @return bool

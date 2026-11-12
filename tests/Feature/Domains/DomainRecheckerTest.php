@@ -36,20 +36,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Domains\RecordingWithdrawal;
 
 /**
- * Feature tests for the scheduled recheck of verified domains (SSO-3.3,
- * SSO-11.12, SSO-10.3 to SSO-10.5): a record that still carries the token moves
- * the check time and keeps the verification time; one absent or changed
- * suspends linking at once, withdrawing what depends on it inside the
- * transaction, and starts a grace period fixed when it began, during which the
- * domain still routes; a record back within it restores the domain; past it the
- * domain lapses without a lookup and is free for another connection; a failed
- * lookup changes nothing but the lease; a resolver that throws is contained,
- * releasing the lease and writing nothing else, never lapsing the domain, while
- * the run goes on and a database error still stops it; pending and lapsed
- * claims are left alone; a claim changed or leased by another server is
- * skipped, and so is a lookup that outlasts its lease; a domain verified again
- * counts from its new time; every read is on the write connection; and the
- * claims are read in chunks, in order.
+ * Feature tests for the scheduled recheck of verified domains.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,9 +63,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     private const string THREW = 'sso.domains.recheck_resolver_threw';
 
     /**
-     * A record that still carries the token moves the last successful check to
-     * now, keeps the verification time and the claim's other times, releases
-     * the lease, and reports nothing.
+     * A confirmed record moves the check time, keeps the verification time and
+     * reports nothing.
      *
      * @return void
      */
@@ -107,8 +93,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * Rows of `[answer, failure]`: a record absent, one that is something else,
-     * and one that contains the token without being exactly it.
+     * Rows of `[answer, failure]`: a record absent, different, or containing
+     * the token inexactly.
      *
      * @return iterable<string, array{\Closure(\SineMacula\Laravel\Sso\Testing\FakeDnsResolver): void, \SineMacula\Laravel\Sso\Domains\Enums\RecheckFailure}>
      */
@@ -128,11 +114,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A record absent or changed suspends linking at once and fixes the lapse
-     * at now plus the grace period, while the domain still routes; the
-     * withdrawal runs once, inside the transaction, with the claim's row still
-     * there; one `DomainRecheckFailed` reports the failure and the lapse time,
-     * with no acting identity.
+     * A record gone suspends linking at once and starts the grace period, while
+     * the domain still routes.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\FakeDnsResolver): void  $answer
      * @param  \SineMacula\Laravel\Sso\Domains\Enums\RecheckFailure  $failure
@@ -181,8 +164,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A record still gone within the grace period keeps both times, reports
-     * again, and withdraws nothing more; the grace period configured since does
+     * A record still gone keeps its times; a grace period changed since does
      * not move the lapse.
      *
      * @return void
@@ -221,9 +203,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A record back within the grace period restores the domain: the suspension
-     * and the lapse are cleared, the check time moves to now, the verification
-     * time is kept, and one `DomainRestored` reports both.
+     * A record back within the grace period restores the domain and reports
+     * `DomainRestored`.
      *
      * @return void
      */
@@ -260,10 +241,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * Past its grace period a domain lapses without a lookup, though its record
-     * has come back: what depends on it is withdrawn inside the transaction, it
-     * no longer routes, it keeps its last check for display, one `DomainLapsed`
-     * reports it, and another tenant can then claim and verify it.
+     * Past its grace period a domain lapses without a lookup and is free for
+     * another tenant.
      *
      * @return void
      */
@@ -303,9 +282,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * With no grace period, one run suspends the domain and lapses it, each
-     * withdrawal before its own write, reporting the failure and then the
-     * lapse.
+     * With no grace period, one run suspends and lapses the domain.
      *
      * @return void
      */
@@ -337,10 +314,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A failed lookup changes no column but the lease (and the update time), is
-     * never read as a record gone or as a success, and is reported with the
-     * lapse time as it stands; linking by the domain still stops once its last
-     * successful check is a day old.
+     * A failed lookup changes only the lease and is never read as gone or
+     * confirmed.
      *
      * @return void
      */
@@ -386,11 +361,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A resolver that throws on the least recently confirmed of three claims,
-     * one suspended, is contained: the claim's row is as it was, its lease
-     * released, its lapse time reported as it stands, nothing is reported for
-     * it and it is no failed lookup; the other two are checked; one warning
-     * names the exception's class alone.
+     * A throwing resolver is contained: its claim is untouched, the lease
+     * released, and the run goes on.
      *
      * @return void
      */
@@ -432,11 +404,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * The next run is fair: the claim the resolver threw on is not held, so it
-     * is checked again in its place, as the least recently confirmed, and every
-     * other claim is checked after it, none skipped. An overlapping run at the
-     * same instant checks it again too, and once the resolver answers it is
-     * confirmed at once.
+     * The claim the resolver threw on is checked again first on the next run.
      *
      * @return void
      */
@@ -486,11 +454,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A resolver that throws on every run, however long, never lapses the
-     * domain nor suspends it, and never moves its check: the row stays as it
-     * was, and nothing is reported. Linking by it still stops on its own once
-     * its last successful check is older than the linking maximum age, while it
-     * still routes.
+     * A resolver that always throws never lapses, suspends or moves the check
+     * of the domain.
      *
      * @return void
      */
@@ -528,9 +493,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A resolver that throws after its lookup outlasted the lease, and another
-     * server took the claim over, leaves that server's lease: only this check's
-     * own lease is released.
+     * A throw after another server took the lease over leaves that server's
+     * lease.
      *
      * @return void
      */
@@ -561,9 +525,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * Only what the resolver throws is contained: a database error releasing
-     * the lease of a claim it threw on propagates and stops the run, leaving
-     * the lease to expire and the next claim unchecked.
+     * A database error while releasing a thrower's lease still stops the run.
      *
      * @return void
      *
@@ -619,9 +581,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A claim removed, replaced by a new verified claim, given another token,
-     * or no longer verified between the lookup and the transaction is skipped,
-     * with nothing written or reported.
+     * A claim changed between the lookup and the write is skipped, with nothing
+     * written.
      *
      * @return void
      */
@@ -671,8 +632,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A claim another server holds the lease of is skipped, with no lookup,
-     * until the lease expires; then it is taken over.
+     * A claim leased by another server is skipped until the lease expires.
      *
      * @return void
      */
@@ -706,9 +666,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A lookup that outlasts its lease, while another server takes the claim
-     * over and suspends it on a newer answer, writes nothing: its older answer
-     * that the record is there never lifts the suspension.
+     * A lookup that outlasts its lease never lifts a newer suspension.
      *
      * @return void
      */
@@ -742,8 +700,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A lookup that outlasts its lease writes nothing, even when no other
-     * server took the claim over: the next run checks it again.
+     * A lookup that outlasts its lease writes nothing, even with no takeover.
      *
      * @return void
      */
@@ -769,9 +726,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A claim whose lease another server holds by the time the lookup is
-     * written, though this check's lease has not run out, is skipped: only the
-     * exact lease this check took lets it write.
+     * A claim leased by another server meanwhile is skipped; only this check's
+     * exact lease writes.
      *
      * @return void
      */
@@ -799,8 +755,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * A lapsed domain verified again counts from its new verification time and
-     * its new check, and linking by it follows them.
+     * A lapsed domain verified again counts from its new verification and
+     * check.
      *
      * @return void
      */
@@ -840,8 +796,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * Every read a run makes is on the write connection: the selection, the
-     * leases, and the locked reads of a confirmation, a suspension and a lapse.
+     * Every read a run makes uses the write connection.
      *
      * @return void
      */
@@ -873,8 +828,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * More claims than one chunk holds are each checked once, in order of their
-     * last successful check and then id, across the chunk boundary, by two
+     * More claims than one chunk are each checked once, in order, by two
      * bounded reads.
      *
      * @return void
@@ -924,8 +878,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * Make the tenant's connection's claim of the domain, verified and checked
-     * at the claim's time unless the attributes say otherwise.
+     * The tenant's verified claim of the domain, checked at its claim time
+     * unless overridden.
      *
      * @param  string  $domain
      * @param  array<string, mixed>  $attributes
@@ -937,8 +891,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * Bind a withdrawal that records, at each call, the claim's stored state
-     * and suspension time, so a test proves it ran before the write.
+     * Bind a withdrawal that records the claim's stored state at each call.
      *
      * @return \ArrayObject<int, array{string, ?string}>
      */
@@ -979,8 +932,8 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * Make the resolver throw at the name, with a message that carries the name
-     * and a provider's text, as an application's resolver might.
+     * Make the resolver throw at the name with a message carrying provider
+     * text.
      *
      * @param  string  $name
      * @return void
@@ -993,8 +946,7 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
-     * Assert that one warning was logged, of a resolver that threw, naming the
-     * exception's class and nothing else.
+     * Assert one warning was logged, naming only the exception's class.
      *
      * @param  class-string<\Throwable>  $class
      * @return void

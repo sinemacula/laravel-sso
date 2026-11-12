@@ -24,10 +24,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporter of a start (SSO-5.1, SSO-10.1, SSO-10.2,
- * SSO-10.4): a request started and a start refused, each dispatched once with
- * what the start had established and the IP address and user agent of the
- * client the start was made for, never those of the request being served.
+ * Feature tests for the start reporter.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -40,8 +37,8 @@ final class RequestEventsTest extends TestCase
     use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /**
-     * Bind a fixed clock and a request being served from another client, create
-     * the tables and record events.
+     * Bind a fixed clock and a served request from another client, create the
+     * tables and record events.
      *
      * @return void
      */
@@ -58,8 +55,7 @@ final class RequestEventsTest extends TestCase
     }
 
     /**
-     * A request started is reported once, with the connection, the request's
-     * application, purpose, reference, identity and session, and the client.
+     * A started request is reported once with its context and the client.
      *
      * @return void
      */
@@ -97,10 +93,8 @@ final class RequestEventsTest extends TestCase
     }
 
     /**
-     * A start refused once everything was established is reported once under
-     * the start's flow, with the application, the connection, the reference,
-     * the client and the caller's identity; a `link` binds no session, so the
-     * session its caller gave is not reported.
+     * A late refusal is reported once with what the start had established; a
+     * `link` reports no session.
      *
      * @return void
      *
@@ -144,8 +138,8 @@ final class RequestEventsTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` refused is reported with its caller's identity and the
-     * session it is bound to.
+     * A refused `reauthenticate` is reported with the identity and its bound
+     * session.
      *
      * @return void
      */
@@ -161,9 +155,7 @@ final class RequestEventsTest extends TestCase
     }
 
     /**
-     * A start refused before anything was established, for no client, names the
-     * purpose alone: no connection, application, reference, address or user
-     * agent.
+     * An early refusal for no client names the purpose alone.
      *
      * @return void
      */

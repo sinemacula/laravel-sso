@@ -24,12 +24,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Integration tests, on a real database, of what the management helpers store
- * (SSO-2.5, SSO-11.3, SSO-11.4): the settings hold no secret, the secrets
- * column holds only ciphertext that the bound encrypter decrypts, before and
- * after `app.key` is rotated; an encrypter that cannot encrypt propagates with
- * nothing written; a failed write quotes no ciphertext; no exception's trace
- * carries a secret given; and every read is made on the write connection.
+ * Integration tests for what the connection management helpers store.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,8 +66,8 @@ final class ConnectionServiceTest extends TestCase
     ];
 
     /**
-     * Bind a fixed clock and a fresh freshness contract, turn OIDC on, create
-     * the tables, and record events.
+     * Bind a fixed clock and freshness, enable OIDC, create the tables and
+     * record events.
      *
      * @return void
      */
@@ -91,8 +86,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * The row holds the settings with no secret, and the secret only as
-     * ciphertext the bound encrypter decrypts.
+     * The row holds settings without the secret, and the secret only as
+     * ciphertext.
      *
      * @return void
      */
@@ -129,9 +124,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A secret stored before `app.key` is rotated still decrypts while the old
-     * key is a previous one, is kept by an update that does not name it, and a
-     * secret set afterwards is encrypted under the new key.
+     * Secrets survive an `app.key` rotation while the old key is a previous
+     * one.
      *
      * @return void
      */
@@ -156,8 +150,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * An encrypter that cannot encrypt propagates as a server error, and
-     * nothing is written or reported.
+     * An encrypter that cannot encrypt propagates, with nothing written or
+     * reported.
      *
      * @return void
      *
@@ -221,9 +215,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A failed write of the secrets propagates as a server error that quotes no
-     * ciphertext and chains nothing that does, with nothing written; a failed
-     * write that binds no secret is Laravel's own `QueryException`.
+     * A failed write quotes no ciphertext; one binding no secret is Laravel's
+     * own `QueryException`.
      *
      * @return void
      *
@@ -271,10 +264,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * No exception's trace carries a secret an administrator gave, even with
-     * arguments collected (`zend.exception_ignore_args` off): every parameter
-     * that holds one is `#[\SensitiveParameter]`. Shown for a refused tenant
-     * id, an encrypter that cannot encrypt, and a failed write.
+     * No exception trace carries a given secret, even with
+     * `zend.exception_ignore_args` off.
      *
      * @return void
      *
@@ -310,8 +301,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Every read is made on the write connection: with the read connection
-     * unusable, every helper still answers.
+     * Every read uses the write connection, so the helpers work with the read
+     * connection down.
      *
      * @return void
      */
@@ -353,9 +344,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * The trace of each helper given a secret, each of which must throw: a
-     * creation and an update for an empty tenant id and, once a preparation
-     * that makes them fail has run, for the tenant.
+     * The trace of each helper that must throw given a secret.
      *
      * @param  string  $id
      * @param  string  $label
@@ -440,8 +429,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Whether any argument of the trace, however deeply nested in an array,
-     * holds either secret given.
+     * Whether any argument of the trace, however nested, holds either secret.
      *
      * @param  mixed  $value
      * @return bool
@@ -530,8 +518,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Set the application key and its previous keys, and forget Laravel's
-     * encrypter and the scoped instances, so the next resolution reads them.
+     * Set the application keys and forget the cached encrypter so the next
+     * resolution reads them.
      *
      * @param  string  $key
      * @param  list<string>  $previous

@@ -26,15 +26,7 @@ use SineMacula\Laravel\Sso\Models\Domain;
 use Tests\Fixtures\Clients;
 
 /**
- * Feature tests for claiming a domain (SSO-3.1, SSO-3.2, SSO-2.12): a claim is
- * normalised, exact and pending with a new random token and the configured
- * record name and expiry; a domain that is not a registrable host name, too
- * long for its record name (one exactly the longest is claimed), or a refused
- * domain or under one is invalid; a domain the connection claimed already is a
- * duplicate unless its claim expired; a domain verified for any other
- * connection is refused without naming it; tenant scoping; freshness asked
- * before anything is written; the event the claim reports; and reading one
- * claim or every claim of a connection on the write connection.
+ * Feature tests for claiming a domain.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,10 +41,8 @@ use Tests\Fixtures\Clients;
 final class DomainClaimTest extends DomainServiceTestCase
 {
     /**
-     * A claim is pending with a new token of 32 random bytes in lower-case hex,
-     * the default record name under the domain, claimed now and expiring a week
-     * later, and is reported once with its connection, tenant, protocol and
-     * acting identity, and never its token.
+     * A claim is pending with a fresh 32-byte hex token, expires in a week, and
+     * is reported without it.
      *
      * @return void
      */
@@ -97,8 +87,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * The domain is stored as it is normalised: trimmed, lower case, IDNA
-     * ASCII, with no trailing dot.
+     * The domain is stored trimmed, lower case, IDNA ASCII and without a
+     * trailing dot.
      *
      * @return void
      */
@@ -148,8 +138,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * A domain that is not a registrable host name is invalid, naming the
-     * domain and never the value; nothing is asked, written or reported.
+     * A domain that is not a registrable host name is invalid, with nothing
+     * asked or written.
      *
      * @param  string  $domain
      * @param  \SineMacula\Laravel\Sso\Connections\Enums\ViolationCode  $code
@@ -169,8 +159,7 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * A domain whose record name would be longer than a DNS name may be is too
-     * long, even though the domain alone fits.
+     * A domain whose record name would exceed a DNS name's length is too long.
      *
      * @return void
      */
@@ -186,8 +175,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * A domain whose record name is exactly as long as a DNS name may be is
-     * claimed under it; one character more is too long.
+     * A record name of exactly the longest DNS name is claimed; one character
+     * more is too long.
      *
      * @return void
      */
@@ -235,8 +224,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * A configured refused domain and its subdomains are refused too, and a
-     * domain it is under is not.
+     * A refused domain and its subdomains are refused; a domain above it is
+     * not.
      *
      * @return void
      */
@@ -251,8 +240,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * Claims are exact: a subdomain of a verified domain is claimed on its own,
-     * pending, with its own token.
+     * A subdomain of a verified domain is claimed on its own, pending, with its
+     * own token.
      *
      * @return void
      */
@@ -280,7 +269,7 @@ final class DomainClaimTest extends DomainServiceTestCase
 
     /**
      * A domain the connection holds a live claim of is a duplicate, whatever
-     * that claim's state, and nothing changes.
+     * its state.
      *
      * @param  \SineMacula\Laravel\Sso\Domains\Enums\DomainState  $state
      * @return void
@@ -300,8 +289,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * An expired claim is claimed again: the same row, with a new token, a new
-     * claim time and a new expiry, reported again.
+     * An expired claim is claimed again on the same row with a new token and
+     * times.
      *
      * @return void
      */
@@ -323,9 +312,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * A domain verified for another tenant's connection is refused with
-     * `domain_unavailable`, which names neither that tenant nor its connection;
-     * nothing is written or reported.
+     * A domain verified for another tenant is `domain_unavailable`, naming
+     * neither tenant nor connection.
      *
      * @return void
      */
@@ -350,8 +338,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * A domain verified for another connection of the same tenant is refused
-     * the same way: a domain is verified for one connection at a time.
+     * A domain verified for another connection of the tenant is refused the
+     * same way.
      *
      * @return void
      */
@@ -363,8 +351,7 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * A domain pending or lapsed for another connection does not stop a claim:
-     * only a verification holds a domain.
+     * A claim pending or lapsed elsewhere does not hold the domain.
      *
      * @return void
      */
@@ -377,8 +364,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * Another tenant's connection, an unknown one and one whose tenant differs
-     * only in case are each `connection_not_found`, with nothing asked.
+     * Foreign, unknown and case-variant tenants' connections are
+     * `connection_not_found`.
      *
      * @return void
      */
@@ -405,9 +392,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * A stale caller is refused with `freshness_required` once
-     * `sso.domain.claim` was asked, with its configured maximum age, and
-     * nothing is written or reported.
+     * A stale caller is refused with `freshness_required`, with nothing written
+     * or reported.
      *
      * @return void
      */
@@ -438,8 +424,7 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * The configured record name and expiry apply to a new claim, which keeps
-     * its record name when the setting changes.
+     * The configured record name and expiry apply to new claims only.
      *
      * @return void
      */
@@ -481,9 +466,7 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * `get()` answers the connection's claim of the domain, however it is
-     * written, and `null` for another tenant, an unknown claim or a name that
-     * cannot be one.
+     * `get()` answers the claim however the domain is written, else `null`.
      *
      * @return void
      */
@@ -499,8 +482,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * `list()` answers the connection's claims oldest first, none of another
-     * connection's, and `null` for a connection the tenant does not have.
+     * `list()` answers the connection's claims oldest first, or `null` for an
+     * unknown connection.
      *
      * @return void
      */
@@ -555,8 +538,8 @@ final class DomainClaimTest extends DomainServiceTestCase
     }
 
     /**
-     * A registrable domain whose default record name, the record name, a dot
-     * and the domain, is exactly the length given.
+     * A registrable domain whose default record name is exactly the given
+     * length.
      *
      * @param  int  $length
      * @return string

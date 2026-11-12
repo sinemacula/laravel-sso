@@ -20,11 +20,8 @@ use Tests\Fixtures\Fetching\StubHostResolver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the credentials the default fetcher sends by purpose: none
- * to metadata, discovery or a JWKS; exactly one client authentication, as its
- * kind says, to a token endpoint, with the caller's form form-encoded; and only
- * the access token to UserInfo (SSO-2.9, SSO-7.2, RFC 6749 §2.3.1, RFC 7523,
- * RFC 6750). Nothing touches the network.
+ * Feature tests for the credentials the default fetcher sends by purpose.
+ * Nothing touches the network.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -59,9 +56,8 @@ final class GuzzleFetcherCredentialsTest extends TestCase
     private array $sent = [];
 
     /**
-     * `client_secret_basic` sends the client id and secret in the
-     * `Authorization: Basic` header, as RFC 6749 §2.3.1's example gives it, and
-     * nothing of them in the body.
+     * `client_secret_basic` sends the id and secret as RFC 6749 section 2.3.1's
+     * example does.
      *
      * @return void
      */
@@ -76,9 +72,8 @@ final class GuzzleFetcherCredentialsTest extends TestCase
     }
 
     /**
-     * `client_secret_basic` form-encodes the client id and secret before
-     * joining and encoding them, so a colon, space, plus, percent or non-ASCII
-     * character in either cannot be misread.
+     * `client_secret_basic` form-encodes the id and secret first, so reserved
+     * characters survive.
      *
      * @return void
      */
@@ -90,8 +85,8 @@ final class GuzzleFetcherCredentialsTest extends TestCase
     }
 
     /**
-     * `client_secret_post` sends the client id and secret in the body, after
-     * the caller's form, and no `Authorization` header.
+     * `client_secret_post` sends the id and secret after the caller's form,
+     * with no `Authorization`.
      *
      * @return void
      */
@@ -106,8 +101,8 @@ final class GuzzleFetcherCredentialsTest extends TestCase
     }
 
     /**
-     * `private_key_jwt` sends the client id, the assertion type and the signed
-     * assertion in the body, and no `Authorization` header or secret.
+     * `private_key_jwt` sends the id, assertion type and assertion in the body,
+     * with no secret.
      *
      * @return void
      */
@@ -145,8 +140,7 @@ final class GuzzleFetcherCredentialsTest extends TestCase
     }
 
     /**
-     * UserInfo carries the access token in the `Authorization: Bearer` header
-     * alone: a `GET`, with no body and no body type.
+     * UserInfo is a bodiless `GET` carrying only the bearer token.
      *
      * @return void
      */
@@ -178,8 +172,8 @@ final class GuzzleFetcherCredentialsTest extends TestCase
     }
 
     /**
-     * Metadata, discovery and a JWKS carry no `Authorization` header, cookie or
-     * body: a bare `GET`.
+     * Metadata, discovery and a JWKS are a bare `GET` with no credential,
+     * cookie or body.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return void
@@ -199,7 +193,7 @@ final class GuzzleFetcherCredentialsTest extends TestCase
 
     /**
      * Rows of `[credentials, header, body fields]`: each client authentication
-     * and where it puts itself.
+     * and where it goes.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Fetching\FetchCredentials, 1: bool, 2: list<string>}>
      */
@@ -213,9 +207,8 @@ final class GuzzleFetcherCredentialsTest extends TestCase
     }
 
     /**
-     * Exactly one client authentication is present: the `Authorization` header
-     * or the body's client fields, never both, never another, and no header
-     * beyond those every request carries and the body's type.
+     * Exactly one client authentication is sent, in the header or the body,
+     * never both.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchCredentials  $credentials
      * @param  bool  $header

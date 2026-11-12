@@ -12,11 +12,7 @@ use SineMacula\Laravel\Sso\Fetching\AddressPolicy;
 use SineMacula\Laravel\Sso\Fetching\FetcherSettings;
 
 /**
- * Unit tests for the address policy: every built-in range refused from its
- * first address to its last, the addresses just outside each and public ones
- * allowed, an IPv6 form carrying an IPv4 address judged by that address too,
- * the configured ranges added, and anything that is not an IP literal refused
- * (SSO-2.9).
+ * Unit tests for the outbound address policy.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,8 +60,7 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * Each built-in range is refused from its first address to its last, and is
-     * in the list the policy applies.
+     * Each built-in range is refused from its first address to its last.
      *
      * @param  string  $range
      * @param  string  $first
@@ -83,8 +78,7 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * The built-in lists hold exactly the ranges tested above, so a range added
-     * or dropped fails here.
+     * The built-in lists hold exactly the ranges tested here.
      *
      * @return void
      */
@@ -96,8 +90,7 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * Rows of `[address]`: the cloud metadata addresses, in every written form
-     * of the same bytes.
+     * Rows of `[address]`: the cloud metadata addresses, in every written form.
      *
      * @return iterable<string, array{0: string}>
      */
@@ -127,8 +120,8 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * Rows of `[address]`: public addresses, and the addresses just outside
-     * each built-in range.
+     * Rows of `[address]`: public addresses, and those just outside each
+     * built-in range.
      *
      * @return iterable<string, array{0: string}>
      */
@@ -176,8 +169,7 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * A public address, and an address just outside each refused range, is
-     * allowed.
+     * Public addresses, and those just outside each refused range, are allowed.
      *
      * @param  string  $address
      * @return void
@@ -189,8 +181,8 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * Rows of `[address, refused]`: IPv6 forms that carry an IPv4 address, each
-     * with a private and a public one.
+     * Rows of `[address, refused]`: IPv6 forms carrying a private or a public
+     * IPv4 address.
      *
      * @return iterable<string, array{0: string, 1: bool}>
      */
@@ -223,8 +215,7 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * An IPv6 address carrying an IPv4 address is refused when the address it
-     * carries is, and allowed when it is public.
+     * An IPv6 form is judged by the IPv4 address it carries.
      *
      * @param  string  $address
      * @param  bool  $refused
@@ -237,9 +228,8 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * A configured range is refused on top of the built-in ones, for an IPv4
-     * address and an IPv6 form carrying it alike, and the built-in ranges stay
-     * refused.
+     * Configured ranges are refused on top of the built-in ones, for IPv4 and
+     * IPv6 carriers alike.
      *
      * @return void
      */
@@ -264,8 +254,8 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * A configured range with a prefix that is not a whole number of bytes
-     * refuses exactly the addresses under the prefix.
+     * A configured prefix that is not whole bytes refuses exactly the addresses
+     * under it.
      *
      * @return void
      */
@@ -282,8 +272,7 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * A configured `/0` refuses every address of its family, and only of its
-     * family.
+     * A configured `/0` refuses every address of its family only.
      *
      * @return void
      */
@@ -302,8 +291,7 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * The configured ranges are read on each call, so a change is seen by the
-     * next check.
+     * The configured ranges are read on each call.
      *
      * @return void
      */
@@ -320,8 +308,7 @@ final class AddressPolicyTest extends TestCase
     }
 
     /**
-     * A malformed configured range fails closed with the settings' message
-     * rather than being skipped.
+     * A malformed configured range fails closed rather than being skipped.
      *
      * @return void
      */

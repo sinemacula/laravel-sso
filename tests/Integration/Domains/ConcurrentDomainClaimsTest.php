@@ -27,20 +27,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races claims and verifications of one domain across processes, each with its
- * own database connection, on PostgreSQL and MySQL (BL-20, SSO-3.2): however
- * they interleave, a domain claimed by many connections of many tenants is
- * verified for exactly one, the rest refused `domain_unavailable`; a claim one
- * connection verifies many times at once is verified once, the rest
- * `unchanged`; and a domain claimed many times by one connection is claimed
- * once, the rest duplicates. Each race runs with every process making its call
- * plainly, and again with each inside a transaction of its own that read the
- * domains before the race began, so a re-read that decides a write must see
- * what another process committed rather than its transaction's snapshot
- * (MySQL's `REPEATABLE READ`).
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Races claims and verifications of one domain across processes, plainly and
+ * inside transactions that read first. Skipped on SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,9 +54,8 @@ final class ConcurrentDomainClaimsTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock, a
-     * fresh caller and a fake resolver, create the tables, and make a
-     * connection for each process.
+     * Skip where processes cannot share the database, bind the collaborators,
+     * and make a connection per process.
      *
      * @return void
      *
@@ -120,8 +107,8 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Connections of different tenants racing to verify the domain each
-     * claimed: exactly one verifies it, and the rest are refused.
+     * Connections of different tenants race to verify the domain; exactly one
+     * does.
      *
      * @return void
      */
@@ -137,8 +124,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * The same race, each verification inside a transaction of its own that
-     * read the domain's claims before the race began.
+     * The same race, each inside a transaction that read the claims first.
      *
      * @return void
      */
@@ -155,9 +141,8 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Processes racing to verify one connection's own claim of the domain:
-     * exactly one verifies it, and the rest find it `unchanged`, judged again
-     * under the lock when they passed the check made before the lookup.
+     * One connection's processes race to verify its claim; one verifies and the
+     * rest are `unchanged`.
      *
      * @return void
      */
@@ -171,8 +156,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * The same race, each verification inside a transaction of its own that
-     * read the domain's claims before the race began.
+     * The same race, each inside a transaction that read the claims first.
      *
      * @return void
      */
@@ -186,8 +170,8 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Processes racing to claim the domain for one connection: exactly one
-     * claims it, and the rest are duplicates.
+     * Processes race to claim the domain for one connection; one claims and the
+     * rest are duplicates.
      *
      * @return void
      */
@@ -199,8 +183,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * The same race, each claim inside a transaction of its own that read the
-     * domain's claims before the race began.
+     * The same race, each inside a transaction that read the claims first.
      *
      * @return void
      */
@@ -212,9 +195,8 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Claim the domain for every connection, publish every claim's token at its
-     * record name, and take each connection's first domain check, so its
-     * counter exists before the race.
+     * Claim and publish the domain for every connection, and create each rate
+     * counter before the race.
      *
      * @return void
      */
@@ -240,9 +222,8 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Claim the domain for the first connection alone, publish its token at its
-     * record name, and take its first domain check, so its counter exists
-     * before the race.
+     * Claim and publish the domain for the first connection, and create its
+     * rate counter before the race.
      *
      * @return void
      */
@@ -262,8 +243,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Assert exactly one process verified the connection's claim, every other
-     * found it `unchanged`, and the one claim holds the domain.
+     * Assert one process verified the claim and the rest found it `unchanged`.
      *
      * @param  list<string>  $outcomes
      * @return void
@@ -277,8 +257,8 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Assert exactly one process verified the domain, every other was refused
-     * `domain_unavailable`, and one claim holds it.
+     * Assert one process verified the domain and the rest were
+     * `domain_unavailable`.
      *
      * @param  list<string>  $outcomes
      * @return void
@@ -294,8 +274,7 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Assert exactly one process claimed the domain, every other found it a
-     * duplicate, and one claim exists.
+     * Assert one process claimed the domain and the rest found it a duplicate.
      *
      * @param  list<string>  $outcomes
      * @return void
@@ -310,8 +289,8 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * Fork the processes, have each make its call at the same moment on a
-     * connection of its own, and collect what each reported.
+     * Fork the processes, have each call at the same moment on its own
+     * connection, and collect the results.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Domains\DomainService, \SineMacula\Laravel\Sso\Models\Connection): \SineMacula\Laravel\Sso\Domains\DomainResult  $call
      * @param  bool  $inTransaction
@@ -349,14 +328,8 @@ final class ConcurrentDomainClaimsTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own and build the helpers,
-     * so only the call's own work runs after the start, wait for the start,
-     * make the call, report the outcome, and end without running the parent's
-     * shutdown.
-     *
-     * Racing inside a transaction, the process opens one and reads the domain's
-     * claims before the start, so the transaction's snapshot predates every
-     * change, and commits after its own call.
+     * In a child: build the helpers, wait for the start, call and report; in a
+     * transaction, read first.
      *
      * @param  int  $process
      * @param  float  $start

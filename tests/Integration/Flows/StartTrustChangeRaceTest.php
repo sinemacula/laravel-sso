@@ -27,27 +27,9 @@ use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
 
 /**
- * Races a start against a trust change to its connection between the start's
- * read of the connection and the insert of its request (SSO-2.13, SSO-5.1): the
- * start is held once its driver has started, outside any transaction, while the
- * change commits. The change is what a certificate's removal does under the
- * connection's lock (`Connections\InFlightVoider::voidFor()`): it voids the
- * requests already stored, which the held start's is not yet, and raises the
- * trust version, leaving the connection's switch, settings and secrets as they
- * were. The start compares the trust version it read with the locked row's
- * before it inserts, so it stores nothing and is refused
- * `connection_unavailable`.
- *
- * In this process the change runs at the hold, so the order is exact on every
- * database. Across processes, on PostgreSQL and MySQL, the change in a process
- * of its own waits for the start to signal that its driver started, and the
- * start waits for the change to signal it is made; the change runs plainly, and
- * inside a `REPEATABLE READ` transaction of its own that read the connection
- * before the race began, which commits after the signal, so the start's locking
- * read waits for it. The start writes nothing before the change locks the row,
- * so the change cannot fail to serialise, and the outcome is the same on every
- * database. Each barrier fails loudly when its signal never comes. The
- * cross-process race is skipped on SQLite and without `pcntl`.
+ * Races a start against a trust change between its read and its insert, in
+ * process and across processes. Skipped across processes on SQLite and without
+ * `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,9 +54,8 @@ final class StartTrustChangeRaceTest extends TestCase
     private string $outcomes;
 
     /**
-     * Bind a fixed clock and a limiter that allows every attempt, register the
-     * application and the driver, create the tables and a usable connection,
-     * and make the directory the processes report in.
+     * Bind a fixed clock and an open limiter, register the application and
+     * driver, and seed a usable connection.
      *
      * @return void
      *
@@ -139,9 +120,8 @@ final class StartTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * A trust change committed while the start's driver started refuses the
-     * start under the connection's lock: nothing is stored, and the trust
-     * version is the change's.
+     * A trust change while the driver started refuses the start under the lock,
+     * storing nothing.
      *
      * @return void
      */
@@ -159,8 +139,8 @@ final class StartTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Rows of `[in transaction]`: the change made plainly, or inside a
-     * transaction of its own that read the connection first.
+     * Rows of `[in transaction]`: the change made plainly, or in a transaction
+     * that read first.
      *
      * @return iterable<string, array{0: bool}>
      */
@@ -173,10 +153,8 @@ final class StartTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Across processes, a trust change committed by another process while the
-     * start is held between its read and its insert refuses the start, which
-     * stores nothing, whether the change ran plainly or inside its own
-     * transaction.
+     * Across processes, a trust change while the start is held refuses it,
+     * storing nothing.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -231,9 +209,8 @@ final class StartTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Make the trust change a certificate's removal makes, under the
-     * connection's lock: void what is in flight and raise the trust version;
-     * whether the connection was there to change, and so changed.
+     * Void what is in flight and raise the trust version under the lock;
+     * whether the connection was there.
      *
      * @return bool
      */
@@ -253,9 +230,8 @@ final class StartTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Fork a process for each racer, have each run its work on a connection of
-     * its own, plain or inside a transaction of its own, and collect what each
-     * reported, in the racers' order.
+     * Fork a process per racer, plain or in a transaction, and collect what
+     * each reported, in order.
      *
      * @param  list<array{0: \Closure(): string, 1: bool}>  $racers
      * @return list<string>
@@ -291,10 +267,8 @@ final class StartTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, do its work, report
-     * the outcome, and end without running the parent's shutdown. Racing inside
-     * a transaction, the process opens a `REPEATABLE READ` one and reads the
-     * connection before its work, and commits after it.
+     * In a child: run the work and report; in a transaction, read under
+     * `REPEATABLE READ` first.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work
@@ -333,9 +307,8 @@ final class StartTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error, so a race whose
-     * racers ran one after the other never passes as one that overlapped.
+     * Wait for the signal file up to `SIGNAL_SECONDS`, failing loudly so a
+     * serial run never passes as a race.
      *
      * @param  string  $signal
      * @return void
@@ -350,8 +323,7 @@ final class StartTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`; whether it
-     * appeared.
+     * Wait for the signal file up to `SIGNAL_SECONDS`; whether it appeared.
      *
      * @param  string  $signal
      * @return bool

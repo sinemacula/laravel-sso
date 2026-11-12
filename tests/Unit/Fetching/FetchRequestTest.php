@@ -14,9 +14,7 @@ use Symfony\Component\VarDumper\Cloner\VarCloner;
 use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /**
- * Unit tests for an outbound request: each purpose with the only credential it
- * may carry, a token request authenticated by exactly one method, and a form
- * that a dump and serialisation never show.
+ * Unit tests for an outbound request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +29,8 @@ final class FetchRequestTest extends TestCase
     private const string URL = 'https://idp.example.com/endpoint';
 
     /**
-     * Metadata, discovery and a JWKS are fetched with `GET` and no credential,
-     * and may follow a checked redirect.
+     * Metadata, discovery and a JWKS are uncredentialed `GET`s that may follow
+     * a checked redirect.
      *
      * @return void
      */
@@ -53,8 +51,8 @@ final class FetchRequestTest extends TestCase
     }
 
     /**
-     * Every request may carry a size cap of its own, of at least a byte, shown
-     * by a dump; one given none carries none.
+     * Any request may carry its own size cap of at least a byte, shown by a
+     * dump.
      *
      * @return void
      */
@@ -97,9 +95,8 @@ final class FetchRequestTest extends TestCase
     }
 
     /**
-     * A token or UserInfo request may carry a timeout of its own, of at least a
-     * second, shown by a dump; every other request, and one given none, carries
-     * none.
+     * Only token and UserInfo requests may carry their own timeout of at least
+     * a second.
      *
      * @return void
      */
@@ -132,8 +129,8 @@ final class FetchRequestTest extends TestCase
     }
 
     /**
-     * A token request is a `POST` of its form with the client authentication;
-     * UserInfo a `GET` with the access token. Neither follows a redirect.
+     * A token request posts its form with client authentication; UserInfo gets
+     * with the access token.
      *
      * @return void
      */
@@ -208,8 +205,8 @@ final class FetchRequestTest extends TestCase
     }
 
     /**
-     * A dump shows the form's field names, the credential's kind and the size
-     * cap, never a value.
+     * A dump shows the form's field names, the credential's kind and the cap,
+     * never a value.
      *
      * @return void
      */
@@ -235,8 +232,8 @@ final class FetchRequestTest extends TestCase
     }
 
     /**
-     * No value of the form is held where a dump, an export or an array cast can
-     * reach it, and the form still reaches the fetcher whole.
+     * No dump, export or array cast reaches a form value, yet the fetcher gets
+     * the whole form.
      *
      * @return void
      */
@@ -281,9 +278,8 @@ final class FetchRequestTest extends TestCase
     }
 
     /**
-     * What a value looks like through each way PHP and Laravel's tooling show
-     * an object: Symfony's VarDumper (behind `dump()` and `dd()`), `print_r()`,
-     * `var_export()` and an array cast.
+     * How an object looks through VarDumper, `print_r()`, `var_export()` and an
+     * array cast.
      *
      * @param  object  $value
      * @return list<string>

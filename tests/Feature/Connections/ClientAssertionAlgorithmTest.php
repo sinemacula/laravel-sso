@@ -30,9 +30,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Feature tests for the pinned client assertion algorithm (SSO-2.4, RFC 7523):
- * a key and an algorithm that do not fit are refused whichever of them changes,
- * and changing the algorithm is a trust change like any other.
+ * Feature tests for the pinned client assertion algorithm (RFC 7523).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -88,8 +86,8 @@ final class ClientAssertionAlgorithmTest extends TestCase
     }
 
     /**
-     * An RSA key signs with PS256 by default or RS256, a P-256 key with ES256
-     * alone, and an unknown algorithm fits nothing.
+     * RSA keys sign with PS256 or RS256, P-256 keys with ES256, and an unknown
+     * algorithm fits nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
      * @param  list<string>  $allowed
@@ -112,7 +110,7 @@ final class ClientAssertionAlgorithmTest extends TestCase
     }
 
     /**
-     * Rows of `[key state, type, algorithm]`: a current or next key an
+     * Rows of `[key state, type, algorithm]`: a current or next key the
      * algorithm does not fit.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Keys\Enums\KeyState, 1: \SineMacula\Laravel\Sso\Keys\Enums\KeyType, 2: string}>
@@ -126,8 +124,8 @@ final class ClientAssertionAlgorithmTest extends TestCase
     }
 
     /**
-     * An algorithm the connection's current or next key cannot sign under is
-     * refused as `unsupported`, with nothing written or voided.
+     * An algorithm the current or next key cannot sign under is `unsupported`,
+     * with nothing written or voided.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyState  $state
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
@@ -163,9 +161,8 @@ final class ClientAssertionAlgorithmTest extends TestCase
     }
 
     /**
-     * An algorithm that fits is stored and is a trust change: it asks fresh
-     * authentication, raises the trust version and voids what is in flight; the
-     * same value again changes nothing, and removing it is a change too.
+     * Changing the algorithm is a trust change; the same value again changes
+     * nothing, and removing it is a change.
      *
      * @return void
      */
@@ -194,8 +191,8 @@ final class ClientAssertionAlgorithmTest extends TestCase
     }
 
     /**
-     * With no key yet, any algorithm the package signs with may be saved, and
-     * one it does not is refused by the settings' own rule, never the keys'.
+     * With no key yet, the settings' own rule judges the algorithm, not the
+     * keys'.
      *
      * @return void
      */
@@ -226,7 +223,7 @@ final class ClientAssertionAlgorithmTest extends TestCase
 
     /**
      * A key that does not fit the pinned algorithm is refused before it is
-     * generated, naming its type; one that fits is added.
+     * generated.
      *
      * @param  ?string  $algorithm
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
@@ -246,7 +243,7 @@ final class ClientAssertionAlgorithmTest extends TestCase
 
     /**
      * An algorithm pinned while a key was being generated is found under the
-     * lock, and the key is refused rather than stored.
+     * lock.
      *
      * @return void
      */

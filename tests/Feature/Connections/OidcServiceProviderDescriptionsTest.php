@@ -38,14 +38,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Feature tests for the service provider description helper with an OIDC
- * connection (SSO-5.9, SSO-5.5, SSO-2.7): what the connection registers at its
- * provider, as its driver describes it; a disabled or incomplete connection
- * described too; an unknown connection and another tenant's refused with the
- * same answer, and the tenant matched exactly; the feature off refused; the
- * rotation's keys published; a `private_key_jwt` connection with no key
- * refused; a bound endpoint resolver honoured; no secret; and nothing asked,
- * written or reported.
+ * Feature tests for describing an OIDC connection to its provider.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -74,8 +67,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     private RecordingFreshness $freshness;
 
     /**
-     * Bind a fixed clock and a recording freshness contract, configure OIDC and
-     * the endpoints, create the tables, and record events.
+     * Bind a fixed clock and freshness, configure OIDC, create the tables and
+     * record events.
      *
      * @return void
      */
@@ -98,8 +91,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * An OIDC connection is described as its driver describes it: the exact
-     * client metadata, as JSON, with nothing asked, written or reported.
+     * An OIDC connection is described as its exact client metadata, with
+     * nothing written.
      *
      * @return void
      */
@@ -127,8 +120,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A disabled connection, and one with no settings, is described, so it can
-     * be registered before it is enabled.
+     * Disabled and incomplete connections are described so they can be
+     * registered first.
      *
      * @return void
      */
@@ -150,8 +143,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * Rows of `[tenant, connection id]`: a connection the tenant does not have,
-     * as named by the case.
+     * Rows of `[tenant, connection id]`: a connection the tenant does not have.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -168,9 +160,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A connection the tenant does not have is `connection_unavailable`, the
-     * same answer whether it is unknown or another tenant's, with no fresh
-     * authentication asked.
+     * Unknown and foreign connections get the same `connection_unavailable`,
+     * with no freshness asked.
      *
      * @param  string  $tenant
      * @param  string  $connectionId
@@ -201,8 +192,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * Another tenant's connection is described for that tenant, under its own
-     * key, so the refusal above is the tenant's, not the connection's.
+     * Another tenant's connection is described for that tenant.
      *
      * @return void
      */
@@ -222,8 +212,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A tenant id the connections table cannot hold is the application's
-     * mistake, an `InvalidArgumentException`.
+     * A tenant id the table cannot hold is an `InvalidArgumentException`.
      *
      * @return void
      */
@@ -236,8 +225,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * With the OIDC feature off a connection is `protocol_unavailable`, and
-     * described again once it is back on.
+     * With OIDC off a connection is `protocol_unavailable` until it is back on.
      *
      * @return void
      */
@@ -259,8 +247,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A `private_key_jwt` connection with no key of its own has nothing to
-     * register: `connection_unavailable`, until a key is added.
+     * A `private_key_jwt` connection with no key is `connection_unavailable`
+     * until a key is added.
      *
      * @return void
      */
@@ -279,9 +267,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A rotation shows through the helper: the current key and the next, in
-     * that order, the signing algorithm the current key's, and only the next
-     * once it is made current.
+     * The current and next keys are published, signing with the current key's
+     * algorithm.
      *
      * @return void
      */
@@ -302,8 +289,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * An endpoint resolver the application binds is what the helper's answer
-     * names.
+     * An endpoint resolver the application binds is honoured.
      *
      * @return void
      */
@@ -334,8 +320,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * The helper's answer holds neither the client secret, the client id nor
-     * the private key, in its body or in any dump.
+     * No secret, client id or private key appears in the answer or a dump.
      *
      * @return void
      */
@@ -359,8 +344,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * By default `private_key_jwt` names the public JWKS URL, and the helper's
-     * explicit export holds the keys instead, each for its own tenant alone.
+     * `private_key_jwt` names the JWKS URL by default; the explicit export
+     * holds the keys.
      *
      * @return void
      */
@@ -381,8 +366,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * The public keys are served by the connection's id alone, of any tenant,
-     * holding the current and next keys, with nothing of a secret.
+     * The public keys are served by connection id alone, for any tenant, with
+     * no secret.
      *
      * @return void
      */
@@ -434,8 +419,7 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * An id of another case names no connection, whether the column's collation
-     * counts it as equal or not: both ways, nothing is served.
+     * An id differing in case names no connection, whatever the collation.
      *
      * @return void
      */
@@ -467,8 +451,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A protocol with no such keys answers `connection_unavailable`, and a
-     * protocol switched off `protocol_unavailable`.
+     * A protocol without such keys is `connection_unavailable`; a disabled one
+     * `protocol_unavailable`.
      *
      * @return void
      */
@@ -499,8 +483,8 @@ final class OidcServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * An OIDC connection authenticating by the method, of the tenant given and
-     * with the client secret given, if any.
+     * An OIDC connection authenticating by the method, with the tenant and
+     * secret given.
      *
      * @param  string  $method
      * @param  ?string  $secret

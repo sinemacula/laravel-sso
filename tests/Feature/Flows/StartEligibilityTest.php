@@ -22,11 +22,7 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\TestCase;
 
 /**
- * Feature tests for whether a purpose may start through a connection (steps 6
- * and 7 of a start): a `sign_in` always may and asks nothing; a `link` asks the
- * freshness contract for `sso.link.create`; a `reauthenticate` asks the session
- * contract whether the identity is signed in on the session, of the application
- * the flow is started for, through the connection.
+ * Feature tests for whether a purpose may start through a connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -80,9 +76,8 @@ final class StartEligibilityTest extends TestCase
     }
 
     /**
-     * A `link` may start once the freshness contract answers `fresh` for
-     * `sso.link.create`, asked for the caller as given, its session included,
-     * and is `freshness_required` when it answers `stale`.
+     * A `link` may start once `sso.link.create` is fresh for the caller and
+     * session.
      *
      * @return void
      */
@@ -100,9 +95,8 @@ final class StartEligibilityTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` may start once the identity is signed in through the
-     * connection on the session, and is `session_ineligible` otherwise; the
-     * freshness contract is never asked.
+     * A `reauthenticate` needs the identity signed in through the connection;
+     * freshness is never asked.
      *
      * @return void
      */
@@ -119,9 +113,8 @@ final class StartEligibilityTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` asks about the identity, the session, the application
-     * it is started for and the connection, so a session of another application
-     * is `session_ineligible`.
+     * A `reauthenticate` is judged for its own application, so another
+     * application's session is ineligible.
      *
      * @return void
      */

@@ -11,9 +11,8 @@ use SineMacula\Laravel\Sso\Contracts\HostResolver;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 
 /**
- * Unit tests for the default host resolver: the A and AAAA addresses of a name,
- * once each, and no address for a lookup that failed or warned. Every test
- * gives the resolver its own lookup, so no name is resolved over the network.
+ * Unit tests for the default host resolver. Each test injects its own lookup,
+ * so nothing hits the network.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -24,8 +23,7 @@ use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 final class SystemHostResolverTest extends TestCase
 {
     /**
-     * The resolver is the package's host resolver, and looks a name up with
-     * `dns_get_record()` when it is given no lookup of its own.
+     * With no lookup of its own the resolver uses `dns_get_record()`.
      *
      * @return void
      */
@@ -79,9 +77,8 @@ final class SystemHostResolverTest extends TestCase
     }
 
     /**
-     * The `ip` of each A record and the `ipv6` of each AAAA record are
-     * answered, in the order the lookup gave them, each address once, and a
-     * record that holds no address is skipped.
+     * Each A and AAAA address is answered once, in lookup order, skipping
+     * records without one.
      *
      * @param  mixed  $records
      * @param  list<string>  $expected
@@ -96,8 +93,8 @@ final class SystemHostResolverTest extends TestCase
     }
 
     /**
-     * A lookup that raises a warning answers no address, whatever records it
-     * gave, and the warning never reaches the application's error handler.
+     * A lookup that warns answers no address, and the warning never reaches the
+     * application's handler.
      *
      * @return void
      */
@@ -129,8 +126,8 @@ final class SystemHostResolverTest extends TestCase
     }
 
     /**
-     * The error handler in place before the lookup is back in place after it,
-     * whether the lookup answered or warned.
+     * The previous error handler is restored after the lookup, whether it
+     * answered or warned.
      *
      * @return void
      */

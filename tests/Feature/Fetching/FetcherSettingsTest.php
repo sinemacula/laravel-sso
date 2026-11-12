@@ -10,10 +10,7 @@ use SineMacula\Laravel\Sso\Fetching\FetcherSettings;
 use Tests\TestCase;
 
 /**
- * Feature tests for the fetcher's settings: the shipped defaults, each range
- * accepted to its bounds and refused past them with a message naming the key,
- * the refused ranges a list of CIDR ranges, the two timeouts together, and
- * every value read on each call (SSO-2.9).
+ * Feature tests for the fetcher's settings.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,8 +43,7 @@ final class FetcherSettingsTest extends TestCase
     }
 
     /**
-     * A configuration published before the settings existed takes the same
-     * defaults.
+     * A configuration published before the settings existed takes the defaults.
      *
      * @return void
      */
@@ -67,8 +63,8 @@ final class FetcherSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[key, value, expected]`: each integer setting at its bounds, and
-     * as the digit string `env()` gives.
+     * Rows of `[key, value, expected]`: each integer setting at its bounds and
+     * as an `env()` string.
      *
      * @return iterable<string, array{0: string, 1: int|string, 2: int}>
      */
@@ -107,8 +103,8 @@ final class FetcherSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[key, value, message]`: each integer setting past its bounds or
-     * malformed, and the exact message it fails with.
+     * Rows of `[key, value, message]`: each integer setting out of range or
+     * malformed.
      *
      * @return iterable<string, array{0: string, 1: mixed, 2: string}>
      */
@@ -141,8 +137,8 @@ final class FetcherSettingsTest extends TestCase
     }
 
     /**
-     * Each integer setting fails closed outside its range, naming the key and
-     * the range, never the value.
+     * Each integer setting fails closed out of range, naming the key and range,
+     * never the value.
      *
      * @param  string  $key
      * @param  mixed  $value
@@ -196,8 +192,8 @@ final class FetcherSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[ranges, message]`: malformed lists and ranges, and the exact
-     * message each fails with.
+     * Rows of `[ranges, message]`: malformed lists and ranges, and the message
+     * each fails with.
      *
      * @return iterable<string, array{0: mixed, 1: string}>
      */
@@ -224,8 +220,7 @@ final class FetcherSettingsTest extends TestCase
     }
 
     /**
-     * A malformed list, or a malformed entry, fails closed naming the key or
-     * the entry's key, never the value.
+     * A malformed list or entry fails closed naming its key, never the value.
      *
      * @param  mixed  $ranges
      * @param  string  $message
@@ -259,8 +254,8 @@ final class FetcherSettingsTest extends TestCase
     }
 
     /**
-     * `validate()` passes for valid settings, the connect timeout equal to the
-     * timeout included.
+     * `validate()` passes for valid settings, including a connect timeout equal
+     * to the timeout.
      *
      * @return void
      */
@@ -292,8 +287,8 @@ final class FetcherSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[key, value, message]`: one malformed setting each, and the
-     * message `validate()` fails with.
+     * Rows of `[key, value, message]`: one malformed setting each, and
+     * `validate()`'s message.
      *
      * @return iterable<string, array{0: string, 1: mixed, 2: string}>
      */
@@ -329,8 +324,8 @@ final class FetcherSettingsTest extends TestCase
     }
 
     /**
-     * Every value is read on each call, so a change is seen by the next request
-     * and nothing is kept across requests.
+     * Every value is read on each call, so a change is seen by the next
+     * request.
      *
      * @return void
      */

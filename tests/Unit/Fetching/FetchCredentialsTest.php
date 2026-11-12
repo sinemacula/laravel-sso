@@ -12,8 +12,7 @@ use Symfony\Component\VarDumper\Cloner\VarCloner;
 use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /**
- * Unit tests for an outbound credential: one per kind, each refusing an empty
- * part, and a secret that a dump, `json_encode()` and serialisation never show.
+ * Unit tests for an outbound credential.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,8 +27,7 @@ final class FetchCredentialsTest extends TestCase
     private const string SECRET = 'the-secret-value';
 
     /**
-     * Each named constructor gives its kind, the client id where it has one,
-     * and the secret to the fetcher.
+     * Each named constructor gives its kind, client id and secret.
      *
      * @return void
      */
@@ -93,9 +91,8 @@ final class FetchCredentialsTest extends TestCase
     }
 
     /**
-     * The secret of every kind is held where no dump, export or array cast can
-     * reach it: Laravel's `dump()` lists private properties beside
-     * `__debugInfo()`, so masking the dump alone is not enough.
+     * No dump, export or array cast reaches the secret, since Laravel's
+     * `dump()` lists private properties beside `__debugInfo()`.
      *
      * @return void
      */
@@ -118,9 +115,8 @@ final class FetchCredentialsTest extends TestCase
     }
 
     /**
-     * An access token is sent in a header, so one that is not an RFC 6750
-     * b64token (a control character, a space, a quote) is refused, and the
-     * message never names it.
+     * An access token that is not an RFC 6750 b64token is refused without being
+     * named.
      *
      * @return void
      */
@@ -167,9 +163,8 @@ final class FetchCredentialsTest extends TestCase
     }
 
     /**
-     * What a value looks like through each way PHP and Laravel's tooling show
-     * an object: Symfony's VarDumper (behind `dump()` and `dd()`), `print_r()`,
-     * `var_export()` and an array cast.
+     * How an object looks through VarDumper, `print_r()`, `var_export()` and an
+     * array cast.
      *
      * @param  object  $value
      * @return list<string>

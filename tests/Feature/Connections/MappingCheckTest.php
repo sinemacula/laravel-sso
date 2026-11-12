@@ -10,9 +10,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[mapping]`: checked only while the package is in use, each
- * cap and the declared custom keys read as `MappingLimits` reads them, and
- * every malformed setting reported by its key.
+ * Feature tests for the `[mapping]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,7 +52,7 @@ final class MappingCheckTest extends TestCase
 
     /**
      * A malformed protocol switch counts as the package in use, so the caps are
-     * checked rather than skipped.
+     * checked.
      *
      * @return void
      */

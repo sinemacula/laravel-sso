@@ -14,10 +14,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
 use Tests\TestCase;
 
 /**
- * Feature tests holding the shipped presets to the settings' rules (SSO-2.2):
- * every preset's settings, through its protocol's settings class, and its
- * mapping, alone and over the protocol's defaults, are valid, so a preset never
- * fills in a value the checks would refuse.
+ * Feature tests holding the shipped presets to the settings' rules.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -30,8 +27,7 @@ use Tests\TestCase;
 final class PresetSettingsTest extends TestCase
 {
     /**
-     * Every preset's settings and mapping yield no violation, and hold no
-     * secret.
+     * Every preset's settings and mapping are valid and hold no secret.
      *
      * @return void
      */
@@ -61,8 +57,7 @@ final class PresetSettingsTest extends TestCase
     }
 
     /**
-     * Google's preset, the one that fills in every endpoint, is complete once
-     * the client id is given.
+     * Google's preset is complete once the client id is given.
      *
      * @return void
      */

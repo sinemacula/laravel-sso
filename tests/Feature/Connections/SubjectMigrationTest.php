@@ -54,17 +54,7 @@ use Tests\Fixtures\Linking\ScriptedPrincipalScope;
 use Tests\TestCase;
 
 /**
- * Feature tests for the explicit subject migration (SSO-2.13, SSO-2.12,
- * SSO-4.5, SSO-8.4): a change to what subjects mean made with each link
- * relinked to its new subject or removed; a disposition that does not account
- * for every current link exactly once refused with `links_unaccounted`, a link
- * created since its preparation included; the relinks validated with the
- * change, each refused at `relinks.<id>`; a new subject that collides, or an
- * identity at its link limit, rolling everything back; the freshness asked
- * (`sso.connection.trust` and `sso.link.remove`, through `checkAll()`); the
- * sessions of each identity whose link was removed revoked; a relinked link of
- * verified domain provenance keeping it, its old sessions revoked; what is in
- * flight voided; and the events, after commit.
+ * Feature tests for the explicit subject migration.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -113,8 +103,8 @@ final class SubjectMigrationTest extends TestCase
     private array $links = [];
 
     /**
-     * Bind a fixed clock, a recording freshness contract and revocation, create
-     * the tables, an OIDC connection with three links, and record events.
+     * Bind a fixed clock, freshness and revocation, seed an OIDC connection
+     * with three links, and record events.
      *
      * @return void
      */
@@ -148,11 +138,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * The change is made; each link relinked is replaced by a link of its
-     * identity to the new subject, the issuer the one given or the link's own;
-     * every other link is removed and its identity's sessions revoked; what is
-     * in flight is voided; and the change, each removal and each new link are
-     * reported once it commits, in that order.
+     * Relinked links move to the new subject; the rest are removed and their
+     * sessions revoked.
      *
      * @return void
      */
@@ -211,10 +198,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A relinked link of verified domain provenance keeps it, on a row with a
-     * new id, though the link is reported as the migration's; the old sessions,
-     * which recorded the old id, are revoked through the connection; a relinked
-     * link of any other provenance is the migration's and revokes nothing.
+     * A relinked domain link keeps its provenance on a new row, and its old
+     * sessions are revoked.
      *
      * @return void
      */
@@ -253,9 +238,7 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A relinked domain link is still judged: a principal outside the tenant
-     * suspends it at its next resolution, even one it held before the
-     * migration, which ran no judgement.
+     * A relinked domain link is judged again at its next resolution.
      *
      * @return void
      */
@@ -285,8 +268,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A relinked domain link is still found when the person's scope widens: it
-     * is suspended, and the sessions of its new row revoked.
+     * A relinked domain link is still found and suspended when the person's
+     * scope widens.
      *
      * @return void
      */
@@ -305,8 +288,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A suspended domain link is never relinked: suspension is left only by a
-     * confirming `link`.
+     * A suspended domain link is never relinked; only a confirming `link` lifts
+     * suspension.
      *
      * @return void
      */
@@ -330,8 +313,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * With no relink and every link listed for removal, every link of the
-     * connection is removed and every identity's sessions through it revoked.
+     * With every link listed for removal, all are removed and their sessions
+     * revoked.
      *
      * @return void
      */
@@ -354,9 +337,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A migration that changes no setting of trust still asks
-     * `sso.connection.trust` and `sso.link.remove`, and voids what is in
-     * flight.
+     * A migration always asks `sso.connection.trust` and `sso.link.remove`, and
+     * voids what is in flight.
      *
      * @return void
      */
@@ -387,9 +369,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A caller who is not fresh enough for either operation is refused with
-     * `freshness_required`, even for a change that asks neither, and nothing is
-     * written, removed, revoked or reported.
+     * A caller stale for either operation is refused with `freshness_required`,
+     * with nothing changed.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @return void
@@ -455,8 +436,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A relink of the wrong shape is refused at `relinks.<id>`, and nothing is
-     * asked, written, removed or reported.
+     * A malformed relink is refused at `relinks.<id>`, with nothing asked or
+     * written.
      *
      * @param  mixed  $relink
      * @param  string  $code
@@ -529,9 +510,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A reserved link relinked is `not_allowed`, reported after the change's
-     * own violations, and nothing is asked, written or reported; a reserved
-     * link listed for removal is removed like any other.
+     * Relinking a reserved link is `not_allowed`; listing one for removal
+     * removes it.
      *
      * @return void
      */
@@ -567,10 +547,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * Rows of `[relinked, removed]`, by link name, with `unknown` an id no link
-     * has, `theirs` another connection's link and `number` a removal that is
-     * not a string: each disposition that does not account for every current
-     * link exactly once, the last three giving as many ids as there are links.
+     * Rows of `[relinked, removed]` by link name that do not account for every
+     * link exactly once.
      *
      * @return iterable<string, array{0: list<string>, 1: list<string>}>
      */
@@ -592,10 +570,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A disposition that leaves a link out, names a link in both the relinks
-     * and the removals, or names an id that is not one of the connection's
-     * links, is refused with `links_unaccounted`: nothing is asked, written,
-     * removed, revoked or reported.
+     * A disposition that misses, repeats or invents a link is
+     * `links_unaccounted`, with nothing changed.
      *
      * @param  list<string>  $relinked
      * @param  list<string>  $removed
@@ -634,8 +610,7 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A removal listed twice counts once: the disposition still accounts for
-     * every link exactly once.
+     * A removal listed twice counts once.
      *
      * @return void
      */
@@ -650,10 +625,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A link created after the caller prepared its disposition, from the links
-     * it read then, is unaccounted for under the lock: the migration is refused
-     * with `links_unaccounted`, the new link kept with the rest; prepared
-     * again, it is accounted for and migrates.
+     * A link created after the disposition was prepared is `links_unaccounted`
+     * until prepared again.
      *
      * @return void
      */
@@ -682,9 +655,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * Two relinks to the same new subject collide: the second is `duplicate` at
-     * its id, and everything is rolled back, the change, the removals and the
-     * voiding included, with nothing reported.
+     * Two relinks to the same subject are `duplicate`, and everything rolls
+     * back.
      *
      * @return void
      */
@@ -704,9 +676,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * An identity relinked twice in a connection that allows it one link
-     * reaches its limit: the second is `too_many` at its id, and everything is
-     * rolled back.
+     * Relinking an identity past its link limit is `too_many`, and everything
+     * rolls back.
      *
      * @return void
      */
@@ -726,8 +697,7 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * A change that changes nothing is `unchanged`: no link is relinked or
-     * removed, and nothing is asked or reported.
+     * A change of nothing is `unchanged`, touching no link.
      *
      * @return void
      */
@@ -750,8 +720,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * Another tenant's connection is not found, and a connection whose protocol
-     * is unavailable is refused, with nothing changed.
+     * Another tenant's connection is not found and an unavailable protocol is
+     * refused.
      *
      * @return void
      */
@@ -802,8 +772,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * Assert the connection, its links and their identities' sessions are as
-     * they were, and nothing was reported.
+     * Assert the connection, links and sessions are unchanged and nothing was
+     * reported.
      *
      * @param  bool  $unrevoked
      * @return void
@@ -827,8 +797,7 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * Assert the sessions of exactly these identities, in order, were revoked
-     * through the connection and the identity's own removed link, each inside
+     * Assert exactly these identities' sessions were revoked, in order, inside
      * the transaction.
      *
      * @param  list<string>  $identities
@@ -873,9 +842,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * Migrate the connection with the first link, standing on a verified
-     * domain, relinked to a new subject of the same issuer and the others
-     * removed, and answer its new row.
+     * Migrate with the verified domain link relinked and the others removed,
+     * and answer its new row.
      *
      * @return \SineMacula\Laravel\Sso\Models\Link
      */
@@ -935,8 +903,8 @@ final class SubjectMigrationTest extends TestCase
     }
 
     /**
-     * Each link of every connection as `[identity id, issuer, format, subject,
-     * state]`, by identity id.
+     * Each link as `[identity id, issuer, format, subject, state]`, by identity
+     * id.
      *
      * @return list<array{0: string, 1: string, 2: ?string, 3: string, 4: string}>
      */

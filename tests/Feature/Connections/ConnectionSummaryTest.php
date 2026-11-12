@@ -19,9 +19,7 @@ use Tests\Fixtures\Protocols\ExampleDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for what a helper returns for a connection (SSO-2.5, SSO-2.11):
- * its fields, each secret its protocol declares masked, whether it is usable as
- * the protocols judge it, and JSON that holds no secret or ciphertext.
+ * Feature tests for the connection summary the helpers return.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,8 +52,7 @@ final class ConnectionSummaryTest extends TestCase
     }
 
     /**
-     * Every field is the connection's, the secrets masked by the names its
-     * protocol declares.
+     * Every field is the connection's, with the declared secrets masked.
      *
      * @return void
      */
@@ -85,8 +82,8 @@ final class ConnectionSummaryTest extends TestCase
     }
 
     /**
-     * An unset secret is masked as unset, a SAML connection declares none, and
-     * a connection whose protocol is not registered declares none.
+     * An unset secret is masked as unset; SAML and unregistered protocols
+     * declare none.
      *
      * @return void
      */
@@ -99,8 +96,8 @@ final class ConnectionSummaryTest extends TestCase
     }
 
     /**
-     * Usable only while enabled, its protocol available and its driver finding
-     * it complete.
+     * Usable only while enabled, its protocol available and its settings
+     * complete.
      *
      * @return void
      */
@@ -120,8 +117,8 @@ final class ConnectionSummaryTest extends TestCase
     }
 
     /**
-     * The JSON has snake_case keys, UTC times, each secret as whether it is
-     * set, empty maps as objects, and no secret or ciphertext.
+     * The JSON uses snake_case and UTC, maps empty objects, and holds no secret
+     * or ciphertext.
      *
      * @return void
      */

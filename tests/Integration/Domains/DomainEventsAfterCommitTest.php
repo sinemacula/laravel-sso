@@ -25,11 +25,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests, on a real database, that the domain helpers write and
- * report together (SSO-10.5): a claim, a verification and a removal made inside
- * a transaction the application opened on the storage connection report nothing
- * until it commits, and write and report nothing when it rolls back, though
- * each helper returned success.
+ * Integration tests that domain helpers report only after the storage
+ * transaction commits.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,8 +65,7 @@ final class DomainEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * A claim and its verification inside a transaction that rolls back leave
-     * no claim and report nothing.
+     * A claim and verification rolled back leave no claim and report nothing.
      *
      * @return void
      */
@@ -96,8 +92,8 @@ final class DomainEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * A claim, a verification and a removal inside a transaction that commits
-     * report nothing until the commit, then each, in order.
+     * Changes inside a committed transaction report only after the commit, in
+     * order.
      *
      * @return void
      */

@@ -18,11 +18,7 @@ use Tests\Fixtures\Protocols\ExampleDriver;
 use Tests\TestCase;
 
 /**
- * Integration tests of a stored connection and its driver, on whichever engine
- * the suite runs against: a connection read back from the write connection is
- * usable only while it is enabled, its protocol available and its settings
- * complete (SSO-2.1). An OIDC connection is not usable with incomplete settings
- * or without its client secret, and once it has both it is usable and starts.
+ * Integration tests for whether a stored connection is usable.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,7 +32,7 @@ final class ConnectionUsabilityTest extends TestCase
     use UsesConnections;
 
     /**
-     * Create the tables, turn OIDC on, configure the endpoints and register the
+     * Create the tables, enable OIDC, configure the endpoints and register the
      * example driver.
      *
      * @return void
@@ -55,9 +51,8 @@ final class ConnectionUsabilityTest extends TestCase
     }
 
     /**
-     * A stored connection, read back from the write connection, is usable once
-     * enabled with complete settings, and not once disabled or incomplete; its
-     * driver starts a flow with what it stored.
+     * A stored connection is usable only while enabled and complete, and its
+     * driver starts a flow.
      *
      * @return void
      *
@@ -90,7 +85,7 @@ final class ConnectionUsabilityTest extends TestCase
     }
 
     /**
-     * An OIDC connection with incomplete settings is not usable, however it is
+     * An OIDC connection with incomplete settings is not usable, even when
      * enabled.
      *
      * @return void
@@ -103,10 +98,8 @@ final class ConnectionUsabilityTest extends TestCase
     }
 
     /**
-     * An OIDC connection with complete settings but no client secret is not
-     * usable; with its secret it is, read back from the write connection, and
-     * its driver starts a flow that redirects to its authorisation endpoint and
-     * expects its issuer.
+     * An OIDC connection is usable once it has its client secret, and starts a
+     * flow to its endpoint.
      *
      * @return void
      *

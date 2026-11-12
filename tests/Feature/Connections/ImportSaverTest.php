@@ -45,13 +45,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for saving a fetched import (SSO-2.8, SSO-2.11): the stale
- * limit counts from the fetch a proposal came from, whether or not a refresh
- * has run, so an imported connection with its schedule off never has unlimited
- * trust, but for a SAML connection that has not opted in, which starts no clock;
- * metadata given as XML, from no fetch, is saved as by hand; a save that
- * changed nothing still stamps, on the record, voiding nothing; and a refusal
- * stamps nothing.
+ * Feature tests for saving a fetched import.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -94,8 +88,8 @@ final class ImportSaverTest extends TestCase
     private FakeFreshness $freshness;
 
     /**
-     * Bind a fixed clock, a fake fetcher and a fresh freshness contract, switch
-     * both protocols on and create the tables.
+     * Bind a fixed clock, a fake fetcher and freshness, enable both protocols
+     * and create the tables.
      *
      * @return void
      */
@@ -120,8 +114,8 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * An import from a URL, saved to an anchored connection with its schedule
-     * off, counts from its fetch, and its `validUntil` is enforced.
+     * A URL import saved with its schedule off counts from its fetch and
+     * enforces `validUntil`.
      *
      * @return void
      */
@@ -150,8 +144,7 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * Rows of `[anchored, settings, stamped, expiry]`: what saving an import
-     * stamps on a SAML connection, and when that connection then expires.
+     * Rows of `[anchored, settings, stamped, expiry]` for saving a SAML import.
      *
      * @return iterable<string, array{0: bool, 1: array<string, mixed>, 2: bool, 3: ?string}>
      */
@@ -172,9 +165,7 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * A reviewed import starts a clock only where the connection holds a
-     * deadline: one that will not refresh, its certificates as good as entered
-     * by hand, never expires for having been imported.
+     * A SAML import starts a clock only where the connection holds a deadline.
      *
      * @param  bool  $anchored
      * @param  array<string, mixed>  $settings
@@ -206,9 +197,7 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * The save judges the connection as its own change leaves it: an import
-     * that opts in stamps, and one that opts out starts no clock and clears the
-     * one that was running.
+     * The save judges the connection as its own change leaves it.
      *
      * @return void
      */
@@ -227,9 +216,8 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * A save that changed nothing on a connection that holds no deadline clears
-     * a stamp left from before, on the record, and with none to clear it
-     * reports nothing, since it did nothing.
+     * An unchanged save with no deadline clears an old stamp, and reports
+     * nothing when there is none.
      *
      * @return void
      */
@@ -259,8 +247,8 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * Saving an import of the same settings renews an expired connection that
-     * holds a deadline, on the record.
+     * Saving the same settings renews an expired connection that holds a
+     * deadline.
      *
      * @return void
      */
@@ -314,8 +302,8 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * An OIDC import, saved with its schedule off, counts from the moment its
-     * document validated, with no `validUntil`; its keys wait for their fetch.
+     * An OIDC import counts from when its document validated; its keys wait for
+     * their fetch.
      *
      * @return void
      */
@@ -337,9 +325,8 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * A change of the issuer clears what was fetched for the one before, then
-     * what the save was fetched for is stamped: the keys wait, the document
-     * does not.
+     * An issuer changed by the save is reset first, then stamped for the
+     * document but not the keys.
      *
      * @return void
      */
@@ -357,9 +344,8 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * Saving a new import of the same settings recovers an expired connection
-     * on the record: it stamps, voids nothing, and reports the one thing it
-     * changed.
+     * An unchanged save renews an expired connection, voids nothing and reports
+     * the renewal.
      *
      * @return void
      */
@@ -395,8 +381,8 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * A changed save reports the settings it changed, not the stamp, and voids
-     * as any trust change does.
+     * A changed save reports its settings, not the stamp, and voids like any
+     * trust change.
      *
      * @return void
      */
@@ -423,9 +409,7 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * A stale caller is refused before anything is validated or written, even a
-     * save that changes no setting, and the operation asked is the connection's
-     * trust.
+     * A stale caller is refused before anything is validated or written.
      *
      * @return void
      */
@@ -460,8 +444,8 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * Another tenant's connection, an unknown one and a protocol switched off
-     * are refused, with nothing asked or stamped.
+     * Another tenant's connection, an unknown one and a disabled protocol are
+     * refused.
      *
      * @return void
      */
@@ -483,8 +467,8 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * A proposal's own dump shows nothing of when it was fetched beyond what it
-     * did, and it stays impossible to serialise.
+     * A proposal's dump hides when it was fetched, and the proposal cannot be
+     * serialised.
      *
      * @return void
      */
@@ -496,8 +480,7 @@ final class ImportSaverTest extends TestCase
     }
 
     /**
-     * What the provider's metadata proposes for the pinned entity, fetched from
-     * the URL.
+     * The metadata proposal for the pinned entity, fetched from the URL.
      *
      * @param  \Carbon\CarbonImmutable  $validUntil
      * @return \SineMacula\Laravel\Sso\Metadata\ProposedSettings

@@ -36,34 +36,9 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races an OIDC start against a trust change to its connection, an update of
- * its client secret or its JWKS URL through the management helper (SSO-2.13,
- * SSO-5.1, the agreed trust version bullet): a request is either refused or
- * voided, and never survives a change that committed.
- *
- * - The change commits first: the start, held once its driver has read the
- *   callback, outside any transaction, finds the change under the connection's
- *   lock, stores nothing and is refused `connection_unavailable`.
- * - The start commits first: its request is voided by the change, which raises
- *   the trust version.
- *
- * The hold is the endpoint resolver the driver asks, wrapped here, since an
- * OIDC start makes no other call on its way to storing the request. In this
- * process each order is exact on every database. Across processes, on
- * PostgreSQL and MySQL, signal files force the order; the change runs plainly,
- * and inside a `REPEATABLE READ` transaction of its own that read the
- * connection first, which commits after the signal, so the start's locking read
- * waits for it. A start refuses to run inside a transaction, so only the change
- * does. Each barrier fails loudly when its signal never comes.
- *
- * With the start first, a change in a `REPEATABLE READ` transaction that read
- * the connection before the request was stored fails to serialise on PostgreSQL
- * (SQLSTATE 40001, wrapped in a `DeadlockException`), because the stored
- * request raised the connection's flows version: the change commits nothing and
- * the request stays as it was. That outcome is accepted on PostgreSQL only;
- * MySQL's locking reads see the latest rows, so the change commits and voids
- * the request. The cross-process races are skipped on SQLite and without
- * `pcntl`.
+ * Races an OIDC start against a trust change, in process and across processes;
+ * a request is refused or voided, never left. Skipped across processes on
+ * SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -116,10 +91,8 @@ final class OidcStartRaceTest extends TestCase
     private string $outcomes;
 
     /**
-     * Bind a fixed clock, a fresh caller, a limiter that allows every attempt
-     * and a resolver that can hold the start; switch OIDC on; register the
-     * application and the endpoints; create the tables and a usable connection;
-     * and make the directory the processes report in.
+     * Bind a fixed clock, a fresh caller, an open limiter and a holding
+     * resolver, enable OIDC, and seed a usable connection.
      *
      * @return void
      *
@@ -243,9 +216,8 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * A change committed while the start's driver ran refuses the start under
-     * the connection's lock: nothing is stored, and the trust version is the
-     * change's.
+     * A change committed while the driver ran refuses the start under the lock,
+     * storing nothing.
      *
      * @param  string  $change
      * @return void
@@ -264,8 +236,7 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * A change made once the start committed voids the request it stored, whose
-     * trust version is the one the change raised from.
+     * A change after the start committed voids the request it stored.
      *
      * @param  string  $change
      * @return void
@@ -280,8 +251,8 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * Rows of `[change, in transaction]`: each change, plainly or inside a
-     * transaction of its own that read the connection first.
+     * Rows of `[change, in transaction]`: each change, plainly or in a
+     * transaction that read first.
      *
      * @return iterable<string, array{0: string, 1: bool}>
      */
@@ -294,9 +265,8 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * Across processes, a change committed while the start is held between its
-     * read and its insert refuses the start, which stores nothing, whether the
-     * change ran plainly or inside its own transaction.
+     * Across processes, a change committed while the start is held refuses the
+     * start.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -341,10 +311,8 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * Across processes, a start committed before the change has its request
-     * voided by the change. A change inside a transaction that read the
-     * connection before the start stored its request fails to serialise on
-     * PostgreSQL, changing nothing; no change commits with it left unvoided.
+     * Across processes, a change voids a committed start; PostgreSQL may fail
+     * to serialise instead.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -435,8 +403,8 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * The state of each of the connection's requests, its trust version, and
-     * whether the change given reached it.
+     * Each request's state, the trust version, and whether the change reached
+     * the connection.
      *
      * @param  string  $change
      * @return array{requests: list<string>, trust_version: ?int, changed: bool}
@@ -468,8 +436,8 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * Fork a process for the start and one for the change, have each run on a
-     * connection of its own, and collect what each reported.
+     * Fork a process for the start and one for the change, and collect what
+     * each reported.
      *
      * @param  \Closure(): string  $starter
      * @param  \Closure(): string  $changer
@@ -501,10 +469,8 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, do its work, report
-     * the outcome, and end without running the parent's shutdown. Racing inside
-     * a transaction, the process opens a `REPEATABLE READ` one and reads the
-     * connection before its work, and commits after it.
+     * In a child: run the work and report; in a transaction, read under
+     * `REPEATABLE READ` first.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work
@@ -543,9 +509,8 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error, so a race whose
-     * racers ran one after the other never passes as one that overlapped.
+     * Wait for the signal file up to `SIGNAL_SECONDS`, failing loudly so a
+     * serial run never passes as a race.
      *
      * @param  string  $signal
      * @return void
@@ -568,10 +533,8 @@ final class OidcStartRaceTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure: SQLSTATE 40001 on PostgreSQL alone. Inside the
-     * change's own transaction, Laravel rethrows it as a `DeadlockException`
-     * whose previous error is the query's.
+     * SQLSTATE 40001 on PostgreSQL; inside a transaction Laravel wraps it in a
+     * `DeadlockException`.
      *
      * @param  \Throwable  $exception
      * @return bool

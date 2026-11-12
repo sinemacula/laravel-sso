@@ -31,13 +31,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for starting a SAML flow through the public start service
- * (SSO-5.1, SSO-5.3, SSO-2.8, SSO-10.2): the stored request's `saml_request_id`
- * is the `ID` of the request sent, by either binding, and its state digest is
- * the digest of the `RelayState` sent; the start reports
- * `AuthorizationRequestStarted` once, naming neither; two starts send distinct
- * ids; and with expired metadata the start is refused with `metadata_expired`,
- * reporting one `FlowFailed` and storing nothing.
+ * Feature tests for starting a SAML flow through the public start service.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,9 +57,8 @@ final class SamlStartTest extends TestCase
     private FixedClock $clock;
 
     /**
-     * Bind a fixed clock and a request from the client, switch SAML on,
-     * register the application and the endpoints, create the tables, and record
-     * events.
+     * Bind a fixed clock and a client request, enable SAML, create the tables
+     * and record events.
      *
      * @return void
      */
@@ -89,9 +82,8 @@ final class SamlStartTest extends TestCase
     }
 
     /**
-     * A redirect start stores the `ID` of the request it sends as
-     * `saml_request_id`, and the digest of its `RelayState` as the state
-     * digest, and reports `AuthorizationRequestStarted` once, naming neither.
+     * A redirect start stores the sent `ID` and `RelayState` digest and reports
+     * neither.
      *
      * @return void
      */
@@ -128,8 +120,8 @@ final class SamlStartTest extends TestCase
     }
 
     /**
-     * A signed post start stores the `ID` of the request it posts, and reports
-     * `AuthorizationRequestStarted` once, naming neither it nor the state.
+     * A signed post start stores the posted `ID` and reports neither it nor the
+     * state.
      *
      * @return void
      */
@@ -180,8 +172,8 @@ final class SamlStartTest extends TestCase
     }
 
     /**
-     * With expired metadata the start is refused with `metadata_expired`,
-     * reporting one `FlowFailed` and storing nothing.
+     * Expired metadata refuses the start with `metadata_expired`, storing
+     * nothing.
      *
      * @return void
      */
@@ -204,8 +196,8 @@ final class SamlStartTest extends TestCase
     }
 
     /**
-     * Assert the start reported exactly `AuthorizationRequestStarted`, with its
-     * reference and neither the request's id nor its `RelayState`.
+     * Assert one `AuthorizationRequestStarted` naming neither the request id
+     * nor its `RelayState`.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $result
      * @param  string  $id
@@ -241,8 +233,7 @@ final class SamlStartTest extends TestCase
     }
 
     /**
-     * A usable SAML connection, trusting a signing certificate, with the
-     * settings and attributes given.
+     * A usable SAML connection trusting a signing certificate.
      *
      * @param  array<string, mixed>  $settings
      * @param  array<string, mixed>  $attributes
@@ -263,8 +254,8 @@ final class SamlStartTest extends TestCase
     }
 
     /**
-     * Store the service provider's current signing key for the connection, its
-     * private half encrypted as the key service would.
+     * Store the connection's current signing key, encrypted as the key service
+     * would.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return void

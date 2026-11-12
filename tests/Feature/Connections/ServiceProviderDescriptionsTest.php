@@ -25,12 +25,7 @@ use Tests\Fixtures\Protocols\ExampleDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the service provider description helper (SSO-5.9): a SAML
- * connection described as its metadata, by its driver; a disabled or incomplete
- * connection described too; an unknown connection and another tenant's refused
- * with the same answer, and the tenant matched exactly; a protocol that is not
- * available refused; any protocol's driver asked through the registry; no fresh
- * authentication asked; and nothing written.
+ * Feature tests for describing a SAML connection to its provider.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,8 +47,8 @@ final class ServiceProviderDescriptionsTest extends TestCase
     private RecordingFreshness $freshness;
 
     /**
-     * Bind a fixed clock and a recording freshness contract, configure the
-     * endpoints, switch SAML on, and create the tables.
+     * Bind a fixed clock and freshness, configure the endpoints, enable SAML
+     * and create the tables.
      *
      * @return void
      */
@@ -74,9 +69,8 @@ final class ServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A SAML connection is described as the metadata its driver writes, valid
-     * against the SAML 2.0 metadata schema, without asking for fresh
-     * authentication or writing anything.
+     * A SAML connection is described as schema-valid metadata, with no
+     * freshness asked or write made.
      *
      * @return void
      */
@@ -101,9 +95,8 @@ final class ServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A disabled connection, and one with no identity provider settings, is
-     * described as an enabled, complete one is, so it can be registered before
-     * it is enabled.
+     * Disabled and incomplete connections are described so they can be
+     * registered first.
      *
      * @return void
      */
@@ -127,8 +120,7 @@ final class ServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * Rows of `[tenant, connection id]`: a connection the tenant does not have,
-     * as named by the case.
+     * Rows of `[tenant, connection id]`: a connection the tenant does not have.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -145,9 +137,8 @@ final class ServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A connection the tenant does not have is `connection_unavailable`, the
-     * same answer whether it is unknown or another tenant's, with no driver
-     * asked and no fresh authentication asked.
+     * Unknown and foreign connections get the same `connection_unavailable`,
+     * with no driver asked.
      *
      * @param  string  $tenant
      * @param  string  $connectionId
@@ -177,8 +168,7 @@ final class ServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * Another tenant's connection is described for that tenant, so the refusal
-     * above is the tenant's, not the connection's.
+     * Another tenant's connection is described for that tenant.
      *
      * @return void
      */
@@ -191,8 +181,7 @@ final class ServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A tenant id the connections table cannot hold is the application's
-     * mistake, an `InvalidArgumentException`.
+     * A tenant id the table cannot hold is an `InvalidArgumentException`.
      *
      * @return void
      */
@@ -205,8 +194,8 @@ final class ServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A connection whose protocol has its feature off, or no driver registered
-     * under it, is `protocol_unavailable`, with no driver asked.
+     * A protocol that is off or has no driver is `protocol_unavailable`, with
+     * no driver asked.
      *
      * @return void
      */
@@ -230,8 +219,8 @@ final class ServiceProviderDescriptionsTest extends TestCase
     }
 
     /**
-     * A connection over a protocol an application registered is described by
-     * that protocol's driver, through the registry, unchanged.
+     * An application's protocol is described by its own driver through the
+     * registry.
      *
      * @return void
      */

@@ -11,10 +11,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Fetching\CappedSink;
 
 /**
- * Unit tests for the sink a hop's body is written into: its stream takes bytes
- * up to the cap, refuses the write that would pass it and every write after,
- * and reads back what it took; and a body is read back no further than a byte
- * past the cap.
+ * Unit tests for the size-capped sink a hop's body is written into.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,9 +22,8 @@ use SineMacula\Laravel\Sso\Fetching\CappedSink;
 final class CappedSinkTest extends TestCase
 {
     /**
-     * Writes up to the cap are taken whole; the write that would pass it takes
-     * nothing and answers `0`, and so does every write after, even one that
-     * would fit.
+     * The write that would pass the cap, and every write after, takes nothing
+     * and answers `0`.
      *
      * @return void
      */
@@ -84,9 +80,8 @@ final class CappedSinkTest extends TestCase
     }
 
     /**
-     * A body is read from its start, however far it was read already, and no
-     * further than a byte past the cap; a body that cannot be sought is read
-     * from where it is.
+     * A body is read from its start, no further than a byte past the cap, or
+     * from where it is if unseekable.
      *
      * @return void
      */

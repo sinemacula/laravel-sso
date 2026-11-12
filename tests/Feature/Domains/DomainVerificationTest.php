@@ -25,17 +25,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Domains\RecordingWithdrawal;
 
 /**
- * Feature tests for verifying and removing a domain (SSO-3.2, SSO-2.12,
- * SSO-11.8, decision D3): a domain is verified only when a TXT record at its
- * record name is exactly its token; a missing or different record and a failed
- * lookup each refuse, a failed lookup never read as either; an expired claim, a
- * stale caller and a rate-limited connection are refused before the lookup; a
- * verified domain is unchanged; a lapsed domain counts from its new time; a
- * domain verified elsewhere, or a claim removed, claimed again or expired,
- * between the lookup and the write is refused, and one verified meanwhile is
- * unchanged; the unique index is the last guard; a removal in any state
- * withdraws linking inside its transaction; and every read is on the write
- * connection.
+ * Feature tests for verifying and removing a domain.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,10 +40,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     private const string RECORD = '_sso-verification.example.com';
 
     /**
-     * A record that is exactly the token verifies the domain for the connection
-     * from now: the domain is held, the expiry cleared, the check recorded,
-     * `sso.domain.verify` asked, and one `DomainVerified` reported without the
-     * token.
+     * A record exactly matching the token verifies the domain and reports
+     * `DomainVerified` without it.
      *
      * @return void
      */
@@ -104,8 +92,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * Rows of `[record]`, each built from the token: a value that carries the
-     * token without being exactly it.
+     * Rows of `[record]`: a value built from the token that is not exactly it.
      *
      * @return iterable<string, array{\Closure(string): string}>
      */
@@ -119,8 +106,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A record that is not exactly the token is `domain_record_not_found`, and
-     * nothing is written or reported.
+     * A record that is not exactly the token is `domain_record_not_found`, with
+     * nothing written.
      *
      * @param  \Closure(string): string  $record
      * @return void
@@ -154,9 +141,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A lookup that failed is `domain_lookup_failed`: never read as a missing
-     * record or as a verification, so the claim stays pending, unchanged, and
-     * nothing is reported.
+     * A failed lookup is `domain_lookup_failed`, never read as absent or
+     * verified.
      *
      * @return void
      */
@@ -179,8 +165,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * An expired claim is `domain_claim_expired`, before freshness is asked or
-     * anything looked up.
+     * An expired claim is refused before freshness is asked or anything looked
+     * up.
      *
      * @return void
      */
@@ -211,8 +197,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A verified domain is `unchanged`, once freshness was asked, with nothing
-     * looked up, written or reported.
+     * A verified domain is `unchanged` once freshness is asked, with no lookup.
      *
      * @return void
      */
@@ -233,9 +218,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * Each verification takes one of the connection's domain checks; once they
-     * are used up it is `rate_limited`, with the seconds to wait, and nothing
-     * is looked up.
+     * Verification uses the connection's domain checks and is `rate_limited`
+     * once they run out.
      *
      * @return void
      */
@@ -260,9 +244,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A lapsed domain, which keeps its last successful check for display, is
-     * verified again, and counts from its new verification time and its new
-     * check, never from its claim or its old check.
+     * A lapsed domain verified again counts from its new verification and
+     * check.
      *
      * @return void
      */
@@ -290,9 +273,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A claim that expires while its record is looked up is
-     * `domain_claim_expired`, judged again under the lock: it stays pending,
-     * holds no domain, and nothing is reported.
+     * A claim that expired during the lookup is `domain_claim_expired` under
+     * the lock.
      *
      * @return void
      */
@@ -320,9 +302,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A claim the same connection verified while its record was looked up is
-     * `unchanged`, judged again under the lock: its verification time is kept,
-     * and nothing more is reported.
+     * A claim the connection verified during the lookup is `unchanged` under
+     * the lock.
      *
      * @return void
      */
@@ -355,9 +336,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A pending claim verified and then lapsed by a recheck while its record is
-     * looked up is `domain_record_not_found`: the newer check found no record,
-     * and the older answer never verifies it again.
+     * A pending claim lapsed during the lookup is `domain_record_not_found`;
+     * the older answer loses.
      *
      * @return void
      */
@@ -384,9 +364,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A lapsed claim verified and lapsed again while its record is looked up is
-     * `domain_record_not_found`, judged by its new lapse time; the same lapse
-     * it had when read is verified again.
+     * A claim lapsed again during the lookup is refused; the same lapse as read
+     * is verified again.
      *
      * @return void
      */
@@ -413,8 +392,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A domain verified for another connection between the lookup and the write
-     * is `domain_unavailable`, and the claim stays pending.
+     * A domain verified elsewhere during the lookup is `domain_unavailable`.
      *
      * @return void
      */
@@ -441,9 +419,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A claim removed, or given another token, between the lookup and the write
-     * is refused: the record proved the token it was matched against, and no
-     * other.
+     * A claim removed or given another token during the lookup is refused.
      *
      * @return void
      */
@@ -469,9 +445,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * The unique index on the verified domain is the last guard: a row that
-     * holds the domain verified though no claim of the domain says so still
-     * refuses the verification, as `domain_unavailable`, and nothing changes.
+     * The unique index refuses a verification even when no claim says the
+     * domain is verified.
      *
      * @return void
      */
@@ -493,8 +468,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * An unknown domain, a name that cannot be one, another tenant's connection
-     * and an unknown connection are each refused before anything is asked.
+     * Unknown domains and connections, and another tenant's, are refused before
+     * anything is asked.
      *
      * @return void
      */
@@ -526,10 +501,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A claim is removed in any state, answered as it was, once
-     * `sso.domain.remove` was asked; linking by it is withdrawn inside the
-     * removal's transaction, before the delete; one `DomainRemoved` reports the
-     * state it was in.
+     * A claim is removed in any state, withdrawing linking inside the
+     * transaction before the delete.
      *
      * @param  \SineMacula\Laravel\Sso\Domains\Enums\DomainState  $state
      * @return void
@@ -579,8 +552,8 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * A verified domain removed from one connection can be claimed and verified
-     * for another.
+     * A verified domain removed from one connection can be verified for
+     * another.
      *
      * @return void
      */
@@ -632,8 +605,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
-     * Lapse the claim at the moment given, as a recheck that found no record
-     * after its grace would.
+     * Lapse the claim at the moment given, as a recheck would.
      *
      * @param  string  $id
      * @param  \Carbon\CarbonImmutable  $at

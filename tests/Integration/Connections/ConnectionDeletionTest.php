@@ -27,12 +27,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests, on each engine the package supports, that deleting a
- * connection deletes every row it owns in every table, whatever its state (a
- * claim pending, verified or lapsed; a link active or reserved; a request
- * pending, consumed, finished or voided; a code unredeemed, redeemed or voided;
- * a key of each use and state), and nothing of another connection, read back
- * through the query builder rather than the models (SSO-2.11, SSO-11.7).
+ * Integration tests that deleting a connection removes every row it owns and
+ * none of another's.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -79,8 +75,8 @@ final class ConnectionDeletionTest extends TestCase
     }
 
     /**
-     * Deleting a connection leaves no row of it in any table, and every row of
-     * the two others exactly as many as before.
+     * Deleting a connection leaves no row of it and every other connection's
+     * rows intact.
      *
      * @return void
      */
@@ -118,10 +114,7 @@ final class ConnectionDeletionTest extends TestCase
     }
 
     /**
-     * Make a connection with a pending, a verified and a lapsed claim; an
-     * active and a reserved link; a key of its own of each state and a trusted
-     * certificate; a request pending, consumed, finished and voided; and a code
-     * unredeemed, redeemed and voided.
+     * A connection with claims, links, keys, requests and codes in every state.
      *
      * @param  string  $name
      * @return \SineMacula\Laravel\Sso\Models\Connection

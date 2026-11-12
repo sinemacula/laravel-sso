@@ -13,9 +13,7 @@ use Symfony\Component\VarDumper\Cloner\VarCloner;
 use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /**
- * Unit tests for how an outbound request ended: fetched with its status code,
- * headers and body, refused or failed with a reason code alone, and a body that
- * a dump and serialisation never show.
+ * Unit tests for how an outbound request ended.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,8 +25,8 @@ use Symfony\Component\VarDumper\Dumper\CliDumper;
 final class FetchResultTest extends TestCase
 {
     /**
-     * A fetched response keeps its status code, its headers by lower-case name
-     * and its body, and is successful only with a `2xx` status.
+     * A fetched response keeps its status, lower-cased headers and body, and is
+     * successful only on `2xx`.
      *
      * @return void
      */
@@ -90,8 +88,8 @@ final class FetchResultTest extends TestCase
     }
 
     /**
-     * The body is held where no dump, export or array cast can reach it, and
-     * still reaches the caller whole.
+     * No dump, export or array cast reaches the body, yet the caller gets it
+     * whole.
      *
      * @return void
      */
@@ -135,9 +133,8 @@ final class FetchResultTest extends TestCase
     }
 
     /**
-     * What a value looks like through each way PHP and Laravel's tooling show
-     * an object: Symfony's VarDumper (behind `dump()` and `dd()`), `print_r()`,
-     * `var_export()` and an array cast.
+     * How an object looks through VarDumper, `print_r()`, `var_export()` and an
+     * array cast.
      *
      * @param  object  $value
      * @return list<string>
