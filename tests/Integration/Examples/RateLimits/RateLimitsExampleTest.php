@@ -166,8 +166,8 @@ final class RateLimitsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's own hint counts against the address and domain, all
-     * or none.
+     * The application's own hint counts against the address and domain, all or
+     * none.
      *
      * @return void
      */

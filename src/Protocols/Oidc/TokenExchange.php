@@ -144,6 +144,16 @@ final readonly class TokenExchange
     }
 
     /**
+     * The failure of a client assertion the system had no randomness for.
+     *
+     * @return \RuntimeException
+     */
+    private static function noRandomness(): \RuntimeException
+    {
+        return new \RuntimeException(self::NO_RANDOMNESS);
+    }
+
+    /**
      * The client secret, as the kind carries it.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
@@ -193,7 +203,7 @@ final readonly class TokenExchange
         try {
             $assertion = $this->jose->signClientAssertion($clientId, $options->tokenEndpoint(), $pem, $this->clock->now(), $options->clientAssertionAlgorithm());
         } catch (RandomException) {
-            throw new \RuntimeException(self::NO_RANDOMNESS);
+            throw self::noRandomness();
         }
 
         return FetchCredentials::privateKeyJwt($clientId, $assertion->reveal());

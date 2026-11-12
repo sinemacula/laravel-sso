@@ -386,8 +386,8 @@ Every person in the call gains a principal in the one tenant it is given.
 
 ## Revocation
 
-The adapter binds `Contracts\SessionRevocation` to authentication's revocation helpers (reported for its PRs
-#120 and #123, with the PR #127 names on `Auth::sessions()`). It revokes inside the transaction the package calls it
+The adapter binds `Contracts\SessionRevocation` to authentication's revocation helpers (reported for its PR #120
+and PR #123, with the PR #127 names on `Auth::sessions()`). It revokes inside the transaction the package calls it
 in, through the same connection, throws on failure (which rolls the change back), and never reports a revocation it
 did not make. The count each helper returns is not the package's concern.
 

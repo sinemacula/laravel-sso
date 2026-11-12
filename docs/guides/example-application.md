@@ -36,8 +36,9 @@ management change's event names as acting.
 
 Each purpose has its own start endpoint, rather than one endpoint whose body names the purpose. The endpoint fixes the
 purpose server side, so a `link` or a `reauthenticate` start sits behind your authentication and takes its caller from
-it, and a body can never turn a sign-in into something else. Under `laravel-iam`, `POST /api/auth/sessions` and the re-authentication redemption are
-`laravel-authentication`'s routes, and its adapter calls the package (see [Under `laravel-iam`](#under-laravel-iam)).
+it, and a body can never turn a sign-in into something else. Under `laravel-iam`, `POST /api/auth/sessions` and the
+re-authentication redemption are `laravel-authentication`'s routes, and its adapter calls the package (see [Under
+`laravel-iam`](#under-laravel-iam)).
 
 ## The base URL and the API prefix
 
