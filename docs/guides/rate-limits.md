@@ -71,15 +71,15 @@ first attempt in it, and a full limit waits until its window ends.
 
 ## Choosing limits
 
-- **Per IP address** limits stop one client hammering a flow. Size them for the busiest legitimate address you
+- Per IP address limits stop one client hammering a flow. Size them for the busiest legitimate address you
   serve: an office or a mobile carrier behind one NAT address can start many sign-ins a minute. IPv6 clients are
   counted by their /64, and an IPv4 client reaching you over an IPv4-mapped or NAT64 address counts as its IPv4
   address. Behind a proxy or a load balancer, configure Laravel's trusted proxies, so the address counted is the
   client's and not the proxy's: every client behind one untrusted proxy would share one limit.
-- **Per email domain** limits stop discovery being used to probe or flood one organisation's identity provider. Size
+- Per email domain limits stop discovery being used to probe or flood one organisation's identity provider. Size
   them for the domain of your largest tenant at its busiest sign-in hour. The domain is counted case-insensitively,
   without a trailing dot, and in its ASCII form, so `Bücher.example` and `xn--bcher-kva.example` share one limit.
-- **Per connection** limits on completions stop a flood of forged responses at one tenant's endpoint; size them for
+- Per connection limits on completions stop a flood of forged responses at one tenant's endpoint; size them for
   the tenant's peak sign-ins a minute. The metadata and domain check limits bound how often the package reaches out to
   a provider's or a domain's servers on the connection's behalf: the metadata limit counts each URL import naming the
   connection and each administrator's `MetadataRefresher::refreshNow()`, before anything is fetched. The scheduled

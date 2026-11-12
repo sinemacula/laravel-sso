@@ -8,10 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
 
 /**
- * The example application's service provider (SSO-3.2): it binds the
- * application's own DNS resolver in place of the package's default. It
- * registers after the package's provider, as an application's providers do, so
- * its binding replaces the default as any later binding does.
+ * Binds the application's DNS resolver in place of the package's default.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

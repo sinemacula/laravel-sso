@@ -5,21 +5,12 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples;
 
 /**
- * Reads the snippets the documentation shows and the regions of the executable
- * examples they are taken from, so a test can hold each snippet to its source
- * (SSO-12.4, SSO-12.5): a snippet that no longer matches its region, or names a
- * region that is gone, fails that test, and so the documentation cannot drift
- * from code that runs.
+ * Reads the documentation's snippets and the example regions they are taken
+ * from, so a test can hold each snippet to its source.
  *
- * A region is the lines of a source between `// @snippet-start <name>` and
- * `// @snippet-end <name>`, each alone on its line and, as every inline
- * comment, followed by no blank line, with the indentation the lines share
- * removed. The boundaries are tag lines, so the comment wrapping never joins
- * two of them. A snippet is the fenced block that follows, after any blank
- * lines, an HTML comment `<!-- snippet: <path>#<name> -->` alone on its line in
- * a Markdown file, the path relative to the package's root. Any guide, or the
- * README, may show a region: the marker is the whole contract. A PHP block with
- * no marker is one no test runs.
+ * A region is the lines between `// @snippet-start <name>` and
+ * `// @snippet-end <name>`, dedented; a snippet is the fenced block after a
+ * `<!-- snippet: <path>#<name> -->` line.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -70,10 +61,8 @@ final class Snippets
     }
 
     /**
-     * Whether each PHP code block of the Markdown is marked, by its place among
-     * the Markdown's PHP blocks, from 1: a block opened by a `php` fence,
-     * indented or not, is marked when the last line before it that is not blank
-     * is a snippet marker.
+     * Whether each PHP block of the Markdown follows a snippet marker, by its
+     * place among the PHP blocks, from 1.
      *
      * @param  string  $markdown
      * @return array<int, bool>

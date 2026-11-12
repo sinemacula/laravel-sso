@@ -32,15 +32,8 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/discovery.md` (SSO-3.4, SSO-3.5, SSO-12.5), on
- * the shared example harness: the guide's published configuration laid over the
- * package's, an OIDC connection that `example.com` is verified for, the
- * discovery service resolved for a request, and the discovery route run over
- * HTTP. A match starts through the connection and its verifier admits the code
- * the provider's answer is issued; a miss answers alike and leads to the
- * fallback; and each refusal is shown: an application that is not registered,
- * the feature turned off, a malformed challenge, a full rate limit, and the
- * configuration check of an application that offers discovery with no fallback.
+ * The examples of `docs/guides/discovery.md`, with `example.com` verified for
+ * an OIDC connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,9 +69,8 @@ final class DiscoveryExampleTest extends ExampleTestCase
     private string $connectionId;
 
     /**
-     * Publish the guide's configuration, serve its route, hold every answer for
-     * the least floor allowed, and make the connection whose verified domain is
-     * `example.com`.
+     * Publish the guide's configuration, serve its route at the least floor
+     * allowed, and make the connection.
      *
      * @return void
      */
@@ -99,11 +91,8 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
-     * The service resolved for a request starts through the connection the
-     * email's domain is verified for; the service the next request resolves is
-     * another, and leads an address at a subdomain, which the exact claim does
-     * not cover, to the fallback; an application that is not registered is
-     * refused.
+     * A match starts through the verified connection, a subdomain leads to the
+     * fallback, and an unknown application is refused.
      *
      * @return void
      */
@@ -132,11 +121,8 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
-     * The published configuration passes the `[applications]` check, as does
-     * a native application's own scheme, and leads a miss to its fallback;
-     * with the `discovery` feature off the application is refused as
-     * `feature_disabled`; and offering discovery with no fallback fails the
-     * check.
+     * The configuration passes the check, the feature off refuses discovery,
+     * and no fallback fails the check.
      *
      * @return void
      */
@@ -171,10 +157,7 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
-     * A match answers `200` with the reference, the redirect to the provider
-     * and the verifier, sent with `Cache-Control: no-store`; the provider's
-     * answer is issued a code for that reference, and the verifier the client
-     * kept admits it for the person linked to the subject.
+     * A match answers `200` and its verifier admits the issued code.
      *
      * @return void
      *
@@ -213,10 +196,8 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
-     * A miss answers `200` in the same shape as a match, its redirect leading
-     * to the fallback, no sooner than the floor; with the client's challenge it
-     * carries no verifier. Each miss reports one `discovery_no_match` naming
-     * the application and the purpose, and no connection.
+     * A miss answers like a match, leads to the fallback no sooner than the
+     * floor, and reports `discovery_no_match`.
      *
      * @return void
      */
@@ -252,9 +233,8 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
-     * A malformed challenge and an application that is not registered each
-     * answer `400` with their error; once the IP address has used its starts,
-     * the next answers `429` with the wait in its body and `Retry-After`.
+     * Refusals answer `400` with their error, and a full limit `429` with
+     * `Retry-After`.
      *
      * @return void
      */
@@ -278,8 +258,8 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
-     * Lay the guide's published configuration over the package's, key by key,
-     * as Laravel merges a published file with a package's.
+     * Lay the guide's published configuration over the package's, as Laravel
+     * does.
      *
      * @return void
      */
@@ -295,8 +275,7 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
-     * Claim `example.com` for the connection, and verify it once the tenant has
-     * published its record.
+     * Claim and verify `example.com` for the connection.
      *
      * @return void
      */
@@ -324,8 +303,8 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
-     * Admit the `sign_in` code with the verifier the client kept, in the
-     * application's transaction on the package's storage connection.
+     * Admit the `sign_in` code in the application's transaction on the storage
+     * connection.
      *
      * @param  string  $code
      * @param  string  $verifier

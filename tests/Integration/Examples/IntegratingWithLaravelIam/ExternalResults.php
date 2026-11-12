@@ -7,16 +7,7 @@ namespace Tests\Integration\Examples\IntegratingWithLaravelIam;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 
 /**
- * The adapter's builder of authentication's external result
- * (`docs/guides/integrating-with-laravel-iam.md`), from the admitted redemption
- * alone, never from anything the client sent: the connection, issuer and
- * subject of its verified result, the connection's tenant, the provider's
- * authentication time, the effective session deadline, the enforcement version
- * the redemption judged under its locks, the evidence the evidence contract
- * accepted, the link it resolved, the request's public reference, and the
- * package's captured provenance in its stored form as the provider context, so
- * authentication keeps it with the session and the `sso` contributor projects
- * it from there.
+ * Builds authentication's external result from the admitted redemption alone.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

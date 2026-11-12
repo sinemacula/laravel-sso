@@ -18,11 +18,8 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeAuthnRequest;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 
 /**
- * The SAML worked examples of the testing guide (SSO-12.4): a `link`, a
- * `sign_in` and a `reauthenticate` through a SAML connection, from the start to
- * the redemption, each correlated from the `AuthnRequest` the start really
- * sent, each asserting its outcome and a refusal; and why a response is made at
- * the instant of the clock the package reads.
+ * The testing guide's SAML examples: each purpose from start to redemption, and
+ * why a response is made at the package's clock.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -59,10 +56,8 @@ final class SamlExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `link` for the person the application has authenticated: the provider
-     * answers the request the start sent, the client reads the redirect, and
-     * the code links the subject to the person once; the same code again is a
-     * replay.
+     * A `link` code links the subject to the person once; the same code again
+     * is a replay.
      *
      * @return void
      */
@@ -106,10 +101,8 @@ final class SamlExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `sign_in` through the link resolves to the person and is admitted in
-     * the application's transaction, which writes the session; a response
-     * signed by a provider the connection does not trust fails the flow with
-     * `signature_invalid`.
+     * A `sign_in` admits the linked person; an untrusted signature fails the
+     * flow.
      *
      * @return void
      *
@@ -141,9 +134,8 @@ final class SamlExampleTest extends ExampleTestCase
     }
 
     /**
-     * An hour on, a `reauthenticate` of the session forces authentication at
-     * the provider and renews the session's time to the provider's; one for a
-     * session the identity is not signed in on never starts.
+     * A `reauthenticate` renews the session to the provider's time; one for
+     * another session never starts.
      *
      * @return void
      *
@@ -178,11 +170,8 @@ final class SamlExampleTest extends ExampleTestCase
     }
 
     /**
-     * The fake provider has no clock: a response made without an instant is
-     * made at Laravel's time, which the frozen clock the package reads does not
-     * follow, so a day of time travel makes it a response from the future,
-     * refused with `assertion_expired`. A response made at the clock's instant
-     * is accepted whatever Laravel's time says.
+     * A response made at Laravel's time after time travel is refused as
+     * expired; one made at the package's clock is accepted.
      *
      * @return void
      *

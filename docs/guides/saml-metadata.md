@@ -167,10 +167,10 @@ $anchored = app(KeyService::class)->trustCertificate($tenant->id, $connection->i
 
 **Choose what you are trusting.** The two ways of keeping up with a provider's certificates each have a cost:
 
-- **Not opted in**, with no anchor: nothing changes by itself. The connection behaves as if its certificates were
+- Not opted in, with no anchor: nothing changes by itself. The connection behaves as if its certificates were
   entered by hand, has no stale deadline and keeps working, but an administrator must install a new certificate before
   the provider switches to it, or sign-ins fail until they do.
-- **Opted in**, `metadata_refresh` set `true` with no anchor: the certificates follow the provider by themselves, but
+- Opted in, `metadata_refresh` set `true` with no anchor: the certificates follow the provider by themselves, but
   whoever controls that URL and its TLS decides which certificates you trust. This suits providers whose metadata has no
   independent anchor, where you accept that delegation. Setting it is a trust change, so it asks
   `sso.connection.trust` freshness, raises the trust version and voids the flows in flight, as every change of

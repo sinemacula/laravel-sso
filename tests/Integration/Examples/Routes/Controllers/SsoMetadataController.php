@@ -9,9 +9,7 @@ use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 use Tests\Integration\Examples\Routes\Application\ConnectionTenants;
 
 /**
- * The example application's service provider routes (SSO-5.9, SSO-12.5): a
- * connection's metadata and its public keys, which an identity provider fetches
- * with no authentication and no tenant. Neither holds a secret.
+ * The example application's public metadata and JWKS routes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

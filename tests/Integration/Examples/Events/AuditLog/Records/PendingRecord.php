@@ -7,13 +7,8 @@ namespace SineMacula\Laravel\AuditLog\Records;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A stand-in for `laravel-audit-log`'s real `Records\PendingRecord`, which this
- * package does not install, with the exact signatures of the builder methods
- * the guide's mapper calls (`docs/guides/events.md`): `event()`, `failed()`,
- * `withProperties()`, `by()`, `forTenant()` and `correlatedWith()`, each
- * validating its value as the sibling's does. It keeps what it was given for a
- * test to read through `toArray()`, which is the stand-in's own; the sibling
- * builds and records its record instead.
+ * A stand-in for `laravel-audit-log`'s `Records\PendingRecord`, validating as
+ * the sibling does; `toArray()` exists only for tests.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,7 +26,7 @@ final class PendingRecord
     /** @var int The longest correlation id, in characters. */
     private const int ID_MAX_CHARACTERS = 191;
 
-    /** @var array<string, mixed> What the record was given, in the order it reads, with `properties` filled from `$properties`. */
+    /** @var array<string, mixed> What the record was given, in the order it reads. */
     private array $given = [
         'code'           => null,
         'outcome'        => 'success',
@@ -67,8 +62,7 @@ final class PendingRecord
     }
 
     /**
-     * Say that the activity was attempted and did not complete, with an
-     * optional machine-readable reason.
+     * Mark the activity as failed, with an optional machine-readable reason.
      *
      * @param  \BackedEnum|string|null  $reason
      * @return self
@@ -82,8 +76,7 @@ final class PendingRecord
     }
 
     /**
-     * Name who did it: a model or a reference; `null` says that explicitly no
-     * one did.
+     * Name who did it; `null` says explicitly that no one did.
      *
      * @param  \Illuminate\Database\Eloquent\Model|\SineMacula\Laravel\AuditLog\Records\Reference|null  $actor
      * @return self
@@ -96,8 +89,7 @@ final class PendingRecord
     }
 
     /**
-     * Name the tenant the activity happened in; `null` says that there is
-     * explicitly none.
+     * Name the tenant the activity happened in; `null` says explicitly none.
      *
      * @param  \Illuminate\Database\Eloquent\Model|\SineMacula\Laravel\AuditLog\Records\Reference|null  $tenant
      * @return self
@@ -110,8 +102,7 @@ final class PendingRecord
     }
 
     /**
-     * Tie the record to other activity with a namespaced id, written
-     * `<namespace>:<value>`.
+     * Tie the record to other activity with a `<namespace>:<value>` id.
      *
      * @param  string  $correlationId
      * @return self
@@ -143,7 +134,7 @@ final class PendingRecord
     }
 
     /**
-     * What the record was given, for a test to read: the stand-in's own.
+     * What the record was given, for a test to read.
      *
      * @return array<string, mixed>
      */

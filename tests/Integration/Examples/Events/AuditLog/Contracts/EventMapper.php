@@ -7,9 +7,8 @@ namespace SineMacula\Laravel\AuditLog\Contracts;
 use SineMacula\Laravel\AuditLog\Records\PendingRecord;
 
 /**
- * A stand-in for `laravel-audit-log`'s real `Contracts\EventMapper`, which this
- * package does not install, with its exact signature: what fills the record of
- * an event an application maps (`docs/guides/events.md`), or skips it.
+ * A stand-in for `laravel-audit-log`'s `Contracts\EventMapper`, with its exact
+ * signature.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -19,8 +18,7 @@ use SineMacula\Laravel\AuditLog\Records\PendingRecord;
 interface EventMapper
 {
     /**
-     * Fill the record of the event and return it, or return `null` to skip the
-     * event.
+     * Fill the event's record and return it, or `null` to skip the event.
      *
      * @param  object  $event
      * @param  \SineMacula\Laravel\AuditLog\Records\PendingRecord  $record

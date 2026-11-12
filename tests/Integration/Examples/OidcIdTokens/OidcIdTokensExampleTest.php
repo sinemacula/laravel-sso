@@ -25,16 +25,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/oidc-id-tokens.md` (SSO-7.3, SSO-7.4, SSO-2.12,
- * SSO-12.5), on the shared example harness: a connection allows `ES256` beside
- * `RS256`, trusts an audience beside its client id, and asks for a `max_age`,
- * each by an update of its settings. Each asserts its outcome and a refusal: a
- * token signed off the allow-list is refused with nothing fetched,
- * the change voids the flow in flight, and `none` or an HMAC is never allowed;
- * a token with an audience the connection does not trust, with several and no
- * `azp`, or for the trusted audience alone, is refused; and once `max_age` is
- * sent, a token whose `auth_time` is too old or missing is refused, as is a
- * `max_age` over a week.
+ * Integration tests for the examples of `docs/guides/oidc-id-tokens.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,11 +63,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
     }
 
     /**
-     * While only `RS256` is allowed, a token the provider signs with `ES256`
-     * is refused `signature_invalid` and no JWKS is fetched. Allowing `ES256`
-     * is a trust change, so the flow in flight is refused
-     * `connection_unavailable`; then an `ES256` token completes, and so does
-     * an `RS256` one.
+     * Allowing `ES256` voids the flow in flight, then both algorithms complete.
      *
      * @return void
      *
@@ -119,8 +106,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
     }
 
     /**
-     * `none` and every `HS*` algorithm are refused as `not_allowed`, each under
-     * its place in the list, and the connection keeps the list it had.
+     * `none` and every `HS*` algorithm are refused as `not_allowed`.
      *
      * @return void
      */
@@ -140,14 +126,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
     }
 
     /**
-     * Once a first sign-in has stored the provider's keys, a token whose `aud`
-     * adds the API is refused `audience_mismatch` until the connection trusts
-     * it, and then completes with `azp` naming the client. It is still refused
-     * with no `azp`, with an `azp` of another client, with the audience in
-     * another case, and for the API alone.
-     *
-     * Before any key is stored, a token that would be refused fetches nothing
-     * and answers `signature_invalid`, so the first sign-in is a plain one.
+     * A trusted audience completes only with the client and a matching `azp`.
      *
      * @return void
      *
@@ -160,6 +139,8 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
         $clientId     = FakeOpenIdProvider::CLIENT_ID;
         $withApi      = static fn (FakeIdToken $token): FakeIdToken => $token->with('aud', [$clientId, self::API])->with('azp', $clientId);
 
+        // A token that would be refused fetches no keys, so a plain sign-in
+        // stores them first
         self::assertTrue($this->complete($connectionId)->hasCode());
         self::assertSame(FailureReason::AUDIENCE_MISMATCH->value, $this->complete($connectionId, $withApi)->error);
 
@@ -185,11 +166,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
     }
 
     /**
-     * Before `max_age` is set, none is sent and a token with no `auth_time`
-     * completes. Once it is, every authorisation request sends it, a token
-     * whose person authenticated an hour ago completes, one a moment older than
-     * the hour and the skew is refused `authentication_expired`, and one with
-     * no `auth_time` is refused `id_token_invalid`.
+     * Once `max_age` is set it is sent, and `auth_time` is held to it.
      *
      * @return void
      *
@@ -220,8 +197,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `max_age` over a week is refused `not_allowed`, and one that is not an
-     * integer `invalid_type`; the connection keeps none.
+     * A `max_age` over a week, or not an integer, is refused.
      *
      * @return void
      */
@@ -242,9 +218,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a `link` flow through the connection and complete it at the
-     * provider, the ID token changed by the tailor when one is given, answering
-     * the redirect the browser is sent back with.
+     * Start a `link` flow and complete it, tailoring the ID token if asked.
      *
      * @param  string  $connectionId
      * @param  ?\Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken  $tailor
@@ -258,10 +232,7 @@ final class OidcIdTokensExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a `link` flow through the connection and complete it at the
-     * provider, the ID token changed by the tailor, answering the `max_age` the
-     * authorisation request sent, if any, and whether the redirect carries a
-     * code.
+     * Complete a tailored `link` flow: the `max_age` sent and whether it coded.
      *
      * @param  string  $connectionId
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken  $tailor

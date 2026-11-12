@@ -14,11 +14,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 
 /**
- * The sign-in redemption endpoint of `docs/guides/redeeming-a-handoff.md`
- * (SSO-9.2, SSO-9.8, SSO-9.9, SSO-12.5): it redeems only `sign_in` codes,
- * admits each inside its own transaction on the package's storage connection,
- * writes the session there, and answers every outcome with `Cache-Control:
- * no-store`, the token leaving only after the commit.
+ * The sign-in redemption endpoint of `docs/guides/redeeming-a-handoff.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

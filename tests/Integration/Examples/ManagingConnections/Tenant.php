@@ -5,9 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\ManagingConnections;
 
 /**
- * The example application's tenant (SSO-2.1): the organisation whose
- * connections its administration screens manage, known to the package only by
- * its opaque string id.
+ * The example application's tenant.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

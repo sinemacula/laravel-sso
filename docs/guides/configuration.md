@@ -1,11 +1,11 @@
 # Configuration
 
 The package's settings live in the published `config/sso.php`, under `sso.`. Every feature is off until the application
-turns it on, but for the scheduled metadata refresh, which is on and has nothing to do until a protocol is on (see
-[Features](#features)); and every security check of a feature that is on is always on. A value that is malformed or
-out of range fails closed, naming the key, when it is used, and the configuration of what is enabled is checked when
-the application boots (see [Checking the configuration](#checking-the-configuration)). Settings are read each time they
-are used.
+turns it on, except the scheduled metadata refresh, which is on and has nothing to do until a protocol is on (see
+[Features](#features)). Every security check of a feature that is on is always on. A value that is malformed or out of
+range fails closed, naming the key, when it is used, and the configuration of what is enabled is checked when the
+application boots (see [Checking the configuration](#checking-the-configuration)). Settings are read each time they are
+used.
 
 | Key                                                  | Default                                         | Env                                           | See                                             |
 |------------------------------------------------------|-------------------------------------------------|-----------------------------------------------|-------------------------------------------------|
@@ -110,9 +110,9 @@ are used.
 ## OIDC limits
 
 Every OpenID Connect connection is held to the caps, windows and timeouts under `oidc`, checked at boot while
-`features.oidc` is on (see [Signing In with OIDC](oidc-sign-in.md), [The OIDC Callback](oidc-callback.md) and
-[Setting Up An OIDC Connection](oidc-connections.md)). Each can be lowered and none raised past its ceiling, the
-default:
+`features.oidc` is on (see [Signing In with OIDC](oidc-sign-in.md), [The OIDC Callback](oidc-callback.md) and [Setting
+Up An OIDC Connection](oidc-connections.md)). Each has the range given, and a value outside it fails the boot check;
+where no default is given, the default is the ceiling:
 
 - an ID token is at most `max_id_token_bytes` (2 KiB to 16 KiB) and is refused before it is read; a JWE, a JSON
   serialisation, a repeated JSON member, `crit` or `b64` is refused whatever its size;
@@ -152,7 +152,7 @@ migration you write and a restart of every worker.
 
 ## Features
 
-`features` holds a switch per feature, each `false` by default, but for `metadata_refresh`, the scheduled refresh, which
+`features` holds a switch per feature, each `false` by default except `metadata_refresh`, the scheduled refresh, which
 is `true`: it has nothing to do until a protocol is on, and turning it off stops the schedule, never the stale limit or
 an administrator's refresh. `saml2` and `oidc` turn the protocols on; with neither on the package is not in use, and
 nothing but these switches is checked. Every other feature needs a protocol on, and `encrypted_assertions` and
@@ -165,23 +165,22 @@ the boot check.
 
 ## Endpoints
 
-The package builds each connection's assertion consumer service, OIDC callback, metadata URL, service provider
-entity id and public JWKS URL from `endpoints.base_url` and the path pattern of each endpoint, never from the request's
-host or headers. It adds no route for any of them.
-The base URL is an absolute `https` URL (or `http` on `127.0.0.1` or `[::1]` for development) with no query or
-fragment, and is required while a protocol is on; it may carry a path prefix. Each pattern is an absolute path holding
-`{connection}` once, with no query, fragment, other placeholder or dot segment, and the patterns differ. Route the same
-paths to the package's helpers in your application; an application with another layout binds its own endpoint
-resolver.
+The package builds each connection's assertion consumer service, OIDC callback, metadata URL, service provider entity id
+and public JWKS URL from `endpoints.base_url` and the path pattern of each endpoint, never from the request's host or
+headers. It adds no route for any of them. The base URL is an absolute `https` URL (or `http` on `127.0.0.1` or `[::1]`
+for development) with no query or fragment, and is required while a protocol is on; it may carry a path prefix. Each
+pattern is an absolute path holding `{connection}` once, with no query, fragment, other placeholder or dot segment, and
+the patterns differ. Route the same paths to the package's helpers in your application; an application with another
+layout binds its own endpoint resolver.
 
-With the defaults and `SSO_BASE_URL=https://api.example.com`, connection `01k…` has its assertion consumer service at
-`https://api.example.com/auth/sso/connections/01k…/assertions`, its callback at `…/callback`, its metadata, which is
-also its service provider entity id, at `…/metadata`, and its public JWKS, for an OIDC connection using
-`private_key_jwt`, at `…/jwks`. To lay the URLs out another way, bind your own
-`Contracts\EndpointResolver` in a service provider's `register()`; it is given the connection and answers an
-`Endpoints\ConnectionEndpoints`, which refuses anything but an absolute `https` URL (or `http` on a loopback address)
-with no user information, fragment or wildcard. This one puts each connection under its own path on the single sign-on
-host, and a response addressed to any other URL, the default layout's included, is refused with `recipient_mismatch`:
+With the defaults and `SSO_BASE_URL=https://api.example.com`, connection `01k...` has its assertion consumer service at
+`https://api.example.com/auth/sso/connections/01k.../assertions`, its callback at `.../callback`, its metadata, which is
+also its service provider entity id, at `.../metadata`, and its public JWKS, for an OIDC connection using
+`private_key_jwt`, at `.../jwks`. To lay the URLs out another way, bind your own `Contracts\EndpointResolver` in a
+service provider's `register()`; it is given the connection and answers an `Endpoints\ConnectionEndpoints`, which
+refuses anything but an absolute `https` URL (or `http` on a loopback address) with no user information, fragment or
+wildcard. This one puts each connection under its own path on the single sign-on host, and a response addressed to any
+other URL, the default layout's included, is refused with `recipient_mismatch`:
 
 <!-- snippet: tests/Integration/Examples/Configuration/AppServiceProvider.php#configuration-endpoint-resolver -->
 
@@ -316,11 +315,11 @@ a problem. The subjects are `features` (always checked), `extensions`, `storage`
 `secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys`, `mapping`, `domains`, `flows`, `linking`,
 `metadata`, `pruning` and `operations` (each checked while a protocol is on), and `saml2` and `oidc` (each checked while
 its protocol is on). The check reads configuration only: it opens no database connection and prints no secret or
-configured value. What the last thirteen check is in their guides and sections:
-[Clock](clock.md), [Secrets](secrets.md), [Outbound requests](outbound-requests.md), [Logging](logging.md),
-[Rate limits](rate-limits.md), [Fresh authentication](freshness.md), [Keys and certificates](keys.md),
-[Managing connections](managing-connections.md), [Domains](domains.md), [Flows](#flows),
-[Linking by domain](linking-by-domain.md) and [Operations](operations.md).
+configured value. What the checks from `clock` to `operations` cover is in their guides and sections: [Clock](clock.md),
+[Secrets](secrets.md), [Outbound requests](outbound-requests.md), [Logging](logging.md), [Rate limits](rate-limits.md),
+[Fresh authentication](freshness.md), [Keys and certificates](keys.md), [Managing connections](managing-connections.md),
+[Domains](domains.md), [Flows](#flows), [Linking by domain](linking-by-domain.md), [SAML metadata](saml-metadata.md) and
+[Operations](operations.md).
 
 ### Adding your own checks
 

@@ -10,10 +10,7 @@ use SineMacula\Laravel\Sso\Contracts\ProtocolSettings;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 
 /**
- * The settings of the example application's CAS protocol (SSO-2.3): the CAS
- * server's base URL, `server_url`, over HTTPS, which names the issuer, so a
- * change to it is a trust change and may change what existing subjects mean. It
- * has no secret, and keeps no other setting.
+ * The CAS protocol's settings: one HTTPS `server_url`, which names the issuer.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,7 +19,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
  */
 final readonly class CasSettings implements ProtocolSettings
 {
-    /** @var string The CAS server's base URL, which its login and validation paths extend. */
+    /** @var string The CAS server's base URL. */
     public const string SERVER_URL = 'server_url';
 
     /**
@@ -135,8 +132,7 @@ final readonly class CasSettings implements ProtocolSettings
     }
 
     /**
-     * The server's base URL, without a trailing `/`, or `null` while it is not
-     * complete.
+     * The server's base URL without a trailing `/`, or `null` while incomplete.
      *
      * @return ?string
      */

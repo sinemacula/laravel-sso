@@ -11,12 +11,8 @@ use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 use Tests\Integration\Examples\Clients;
 
 /**
- * The example application's principal mutation (SSO-8.8): granting a user a
- * principal of a tenant, or a platform principal, in one transaction on the
- * package's storage connection that first reports the widened scope, so the
- * user's links by a verified domain in every other tenant's connections are
- * suspended, and the sessions established through them revoked, with the
- * principal or not at all.
+ * The example application's principal grant, which reports the widened scope
+ * first in the same transaction on the package's storage connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -69,8 +65,8 @@ final readonly class GrantPrincipal
     }
 
     /**
-     * Write the principal, granted by an administrator and so not yet accepted
-     * by the person.
+     * Write the principal, granted by an administrator and not yet accepted by
+     * the person.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?string  $tenantId

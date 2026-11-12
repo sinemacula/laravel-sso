@@ -21,11 +21,8 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 
 /**
- * The OpenID Connect worked examples of the testing guide (SSO-12.4): a `link`,
- * a `sign_in` and a `reauthenticate` through an OIDC connection, from the start
- * to the redemption, each asserting its outcome and a refusal; the provider
- * reading the clock the package reads; and the provider's keys, fetched when a
- * token first names them and at most once a cooldown.
+ * The testing guide's OpenID Connect examples: each purpose from start to
+ * redemption, the provider's clock, and its keys.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,8 +43,8 @@ final class OidcExampleTest extends ExampleTestCase
     private IdentityReference $person;
 
     /**
-     * Make the provider, reading the package's clock, and a connection to it,
-     * and the person.
+     * Make the provider on the package's clock, a connection to it, and the
+     * person.
      *
      * @return void
      */
@@ -64,9 +61,7 @@ final class OidcExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `link` redeemed by a caller other than the identity it was started for
-     * is refused with `identity_mismatch`; one redeemed by that identity links
-     * the provider's subject to it.
+     * A `link` links only for the identity it was started for.
      *
      * @return void
      *
@@ -103,9 +98,8 @@ final class OidcExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `sign_in` through the link resolves to the person and is admitted in
-     * the application's transaction; an ID token signed by a key the provider
-     * never published fails the flow with `signature_invalid`.
+     * A `sign_in` admits the linked person; a token signed by an unpublished
+     * key fails the flow.
      *
      * @return void
      *
@@ -135,10 +129,8 @@ final class OidcExampleTest extends ExampleTestCase
     }
 
     /**
-     * An hour on, a `reauthenticate` code presented at the sign-in endpoint is
-     * refused with `purpose_mismatch`; one admitted as a `reauthenticate`
-     * renews the session to when the provider authenticated the person again,
-     * having been asked to with `prompt=login` and `max_age=0`.
+     * A `reauthenticate` code is refused at sign-in and renews the session when
+     * admitted for its purpose.
      *
      * @return void
      *
@@ -175,8 +167,8 @@ final class OidcExampleTest extends ExampleTestCase
     }
 
     /**
-     * The provider was given the package's clock, so its tokens are issued at
-     * the package's now: a day of Laravel time travel changes nothing.
+     * The provider issues tokens at the package's now, whatever Laravel's time
+     * travel does.
      *
      * @return void
      *
@@ -197,10 +189,8 @@ final class OidcExampleTest extends ExampleTestCase
     }
 
     /**
-     * The connection holds no keys until a token names one: the first callback
-     * fetches the JWKS, and a key the provider rotates to is fetched once the
-     * refetch cooldown has passed; a token naming a key nobody published,
-     * within the cooldown, fetches nothing and is refused.
+     * The JWKS is fetched when a token first names a key, and refetched at most
+     * once a cooldown.
      *
      * @return void
      *

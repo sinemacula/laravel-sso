@@ -27,16 +27,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/domains.md` (SSO-3.1, SSO-3.2, SSO-12.5), on the
- * shared example harness: an administrator claiming a domain and shown the
- * record to publish, the domain verified once the record holds the token, read,
- * listed and removed, the application's own DNS over HTTPS resolver bound in
- * place of the default, and the fake resolver a test binds. Each refusal the
- * guide lists is asserted beside the example it follows: a claim of what could
- * not be registered, of a refused provider, twice, for an unknown connection,
- * by a stale caller or of a domain verified elsewhere; a verification with no
- * record, a lookup that failed, a claim that expired or none at all; and a fake
- * resolver with no answer for the name.
+ * The examples of `docs/guides/domains.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -70,9 +61,7 @@ final class DomainsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A claim stores the domain normalised and pending, answers the record name
-     * and the token to publish, encodes to JSON without the token, and reports
-     * the administrator by their morph class and key.
+     * A claim answers the record to publish and hides the token from JSON.
      *
      * @return void
      */
@@ -119,9 +108,7 @@ final class DomainsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A claim is exact and normalised: an internationalised name, in any case
-     * and with a trailing dot, is stored as its lower-case ASCII form, and its
-     * parent is a claim of its own.
+     * A claim is stored as lower-case ASCII; its parent is a separate claim.
      *
      * @return void
      */
@@ -134,10 +121,8 @@ final class DomainsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A claim of what could not be registered, of nothing, of a public mailbox
-     * provider or a name under one, of a domain the connection already claimed,
-     * or for a connection the tenant does not have is refused, and writes
-     * nothing.
+     * An invalid, public-provider, duplicate or unknown-connection claim is
+     * refused and writes nothing.
      *
      * @return void
      */
@@ -174,10 +159,8 @@ final class DomainsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A verification is refused while no record at the name is the token, and
-     * concludes nothing when the lookup fails; once one record is the token the
-     * domain is verified, and verifying it again is `unchanged` with nothing
-     * looked up.
+     * Verification needs a record holding the token; a failed lookup concludes
+     * nothing, and re-verifying looks nothing up.
      *
      * @return void
      */
@@ -215,9 +198,8 @@ final class DomainsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A domain the connection never claimed is `domain_not_found`; a claim left
-     * past its expiry is `domain_claim_expired` with nothing looked up, and
-     * claiming the domain again gives it a new token.
+     * Unclaimed and expired domains are not verified; reclaiming gives a new
+     * token.
      *
      * @return void
      */
@@ -239,9 +221,8 @@ final class DomainsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A connection's domains are read one at a time and listed oldest first;
-     * one verified for it is unavailable to another connection until it is
-     * removed, which frees it at once; another tenant reads nothing.
+     * Domains are read, listed oldest first, and removed, which frees them at
+     * once.
      *
      * @return void
      */
@@ -278,11 +259,7 @@ final class DomainsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's resolver, bound by its service provider, answers every
-     * lookup: a name that does not exist is no record, a failed answer, an
-     * error status and a failed connection are failed lookups, and a record
-     * whose character-strings join to the token verifies the domain. It asks
-     * for the record name as absolute.
+     * The application's resolver maps each kind of answer to its lookup.
      *
      * @return void
      */
@@ -320,8 +297,7 @@ final class DomainsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The fake resolver answers the record name with the claim's token, so the
-     * domain verifies, and records the one lookup.
+     * The fake resolver publishes the claim's token and records the lookup.
      *
      * @return void
      */
@@ -375,7 +351,7 @@ final class DomainsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Claim the domain for the connection, as the claim succeeded with.
+     * Claim the domain for the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Domains\DomainService  $domains
      * @param  string  $domain

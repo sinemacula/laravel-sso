@@ -23,15 +23,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/starting-a-flow.md` (SSO-2.12, SSO-5.1,
- * SSO-5.10, SSO-5.12, SSO-11.2, SSO-11.8, SSO-12.5), on the shared example
- * harness, through an OIDC connection: the service resolved for the request
- * being served, counting each start against that request's IP address; the
- * start route, answering a started `sign_in` with its reference, navigation and
- * any generated verifier, each refusal `400` with its reason, and a full limit
- * `429` with its wait; and the starts for a signed-in caller, a `link` and a
- * `reauthenticate`, each refused without its condition, and an empty session id
- * thrown as the application's mistake.
+ * Integration tests for the examples of `docs/guides/starting-a-flow.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,7 +58,7 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     /** @var \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider The tenant's OpenID provider. */
     private FakeOpenIdProvider $provider;
 
-    /** @var string The connection that trusts it. */
+    /** @var string The connection that trusts the provider. */
     private string $connectionId;
 
     /**
@@ -86,10 +78,7 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * With one start a minute for each address, the service starts once for the
-     * office's client and is then rate limited for the minute, while it still
-     * starts for another address's client: it counts the client it is given,
-     * never the request being served.
+     * The service counts the client it is given, not the request being served.
      *
      * @return void
      */
@@ -113,11 +102,8 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * A start with no challenge answers `200`, never cached, with a reference
-     * of 32 base64url characters, a `redirect` the provider accepts as its
-     * client's authorisation request, and the verifier the package generated;
-     * a start with the client's challenge answers no verifier and a reference
-     * of its own.
+     * A started answer carries a generated verifier only when no challenge was
+     * sent.
      *
      * @return void
      *
@@ -145,9 +131,7 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * An application that is not registered, a challenge that is not S256 and a
-     * connection that does not exist are each answered `400`, never cached,
-     * with their reason alone, and each reports one `FlowFailed` with it.
+     * Each refusal is answered `400` with its reason and one `FlowFailed`.
      *
      * @return void
      */
@@ -169,9 +153,8 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * Once the office's address has used its one start of the minute, the next
-     * is answered `429`, never cached, with the sixty seconds to wait in the
-     * body and in `Retry-After`.
+     * A full limit is answered `429` with the wait in the body and
+     * `Retry-After`.
      *
      * @return void
      */
@@ -188,12 +171,7 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * For a caller who authenticated recently, linked and signed in on the
-     * session through the connection, a `link` and a `reauthenticate` each
-     * start with the client's challenge, and so no verifier of the package's;
-     * the freshness contract is asked `sso.link.create` once, for the link
-     * alone, and the reauthentication forces the provider to authenticate the
-     * caller again.
+     * A fresh, signed-in caller starts a `link` and a `reauthenticate`.
      *
      * @return void
      *
@@ -222,10 +200,8 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `link` from a caller the freshness contract calls stale is refused
-     * `freshness_required`, and a `reauthenticate` of a session the caller is
-     * not signed in on is refused `session_ineligible`; neither sends the
-     * browser anywhere.
+     * A stale caller's `link` and an ineligible session's `reauthenticate` are
+     * refused.
      *
      * @return void
      *
@@ -253,8 +229,7 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * A caller with an empty session id is the application's mistake, an
-     * `InvalidArgumentException`, not a refusal.
+     * A caller with an empty session id throws `InvalidArgumentException`.
      *
      * @return void
      */
@@ -272,8 +247,7 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * Link the application's user through the connection, and sign them in on
-     * the session through it.
+     * Link the application's user and sign them in on the session.
      *
      * @return \Tests\Integration\Examples\StartingAFlow\User
      *
@@ -291,8 +265,7 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * Post a start to the guide's route from the office's address, as the
-     * client does.
+     * Post a start to the guide's route from the office's address.
      *
      * @param  array<string, string>  $payload
      * @return \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>
@@ -334,8 +307,7 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * The guide's `link` and `reauthenticate` starts for the caller, with the
-     * client's challenge and the caller's session.
+     * The guide's `link` and `reauthenticate` starts for the caller.
      *
      * @param  array{user: \Tests\Integration\Examples\StartingAFlow\User, connection: string, code_challenge: string, session: string}  $input
      * @return array{0: \SineMacula\Laravel\Sso\Flows\StartResult, 1: \SineMacula\Laravel\Sso\Flows\StartResult}
@@ -371,8 +343,8 @@ final class StartingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * The start response's body, once its status is the one expected and it is
-     * never cached.
+     * The start response's body, asserting its status and that it is never
+     * cached.
      *
      * @param  \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>  $response
      * @param  int  $status

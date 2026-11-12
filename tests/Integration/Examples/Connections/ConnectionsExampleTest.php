@@ -23,17 +23,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/connections.md` (SSO-2.1, SSO-2.2, SSO-12.5), on
- * the shared example harness: the protocol switches of a published
- * `config/sso.php`, read from the environment; the application's own `cas`
- * driver and `acme` preset, registered by its service provider once the
- * registry resolves; and whether a connection is usable, read from its summary.
- * Each asserts its outcome and a refusal: a protocol switched off creates no
- * connection and leaves its connections unusable, the package's own protocols
- * and presets cannot be replaced, a preset fills in only its own protocol, an
- * ID token signed by an algorithm the preset does not allow is refused, and a
- * flow through a connection that is not usable is refused with
- * `connection_unavailable`.
+ * The examples of `docs/guides/connections.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -67,10 +57,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * With only `SSO_SAML2` set, SAML is available and OIDC is not: a SAML
-     * connection is made and usable, an OIDC connection is not created, and one
-     * made while OIDC was on is no longer usable, so a flow through it is
-     * refused.
+     * With only `SSO_SAML2` set, SAML connections are usable and OIDC ones not.
      *
      * @return void
      */
@@ -96,8 +83,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * With neither switch set, neither protocol is available and no connection
-     * is created; setting `SSO_OIDC` makes OIDC available, and SAML stays off.
+     * With neither switch set, no protocol is available until one is set.
      *
      * @return void
      */
@@ -119,11 +105,8 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's `cas` driver, registered by its service provider, is
-     * registered under exactly that name and available; a connection over it is
-     * created, enabled and usable, and a flow through it starts at the CAS
-     * server's login page, with the connection's callback as the service. Any
-     * other spelling is not registered.
+     * The `cas` driver is registered under exactly that name and starts flows
+     * at the CAS login page.
      *
      * @return void
      */
@@ -161,8 +144,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's protocol is available while either protocol switch is
-     * on, so its connection is usable only then.
+     * The application's protocol is available while either switch is on.
      *
      * @return void
      */
@@ -197,10 +179,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A connection is usable while it is enabled, its protocol available and
-     * its settings complete; a disabled, an incomplete and an unknown
-     * connection are not, and a flow through each is refused with the same
-     * answer.
+     * Disabled, incomplete and unknown connections are unusable alike.
      *
      * @return void
      */
@@ -231,9 +210,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's `acme` preset fills in a new OIDC connection's scopes,
-     * ID token algorithms and email mapping; a person links through it at a
-     * provider signing with ES256.
+     * The `acme` preset fills in a connection that links at an ES256 provider.
      *
      * @return void
      *
@@ -256,8 +233,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A connection the `acme` preset filled in refuses an ID token signed by an
-     * algorithm the preset does not allow.
+     * An `acme` connection refuses an ID token signed by another algorithm.
      *
      * @return void
      *
@@ -277,9 +253,8 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A shipped preset's name cannot be reused, a preset cannot be registered
-     * for a protocol that is not, and a connection takes only a preset of its
-     * own protocol that exists.
+     * A preset is refused for a reused name, an unknown protocol or a
+     * connection of another protocol.
      *
      * @return void
      */
@@ -311,9 +286,8 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Lay the published protocol switches over the package's configuration,
-     * reading the environment as it is now, as Laravel merges a published file
-     * with a package's.
+     * Lay the published switches over the package's configuration, reading the
+     * environment as it is now.
      *
      * @return void
      */
@@ -348,8 +322,7 @@ final class ConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * An enabled, usable OIDC connection to the provider, filled in by the
-     * `acme` preset.
+     * An enabled OIDC connection to the provider, from the `acme` preset.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider  $provider
      * @return string

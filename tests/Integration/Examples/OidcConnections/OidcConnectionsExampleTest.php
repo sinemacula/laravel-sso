@@ -27,17 +27,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/oidc-connections.md` (SSO-2.8, SSO-2.11,
- * SSO-12.5), on the shared example harness, with the application's own tenant:
- * the import endpoint fetches the issuer's discovery document and keys and
- * shows the administrator exactly the settings, client authentication methods
- * and keys the guide shows, writing nothing; a document naming another issuer
- * goes back with `issuer_mismatch`, and an import past the connection's
- * metadata limit goes back with the wait. The save endpoint stores the accepted
- * proposal with the client, as the acting administrator, after which the
- * connection is usable with no keys stored; a new import of the same settings
- * saved again renews the connection on the record alone; and a stale caller is
- * refused with `freshness_required`, changing nothing.
+ * Integration tests for the examples of `docs/guides/oidc-connections.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -77,9 +67,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
     private ConnectionSummary $connection;
 
     /**
-     * Keep sessions in memory, serve the provider the guide imports from, with
-     * an RSA key and a P-256 key, and make the tenant's bare OIDC connection,
-     * which allows both keys' algorithms.
+     * Serve the guide's provider and make the tenant's bare OIDC connection.
      *
      * @return void
      */
@@ -111,9 +99,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The import reads the document from under the issuer, path included, and
-     * the JWKS it names, and proposes exactly what the guide shows, writing
-     * nothing to the connection.
+     * The import proposes exactly what the guide shows, writing nothing.
      *
      * @return void
      */
@@ -144,8 +130,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A document naming another issuer than the one given goes back with
-     * `issuer_mismatch` under `issuer`.
+     * A document naming another issuer goes back with `issuer_mismatch`.
      *
      * @return void
      */
@@ -158,8 +143,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * An import past the connection's metadata limit goes back with the seconds
-     * until its window ends, having fetched nothing.
+     * An import past the metadata limit goes back with the wait, unfetched.
      *
      * @return void
      */
@@ -175,9 +159,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Saving the accepted proposal with the client asks for the connection's
-     * trust, updates the connection as the administrator, and leaves it
-     * complete with no keys stored, so enabling it makes it usable.
+     * Saving the proposal asks for trust and leaves the connection usable.
      *
      * @return void
      */
@@ -207,8 +189,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A new import of the same settings, saved again, changes nothing but the
-     * fetch it is counted from, and reports that alone.
+     * Saving a new import of the same settings reports only the new fetch.
      *
      * @return void
      */
@@ -226,9 +207,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A caller whose authentication is not fresh enough for the connection's
-     * trust is refused with `freshness_required`, and the connection keeps what
-     * it had.
+     * A stale caller is refused with `freshness_required`, changing nothing.
      *
      * @return void
      */
@@ -246,8 +225,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run the import endpoint for the tenant's connection, and answer what it
-     * answers.
+     * Run the import endpoint for the tenant's connection.
      *
      * @return mixed
      */
@@ -283,8 +261,7 @@ final class OidcConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run the save endpoint for the proposal, with the client, as the
-     * administrator, and answer its result.
+     * Run the save endpoint for the proposal as the administrator.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\ProposedOidcSettings  $proposed
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult

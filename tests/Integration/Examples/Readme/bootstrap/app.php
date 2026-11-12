@@ -3,10 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The README's `bootstrap/app.php` (SSO-12.5), from the builder on: an
- * application's file starts from `Application::configure()`, and
- * `ReadmeExampleTest` hands in the builder of the application under test
- * instead, since configuring a second application would replace it.
+ * The README's `bootstrap/app.php`, from the builder on.
+ * The test passes its own builder: configuring a second application replaces it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

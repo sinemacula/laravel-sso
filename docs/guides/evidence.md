@@ -147,9 +147,9 @@ The adapter maps accepted evidence to what `laravel-mfa` asked for:
 | `reauthenticate` | `first_factor_reauthentication`, with MFA purpose `reauthenticate` |
 | `link`           | no proof                                                           |
 
-The connection's id is the credential reference. The evidence is offered to both the identity-level requirement
-(AUTH-3.6) and the tenant's requirement (AUTH-2.12). Which factors combine, including the first factor's channel,
-remains `laravel-mfa`'s policy or yours (AUTH-3.12).
+The connection's id is the credential reference. The evidence is offered to both the identity-level requirement and the
+tenant's requirement. Which factors combine, including the first factor's channel, remains `laravel-mfa`'s policy or
+yours.
 
 These are two gates. This contract accepts provider evidence; `laravel-mfa`'s `CombinationPolicy` decides what accepted
 evidence satisfies, and its default treats the external provider's first factor as a channel only, never counting the

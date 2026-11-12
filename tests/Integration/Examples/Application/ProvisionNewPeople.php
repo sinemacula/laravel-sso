@@ -12,15 +12,8 @@ use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 use Tests\Integration\Examples\Clients;
 
 /**
- * The example application's provisioning listener (SSO-8.6): a new identity for
- * a `sign_in` that resolved to nobody, linked through the package's helper with
- * the grant the event carries, in one transaction on the package's storage
- * connection, rolled back when the helper refuses.
- *
- * It names each new person `person-<n>` and keeps them in memory, which is all
- * a test needs. An application's own listener creates the user and their
- * membership in the same transaction, never resolving an existing person from
- * the email or another attribute, as `docs/guides/provisioning.md` shows.
+ * The example application's provisioning listener, naming each new person
+ * `person-<n>` in memory.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -118,10 +118,10 @@ every key is spelled as `laravel-authentication` spells it (there the identity's
 
 `request_reference` is the only flow identifier an event carries: use it, with `connection_id`, to correlate the events
 of one sign-in. `ResultVerified` at completion and `HandoffRedeemed` at redemption both carry them, so a sign-in is
-counted once; `laravel-authentication`'s redemption events are to carry the same reference (AUTH-9.4). No event carries
-a secret, an assertion, a provider token, a verifier, a handoff code, protocol state (`state`, `RelayState`, a nonce), a
-raw payload or a transport header. Mapped attributes appear only on the unlinked-result event, which a provisioning
-listener needs.
+counted once; `laravel-authentication`'s redemption events are to carry the same reference. No event carries a secret,
+an assertion, a provider token, a verifier, a handoff code, protocol state (`state`, `RelayState`, a nonce), a raw
+payload or a transport header. Mapped attributes appear only on the unlinked-result event, which a provisioning listener
+needs.
 
 The client is the `Http\ClientContext` the action was given, never read from the request being served: your controller
 builds it with `ClientContext::fromRequest($request)`, and work with no client (a console command, a queued job, the
@@ -166,6 +166,7 @@ with the operation's flow (`$event->flow`, a `Flow`) and a machine-readable reas
 | `challenge_invalid`                   | The S256 challenge a start was given is not 43 base64url characters                                     |
 | `session_ineligible`                  | A `reauthenticate` flow's identity is not signed in through the connection on its application's session |
 | `discovery_no_match`                  | Discovery found no connection for the email's domain; the client got the fallback                       |
+| `feature_disabled`                    | Discovery was started for an application that does not offer it, or the `discovery` feature is off      |
 | `connection_mismatch`                 | A response or a handoff code was presented for another connection than its own                          |
 | `application_mismatch`                | A handoff code was presented for another application than its own                                       |
 | `enforcement_unsatisfied`             | The connection does not satisfy its tenant's enforcement for the application                            |
@@ -236,9 +237,7 @@ and, for a `reauthenticate`, its session (a `link` gives its session to freshnes
 had established: the application once admitted, the connection once found, the reference once made.
 
 A completion that issues a code reports `ResultVerified` then `HandoffIssued`; one refused after its response verified
-reports `ResultVerified` then `FlowFailed`; one refused before reports `FlowFailed` alone. `ResultVerified` at
-completion and the sign-in's own event at redemption both carry the connection and the request's public reference, so
-an audit trail correlates them rather than counting a sign-in twice.
+reports `ResultVerified` then `FlowFailed`; one refused before reports `FlowFailed` alone.
 
 ## When events are dispatched
 

@@ -13,19 +13,8 @@ use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
 use Tests\Integration\Examples\Application\ExampleSessions;
 
 /**
- * The example application's sign-in (SSO-12.5): the session an admitted
- * `sign_in` establishes, written in the redemption's transaction, and the
- * credential that leaves only after it commits.
- *
- * A session is `pending` until the application's own further factor unless its
- * own further-factor policy is satisfied by the methods of the provider
- * evidence the package accepted (SSO-8.7): a connection the application trusts
- * for that factor, asserting a method it counts as one. Accepted evidence alone
- * never passes it. A pending credential admits only that factor. It keeps its
- * sessions in the harness's `ExampleSessions`, which the re-authentication
- * contract reads, each session's captured provenance (SSO-9.10), projected into
- * the `sso.*` authentication context on request (SSO-9.7), and its credentials
- * in memory, which is all a test needs.
+ * The example application's sign-in sessions and their credentials. A session
+ * is `pending` unless its further-factor policy passes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,7 +26,7 @@ final class SignIns
     /** @var list<string> The RFC 8176 methods this application counts as its further factor. */
     public const array FURTHER_FACTOR_METHODS = ['hwk', 'mfa', 'otp', 'sc', 'swk'];
 
-    /** @var array<string, true> The connections the application trusts for its further factor, by their id. */
+    /** @var array<string, true> Connections trusted for the further factor, by id. */
     private array $furtherFactorConnections = [];
 
     /** @var array<string, bool> Whether each session is pending, by its id. */
@@ -46,7 +35,7 @@ final class SignIns
     /** @var array<string, string> The session each credential is for, by its SHA-256 digest. */
     private array $credentials = [];
 
-    /** @var array<string, ?array<string, mixed>> The stored provenance of each session, by its id, written once. */
+    /** @var array<string, ?array<string, mixed>> Each session's provenance, by its id. */
     private array $provenance = [];
 
     /**
@@ -65,8 +54,7 @@ final class SignIns
     ) {}
 
     /**
-     * Write the session an admitted `sign_in` establishes, inside the caller's
-     * transaction, and answer its id.
+     * Write the session of an admitted `sign_in`, in the caller's transaction.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\RedemptionResult  $redemption
      * @return string
@@ -103,8 +91,8 @@ final class SignIns
     }
 
     /**
-     * The `sso.*` authentication context of the session, projected from its
-     * stored provenance: empty for a session the package did not establish.
+     * The session's `sso.*` context, empty for a session the package did not
+     * establish.
      *
      * @param  string  $sessionId
      * @return array<string, mixed>
@@ -119,8 +107,7 @@ final class SignIns
     }
 
     /**
-     * Trust the connection's accepted evidence for the further factor: the
-     * application's own decision, which the package never makes.
+     * Trust the connection's accepted evidence for the further factor.
      *
      * @param  string  $connectionId
      * @return void
@@ -153,8 +140,7 @@ final class SignIns
     }
 
     /**
-     * The session a credential is for, as the application's guard reads it, or
-     * `null`.
+     * The session a credential is for, or `null`.
      *
      * @param  string  $token
      * @return ?string
@@ -165,8 +151,7 @@ final class SignIns
     }
 
     /**
-     * Whether the application's own further-factor policy is satisfied by the
-     * provider evidence the package accepted for the sign-in.
+     * Whether the accepted evidence satisfies the further-factor policy.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\RedemptionResult  $redemption
      * @return bool

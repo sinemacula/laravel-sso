@@ -3,10 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The example application's routes (SSO-12.5), as its `routes/api.php`: the
- * layout `docs/guides/example-application.md` describes, each route calling one
- * of the package's helpers through its controller. Laravel prefixes the file's
- * routes with `api`, which `sso.endpoints.base_url` carries.
+ * The example application's `routes/api.php`; `sso.endpoints.base_url` carries
+ * the `api` prefix Laravel adds.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

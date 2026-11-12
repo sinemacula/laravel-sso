@@ -28,18 +28,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/enforcement.md` (SSO-4.1 to SSO-4.6, SSO-12.5),
- * on the shared example harness, with the application's own tenants and
- * sessions in its own tables and its contracts bound by its service provider:
- * an administrator turns a tenant's rule on, refused until a connection has
- * completed a sign-in, and the application's revocation ends, in the same
- * transaction, the sessions of the tenant and of the tenant that inherits its
- * rule that no satisfying connection established; turning it off revokes
- * nothing; the stored rule is read back; the tenant authentication policy
- * admits a compliant session, refuses a password session, and admits the
- * break-glass administrator's through the exemption gate, which reports it;
- * and disabling the connection or removing the link revokes the sessions
- * established through it.
+ * Examples of `docs/guides/enforcement.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,7 +61,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     /** @var \Tests\Integration\Examples\Enforcement\User The administrator who changes it. */
     private User $administrator;
 
-    /** @var \SineMacula\Laravel\Sso\Identities\IdentityReference The person who signs in through the connection. */
+    /** @var \SineMacula\Laravel\Sso\Identities\IdentityReference The person who signs in. */
     private IdentityReference $person;
 
     /** @var list<\SineMacula\Laravel\Sso\Events\EnforcementChanged> Each change reported. */
@@ -82,9 +71,8 @@ final class EnforcementExampleTest extends ExampleTestCase
     private array $exemptions = [];
 
     /**
-     * Switch enforcement on, create the application's tables and tenant tree,
-     * register its service provider, make the tenant's OIDC connection, link
-     * the person to it, and listen for what is reported.
+     * Enable enforcement, create the tenant tree and connection, link the
+     * person, and record what is reported.
      *
      * @return void
      *
@@ -152,12 +140,8 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Once the connection has completed a sign-in, turning the rule on stores
-     * it with a new lower-case ULID, reports it with the administrator, and
-     * revokes in the same change the password sessions of the tenant and of the
-     * tenant that inherits its rule, leaving the session established through
-     * the connection and another tenant's; the rule reads back as stored, and
-     * giving it again, in any order, is `unchanged`.
+     * Turning the rule on revokes the tenant tree's non-compliant sessions and
+     * is `unchanged` when repeated.
      *
      * @return void
      *
@@ -223,9 +207,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Turning the rule off stores a new version, reports the change with the
-     * version it replaced, and revokes nothing: the session that met the rule
-     * stays, and so does a password session started once it was off.
+     * Turning the rule off stores a new version and revokes nothing.
      *
      * @return void
      *
@@ -250,10 +232,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * A change is refused, and writes, revokes and reports nothing, while the
-     * feature is off, while no connection given has completed a sign-in, for a
-     * connection the tenant does not have, and for a caller who did not
-     * authenticate recently enough.
+     * A change is refused with nothing written while it cannot be made.
      *
      * @return void
      *
@@ -290,8 +269,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * A tenant that never had a rule reads as off, with no connection, no
-     * version and no time, and its policy requires nothing.
+     * A tenant that never had a rule reads as off and requires nothing.
      *
      * @return void
      */
@@ -311,9 +289,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Through the application's tenant tree, a tenant that inherits its root's
-     * rule is answered with the root as the enforcing tenant, satisfied by the
-     * root's connection alone, at the root's version; a root answers itself.
+     * A child tenant is enforced by its root's rule, connection and version.
      *
      * @return void
      *
@@ -335,12 +311,8 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Under the rule, the policy admits a session established through the
-     * satisfying connection, in the tenant and in the tenant that inherits its
-     * rule, and a password session in a tenant with no rule, recording the
-     * version each was judged against; it admits the break-glass
-     * administrator's, reported once as `ExemptionUsed` with the session and
-     * the version, and refuses a password session, with no exemption reported.
+     * The policy admits compliant sessions and the exempt administrator's, and
+     * refuses a password session.
      *
      * @return void
      *
@@ -371,8 +343,8 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Disabling the connection revokes every session established through it,
-     * whichever tenant it is active in now, and no other.
+     * Disabling the connection revokes its sessions in whichever tenant they
+     * are active.
      *
      * @return void
      *
@@ -394,8 +366,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Removing the link revokes the sessions established through it, and no
-     * other.
+     * Removing the link revokes its sessions and no other.
      *
      * @return void
      *
@@ -416,8 +387,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Sign the person in through the connection, and record the session the
-     * application establishes, active in the tenant given.
+     * Sign the person in and record the session, active in the tenant given.
      *
      * @param  string  $sessionId
      * @param  string  $tenantId
@@ -435,8 +405,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Record a session of the user, active in the tenant, established through
-     * the connection and the link given, or without SSO when none is.
+     * Record a session of the user, without SSO when no connection is given.
      *
      * @param  string  $sessionId
      * @param  string  $userId
@@ -458,8 +427,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Turn the tenant's rule on, satisfied by the connection, and answer its
-     * version.
+     * Turn the tenant's rule on and answer its version.
      *
      * @return string
      */
@@ -473,8 +441,7 @@ final class EnforcementExampleTest extends ExampleTestCase
     }
 
     /**
-     * Why each of the application's sessions was revoked, by its id, or `null`
-     * for one still active.
+     * Each session's revocation reason by id, `null` while active.
      *
      * @return array<array-key, mixed>
      */

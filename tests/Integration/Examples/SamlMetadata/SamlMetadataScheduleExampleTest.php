@@ -24,15 +24,7 @@ use SineMacula\Laravel\Sso\Metadata\RefreshConnectionMetadata;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 
 /**
- * The scheduled refresh examples of `docs/guides/saml-metadata.md` (SSO-2.8,
- * SSO-11.12, SSO-12.5), on the shared example harness, with the application's
- * own tenant: the schedule its `bootstrap/app.php` wires runs the refresh every
- * five minutes; a metadata URL alone leaves the connection alone, while the URL
- * with the federation's certificate as an anchor makes it due at once, so a run
- * applies the signed metadata's new sign-on URL, and metadata the anchor did
- * not sign fails, changing nothing. Its published `config/sso.php` queues each
- * refresh on the application's default queue, or where the environment names,
- * and a timeout no shorter than the queue's `retry_after` stops the run.
+ * The scheduled refresh examples of `docs/guides/saml-metadata.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,8 +55,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     private FakeSamlIdentityProvider $federation;
 
     /**
-     * Turn the scheduled refresh on, and make the federation that signs the
-     * provider's metadata.
+     * Turn the scheduled refresh on and make the federation.
      *
      * @return void
      */
@@ -94,8 +85,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Once Artisan starts, the schedule the guide's `bootstrap/app.php` wires
-     * holds the refresh once, every five minutes.
+     * The guide's schedule runs the refresh every five minutes.
      *
      * @return void
      */
@@ -125,10 +115,8 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Saving the metadata URL and trusting the federation's certificate as an
-     * anchor makes the connection due at once; a run applies the metadata the
-     * anchor signed, moving the sign-on URL, and the connection is not due
-     * again until its interval ends.
+     * A metadata URL and an anchor make the connection due at once, and a run
+     * applies the signed metadata.
      *
      * @return void
      */
@@ -151,8 +139,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * A metadata URL with no anchor and no opt-in refreshes nothing: the
-     * connection is never due, and a run fetches nothing.
+     * A metadata URL with no anchor and no opt-in refreshes nothing.
      *
      * @return void
      */
@@ -167,8 +154,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Metadata the provider signed with its own key rather than the anchor's
-     * fails the refresh, which keeps the last good settings.
+     * Metadata the anchor did not sign fails the refresh and changes nothing.
      *
      * @return void
      */
@@ -183,8 +169,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Rows of `[environment, queue connection, queue]`: the published queue
-     * with nothing set, and with the connection and queue named.
+     * Rows of `[environment, queue connection, queue]`.
      *
      * @return iterable<string, array{0: list<string>, 1: ?string, 2: ?string}>
      */
@@ -197,11 +182,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * With the published queue laid over the package's, a run queues one job
-     * for the connection that opted in, carrying its id, on the queue
-     * connection and queue the environment names, or the defaults, with a
-     * timeout of 60 seconds and one try, failing on a timeout; nothing is
-     * fetched until a worker runs it.
+     * A run queues each due refresh where the published configuration says.
      *
      * @param  list<string>  $environment
      * @param  ?string  $connection
@@ -236,9 +217,8 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * A timeout no shorter than the queue connection's `retry_after` (90
-     * seconds) stops the run, which names the exception's class alone and
-     * queues nothing.
+     * A timeout no shorter than the queue's `retry_after` (90 seconds) stops
+     * the run.
      *
      * @return void
      */
@@ -258,8 +238,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Make the tenant's usable SAML connection, trusting the provider's
-     * certificate, with no metadata URL yet.
+     * Make a usable SAML connection with no metadata URL yet.
      *
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionSummary
      */
@@ -270,8 +249,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Run the endpoint that has the connection follow its metadata, with the
-     * federation's certificate as the anchor, and answer its two results.
+     * Run the follow endpoint with the federation's certificate as anchor.
      *
      * @return array{0: \SineMacula\Laravel\Sso\Connections\ConnectionResult, 1: \SineMacula\Laravel\Sso\Keys\KeyResult}
      */
@@ -292,8 +270,7 @@ final class SamlMetadataScheduleExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Lay the published metadata queue over the package's configuration, every
-     * other metadata setting kept, as the published file holds them.
+     * Lay the published metadata queue over the package's configuration.
      *
      * @return void
      */

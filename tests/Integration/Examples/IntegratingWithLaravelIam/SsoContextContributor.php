@@ -9,13 +9,7 @@ use SineMacula\Laravel\Authentication\Contracts\AuthenticationContextContributor
 use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
 
 /**
- * The adapter's `sso` contributor of
- * `docs/guides/integrating-with-laravel-iam.md` (SSO-9.10, SSO-12.5), run
- * against the examples' stand-ins for `laravel-authentication`'s API
- * (`IntegratingWithLaravelIam/Authentication`): it projects the stored form the
- * adapter handed authentication as the provider context through
- * `AuthenticationContext::fromStored()`, and answers the keys without their
- * `sso.` prefix; a session this package did not establish contributes none.
+ * The adapter's `sso` authentication context contributor.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

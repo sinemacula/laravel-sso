@@ -13,17 +13,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
 
 /**
- * The application's own sign-ins of `docs/guides/redeeming-a-handoff.md`
- * (SSO-9.2, SSO-9.10, SSO-12.5): the session an admitted `sign_in` establishes,
- * written inside the redemption's transaction and bound to the link the
- * identity resolved through, with the provenance captured at its redemption,
- * and the token that leaves only once that transaction has committed. A session
- * capped by the provider's deadline is active only before it, by the package's
- * clock: past it, its token signs no one in.
- *
- * It keeps its sessions and the digests of its tokens in memory, which is all a
- * test needs; an application writes its sessions to its own table through the
- * package's storage connection, so they commit with the redemption.
+ * The application's own sessions and tokens, held in memory for the examples.
+ * An application writes sessions through the package's storage connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,9 +41,8 @@ final class SignIns
     ) {}
 
     /**
-     * Write the session of the identity, bound to the link it resolved through,
-     * never outliving the latest end given, with how it began, inside the
-     * redemption's transaction, and answer its id.
+     * Write the identity's session inside the redemption's transaction and
+     * answer its id.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $linkId
@@ -111,8 +101,7 @@ final class SignIns
     }
 
     /**
-     * Whether the session exists and its latest end, if it has one, is still to
-     * come by the package's clock.
+     * Whether the session exists and has not reached its latest end.
      *
      * @param  string  $sessionId
      * @return bool
@@ -129,8 +118,7 @@ final class SignIns
     }
 
     /**
-     * The latest end of the session, or `null` when nothing caps it or there is
-     * no such session.
+     * The latest end of the session, or `null` when uncapped or unknown.
      *
      * @param  string  $sessionId
      * @return ?\Carbon\CarbonImmutable
@@ -152,8 +140,7 @@ final class SignIns
     }
 
     /**
-     * The identity the session signed in, or `null` when there is no such
-     * session.
+     * The identity the session signed in, or `null`.
      *
      * @param  string  $sessionId
      * @return ?\SineMacula\Laravel\Sso\Identities\IdentityReference
@@ -164,8 +151,7 @@ final class SignIns
     }
 
     /**
-     * The link the session is bound to, or `null` when there is no such
-     * session.
+     * The link the session is bound to, or `null`.
      *
      * @param  string  $sessionId
      * @return ?string

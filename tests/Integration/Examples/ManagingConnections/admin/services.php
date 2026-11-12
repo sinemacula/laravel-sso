@@ -3,12 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The services of `docs/guides/managing-connections.md` (SSO-2.11, SSO-2.13,
- * SSO-12.5), resolved from the container as the application's administration
- * endpoints resolve them for each request: the service that creates, changes,
- * reads and enables a tenant's connections, the lifecycle that disables and
- * deletes them, and the migration that moves their links to a new subject. It
- * answers the three, in that order.
+ * The services of `docs/guides/managing-connections.md`, resolved per request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

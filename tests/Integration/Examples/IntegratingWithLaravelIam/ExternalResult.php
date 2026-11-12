@@ -7,12 +7,8 @@ namespace Tests\Integration\Examples\IntegratingWithLaravelIam;
 use Carbon\CarbonImmutable;
 
 /**
- * A stand-in for `laravel-authentication`'s external result (its PR #127, with
- * the request reference its PR #128 added and the provider context its PR #129
- * added, here as the values its `ProviderContext` holds), which this package
- * does not install: what an adapter hands authentication's external sign-in,
- * built from an admitted redemption alone
- * (`docs/guides/integrating-with-laravel-iam.md`).
+ * A stand-in for `laravel-authentication`'s `ExternalResult`, holding the
+ * provider context as the values its `ProviderContext` would hold.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,13 +58,13 @@ final readonly class ExternalResult
         /** The authentication methods the evidence contract accepted. */
         public array $evidenceMethods,
 
-        /** The link the redemption resolved, which the link contract must answer exactly. */
+        /** The link the redemption resolved; the link contract must match it. */
         public ?string $linkId,
 
-        /** The authorisation request's public reference, for correlating the redemption's events. */
+        /** The authorisation request's public reference, for correlating events. */
         public ?string $requestReference = null,
 
-        /** The adapter's own details of how the session began: the stored form of the package's provenance. */
+        /** The stored form of the package's provenance. */
         public ?array $providerContext = null,
     ) {}
 }

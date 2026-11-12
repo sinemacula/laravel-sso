@@ -5,10 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\IntegratingWithLaravelIam\Contracts;
 
 /**
- * A stand-in for `laravel-authentication`'s link contract (its PR #127), which
- * this package does not install: the link a connection, an issuer and a subject
- * resolve to, which authentication asks before it signs anyone in, and which
- * the adapter answers from the redemption it admitted.
+ * A stand-in for `laravel-authentication`'s link contract.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -18,8 +15,7 @@ namespace Tests\Integration\Examples\IntegratingWithLaravelIam\Contracts;
 interface ExternalIdentityLinks
 {
     /**
-     * The id of the link the connection, the issuer and the subject resolve to,
-     * or `null` when none does.
+     * The link the connection, issuer and subject resolve to, or `null`.
      *
      * @param  string  $connectionId
      * @param  string  $issuer

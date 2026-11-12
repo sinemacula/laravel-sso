@@ -28,19 +28,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/reauthenticating.md` (SSO-5.10, SSO-9.5,
- * SSO-12.5), on the shared example harness, with the application's sessions in
- * its own table on the package's storage connection and its re-authentication
- * contract bound by its service provider: under the package's default every
- * start is refused; a sign-in records the exact link that established the
- * session; a reauthentication of that session is started with the client's
- * challenge, refused for a session the person is not signed in on, and
- * admitted in the application's transaction, renewing the session's
- * authentication time; a code started on another session renews only that
- * one, and the caller is told it is not reauthenticated; the standalone
- * redemption refuses the purpose and leaves the code unconsumed; and the
- * session's row is read with a locking read, so a session revoked, or bound to
- * another link, before the redemption is not renewed.
+ * Examples of `docs/guides/reauthenticating.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -74,8 +62,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     private string $linkId;
 
     /**
-     * Create the application's session table, register its service provider,
-     * make the tenant's OIDC connection, and link the person through it.
+     * Create the application's session table and connection, and link the
+     * person.
      *
      * @return void
      *
@@ -119,9 +107,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Under the package's default no identity is signed in on any session, so a
-     * reauthentication of the person's own session is refused
-     * `session_ineligible`; with the application's sessions bound, it starts.
+     * A start the default refuses `session_ineligible` starts under the
+     * application's binding.
      *
      * @return void
      *
@@ -145,9 +132,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * An admitted sign-in writes the session in its own transaction, with the
-     * identity, the application, the connection, the exact link that
-     * established it, and when the provider authenticated the person.
+     * An admitted sign-in records the session with its exact link and
+     * authentication time.
      *
      * @return void
      *
@@ -165,10 +151,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * An hour after signing in, the person reauthenticates their own session:
-     * the start is refused for a session they are not signed in on, and the
-     * admitted code renews their session to when the provider authenticated
-     * them again, telling the caller it is reauthenticated.
+     * The person reauthenticates their own session, renewing its authentication
+     * time.
      *
      * @return void
      *
@@ -198,9 +182,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * A code started on the person's session and redeemed by a caller on
-     * another renews the session it was started on, never the caller's, and the
-     * caller is not reauthenticated.
+     * A code redeemed from another session renews only the session it was
+     * started on.
      *
      * @return void
      *
@@ -221,8 +204,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Redeemed with no transaction open, a `reauthenticate` code is a
-     * `LogicException`, and stays unconsumed: admitted afterwards, it renews.
+     * A standalone redemption of a `reauthenticate` code throws and leaves the
+     * code unconsumed.
      *
      * @return void
      *
@@ -248,10 +231,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * The redemption reads the session's row with a locking read on the
-     * package's storage connection, as the grammar compiles it, both for its
-     * standing and for its renewal; on SQLite the lock compiles to a marker, so
-     * a read without its lock fails here on every engine.
+     * The redemption reads the session's row with a locking read for both
+     * standing and renewal.
      *
      * @return void
      *
@@ -274,8 +255,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * A session revoked between the start and the redemption is
-     * `session_ineligible`, and is not renewed.
+     * A session revoked before redemption is `session_ineligible` and not
+     * renewed.
      *
      * @return void
      *
@@ -294,8 +275,7 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * A session bound to another link than the one the code was issued through
-     * is `session_ineligible`, and is not renewed.
+     * A session bound to another link is `session_ineligible` and not renewed.
      *
      * @return void
      *
@@ -314,8 +294,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * The code is refused `session_ineligible` at redemption, the caller is not
-     * reauthenticated, and the session keeps its sign-in time.
+     * Assert the code is refused `session_ineligible` and the session keeps its
+     * sign-in time.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\HandoffRedirect  $redirect
      * @return void
@@ -331,9 +311,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a reauthentication of the session for the person, with the client's
-     * challenge, as the application's start endpoint does: the client keeps its
-     * own verifier, so the start carries none.
+     * Start a reauthentication of the session with the client's challenge; the
+     * client keeps the verifier.
      *
      * @param  string  $sessionId
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
@@ -354,10 +333,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Admit the `reauthenticate` code in the application's transaction, as its
-     * redemption endpoint does for a caller on the session given, with the
-     * verifier the client kept, and tell whether that caller's own session is
-     * the one renewed.
+     * Admit the `reauthenticate` code for a caller on the session given and
+     * tell whether their session was renewed.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\HandoffRedirect  $redirect
      * @param  string  $currentSessionId
@@ -390,9 +367,7 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Sign the person in through a whole `sign_in` flow at the provider,
-     * writing the session the admitted code establishes in the same
-     * transaction, as the application's sign-in endpoint does.
+     * Sign the person in, writing the session in the admission's transaction.
      *
      * @param  string  $sessionId
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
@@ -433,8 +408,8 @@ final class ReauthenticatingExampleTest extends ExampleTestCase
     }
 
     /**
-     * On SQLite, which compiles no lock, compile a lock for update to a marker
-     * comment, so a read without its lock is told apart on every engine.
+     * Compile a lock for update to a marker comment on SQLite, which compiles
+     * none.
      *
      * @param  \Illuminate\Database\Connection  $connection
      * @return \Illuminate\Database\Connection

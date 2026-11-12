@@ -11,14 +11,8 @@ use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Assert;
 
 /**
- * The `model:prune` an application's schedule holds, as the examples of
- * `docs/guides/rate-limits.md` and `docs/guides/single-use-store.md` read and
- * run it (SSO-11.5, SSO-11.8, SSO-12.5): `scheduled()` finds the one scheduled
- * `model:prune` and answers its cron expression and the models it names;
- * `run()` runs `model:prune` in this process with those models, as the
- * scheduler would in its own, and answers how many rows of each model it
- * deleted, from the `ModelsPruned` events Laravel dispatches for a model that
- * deleted any.
+ * Finds and runs the `model:prune` an application's schedule holds, for the
+ * rate limit and single-use store examples.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

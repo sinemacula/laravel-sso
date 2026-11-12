@@ -7,15 +7,8 @@ namespace Tests\Integration\Examples\Links;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The example application's session, an Eloquent model of its own
- * `user_sessions` table (SSO-8.8): the identity it is for, the link it was
- * established through (none for a password session), whether that link had
- * verified domain provenance when the session was admitted, and the link a
- * reauthentication last renewed it through, if any.
- *
- * Its table lives on the package's storage connection, where the application's
- * sessions read it, so a locking read of it takes part in a redemption's
- * transaction.
+ * The example application's session, stored on the package's storage
+ * connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

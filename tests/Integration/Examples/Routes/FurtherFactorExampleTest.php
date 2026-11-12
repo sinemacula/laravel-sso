@@ -22,12 +22,7 @@ use Tests\Integration\Examples\Routes\Application\SignIns;
 use Tests\Integration\Examples\Routes\Application\User;
 
 /**
- * The further factor of the example route layout (SSO-8.7, SSO-12.5): a session
- * signed in through the routes is `pending` unless the application's own
- * further-factor policy is satisfied by the methods of the evidence the package
- * accepted, from a connection the application trusts for that factor. Accepted
- * evidence alone never activates a session, whatever the connection's evidence
- * policy accepts; and no credential leaves inside the redemption's transaction.
+ * The example application's further-factor policy, over the route layout.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -39,7 +34,7 @@ use Tests\Integration\Examples\Routes\Application\User;
 #[CoversClass(HandoffRedemption::class)]
 final class FurtherFactorExampleTest extends ExampleTestCase
 {
-    /** @var array<string, mixed> An evidence policy that accepts a password and multiple factors, and counts a password alone. */
+    /** @var array<string, mixed> Accepts `pwd` and `mfa`, and a password alone. */
     private const array PASSWORD_OR_MORE = ['amr' => ['mfa', 'pwd'], 'combinations' => [['amr' => ['pwd']]]];
 
     /** @var \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider The tenant's OpenID provider. */
@@ -52,9 +47,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     private SignIns $signIns;
 
     /**
-     * Configure the base URL with the API prefix, judge evidence by each
-     * connection's stored policy, register the routes, make the tenant's OIDC
-     * connection, and link the person through it.
+     * Register the routes, make the OIDC connection and link the person.
      *
      * @return void
      *
@@ -85,8 +78,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * The methods the example counts as its further factor are exactly the five
-     * RFC 8176 values it lists.
+     * The further-factor methods are the application's RFC 8176 list.
      *
      * @return void
      */
@@ -96,9 +88,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * With no evidence accepted the session is pending, even from a trusted
-     * connection whose provider asserted `mfa`: the connection has no evidence
-     * policy.
+     * Without an evidence policy the session is pending, even with `mfa`.
      *
      * @return void
      *
@@ -112,9 +102,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * Evidence the connection's policy accepted, from a connection the
-     * application does not trust for its further factor, leaves the session
-     * pending, though it states `mfa`.
+     * Accepted `mfa` from an untrusted connection leaves the session pending.
      *
      * @return void
      *
@@ -129,9 +117,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * A password alone, accepted as evidence from a trusted connection, leaves
-     * the session pending: the evidence is accepted, and its methods are not a
-     * further factor.
+     * An accepted password alone leaves the session pending.
      *
      * @return void
      *
@@ -146,8 +132,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * A further-factor method the policy did not accept never counts: the
-     * provider's `otp` is not in the connection's accepted methods.
+     * A further-factor method the policy did not accept never counts.
      *
      * @return void
      *
@@ -162,8 +147,8 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * Only an accepted method the application counts, from a connection it
-     * trusts for the factor, activates the session.
+     * An accepted further factor from a trusted connection activates the
+     * session.
      *
      * @return void
      *
@@ -178,8 +163,8 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * No credential is issued inside a transaction on the package's storage
-     * connection, where it would outlive a rollback.
+     * No credential is issued inside a storage transaction, where it would
+     * outlive a rollback.
      *
      * @return void
      *
@@ -205,8 +190,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * Sign the person in through the routes, the provider asserting the methods
-     * given, and answer the status of the credential.
+     * Sign the person in with the methods asserted and answer the status.
      *
      * @param  list<string>  $methods
      * @return string
@@ -224,8 +208,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a flow at the route given through the OIDC connection, and answer
-     * the started body.
+     * Start a flow at the route through the OIDC connection.
      *
      * @param  string  $uri
      * @return array{reference: string, navigation: array<string, mixed>, verifier: string}
@@ -237,8 +220,7 @@ final class FurtherFactorExampleTest extends ExampleTestCase
     }
 
     /**
-     * Have the provider grant the started flow with an ID token asserting the
-     * methods given, follow the callback route, and read its redirect.
+     * Grant the flow with the methods asserted and follow the callback route.
      *
      * @param  array{reference: string, navigation: array<string, mixed>, verifier: string}  $start
      * @param  list<string>  $methods

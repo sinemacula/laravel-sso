@@ -102,26 +102,24 @@ nothing and reports one `FlowFailed` event with the reason.
 > is never told that a named connection is unknown or disabled: the answer is `started`, in the same shape, with a
 > fresh reference, a verifier when no challenge was sent, and a navigation to the application's `fallback_url`. The
 > failure is still reported as `connection_unavailable`. An application that does not offer discovery has no fallback
-> to answer with, so it is told `connection_unavailable` (a recommended default of 2026-11-03, RD-33 in the
-> [requirement closure matrix](../design/requirements.md#recorded-decisions): there is no fallback answer without
-> discovery). [Discovery](discovery.md) starts a flow from an email address instead of a named connection.
+> to answer with, so it is told `connection_unavailable`. [Discovery](discovery.md) starts a flow from an email address
+> instead of a named connection.
 
 ## The client's duties
 
 The package binds the flow to the client that started it with a verifier, as PKCE does (RFC 7636): only the client
-holding the verifier can redeem the handoff code the flow ends with. This works only if the client does its part
-(SSO-5.12):
+holding the verifier can redeem the handoff code the flow ends with. This works only if the client does its part:
 
-- **Generate a fresh verifier per request**, or let the package generate it. A verifier is 43 to 128 unreserved
+- Generate a fresh verifier per request, or let the package generate it. A verifier is 43 to 128 unreserved
   characters (`A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`) with at least 256 bits of entropy, from a cryptographic random
   source (`crypto.getRandomValues()`, `SecRandomCopyBytes`), never reused. Send only its challenge,
   `BASE64URL(SHA-256(verifier))` without padding, as `code_challenge`.
-- **Keep the verifier with the request's public reference**, in memory or storage scoped to your application
+- Keep the verifier with the request's public reference, in memory or storage scoped to your application
   (`sessionStorage`, the platform's keychain), never in a URL, a cookie shared with other sites or a log.
-- **Redeem only a handoff whose reference matches a request it started**. A completion's redirect carries the reference;
+- Redeem only a handoff whose reference matches a request it started. A completion's redirect carries the reference;
   a code arriving with a reference your client did not start is an attack, and is discarded.
-- **Send the code and the verifier in a POST body**, never in a URL.
-- **Remove the code from the address bar and the history at once** (`history.replaceState()`), before anything else
+- Send the code and the verifier in a POST body, never in a URL.
+- Remove the code from the address bar and the history at once (`history.replaceState()`), before anything else
   runs on the page.
 
 The verifier is independent of the PKCE verifier the package uses with the identity provider, which never leaves your

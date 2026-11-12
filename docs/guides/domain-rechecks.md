@@ -24,9 +24,9 @@ others skip it, so you do not need `onOneServer()`. A domain written since a run
 run.
 
 > [!IMPORTANT]
-> Linking by email (SSO-8.8) stops 24 hours after a domain's last successful check, whatever the schedule, so a stopped
-> scheduler cannot keep it going: `sso.domains.linking_max_age_seconds` sets a shorter age, never a longer one. Schedule
-> the recheck well inside that age; hourly leaves room for a few failed runs.
+> Linking by email stops 24 hours after a domain's last successful check, whatever the schedule, so a stopped scheduler
+> cannot keep it going: `sso.domains.linking_max_age_seconds` sets a shorter age, never a longer one. Schedule the
+> recheck well inside that age; hourly leaves room for a few failed runs.
 
 ## What a check does
 

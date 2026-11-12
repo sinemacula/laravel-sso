@@ -9,11 +9,8 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Guard;
 
 /**
- * The guard through which `Auth::sessions()` reaches the stand-in for
- * `laravel-authentication`'s session service (its PR #127), which this package
- * does not install: the facade forwards a call it does not know to the default
- * guard, so a test makes this the default guard and the adapter's call runs as
- * written. It authenticates nobody itself.
+ * The default guard, which Laravel's `Auth` forwards `sessions()` to; it
+ * authenticates nobody itself.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -19,9 +19,9 @@ choosing.
 Reading connections, listing them and every sign-in flow are unaffected: only the changes below ask.
 
 > [!NOTE]
-> Under `laravel-iam` there is nothing to bind: it binds the contract to `laravel-authentication`'s freshness check
-> (AUTH-3.11), passing each operation's maximum age on as the caller's requirement, so an administrator is asked to
-> authenticate again exactly as for the application's own sensitive changes. The stricter of that requirement and any
+> Under `laravel-iam` there is nothing to bind: it binds the contract to `laravel-authentication`'s freshness check,
+> passing each operation's maximum age on as the caller's requirement, so an administrator is asked to authenticate
+> again exactly as for the application's own sensitive changes. The stricter of that requirement and any
 > freshness the application configures for the operation's name applies, so the package's maximum age holds where the
 > application configures none. See [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#freshness).
 
@@ -160,8 +160,8 @@ One bound in a provider that registers before the package's is kept; one bound l
 binding does. The package resolves the contract on every question, so a contract bound with `scoped()` is rebuilt for
 each request. Whichever you choose, under Octane or a queue worker it judges the caller each call is given and keeps
 nothing of one request or job for the next. A timestamp in the future, or one your application cannot vouch for, is
-`stale`. If you key a stricter policy on the operation (asking
-for a second factor before `sso.connection.trust`, say), match on its stable name, never on its position.
+`stale`. If you key a stricter policy on the operation (asking for a second factor before `sso.connection.trust`, say),
+match on its stable name, never on its position.
 
 ## The order every change follows
 

@@ -7,11 +7,8 @@ namespace Tests\Integration\Examples;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 
 /**
- * The clients the examples take actions for, where an application's controller
- * would build one from its request (`ClientContext::fromRequest()`): a browser,
- * with an IP address and a user agent, which every attempt counts against and
- * every event carries, and no client at all, as the console, a queued job and
- * the schedule pass.
+ * The clients the examples act for: a browser, or no client, as the console, a
+ * queued job and the schedule pass.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

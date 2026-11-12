@@ -7,9 +7,8 @@ namespace Tests\Integration\Examples\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 
 /**
- * The example application's enforcement inheritance (SSO-4.2): a tenant follows
- * the rule of the root its own tenant record names, on every application, read
- * from the application's tenant model.
+ * The example application's enforcement inheritance: a tenant follows the root
+ * its record names.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

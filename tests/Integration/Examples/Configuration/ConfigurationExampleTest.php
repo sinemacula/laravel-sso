@@ -34,14 +34,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/configuration.md` (SSO-5.5, SSO-12.5), on the
- * shared example harness: the application's own endpoint resolver, the
- * applications its published `config/sso.php` registers, and its own redirect
- * URI resolver, each bound or published as an application does. Each asserts
- * its outcome and a refusal: a response addressed to the default layout's
- * assertion consumer service, an endpoint that is not an absolute `https` URL,
- * a handoff code redeemed at the end of its lifetime, an unlinked sign-in, and
- * a resolver answer that is not an exact redirect URI.
+ * Examples of `docs/guides/configuration.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,8 +61,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
     private IdentityReference $person;
 
     /**
-     * Record each client's host, as the application configures it, and make the
-     * person.
+     * Configure each client's host and make the person.
      *
      * @return void
      */
@@ -84,9 +76,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * An OIDC flow through a connection under the application's own endpoint
-     * resolver sends its callback, under the connection's own path, as the
-     * `redirect_uri`, and is redeemed once the provider answers there.
+     * An OIDC flow uses the connection's own callback as its `redirect_uri`.
      *
      * @return void
      *
@@ -110,11 +100,8 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * A SAML flow through a connection under the application's own endpoint
-     * resolver names the connection's own assertion consumer service and entity
-     * id, and is handed off when the response is addressed there; a response
-     * addressed to the default layout's assertion consumer service is refused
-     * with `recipient_mismatch`.
+     * A SAML flow uses the connection's own endpoints and refuses a response
+     * addressed to the default ones.
      *
      * @return void
      *
@@ -141,9 +128,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * Rows of `[an endpoint the application's resolver might answer]`: none of
-     * them an absolute `https` URL, or `http` on a loopback address, with no
-     * user information, fragment or wildcard.
+     * Rows of `[an endpoint that is not an exact web URL]`.
      *
      * @return iterable<string, array{0: string}>
      */
@@ -157,9 +142,8 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * The endpoints an application's resolver answers are refused unless each
-     * is an absolute `https` URL with no user information, fragment or
-     * wildcard; `http` is accepted on a loopback address alone.
+     * Connection endpoints must be absolute `https` URLs, or `http` on
+     * loopback, with no user information, fragment or wildcard.
      *
      * @param  string  $url
      * @return void
@@ -179,9 +163,8 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * The published configuration registers both applications by name, the
-     * native one with each setting it gives and the web one with the package's
-     * defaults for those it leaves out.
+     * The published configuration registers both applications, defaulting what
+     * it leaves out.
      *
      * @return void
      */
@@ -215,9 +198,8 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * The native application receives its handoff in the fragment of exactly
-     * its redirect URI, and the code lasts its sixty seconds: redeemed a second
-     * short of them, and refused with `handoff_expired` at their end.
+     * The native application's code arrives in the fragment and lasts its sixty
+     * seconds.
      *
      * @return void
      *
@@ -263,9 +245,8 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * The native application does not allow unlinked handoffs, so a sign-in
-     * that resolves to no identity is sent back to its redirect URI with
-     * `unlinked` and no code.
+     * The native application is sent `unlinked` with no code for an unlinked
+     * sign-in.
      *
      * @return void
      *
@@ -286,10 +267,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * Under the application's own redirect URI resolver, the web application of
-     * each client is sent to that client's own host, by the tenant of the
-     * connection the flow went through, and the native application to its
-     * registered redirect URI.
+     * Each client's web application is sent to that client's own host.
      *
      * @return void
      *
@@ -316,10 +294,8 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * A client host that makes the resolver's answer something other than an
-     * exact redirect URI stops the completion with a `LogicException`, which
-     * names the application and never the answer, rather than redirecting
-     * anywhere.
+     * A resolver answer that is not an exact redirect URI stops the completion
+     * with a `LogicException`.
      *
      * @return void
      *
@@ -343,9 +319,8 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's own check runs with the package's, after them, under
-     * its own subject: it passes while each client has a host, and reports a
-     * client without one.
+     * The application's check runs after the package's and reports a client
+     * without a host.
      *
      * @return void
      */
@@ -364,8 +339,8 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * Lay the guide's published configuration over the package's, key by key,
-     * as Laravel merges a published file with a package's.
+     * Merge the guide's published configuration over the package's, as Laravel
+     * does.
      *
      * @return void
      */
@@ -381,8 +356,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a flow of the native application through the connection, as its
-     * start route does.
+     * Start a flow of the native application through the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $connectionId
@@ -395,9 +369,8 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * Have the OpenID provider grant the start, deliver the grant to the
-     * connection's callback, and answer the `Location` the browser is sent back
-     * to.
+     * Complete the start at the connection's callback and answer the `Location`
+     * the browser is sent to.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider  $provider
      * @param  string  $connectionId
@@ -422,8 +395,7 @@ final class ConfigurationExampleTest extends ExampleTestCase
     }
 
     /**
-     * An enabled OIDC connection of the second client's tenant, its provider
-     * answering on the fake fetcher.
+     * An enabled OIDC connection of the second client's tenant.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider  $provider
      * @return string

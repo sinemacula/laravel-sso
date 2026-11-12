@@ -3,12 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The sign-in start route of `docs/guides/rate-limits.md` (SSO-11.8, SSO-12.5),
- * as an application's routes file holds it: a start through the connection the
- * client names, answered `429` with the seconds to wait in `Retry-After` when
- * the client's IP address has used its starts, and otherwise with the start's
- * body and headers, `200` when the client is sent on to the provider and `400`
- * for any other refusal.
+ * The sign-in start route of `docs/guides/rate-limits.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

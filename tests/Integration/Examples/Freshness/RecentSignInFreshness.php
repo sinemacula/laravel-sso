@@ -11,13 +11,8 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Identities\Caller;
 
 /**
- * The example application's freshness contract (SSO-2.12): the caller it is
- * given is fresh for an operation when the session they are on authenticated no
- * more than its maximum age ago, as the application's sign-in recorded it for
- * that caller's identity. No caller, a caller with no session and a session
- * that is not the caller's are stale. It judges the age by the package's clock,
- * so a test can move it, reads nothing from the request being served and holds
- * nothing of one call for the next.
+ * The example application's freshness contract: a recent sign-in on the
+ * caller's own session is fresh.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

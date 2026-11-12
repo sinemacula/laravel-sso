@@ -3,14 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The save endpoint of `docs/guides/saml-metadata.md` (SSO-2.8, SSO-2.11,
- * SSO-12.5), as the application's administration screen runs it once the
- * administrator has compared the fingerprints and accepted a proposal, given
- * the tenant, the connection, the proposal and the acting identity: a proposal
- * from a fetch is saved with the fetch it came from, one from XML as by hand,
- * each asking the freshness contract; a refused save goes back with its reason,
- * and otherwise every signing certificate proposed is trusted. It answers the
- * save's result, for the endpoint to turn into its response.
+ * The save endpoint of `docs/guides/saml-metadata.md`, given `$input` for an
+ * accepted proposal.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

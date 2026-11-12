@@ -10,9 +10,8 @@ use SineMacula\Laravel\Sso\Enforcement\Enums\ExemptionOutcome;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * The example application's exemption (SSO-4.4): one break-glass administrator
- * may have a session in an enforcing tenant without a connection that satisfies
- * its rule, for when the identity provider is down; nobody else may.
+ * The example application's exemption: one break-glass administrator, for when
+ * the identity provider is down.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

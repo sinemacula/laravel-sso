@@ -11,12 +11,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Links\LinkResult;
 
 /**
- * How the example application's management routes answer the package's results
- * (SSO-12.5): a success with the status given, what was given that is invalid
- * as `422`, stale authentication as `403`, what the tenant does not have as
- * `404` (another tenant's answers the same), a full limit as `429` with
- * `Retry-After`, and any other refusal as `409`. Every answer is sent with
- * `Cache-Control: no-store`.
+ * The HTTP responses the example application's routes answer results with.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,7 +23,7 @@ final class Answers
     /** @var array<string, string> The headers every answer carries. */
     public const array NO_STORE = ['Cache-Control' => 'no-store'];
 
-    /** @var list<\SineMacula\Laravel\Sso\Events\Enums\FailureReason> The refusals of something the tenant does not have. */
+    /** @var list<\SineMacula\Laravel\Sso\Events\Enums\FailureReason> Answered as `404`. */
     private const array NOT_FOUND = [FailureReason::CONNECTION_NOT_FOUND, FailureReason::DOMAIN_NOT_FOUND, FailureReason::LINK_NOT_FOUND];
 
     /**
@@ -37,8 +32,7 @@ final class Answers
     private function __construct() {}
 
     /**
-     * The response for the result, with the body given in place of the result's
-     * own on success.
+     * The response for the result, with the body given replacing it on success.
      *
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionResult|\SineMacula\Laravel\Sso\Domains\DomainResult|\SineMacula\Laravel\Sso\Links\LinkResult  $result
      * @param  int  $success

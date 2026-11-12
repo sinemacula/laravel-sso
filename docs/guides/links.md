@@ -63,18 +63,18 @@ The limit is asked while the connection is locked, and counts the identity's act
 reserved ones that have not expired. An answer below one is a misconfiguration and throws a `LogicException`. An
 identity may hold links through the connections of several tenants; each link stands alone.
 
-Links are made by the flows: a redeemed `link` flow, [provisioning](provisioning.md), or a [verified
-domain](linking-by-domain.md). A creation that is refused
-answers `subject_already_linked` (the subject is linked already, to this identity or another; the answer never says
-which) or `link_limit_reached`, with nothing written.
+Links are made by the flows: a redeemed `link` flow, [provisioning](provisioning.md), or a
+[verified domain](linking-by-domain.md). A creation that is refused answers `subject_already_linked` (the subject is
+linked already, to this identity or another; the answer never says which) or `link_limit_reached`, with nothing
+written.
 
 ## The link purpose
 
 A `link` flow attaches a subject to an identity your application has already authenticated: an account screen's "connect
 your identity provider" button, say. It is the only way besides a verified domain that a result ever attaches to an
-existing identity (SSO-8.5). It creates no session. Start it for the user your application has authenticated, here
-`$user`, as an `Identities\Caller` with the session they are on: the [freshness contract](freshness.md#the-caller)
-judges that session, and the flow is bound to the identity alone:
+existing identity. It creates no session. Start it for the user your application has authenticated, here `$user`, as
+an `Identities\Caller` with the session they are on: the [freshness contract](freshness.md#the-caller) judges that
+session, and the flow is bound to the identity alone:
 
 <!-- snippet: tests/Integration/Examples/Links/LinksExampleTest.php#links-start -->
 ```php
@@ -159,9 +159,9 @@ is logically absent, and the link replaces its row.
 ## Confirming a suspended link
 
 A link made through a [verified domain](linking-by-domain.md) keeps that provenance. Whenever its identity turns out to
-hold a principal outside the connection's tenant, it is suspended (SSO-8.8): the suspension is stored, the connection's
-links version is raised, `LinkSuspended` is reported, the sessions established through it are revoked, and the link
-resolves nothing. A sign-in or a reauthentication through it is `link_suspended`, and the subject can be neither
+hold a principal outside the connection's tenant, it is suspended: the suspension is stored, the connection's links
+version is raised, `LinkSuspended` is reported, the sessions established through it are revoked, and the link resolves
+nothing. A sign-in or a reauthentication through it is `link_suspended`, and the subject can be neither
 reserved nor provisioned.
 
 Your `PrincipalScope` answering `unknown` refuses that attempt alone, with `principal_scope_unknown`, whatever the
@@ -205,9 +205,9 @@ before anyone can confirm. A `link` of an identity that has never held such a li
 the session you passed with it. Judge that session, never the request being served, and answer by how it was
 established, not by which links remain: through any link that had verified domain provenance at the time, given,
 removed since or confirmed since, it is `dependent`. A caller with no session, and a session you cannot tie to the
-caller's identity or guard until the redeemer commits, are `dependent` too. So record, when you admit a
-session from a redemption, whether the link it stood on (`$result->linkId`) had that provenance then: an admitted
-`sign_in` answers it as `$result->provenance?->linkProvenance`, `LinkOrigin::VERIFIED_DOMAIN` for such a link.
+caller's identity or guard until the redeemer commits, are `dependent` too. So record, when you admit a session from a
+redemption, whether the link it stood on (`$result->linkId`) had that provenance then: an admitted `sign_in` answers it
+as `$result->provenance?->linkProvenance`, `LinkOrigin::VERIFIED_DOMAIN` for such a link.
 
 Here `PasswordSessionsConfirm` implements `Contracts\LinkConfirmation`, reading the caller's session, by its id and the
 caller's identity, from your own session store (`$this->sessions`, given to its constructor), which recorded that when

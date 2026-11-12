@@ -3,11 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The configuration guide's published `config/sso.php` (SSO-5.5, SSO-12.5): the
- * applications people sign into, a web front end and a native one, every other
- * setting left to the package's own. `ConfigurationExampleTest` lays it over
- * the package's configuration, as Laravel lays a published file over a
- * package's, and signs in through each application.
+ * The configuration guide's published `config/sso.php`: a web and a native
+ * application, every other setting left to the package's defaults.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

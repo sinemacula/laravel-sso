@@ -20,16 +20,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/redeeming-a-handoff.md` (SSO-5.11, SSO-9.2,
- * SSO-9.8, SSO-9.9, SSO-12.5), on the shared example harness: the redemption
- * helper resolved for the request, a `link` admitted for the caller the
- * application authenticated, and the sign-in endpoint over HTTP, each asserting
- * what the guide says it answers: the link made for the caller, and a caller
- * who is not the identity the code is bound to refused with `identity_mismatch`
- * and the code spent; a token for the linked identity's session, and every
- * refusal (a replay, a `link` code at the sign-in endpoint, an unlinked
- * handoff, a full limit) a `400` naming its code or a `429` with its wait, all
- * sent with `Cache-Control: no-store`.
+ * The examples of `docs/guides/redeeming-a-handoff.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,8 +47,7 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     private SignIns $signIns;
 
     /**
-     * Keep the application's sign-ins, register its sign-in endpoint, and make
-     * the tenant's OIDC connection and the person.
+     * Register the sign-in endpoint and make the OIDC connection and person.
      *
      * @return void
      */
@@ -77,11 +67,8 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `link` code presented by another caller than the identity it is bound
-     * to is `identity_mismatch`, and that refusal spends it, so presenting it
-     * again as the right caller is `replayed`; a new code presented by that
-     * identity is admitted for them, inside the application's transaction, and
-     * the link is made for them alone.
+     * A `link` code is admitted only for the identity it is bound to, and a
+     * mismatched caller spends it.
      *
      * @return void
      *
@@ -108,10 +95,8 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `sign_in` code of the linked person is answered with a token for a
-     * session of that person, bound to the link, sent with `Cache-Control:
-     * no-store`; the same code posted again is a `400` naming `replayed`, and
-     * the token never leaves twice.
+     * A linked person's `sign_in` code is answered with a token once, and
+     * `replayed` after.
      *
      * @return void
      *
@@ -139,11 +124,8 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     }
 
     /**
-     * The sign-in endpoint redeems `sign_in` codes alone: a `link` code posted
-     * there is a `400` naming `purpose_mismatch`, never a server error; and,
-     * for an application that allows unlinked handoffs, a `sign_in` code whose
-     * subject is linked to no identity signs nobody in, and is a `400` naming
-     * `unlinked`.
+     * The sign-in endpoint refuses a `link` code and an unlinked handoff with a
+     * `400`.
      *
      * @return void
      *
@@ -155,8 +137,7 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
 
         self::sent($mismatched, 400)->assertExactJson(['error' => FailureReason::PURPOSE_MISMATCH->value]);
 
-        // An application that resolves identities itself hands unlinked
-        // sign-ins off; this endpoint resolves none, so it signs nobody in
+        // This endpoint resolves no identity, so it signs nobody in
         config()->set('sso.applications.' . self::APPLICATION . '.unlinked_handoffs', true);
 
         $unlinked = $this->postJson(self::SIGN_IN, $this->signInBody(Purpose::SIGN_IN));
@@ -166,9 +147,7 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     }
 
     /**
-     * Once the redemption limit for the client's IP address is full, the next
-     * post is a `429` naming `rate_limited`, with the seconds until the limit's
-     * window ends.
+     * A full redemption limit is a `429` with its `Retry-After`.
      *
      * @return void
      */
@@ -186,9 +165,7 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a `link` flow for the identity, complete it at the provider, and
-     * admit its code as the caller given, answering the endpoint's input and
-     * the redemption's result.
+     * Complete a `link` flow for the identity and admit its code as the caller.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $caller
@@ -205,8 +182,7 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     }
 
     /**
-     * The body a client posts to the sign-in endpoint, for a flow of the
-     * purpose started and completed at the provider.
+     * The body a client posts to the sign-in endpoint for a completed flow.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -246,8 +222,7 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's `link` endpoint, given its input and the caller it
-     * authenticated, on its session.
+     * Run the application's `link` endpoint for the input and caller.
      *
      * @param  array{connection: string, code: string, verifier: string}  $input
      * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -259,8 +234,8 @@ final class RedeemingAHandoffExampleTest extends ExampleTestCase
     }
 
     /**
-     * The response, with the status given, sent with `Cache-Control: no-store`
-     * (which Symfony writes as `no-store, private`).
+     * Assert the status and `Cache-Control: no-store`, which Symfony writes as
+     * `no-store, private`.
      *
      * @param  \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>  $response
      * @param  int  $status

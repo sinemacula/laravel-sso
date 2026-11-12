@@ -3,14 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The application's own sign-in hint of `docs/guides/rate-limits.md`
- * (SSO-11.8, SSO-12.5), given the request being served and the domain of the
- * email address typed: before it tells the person whether their organisation
- * signs in through SSO, which would let anyone probe an organisation, it counts
- * the attempt as an authorisation request against the client's IP address and
- * the email's domain, through the package's limiter, and answers what the
- * limiter decided, a refused attempt carrying the seconds to wait.
- * `RateLimitsExampleTest` runs it and asserts each decision.
+ * The application's own sign-in hint of `docs/guides/rate-limits.md`, counted
+ * through the package's limiter so it cannot be used to probe organisations.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -40,16 +40,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/links.md` (SSO-8.3 to SSO-8.5, SSO-8.8,
- * SSO-12.5), on the shared example harness, with the application's own
- * memberships and sessions in its own tables and its link contracts bound by
- * its service provider: the link store resolves a sign-in where the default
- * links nothing; the signed-in user starts a `link` flow, refused while their
- * authentication is stale, and redeems its code as themselves, refused for
- * anyone else; an identity holds two links in a connection and no third; only a
- * member of the connection's tenant links, asked again at redemption; a link a
- * verified domain made is confirmed from a password session and not from the
- * session the link established; and the person lists and removes their links.
+ * Examples of `docs/guides/links.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,8 +63,7 @@ final class LinksExampleTest extends ExampleTestCase
     private User $user;
 
     /**
-     * Keep sessions in memory, create the application's tables, register its
-     * service provider, make the tenant's OIDC connection, and make the user a
+     * Create the application's tables and connection, and make the user a
      * member of the tenant.
      *
      * @return void
@@ -129,9 +119,8 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * With the link store bound, a sign-in through a linked subject resolves to
-     * the identity; under the package's default nothing does, and the same
-     * sign-in is `unlinked`.
+     * The link store resolves a linked sign-in that the default leaves
+     * `unlinked`.
      *
      * @return void
      *
@@ -160,9 +149,8 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * The signed-in user starts a `link` flow for themselves once freshness
-     * answers `fresh` for `sso.link.create`, and is refused while it answers
-     * `stale`.
+     * The signed-in user starts a `link` flow when fresh and is refused when
+     * stale.
      *
      * @return void
      */
@@ -193,8 +181,7 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * The endpoint redeems the code for the caller it authenticated, and the
-     * link is made for them: the subject now resolves to their identity.
+     * The caller redeems the link code and the link is made for them.
      *
      * @return void
      *
@@ -231,9 +218,8 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * Holding the code and its verifier is not being the person: a caller other
-     * than the identity the flow was started for is refused with
-     * `identity_mismatch`, and nothing is linked.
+     * A caller other than the flow's identity is refused with
+     * `identity_mismatch`.
      *
      * @return void
      *
@@ -255,9 +241,8 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * Under the application's limit an identity links two subjects through one
-     * connection, and a third is refused with `link_limit_reached`, with
-     * nothing written.
+     * An identity links two subjects through a connection and is refused a
+     * third.
      *
      * @return void
      *
@@ -279,9 +264,8 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * An identity that is no member of the connection's tenant is refused at
-     * completion, and a member who leaves the tenant before the code is
-     * redeemed is refused at redemption, each with `link_ineligible`.
+     * A non-member is refused at completion and a member who leaves is refused
+     * at redemption.
      *
      * @return void
      *
@@ -307,10 +291,8 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * A link a verified domain made is not confirmed from the session that link
-     * established, `independent_authentication_required`; from a session the
-     * person's password established it is, losing its verified domain
-     * provenance, and `LinkConfirmed` is reported once.
+     * A domain link is confirmed from a password session, not from the session
+     * it established.
      *
      * @return void
      *
@@ -352,10 +334,8 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * The person lists their links and removes one, which another identity's
-     * listing never shows; removing it again, or another identity's link, is
-     * `link_not_found`, a stale caller is `freshness_required`, and `me`
-     * without a caller throws.
+     * The person lists and removes their own links only, and a stale caller is
+     * refused.
      *
      * @return void
      *
@@ -425,8 +405,7 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run a whole `link` flow of the identity, the provider asserting the
-     * subject given, and answer its redemption.
+     * Run a `link` flow of the identity for the subject and redeem it.
      *
      * @param  string  $subject
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -444,8 +423,7 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * A request to the path, with the input given, on the application's
-     * session.
+     * A request to the path on the application's session.
      *
      * @param  string  $path
      * @param  array<string, string>  $input
@@ -461,9 +439,8 @@ final class LinksExampleTest extends ExampleTestCase
     }
 
     /**
-     * Verify the tenant's domain, turn linking by it on, and sign the user in
-     * by their verified email, which reserves the link the redemption
-     * activates.
+     * Verify the tenant's domain, enable linking by it, and sign the user in by
+     * their verified email.
      *
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
      *

@@ -8,10 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 
 /**
- * The example application's service provider (SSO-11.13): it binds the
- * application's own clock in place of the package's default. It registers after
- * the package's provider, as an application's providers do, so its binding
- * replaces the default as any later binding does.
+ * The example application's service provider, which binds its own clock.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

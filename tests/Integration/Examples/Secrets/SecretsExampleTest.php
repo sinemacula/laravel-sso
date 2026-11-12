@@ -17,19 +17,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/secrets.md` (SSO-2.5, SSO-11.9, SSO-12.5), on
- * the shared example harness: the application's own secret encrypter, keeping
- * the package's secrets under its key management service, bound scoped in its
- * service provider in place of the default; and its own comparisons in constant
- * time.
- *
- * The encrypter is asserted through a whole OIDC flow: the connection's client
- * secret is encrypted by the service when it is set, and the fake token
- * endpoint authenticates the client only when the service decrypts exactly that
- * secret, before and after the service rotates its key. A secret stored under
- * another encrypter is a server error, a `RuntimeException`, never a failed
- * sign-in; and the configuration check resolves the encrypter without calling
- * the service.
+ * The examples of `docs/guides/secrets.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,15 +34,14 @@ final class SecretsExampleTest extends ExampleTestCase
     /** @var string The value the stored digests are of. */
     private const string PRESENTED = 'a-presented-verifier';
 
-    /** @var \Tests\Integration\Examples\Secrets\KmsClient The application's key management service. */
+    /** @var \Tests\Integration\Examples\Secrets\KmsClient The application's KMS. */
     private KmsClient $kms;
 
     /** @var \SineMacula\Laravel\Sso\Identities\IdentityReference The person the application knows. */
     private IdentityReference $person;
 
     /**
-     * Make the key management service, with the key the package's secrets are
-     * kept under, and the person.
+     * Make the KMS with the `sso-secrets` key, and the person.
      *
      * @return void
      *
@@ -72,9 +59,7 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's encrypter, bound by its service provider after the
-     * package's, replaces the default, scoped: one instance within a request or
-     * job, a new one for the next.
+     * The application's encrypter replaces the default, one per request or job.
      *
      * @return void
      */
@@ -94,9 +79,7 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The client secret set on a connection is encrypted by the service, and
-     * decrypted by it to exactly the secret given when the flow exchanges its
-     * code: the token endpoint authenticates the client, and the flow links.
+     * The KMS keeps the client secret, and the flow's token exchange uses it.
      *
      * @return void
      *
@@ -119,9 +102,7 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * After the service rotates its key, a new secret is encrypted under the
-     * new version, and the one stored before still decrypts: the flow through
-     * the connection still completes.
+     * After a key rotation the secret stored before still decrypts.
      *
      * @return void
      *
@@ -148,9 +129,8 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A ciphertext the service did not issue is refused with a
-     * `RuntimeException` that carries no part of it, never an empty or wrong
-     * value.
+     * A foreign ciphertext throws without revealing it, never decrypting to a
+     * wrong value.
      *
      * @return void
      *
@@ -177,10 +157,8 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Switching an existing installation to the service without re-encrypting
-     * what is stored: the client secret stored under `APP_KEY` is one the
-     * service cannot decrypt, so the flow's completion is a server error, a
-     * `RuntimeException`, never a failed sign-in.
+     * A secret stored under `APP_KEY` is a server error after switching to the
+     * KMS, never a failed sign-in.
      *
      * @return void
      *
@@ -204,8 +182,7 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The configuration check only resolves the application's encrypter: it
-     * reports `[secrets]` as working without one request to the service.
+     * `sso:check` reports `[secrets]` working without calling the KMS.
      *
      * @return void
      */
@@ -220,8 +197,7 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's comparisons: the secret and both digests match the
-     * value they were made from, and none matches another value.
+     * The secret and both digests match only their own value.
      *
      * @return void
      */
@@ -233,8 +209,7 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A digest by an algorithm that is not a cryptographic hash PHP supports is
-     * refused with an `InvalidArgumentException`, naming the algorithm.
+     * A digest by a non-cryptographic algorithm is refused, naming it.
      *
      * @return void
      */
@@ -247,9 +222,8 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run the comparisons of the given secret and value against the known
-     * secret and the digests of the presented value, and answer whether each
-     * matched.
+     * Run the comparisons against the known secret and the presented value's
+     * digests.
      *
      * @param  string  $given
      * @param  string  $presented
@@ -278,11 +252,8 @@ final class SecretsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Register the application's service provider after the package's, and
-     * begin a new request, as the first one after the application deploys its
-     * binding does: nothing scoped to an earlier request is kept, so nothing
-     * resolved under the default encrypter is used again. The harness's fakes
-     * are bound again for the new request.
+     * Register the application's provider and begin a new request, so nothing
+     * scoped under the default encrypter is reused; the fakes are rebound.
      *
      * @return void
      */

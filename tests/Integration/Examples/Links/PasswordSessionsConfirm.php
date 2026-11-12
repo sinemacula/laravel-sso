@@ -10,13 +10,8 @@ use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkConfirmationVerdict;
 
 /**
- * The example application's link confirmation (SSO-8.8): the caller confirms a
- * link of verified domain provenance only from a session that no such link
- * established or renewed, such as one their password established. It judges the
- * session the caller it is given is on, never the request being served, by how
- * that session was established, as recorded when it was admitted, never by
- * which links remain; a caller with no session, or on a session that is not
- * their own, is dependent.
+ * The example application's link confirmation: only a session no domain link
+ * established or renewed is independent.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

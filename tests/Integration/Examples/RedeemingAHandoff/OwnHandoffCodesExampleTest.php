@@ -37,28 +37,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The redemption of an application's own handoff codes of
- * `docs/guides/redeeming-a-handoff.md` (SSO-4.3, SSO-4.6, SSO-8.5, SSO-9.2,
- * SSO-9.9, SSO-12.5), on the shared example harness, with the application's own
- * store bound as the handoff issuer: the package's redemption helper knows none
- * of its codes, and the application redeems them itself through
- * `HandoffRecheck`. A `link` code makes the link for the caller, and a
- * `sign_in` code then writes the person's session bound to that link and
- * records the connection's completed sign-in; each refusal is answered with its
- * reason and spends the code, whether the application's own checks refuse it (a
- * replay, the expiry, the purpose, the verifier) or the recheck does (the
- * caller of a `link`, a connection disabled since completion); and the recheck
- * refuses to run outside the application's transaction.
- *
- * The store keeps the connection's trust version and the session's latest end
- * each grant carries, as the contract requires (SSO-2.13, SSO-9.10): a change
- * to the connection's trust between issuance and redemption (its certificates
- * replaced, one distrusted, an anchor trusted, a disable and an enable) refuses
- * the code as `connection_unavailable`, though the package never voids the
- * application's codes, while a certificate added alone refuses nothing, and a
- * binding naming no trust version is refused; a provider deadline that limits
- * the session caps the session the redemption writes, and its provenance, and
- * one the deadline contract ignores caps neither.
+ * The own-store redemption examples of `docs/guides/redeeming-a-handoff.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -83,9 +62,8 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     private SignIns $signIns;
 
     /**
-     * Create the application's table of codes, bind its store as the handoff
-     * issuer, keep its sign-ins, and make the tenant's OIDC connection and the
-     * person.
+     * Create the table of codes, bind the store as the handoff issuer, and make
+     * the OIDC connection and person.
      *
      * @return void
      */
@@ -136,10 +114,8 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's `link` code, which the package's helper does not know,
-     * makes the link for the caller; its `sign_in` code then writes the
-     * person's session, bound to that link, and records the connection's
-     * completed sign-in; and the same code redeemed again is `replayed`.
+     * The application redeems its own `link` and `sign_in` codes, which the
+     * package's helper does not know.
      *
      * @return void
      *
@@ -183,10 +159,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's own checks refuse a value it never issued, a code
-     * presented with another verifier, at the endpoint of another purpose, or
-     * after it expired; every refusal after the code was consumed spends it, so
-     * the same code presented again, put right, is `replayed`.
+     * The application's own checks refuse a code and spend it.
      *
      * @return void
      *
@@ -223,11 +196,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The recheck refuses what the application's checks pass: a `link` code
-     * presented by another caller than the identity it is bound to is
-     * `identity_mismatch`, and a `sign_in` code through a connection disabled
-     * since its completion is `connection_unavailable`; each spends the code,
-     * and neither links nor signs anyone in.
+     * The recheck refuses a code the application's checks pass, and spends it.
      *
      * @return void
      *
@@ -271,11 +240,8 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * A change to the connection's trust between the code's issuance and its
-     * redemption refuses the application's code as `connection_unavailable`
-     * (the package never voids it: the trust version the store kept does), and
-     * signs no one in; the connection, usable again, signs the person in
-     * afresh.
+     * A trust change after issuance refuses the code as
+     * `connection_unavailable`, through the trust version the store kept.
      *
      * @param  string  $change
      * @return void
@@ -304,8 +270,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * Trusting another certificate alone is additive: the code issued before it
-     * is admitted.
+     * Trusting another certificate alone refuses nothing.
      *
      * @return void
      *
@@ -325,9 +290,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * A binding that names no trust version, as a store that did not keep it
-     * would build, is refused as `connection_unavailable`; the same binding
-     * naming the version the store kept passes.
+     * A binding naming no trust version is refused as `connection_unavailable`.
      *
      * @return void
      *
@@ -358,9 +321,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * A provider deadline the deadline contract says limits the session caps
-     * the session the redemption writes, and its provenance records it: the
-     * session's token signs the person in before it, and no one at it.
+     * A limiting provider deadline caps the session and its provenance.
      *
      * @return void
      *
@@ -387,9 +348,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * A provider deadline the deadline contract ignores caps nothing: the code
-     * carries no latest end, the provenance keeps the provider's deadline with
-     * no cap, and the session outlives the deadline.
+     * An ignored provider deadline leaves the session uncapped.
      *
      * @return void
      *
@@ -425,8 +384,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * Outside a transaction on the package's storage connection the recheck
-     * takes no lock: it throws a `LogicException`.
+     * The recheck throws outside a transaction on the storage connection.
      *
      * @return void
      */
@@ -438,7 +396,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's redemption of its own codes, resolved for the request.
+     * The application's redemption of its own codes.
      *
      * @return \Tests\Integration\Examples\RedeemingAHandoff\OwnHandoffRedemption
      */
@@ -448,8 +406,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The code the provider's answer to the started flow is redirected with,
-     * which the application's store issued.
+     * The code the provider's answer to the started flow is redirected with.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
      * @return string
@@ -462,9 +419,8 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * A SAML connection of the tenant, reading its metadata from a URL, and the
-     * provider it trusts, with the person linked through it by the
-     * application's own codes.
+     * A SAML connection reading metadata from a URL, and its provider, with the
+     * person linked through it.
      *
      * @return array{0: \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider, 1: string}
      *
@@ -490,8 +446,8 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * Sign the person in through a SAML connection whose provider states the
-     * deadline given, by the application's own code, and answer the session.
+     * Sign the person in through a SAML provider stating the deadline, and
+     * answer the session.
      *
      * @param  \Carbon\CarbonImmutable  $deadline
      * @return string
@@ -523,8 +479,7 @@ final class OwnHandoffCodesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The provider's raw session deadline and the cap it set, as the provenance
-     * records them, in UTC.
+     * The provider's session deadline and the cap the provenance records.
      *
      * @param  ?\SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
      * @return list<?string>

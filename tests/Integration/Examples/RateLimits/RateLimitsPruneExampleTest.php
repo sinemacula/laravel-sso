@@ -14,12 +14,7 @@ use Tests\Integration\Examples\ExampleTestCase;
 use Tests\Integration\Examples\ScheduledPrune;
 
 /**
- * The pruning example of `docs/guides/rate-limits.md` (SSO-11.8, SSO-12.5), on
- * the shared example harness: the schedule the guide's `routes/console.php`
- * holds runs `model:prune` hourly, naming the package's counters; run, it
- * deletes the one counter whose window has ended and keeps the live one, which
- * still refuses the attempt over its limit, while the ended one's next attempt
- * starts a window of its own; run again, it deletes nothing.
+ * Integration tests for the pruning example of `docs/guides/rate-limits.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

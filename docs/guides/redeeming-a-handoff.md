@@ -36,10 +36,10 @@ endpoint, never the body, fixes the purpose.
 
 The controller, say `App\Http\Controllers\SsoHandoffController`, is a `final readonly` class that imports
 `Illuminate\Http\JsonResponse`, `Illuminate\Http\Request` and `Illuminate\Support\Facades\DB` and, from
-`SineMacula\Laravel\Sso`, `Database\StorageConnection`, `Events\Enums\FailureReason`, `Flows\Enums\Purpose` and
-`Handoffs\HandoffRedemption`. Its constructor takes the redemption helper as `$redemptions` and your own sign-ins as
-`$signIns`: `start()` writes a session for an identity, bound to the link it resolved through, and `token()` issues the
-session's credential. Its sign-in action:
+`SineMacula\Laravel\Sso`, `Database\StorageConnection`, `Events\Enums\FailureReason`, `Flows\Enums\Purpose`,
+`Handoffs\HandoffRedemption` and `Http\ClientContext`. Its constructor takes the redemption helper as `$redemptions` and
+your own sign-ins as `$signIns`: `start()` writes a session for an identity, bound to the link it resolved through, and
+`token()` issues the session's credential. Its sign-in action:
 
 <!-- snippet: tests/Integration/Examples/RedeemingAHandoff/SsoHandoffController.php#handoff-controller -->
 ```php
@@ -89,11 +89,11 @@ public function signIn(Request $request): JsonResponse
 }
 ```
 
-Send every answer with `Cache-Control: no-store` (SSO-9.8): the request carried a verifier and a code, and the
+Send every answer with `Cache-Control: no-store`: the request carried a verifier and a code, and the
 response carries your application's credentials. Never echo the code or the verifier back.
 
 The purpose is your endpoint's, never the request's: a sign-in endpoint redeems `Purpose::SIGN_IN` codes only, and a
-`link` or `reauthenticate` code presented there is refused (SSO-9.9). Give each purpose its own endpoint.
+`link` or `reauthenticate` code presented there is refused. Give each purpose its own endpoint.
 
 Under `laravel-iam`, its adapter is the code in the transaction: it calls `admit()`, then `laravel-authentication`'s
 external sign-in once, in the same transaction, and may answer a pending session. See
@@ -144,7 +144,7 @@ In this order, the first that fails refusing it:
 5. The code must not have expired (`handoff_ttl_seconds`, 60 by default).
 6. It must have been issued for the purpose, the application and the connection given, compared exactly.
 7. The verifier must be the one whose S256 challenge the flow was started with, so only the client that started the
-   flow can redeem its code (SSO-5.2).
+   flow can redeem its code.
 8. The connection must still be enabled and complete, and still satisfy its tenant's enforcement.
 9. The purpose's own rules must hold, and its writes are made:
    - `sign_in`: the same link, by its id, resolves as at completion, or the reservation the code is bound to is judged
@@ -162,7 +162,7 @@ session survives that the rule now in force does not allow. A tenant that never 
 lock, which reads exactly as no rule.
 
 A redeemed `sign_in` code that resolved to an identity records that the connection has completed a sign-in, which
-enforcement needs before it can be turned on for the tenant (SSO-4.3). A `link` or `reauthenticate` code, an unlinked
+enforcement needs before it can be turned on for the tenant. A `link` or `reauthenticate` code, an unlinked
 handoff and a code that was never redeemed never do.
 
 ## The results
@@ -183,12 +183,11 @@ A redeemed result carries:
   `reauthenticate` flow was started on;
 - `enforcementVersion`: the version of the enforcement the redemption judged under its locks (not the one the
   completion checked, which a rule change may since have replaced), and `sessionNotAfter`, the latest end of your
-  session the provider's deadline sets. Keep both on the session you create (SSO-9.10);
+  session the provider's deadline sets. Keep both on the session you create;
 - `linkId`: the link the identity resolved through, which your session keeps, since a `reauthenticate` accepts only the
   link that established it;
 - `evidence`: what your `EvidencePolicy` accepted of the result's own assertion, for a `sign_in` or a `reauthenticate`
-  ([Evidence](evidence.md));
-  never for a `link`;
+  and never for a `link` ([Evidence](evidence.md));
 - `provenance`: for an admitted `sign_in` only, the session provenance captured from this redemption, which you write
   with the session once and later project into the `sso.*` authentication context keys
   ([Session Provenance](session-provenance.md)); `null` for any other purpose;
@@ -229,7 +228,7 @@ Never show a code to a person as it is: map it to your own wording. The result n
 Call `admit()` inside a transaction of your own on the package's storage connection, and write the session in it. The
 redemption is then part of that transaction (a savepoint), its events wait for your commit, and the consumption, any
 reservation's activation and your session commit or roll back together. A transaction on another connection is not
-atomic with it (decision D5).
+atomic with it.
 
 The locks the redemption takes are held until your transaction commits, so a change to enforcement waits for your
 session to be written, and its revocation then removes it if the new rule does not allow it. A session written after
@@ -238,10 +237,10 @@ escape the change's revocation.
 
 Two outcomes spend or keep the code, and they are not the same:
 
-- **A refusal commits.** A check that refuses is an answer, not an error. Once the code is consumed, the refusal deletes
+- A refusal commits. A check that refuses is an answer, not an error. Once the code is consumed, the refusal deletes
   that code's reservation, queues one failure event and, when your transaction commits, spends the code. Retrying with
   everything put right is `replayed`: the client must start again.
-- **An exception rolls back.** A database error, or a contract that throws, propagates. It rolls back the consumption
+- An exception rolls back. A database error, or a contract that throws, propagates. It rolls back the consumption
   and any activation together, reports nothing, and leaves the code to be tried again. So does your own rollback, for
   whatever reason.
 
@@ -264,14 +263,14 @@ its issuer stored: everything the issuer was given in its `HandoffGrant`.
 
 Two of those your store must keep with the code (`Contracts\HandoffIssuer` requires both):
 
-- **The trust version** (`$grant->trustVersion`): the connection's trust version as the completion read it under the
+- The trust version (`$grant->trustVersion`): the connection's trust version as the completion read it under the
   connection's lock. Pass it back as the binding's `trustVersion`. The recheck compares it with the connection's under
   its lock, and refuses the code as `connection_unavailable` when they differ: the connection's trust changed between
   issuance and redemption (its certificates replaced, one distrusted, an anchor changed, its settings' trust changed,
   or the connection disabled and enabled again). The package voids its own codes on such a change too, but never yours:
   the version alone refuses them. A binding that names no trust version is refused the same way, so a store that does
   not keep it fails closed. Adding a provider key or certificate alone changes no version, and refuses nothing.
-- **The session's latest end** (`$grant->sessionNotAfter`): set when the provider's deadline limits the session (see
+- The session's latest end (`$grant->sessionNotAfter`): set when the provider's deadline limits the session (see
   [Session provenance](session-provenance.md)), `null` when the deadline contract ignores it or there is none. Keep it
   exactly, or to the whole second as the package's own store does, never later. Cap the session you write at it, and
   pass it to `Provenance::capture()` with the admission, so the session and its provenance hold the same deadline.
@@ -362,9 +361,8 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
   to. It takes the lock, and refuses one taken for another tenant, connection or application than the result's with a
   `LogicException`, so it cannot be reached without the locks. It answers `passed` or the first that refuses:
   `connection_unavailable` (also when the binding's trust version is not the connection's, or names none, and when the
-  inheritance contract no longer names the tenant whose rule is locked),
-  `enforcement_unsatisfied`, then the purpose's own. Under the default contract it judges enforcement from the locked
-  rows.
+  inheritance contract no longer names the tenant whose rule is locked), `enforcement_unsatisfied`, then the purpose's
+  own. Under the default contract it judges enforcement from the locked rows.
 - `discardReservation()` removes a refused code's reservation, by its identity and handoff reference and never merely by
   the subject, in your transaction; a binding with no reservation does nothing. Call it for every refusal after you
   consumed your code.
@@ -390,12 +388,11 @@ from state that does not change under the transaction, or read it with a current
 A redeemed code reports `HandoffRedeemed`, after `LinkCreated` or `LinkConfirmed` for a `link` that made or confirmed a
 link, `LinkCreated` and `LinkActivated` for an activated reservation, and with `ReauthenticationCompleted` for a
 `reauthenticate`. Every refusal, a full limit included, reports exactly one `FlowFailed` with the `redemption` flow and
-the reason. Their context carries the connection, its tenant and protocol, the application, the
-purpose, the request's public reference (`request_reference`, the only flow identifier events and logs carry), the
-identity the flow concerns and, for a `reauthenticate`, the session. Never the code, the verifier, the subject or an
-attribute, and never the caller or the identity holding the subject. A refusal before the code is found carries only the
-purpose your endpoint asked for. All of them wait for your commit, and none is reported when your transaction rolls
-back.
+the reason. Their context carries the connection, its tenant and protocol, the application, the purpose, the request's
+public reference (`request_reference`, the only flow identifier events and logs carry), the identity the flow concerns
+and, for a `reauthenticate`, the session. Never the code, the verifier, the subject or an attribute, and never the
+caller or the identity holding the subject. A refusal before the code is found carries only the purpose your endpoint
+asked for. All of them wait for your commit, and none is reported when your transaction rolls back.
 
 ## Errors
 

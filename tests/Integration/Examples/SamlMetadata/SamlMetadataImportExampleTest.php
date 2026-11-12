@@ -28,19 +28,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Integration\Examples\Clients;
 
 /**
- * The import, save and anchor examples of `docs/guides/saml-metadata.md`
- * (SSO-2.5, SSO-2.8, SSO-2.11, SSO-12.5), on the shared example harness, with
- * the application's own tenant: the import endpoint fetches the provider's
- * metadata and shows the administrator exactly the settings, certificates,
- * NameID formats and expiry the guide lists, writing nothing, for the tenant's
- * connection or before it exists; a URL that fails goes back with
- * `fetch_failed`, and an import past the connection's metadata limit goes back
- * with the wait. The save endpoint stores a fetched proposal through the import
- * saver and one given as XML as by hand, each asking for the connection's trust
- * and trusting the signing certificate, after which the connection is usable; a
- * stale caller goes back with `freshness_required` and nothing is trusted. A
- * metadata signing anchor then holds every import naming the connection to its
- * signature.
+ * The import, save and anchor examples of `docs/guides/saml-metadata.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,8 +45,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     private const string VALID_UNTIL = '2026-12-01T00:00:00Z';
 
     /**
-     * Serve the provider's metadata from its URL, and make the tenant's bare
-     * SAML connection.
+     * Serve the provider's metadata from its URL.
      *
      * @return void
      */
@@ -71,8 +58,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * The import fetches the metadata as a metadata request and proposes
-     * exactly what the guide lists, writing nothing to the connection.
+     * The import proposes what the guide lists and writes nothing.
      *
      * @return void
      */
@@ -98,8 +84,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Before the connection exists, the import names none and proposes the same
-     * settings.
+     * An import before the connection exists proposes the same settings.
      *
      * @return void
      */
@@ -124,8 +109,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * An import past the connection's metadata limit goes back with the seconds
-     * until its window ends, having fetched nothing.
+     * An import past the metadata limit goes back with the wait.
      *
      * @return void
      */
@@ -141,9 +125,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * A fetched proposal is saved through the import saver, asking for the
-     * connection's trust, and its signing certificate trusted, after which the
-     * connection, enabled, is usable.
+     * A fetched proposal is saved through the import saver.
      *
      * @return void
      */
@@ -166,8 +148,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * A proposal from metadata given as XML came from no fetch, so it is saved
-     * as by hand, and the connection is usable all the same.
+     * A proposal from XML is saved as a plain update.
      *
      * @return void
      */
@@ -189,8 +170,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * A caller who has not authenticated recently enough goes back with
-     * `freshness_required`: nothing is saved and no certificate trusted.
+     * A stale caller goes back with `freshness_required` and nothing is saved.
      *
      * @return void
      */
@@ -206,10 +186,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Once the federation's certificate is trusted as the connection's metadata
-     * signing anchor, asking for its trust, an import naming the connection is
-     * refused unsigned or signed by any other key, and read when the anchor
-     * signed it; an import naming no connection applies no anchor.
+     * An anchor refuses any import naming the connection that it did not sign.
      *
      * @return void
      */
@@ -260,8 +237,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * The connection holds the proposed settings and trusts the provider's
-     * certificate alone, and, enabled, is usable.
+     * Assert the connection holds the proposal and is usable once enabled.
      *
      * @return void
      */
@@ -276,8 +252,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Run the import endpoint for the connection, or none, and answer what it
-     * answers.
+     * Run the import endpoint for the connection, or none.
      *
      * @param  ?\SineMacula\Laravel\Sso\Connections\ConnectionSummary  $connection
      * @return mixed
@@ -303,8 +278,7 @@ final class SamlMetadataImportExampleTest extends SamlMetadataExampleTestCase
     }
 
     /**
-     * Run the save endpoint for the proposal as the administrator, and answer
-     * what it answers.
+     * Run the save endpoint for the proposal as the administrator.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\ProposedSettings  $proposed
      * @return mixed

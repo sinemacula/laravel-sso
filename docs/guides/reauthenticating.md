@@ -22,16 +22,16 @@ $start = app(AuthorizationRequestService::class)->start('web', Purpose::REAUTHEN
 `new ClientContext(null, null)`. Every call that counts an attempt or reports an event takes one, never reading the
 request itself, and each event it reports carries the client's IP address and user agent.
 
-1. **Start.** The package asks `standing()` whether the identity is signed in on the session, of the application the
-   flow is started for, through the connection. Anything but `signed_in` is `session_ineligible`, and no request is
+1. At the start, the package asks `standing()` whether the identity is signed in on the session, of the application
+   the flow is started for, through the connection. Anything but `signed_in` is `session_ineligible`, and no request is
    stored.
-2. **At the provider.** The driver forces fresh authentication: `ForceAuthn="true"` for SAML, `prompt=login` with
+2. At the provider, the driver forces fresh authentication: `ForceAuthn="true"` for SAML, `prompt=login` with
    `max_age=0` for OpenID Connect, whatever the connection configures. A connection's own `prompt` extra parameter or
    `max_age` never overrides them.
-3. **Completion.** The result must state when the provider authenticated (`AuthnInstant`, `auth_time`), no earlier than
+3. At completion, the result must state when the provider authenticated (`AuthnInstant`, `auth_time`), no earlier than
    the request's start less the clock skew and no later than now plus it, and must resolve to the identity the flow was
    started for. A handoff code bound to the identity and the session is issued.
-4. **Redemption.** Your endpoint redeems the code through `admit()`, inside your transaction. The package checks the
+4. At redemption, your endpoint redeems the code through `admit()`, inside your transaction. The package checks the
    exact link and the session under locks, and renews the session in that transaction.
 
 ## Redeem through `admit()`

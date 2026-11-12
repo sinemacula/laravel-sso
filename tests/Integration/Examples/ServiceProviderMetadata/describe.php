@@ -3,11 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The description of `docs/guides/service-provider-metadata.md` (SSO-5.9,
- * SSO-12.5), as an application asks for it, given the tenant and the
- * connection: what an administrator registers at the identity provider, with
- * its content type, or why the connection cannot be described. It answers what
- * it read, for the example to assert.
+ * The description of `docs/guides/service-provider-metadata.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

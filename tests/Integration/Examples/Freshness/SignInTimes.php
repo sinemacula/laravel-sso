@@ -7,10 +7,7 @@ namespace Tests\Integration\Examples\Freshness;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * The example application's record of when each session last authenticated
- * (SSO-2.12), standing in for the sessions table its sign-in writes: by session
- * id, the identity signed in on it and the Unix time it authenticated, read
- * back only for that identity.
+ * The example application's record of when each session last authenticated.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

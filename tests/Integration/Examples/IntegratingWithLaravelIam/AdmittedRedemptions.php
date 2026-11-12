@@ -8,13 +8,8 @@ use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use Tests\Integration\Examples\IntegratingWithLaravelIam\Contracts\ExternalIdentityLinks;
 
 /**
- * The adapter's request-scoped record of the redemption it admitted, and its
- * answer to authentication's link contract
- * (`docs/guides/integrating-with-laravel-iam.md`): authentication asks which
- * link a connection, an issuer and a subject resolve to, and the adapter
- * answers with the link the admitted redemption resolved under the package's
- * locks, for that connection, issuer and subject alone, so a link removed and
- * made again since never stands in for it.
+ * The adapter's answer to authentication's link contract, from the admitted
+ * redemption, so a link removed and made again never stands in for it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,8 +33,8 @@ final class AdmittedRedemptions implements ExternalIdentityLinks
     }
 
     /**
-     * The link the admitted redemption resolved, when it is of the connection,
-     * the issuer and the subject; otherwise none.
+     * The admitted redemption's link, when it matches the connection, issuer
+     * and subject.
      *
      * @param  string  $connectionId
      * @param  string  $issuer

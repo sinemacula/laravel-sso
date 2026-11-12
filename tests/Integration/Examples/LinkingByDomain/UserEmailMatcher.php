@@ -12,11 +12,8 @@ use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
 use SineMacula\Laravel\Sso\Linking\LinkEmailQuery;
 
 /**
- * The example application's link email matcher (SSO-8.8): the user whose
- * verified email is exactly the address the provider asserted. The users
- * table's unique index on `email` is the guarantee the contract asks for, so no
- * other user can come to match while a reservation stands. An email present on
- * an account but not verified never counts.
+ * The example application's link email matcher, guarded by the unique index on
+ * `users.email`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -13,12 +13,7 @@ use Tests\Integration\Examples\ExampleTestCase;
 use Tests\Integration\Examples\ScheduledPrune;
 
 /**
- * The pruning example of `docs/guides/single-use-store.md` (SSO-11.5,
- * SSO-12.5), on the shared example harness: the schedule the guide's
- * `routes/console.php` holds runs `model:prune` hourly, naming the package's
- * single-use keys; run, it deletes the one key whose expiry has passed and
- * keeps the live one, which is still `seen`, while the expired one is recorded
- * again; run again, it deletes nothing.
+ * The pruning example of `docs/guides/single-use-store.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -1,9 +1,9 @@
 # An Example Application
 
 The package adds no routes, controllers or views: your API calls one helper per endpoint and turns the value it answers
-into a response. This guide lays out one coherent API that serves every flow (SSO-12.5): which routes are public, which
-belong to the authenticated caller, which are for administrators, how each fixes its purpose, how the base URL accounts
-for Laravel's API prefix, and what the client does.
+into a response. This guide lays out one coherent API that serves every flow: which routes are public, which belong to
+the authenticated caller, which are for administrators, how each fixes its purpose, how the base URL accounts for
+Laravel's API prefix, and what the client does.
 
 The code below is not a sketch. It is the package's executable example, in `tests/Integration/Examples/Routes`, which
 `RouteLayoutExampleTest` runs over HTTP on the shared example harness of [Testing](testing.md), so what this guide shows
@@ -34,10 +34,9 @@ management change's event names as acting.
 | `DELETE` | `/api/auth/sso/connections/{connection}/domains/{domain}`               | administrator   | `DomainService::remove()`                                |
 | `POST`   | `/api/auth/sso/connections/{connection}/domains/{domain}/verifications` | administrator   | `DomainService::verify()`                                |
 
-This differs from the sketch in SSO-12.5 in one respect, on purpose: that sketch starts every flow at one endpoint
-whose body names the purpose. Here each purpose has its own endpoint, which fixes it server side, so a `link` or a
-`reauthenticate` start sits behind your authentication and takes its caller from it, and a body can never turn a sign-in
-into something else. Under `laravel-iam`, `POST /api/auth/sessions` and the re-authentication redemption are
+Each purpose has its own start endpoint, rather than one endpoint whose body names the purpose. The endpoint fixes the
+purpose server side, so a `link` or a `reauthenticate` start sits behind your authentication and takes its caller from
+it, and a body can never turn a sign-in into something else. Under `laravel-iam`, `POST /api/auth/sessions` and the re-authentication redemption are
 `laravel-authentication`'s routes, and its adapter calls the package (see [Under `laravel-iam`](#under-laravel-iam)).
 
 ## The base URL and the API prefix
@@ -53,8 +52,8 @@ carries the prefix, as `SSO_BASE_URL=https://sp.example.test/api` in `.env` does
 config()->set('sso.endpoints.base_url', 'https://sp.example.test/api');
 ```
 
-With the default paths, the connection `01k…` then has its assertion consumer service at
-`https://sp.example.test/api/auth/sso/connections/01k…/assertions`, which is the route below. Leave the base URL without
+With the default paths, the connection `01k...` then has its assertion consumer service at
+`https://sp.example.test/api/auth/sso/connections/01k.../assertions`, which is the route below. Leave the base URL without
 the prefix and every identity provider is given URLs your API does not serve. Decide the layout before you register the
 first connection: the URLs are what administrators enter at their identity providers, and the SAML entity id is one of
 them, so moving them later means registering every connection again. See [Configuration](configuration.md#endpoints).
@@ -271,7 +270,7 @@ return $result->isRateLimited() ? Answers::rateLimited($result->retryAfter) : An
 - **One transaction.** The code's consumption, any reservation's activation and your session commit or roll back
   together, and the locks the redemption takes (the tenant's enforcement, the connections, the link) are held until your
   commit, so a change to enforcement or to the link either waits for your session or is seen by the redemption. A
-  transaction on another Laravel connection is not atomic with it (decision D5).
+  transaction on another Laravel connection is not atomic with it.
 - **No credential before the commit.** The token is issued only once the transaction has committed. A credential sent
   from inside it would outlive a rollback.
 - **Pending is an outcome, not a failure.** The example writes the session `pending`, so your own further factor is
@@ -374,8 +373,7 @@ return Answers::of($result, 200);
 
 Passing `'me'` with the caller limits the removal to the caller's links, and a link of anyone else answers as unknown.
 A removal asks the freshness contract for the caller, names it as acting and revokes the identity's sessions through
-the connection; see
-[Links](links.md).
+the connection; see [Links](links.md).
 
 ## Re-authenticating
 
@@ -527,7 +525,7 @@ The example's `Answers` maps the package's results to statuses:
 
 | Result                                                       | Status                                    |
 |--------------------------------------------------------------|-------------------------------------------|
-| succeeded (created, updated, unchanged, enabled, …)          | `200`, or `201` for a creation or a claim |
+| succeeded (created, updated, unchanged, enabled, ...)        | `200`, or `201` for a creation or a claim |
 | invalid, with its violations                                 | `422`                                     |
 | `freshness_required`                                         | `403`: authenticate again, then retry     |
 | `connection_not_found`, `domain_not_found`, `link_not_found` | `404`                                     |
@@ -537,7 +535,7 @@ The example's `Answers` maps the package's results to statuses:
 ## The client's part
 
 The handoff is bound to the client that started the flow by a verifier, as PKCE does, and that holds only while the
-client does its part (SSO-5.12):
+client does its part:
 
 - generate a fresh verifier for each start (43 to 128 unreserved characters with at least 256 bits of entropy), or let
   the package generate it, and send only its S256 challenge;

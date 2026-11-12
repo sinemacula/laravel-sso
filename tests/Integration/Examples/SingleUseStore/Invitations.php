@@ -8,10 +8,8 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 
 /**
- * The example application's invitations (SSO-11.5): each token it has sent,
- * with the instant the invitation closes. An invitation is open until then, by
- * the package's clock, so the single-use store, which judges an expiry by the
- * same clock, is never handed one already past.
+ * The application's invitations, judged by the package's clock so the store is
+ * never handed an expiry already past.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +34,7 @@ final readonly class Invitations
     ) {}
 
     /**
-     * The instant the invitation with the token closes, or `null` when no
-     * invitation has the token or it has closed.
+     * When the token's invitation closes, or `null` if unknown or closed.
      *
      * @param  string  $token
      * @return ?\Carbon\CarbonImmutable

@@ -9,11 +9,7 @@ use SineMacula\Laravel\Sso\Contracts\EvidencePolicy;
 use SineMacula\Laravel\Sso\Evidence\ConnectionEvidencePolicy;
 
 /**
- * The example application's service provider (SSO-8.7): it opts into provider
- * evidence by binding the package's policy, which judges each result by the
- * policy its connection holds, in place of the default that accepts nothing. It
- * registers after the package's provider, as an application's providers do, so
- * its binding replaces the default as any later binding does.
+ * The example application's service provider, opting into provider evidence.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -31,14 +31,7 @@ use Symfony\Component\Process\Process as SymfonyProcess;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/outbound-requests.md` (SSO-2.9, SSO-12.5), on
- * the shared example harness: the application's own refused ranges published in
- * `config/sso.php`, its own fetcher bound for an egress proxy, its own bounded
- * host resolver bound for a slow system resolver, and the fake fetcher
- * answering the requests of the code under test. Each asserts its outcome and a
- * refusal: an address in a published range refused, a range that is not one
- * failing closed, a URL the proxied fetcher may not send, a lookup that runs
- * out failing the fetch unsent, and a URL the fake answers with a failure.
+ * The examples of `docs/guides/outbound-requests.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,13 +47,12 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     /** @var string The egress proxy the application's network requires. */
     private const string PROXY = 'http://proxy.internal:3128';
 
-    /** @var string A host of a partner's, which resolves into the partner's refused network. */
+    /** @var string A partner host that resolves into a refused network. */
     private const string PARTNER_HOST = 'idp.partner.example';
 
     /**
-     * The published ranges are refused on top of the ones always refused, IPv6
-     * forms that carry an IPv4 address included, and none of their neighbours
-     * is; before the configuration is published, none of them is.
+     * The published ranges, and IPv6 forms carrying their addresses, are
+     * refused on top of the built-in ones; their neighbours are not.
      *
      * @return void
      */
@@ -83,8 +75,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The default fetcher refuses a host that resolves into a published range
-     * as `fetch_refused`, having sent nothing.
+     * A host resolving into a published range is refused unsent.
      *
      * @return void
      */
@@ -104,8 +95,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A refused range that is not a CIDR range fails closed when it is read,
-     * naming its key, rather than refusing less.
+     * A refused range that is not a CIDR range fails closed, naming its key.
      *
      * @return void
      */
@@ -121,9 +111,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's provider binds its fetcher in place of the package's,
-     * one for each request or job: the same within a scope, and a new one once
-     * the scope ends.
+     * The proxied fetcher is bound once per request or job.
      *
      * @return void
      */
@@ -145,9 +133,8 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A token request leaves through the proxy, its certificate verified and no
-     * redirect followed, with its form and its one credential in the
-     * `Authorization: Basic` header, each part form-encoded first.
+     * A token request leaves through the proxy, verified and unredirected, with
+     * its Basic credential form-encoded.
      *
      * @return void
      */
@@ -195,8 +182,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The proxied fetcher refuses, unsent, what the default fetcher refuses,
-     * the published ranges included.
+     * The proxied fetcher refuses, unsent, what the default fetcher refuses.
      *
      * @param  string  $url
      * @return void
@@ -215,9 +201,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A redirect comes back as the response it is, never followed, and a body
-     * past the request's own cap fails the fetch, while one at the cap is
-     * fetched.
+     * A redirect is returned unfollowed, and a body past the cap fails.
      *
      * @return void
      */
@@ -246,8 +230,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The proxied fetcher refuses to be built with no proxy to send through,
-     * rather than send directly.
+     * The proxied fetcher cannot be built without a proxy.
      *
      * @return void
      */
@@ -261,9 +244,8 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's provider binds its resolver in place of the package's,
-     * one for every request and job, which asks `dig` for the A and then the
-     * AAAA records, each lookup bounded, and answers only their IP literals.
+     * The bounded resolver is a singleton that asks `dig` for A then AAAA
+     * records and answers only IP literals.
      *
      * @return void
      */
@@ -292,9 +274,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A lookup that overruns its process's timeout, and one `dig` gives up on
-     * itself, add no address, so the name answers `[]` and the default fetcher
-     * fails the fetch as `fetch_failed` without sending it.
+     * Lookups that time out answer `[]`, and the fetch fails unsent.
      *
      * @return void
      */
@@ -320,11 +300,8 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The fake fetcher answers the code under test, a SAML metadata import and
-     * an OpenID discovery import: the JWKS it fails refuses the discovery
-     * import with `fetch_failed`, and the one a closure builds from the keys
-     * the provider publishes lets it propose; each URL is fetched for its
-     * purpose.
+     * The fake fetcher answers metadata and discovery imports, failing or
+     * serving the JWKS as told.
      *
      * @return void
      */
@@ -364,8 +341,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's fetcher, sending through the handler given in place of
-     * the network, built as the container builds it.
+     * The proxied fetcher, sending through the given handler.
      *
      * @param  \GuzzleHttp\Handler\MockHandler  $handler
      * @return \Tests\Integration\Examples\OutboundRequests\ProxiedFetcher
@@ -378,7 +354,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The record type a `dig` lookup asks for: the fifth part of its command.
+     * The record type a `dig` lookup asks for.
      *
      * @param  \Illuminate\Process\PendingProcess  $process
      * @return string
@@ -391,8 +367,7 @@ final class OutboundRequestsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Lay the guide's published configuration over the package's, key by key,
-     * as Laravel merges a published file with a package's.
+     * Lay the guide's published configuration over the package's.
      *
      * @return void
      */

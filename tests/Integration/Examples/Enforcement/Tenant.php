@@ -7,9 +7,8 @@ namespace Tests\Integration\Examples\Enforcement;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The example application's tenant, an Eloquent model of its own `tenants`
- * table (SSO-4.2): a tenant tree in which a tenant names the root whose
- * enforcement it follows, or none when it is a root and its own rule applies.
+ * The example application's tenant, which names the root whose enforcement it
+ * follows, or none when it is a root.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -153,7 +153,7 @@ See [IdP-initiated sign-in](idp-initiated-sign-in.md).
 `sso.applications.<name>.unlinked_handoffs`: a `sign_in` that resolves to no identity is still handed off.
 
 - **What it hands you.** A code with no linked identity, for an application that resolves identities itself at
-  redemption. The package no longer refuses the sign-in with `unlinked`.
+  redemption, in place of refusing the sign-in with `unlinked`.
 - **The risk.** Resolving an existing identity from the email or any other mapped attribute there is an account
   takeover waiting to happen: an identity provider asserts what it likes about its own users. Attach to an existing
   identity only through a `link` flow or a verified domain. A suspended link, a link whose scope could not be judged

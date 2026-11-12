@@ -12,15 +12,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 
 /**
- * The example application's sessions (SSO-8.8): it records the session the
- * request carries when a person signs in, through an admitted SSO sign-in or
- * with a password, and reads a caller's back, locked, for its link
- * confirmation. It reads and writes them on the package's storage connection,
- * so a locking read takes part in a redemption's transaction.
- *
- * A session admitted from a redemption records the link it stood on and whether
- * that link had verified domain provenance then, from the provenance the
- * redemption captured, so the answer never depends on the links that remain.
+ * The example application's sessions, on the package's storage connection so a
+ * locking read joins a redemption.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -78,9 +71,8 @@ final readonly class Sessions
     }
 
     /**
-     * The caller's session, when it is the caller's identity's, locked on the
-     * package's storage connection until the transaction it is read in ends, or
-     * `null` when the caller gives no session, or one that is not theirs.
+     * The caller's own session, locked, or `null` when the caller has none or
+     * it is not theirs.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return ?\Tests\Integration\Examples\Links\UserSession
@@ -101,8 +93,8 @@ final readonly class Sessions
     }
 
     /**
-     * Whether the session was established through a link that had verified
-     * domain provenance when it was admitted, whatever became of the link.
+     * Whether the session's link had verified domain provenance when it was
+     * admitted.
      *
      * @param  \Tests\Integration\Examples\Links\UserSession  $session
      * @return bool

@@ -14,10 +14,7 @@ use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\Caller;
 
 /**
- * The example application's domain routes (SSO-3.1, SSO-3.2, SSO-12.5), behind
- * its authentication and its `manage-sso` authorisation, scoped to the tenant
- * the caller is active in: claim a domain for a connection, verify it from its
- * DNS record, and remove it.
+ * The example application's domain routes, scoped to the caller's tenant.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

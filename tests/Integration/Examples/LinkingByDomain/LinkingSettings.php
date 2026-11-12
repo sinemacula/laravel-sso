@@ -11,12 +11,8 @@ use SineMacula\Laravel\Sso\Identities\Caller;
 use Tests\Integration\Examples\Clients;
 
 /**
- * The example application's administration action that turns linking by a
- * verified domain on for a tenant's connection (SSO-8.8, SSO-2.12): the issuer
- * is classified as shared, its organisations told apart by the `hd` claim, and
- * the administrator gives the value their organisation holds there. Settings
- * the package finds invalid are answered as the application's validation
- * errors, each naming the setting and the code, never the value given.
+ * The example application's action that turns linking by a verified domain on
+ * for a shared issuer, answering invalid settings as validation errors.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

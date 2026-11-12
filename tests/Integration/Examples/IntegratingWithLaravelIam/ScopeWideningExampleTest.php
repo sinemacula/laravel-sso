@@ -32,17 +32,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The scope-widening example of `docs/guides/integrating-with-laravel-iam.md`
- * (SSO-8.8, SSO-12.5), on the shared example harness: a person linked by the
- * tenant's verified domain is given a principal through the application's
- * principal change, which calls `widened()` first, then takes its principal
- * guard and writes the principal, in one transaction on the storage connection.
- *
- * A principal of another tenant suspends the person's verified domain link and
- * revokes the sessions established through it, with the reason `scope_widened`,
- * committing with the principal; one of the link's own tenant changes nothing
- * of the link's. Reported outside a transaction, the widening is refused and
- * writes nothing.
+ * The scope-widening example of `docs/guides/integrating-with-laravel-iam.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -61,15 +51,14 @@ final class ScopeWideningExampleTest extends ExampleTestCase
     /** @var \SineMacula\Laravel\Sso\Identities\IdentityReference The person the application knows. */
     private IdentityReference $person;
 
-    /** @var \Tests\Integration\Examples\IntegratingWithLaravelIam\RecordedRevocations The application's session revocation. */
+    /** @var \Tests\Integration\Examples\IntegratingWithLaravelIam\RecordedRevocations The session revocation. */
     private RecordedRevocations $revocations;
 
     /** @var \ArrayObject<int, \SineMacula\Laravel\Sso\Events\LinkSuspended> Each suspension reported. */
     private \ArrayObject $suspended;
 
     /**
-     * Create the application's principal tables, bind its directory and its
-     * revocation, and link the person by the tenant's verified domain.
+     * Create the principal tables and link the person by the verified domain.
      *
      * @return void
      *
@@ -127,10 +116,8 @@ final class ScopeWideningExampleTest extends ExampleTestCase
     }
 
     /**
-     * A principal of another tenant suspends the person's verified domain link,
-     * reported once, and revokes the sessions established through that link, by
-     * the link, with the reason `scope_widened`; the principal is written with
-     * them.
+     * A principal of another tenant suspends the domain link and revokes its
+     * sessions.
      *
      * @return void
      */
@@ -154,8 +141,7 @@ final class ScopeWideningExampleTest extends ExampleTestCase
     }
 
     /**
-     * A principal of the link's own tenant is inside it: the link stays active,
-     * nothing is revoked, and the principal is written.
+     * A principal of the link's own tenant leaves the link alone.
      *
      * @return void
      */
@@ -170,8 +156,7 @@ final class ScopeWideningExampleTest extends ExampleTestCase
     }
 
     /**
-     * Reported with no transaction open on the storage connection, the widening
-     * is a `LogicException`, and suspends and revokes nothing.
+     * A widening reported outside a transaction is refused and changes nothing.
      *
      * @return void
      */
@@ -189,8 +174,7 @@ final class ScopeWideningExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run the application's principal change, as its principal mutation does,
-     * given the person and the new principal's tenant.
+     * Run the application's principal change.
      *
      * @param  array<string, mixed>  $change
      * @return void
@@ -216,9 +200,7 @@ final class ScopeWideningExampleTest extends ExampleTestCase
     }
 
     /**
-     * Verify the tenant's domain for an OpenID connection, turn linking by it
-     * on, and sign the person in by their verified email, which reserves the
-     * link that the redemption activates.
+     * Link the person by signing in with an email at a verified domain.
      *
      * @return void
      *

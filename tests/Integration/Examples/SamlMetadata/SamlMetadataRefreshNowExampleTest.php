@@ -16,14 +16,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 
 /**
- * The administrator's refresh example of `docs/guides/saml-metadata.md`
- * (SSO-2.8, SSO-11.12, SSO-12.5), on the shared example harness, with the
- * application's own tenant: the refresh endpoint applies a provider's rotated
- * certificate and moved sign-on URL at once to a connection that has a metadata
- * URL but has not opted in, asking for its trust, and the schedule goes on
- * leaving it alone; a refresh past the connection's metadata limit goes back
- * with the wait, and a stale administrator is refused with
- * `freshness_required`, fetching nothing.
+ * The refresh-now examples of `docs/guides/saml-metadata.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,8 +31,8 @@ final class SamlMetadataRefreshNowExampleTest extends SamlMetadataExampleTestCas
     private const string MOVED_SSO_URL = 'https://idp.example.com/saml/sso/v2';
 
     /**
-     * Turn the scheduled refresh on, and give the tenant's connection the
-     * guide's metadata URL and no anchor.
+     * Turn the scheduled refresh on and give the connection a metadata URL but
+     * no anchor.
      *
      * @return void
      */
@@ -54,9 +47,8 @@ final class SamlMetadataRefreshNowExampleTest extends SamlMetadataExampleTestCas
     }
 
     /**
-     * An administrator's refresh asks for the connection's trust, since the
-     * schedule leaves it alone, and applies the provider's rotated certificate
-     * and moved sign-on URL at once; the schedule goes on leaving it alone.
+     * An administrator's refresh applies the provider's changes at once to a
+     * connection the schedule leaves alone.
      *
      * @return void
      */
@@ -81,8 +73,7 @@ final class SamlMetadataRefreshNowExampleTest extends SamlMetadataExampleTestCas
     }
 
     /**
-     * A refresh past the connection's metadata limit goes back with the seconds
-     * until its window ends, having fetched nothing.
+     * A refresh past the metadata limit goes back with the wait.
      *
      * @return void
      */
@@ -100,9 +91,7 @@ final class SamlMetadataRefreshNowExampleTest extends SamlMetadataExampleTestCas
     }
 
     /**
-     * An administrator who has not authenticated recently enough cannot refresh
-     * a connection the schedule leaves alone: the refresh is refused with
-     * `freshness_required`, and nothing is fetched.
+     * A stale administrator's refresh is refused with `freshness_required`.
      *
      * @return void
      */
@@ -120,8 +109,7 @@ final class SamlMetadataRefreshNowExampleTest extends SamlMetadataExampleTestCas
     }
 
     /**
-     * Make the tenant's usable SAML connection, trusting the provider's
-     * certificate.
+     * Make a usable SAML connection trusting the provider's certificate.
      *
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionSummary
      */
@@ -132,8 +120,7 @@ final class SamlMetadataRefreshNowExampleTest extends SamlMetadataExampleTestCas
     }
 
     /**
-     * Run the refresh endpoint for the connection as the administrator, and
-     * answer what it answers.
+     * Run the refresh endpoint as the administrator.
      *
      * @return mixed
      */

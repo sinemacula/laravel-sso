@@ -12,16 +12,8 @@ use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * The example application's sessions, as its re-authentication contract reads
- * them (SSO-5.10, SSO-9.5): a session written when a `sign_in` is admitted,
- * bound to the identity, the application, the connection and the exact link it
- * was established through, and renewed by a `reauthenticate` to the later of
- * its time and the provider's.
- *
- * It keeps its sessions in memory, which is all a test needs. An application's
- * own contract reads its session table, and locks the session's row in
- * `lockedStanding()` with a locking read on the package's storage connection,
- * as `docs/guides/reauthenticating.md` shows.
+ * The example application's in-memory reauthentication sessions, each bound to
+ * its identity, application, connection and link.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

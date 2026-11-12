@@ -17,15 +17,7 @@ use Tests\Integration\Examples\SiblingStandIns;
 
 /**
  * The adapter's `sso` contributor of
- * `docs/guides/integrating-with-laravel-iam.md` (SSO-9.10, SSO-12.5), on the
- * shared example harness, against the examples' stand-ins for
- * `laravel-authentication`'s registry, subject, provenance and provider context
- * (`IntegratingWithLaravelIam/Authentication`), which mirror its real
- * signatures: the adapter's service provider registers it under `sso`, once,
- * and a second registration is refused; for a session a sign-in through the
- * package established, it answers every key of the captured provenance's
- * projection without its prefix, after authentication kept the provider context
- * as JSON; and a session no external provider established contributes none.
+ * `docs/guides/integrating-with-laravel-iam.md`, against the sibling stand-ins.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +28,7 @@ use Tests\Integration\Examples\SiblingStandIns;
 final class ContextContributorExampleTest extends ExampleTestCase
 {
     /**
-     * Load the stand-ins, bind authentication's registry as its own provider
-     * does, and register the adapter's service provider.
+     * Load the stand-ins and register the adapter's service provider.
      *
      * @return void
      */
@@ -53,8 +44,7 @@ final class ContextContributorExampleTest extends ExampleTestCase
     }
 
     /**
-     * The adapter's provider registers the contributor under `sso`, and a
-     * second registration under it is refused.
+     * The contributor is registered under `sso` once.
      *
      * @return void
      */
@@ -70,10 +60,8 @@ final class ContextContributorExampleTest extends ExampleTestCase
     }
 
     /**
-     * For a session a sign-in through the package established, the contributor
-     * answers every key of the captured provenance's projection without its
-     * `sso.` prefix, read from the provider context authentication kept as
-     * JSON.
+     * The contributor projects the session's provenance without the `sso.`
+     * prefix.
      *
      * @return void
      *
@@ -126,8 +114,7 @@ final class ContextContributorExampleTest extends ExampleTestCase
     }
 
     /**
-     * The contributor registered under `sso`, resolved as authentication
-     * resolves it.
+     * The contributor registered under `sso`, resolved from the container.
      *
      * @return \Tests\Integration\Examples\IntegratingWithLaravelIam\SsoContextContributor
      */

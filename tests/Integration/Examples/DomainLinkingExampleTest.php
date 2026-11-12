@@ -22,11 +22,8 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use Tests\Integration\Examples\Application\ExampleDirectory;
 
 /**
- * The domain worked examples of the testing guide (SSO-3.1, SSO-3.2, SSO-8.8,
- * SSO-12.4): a domain claimed and verified through the fake DNS resolver,
- * linking by that verified domain turned on, and a `sign_in` whose verified
- * email the application knows reserving a link that its redemption activates;
- * a record not yet published, and an email nobody holds, each refused.
+ * The testing guide's domain examples: a verified domain reserving a link on
+ * sign-in that redemption activates.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,8 +44,8 @@ final class DomainLinkingExampleTest extends ExampleTestCase
     private ExampleDirectory $directory;
 
     /**
-     * Turn linking by a verified domain on, bind the application's directory
-     * for the three contracts it asks, and make the provider and a connection.
+     * Turn linking by a verified domain on, bind the application's directory,
+     * and make the provider and a connection.
      *
      * @return void
      */
@@ -71,9 +68,8 @@ final class DomainLinkingExampleTest extends ExampleTestCase
     }
 
     /**
-     * A member whose verified email is the provider's is linked by the verified
-     * domain on their first sign-in: the completion reserves the link and the
-     * redemption activates it.
+     * A member's first sign-in reserves a link by the verified domain that its
+     * redemption activates.
      *
      * @return void
      *
@@ -108,8 +104,7 @@ final class DomainLinkingExampleTest extends ExampleTestCase
     }
 
     /**
-     * An email of the verified domain that no person of the application holds
-     * reserves nothing, so the sign-in ends `unlinked`.
+     * An email nobody holds reserves nothing, so the sign-in ends `unlinked`.
      *
      * @return void
      *
@@ -130,8 +125,8 @@ final class DomainLinkingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Claim `example.com` for the connection, and verify it once the tenant has
-     * published its record, which it has not the first time it is checked.
+     * Claim `example.com` and verify it once the tenant has published its
+     * record.
      *
      * @return void
      */
@@ -160,8 +155,8 @@ final class DomainLinkingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Turn linking by a verified domain on for the connection, its issuer
-     * acknowledged as one organisation's.
+     * Turn linking by a verified domain on, its issuer acknowledged as one
+     * organisation's.
      *
      * @return void
      */

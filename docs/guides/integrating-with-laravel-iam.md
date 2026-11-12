@@ -4,7 +4,7 @@ This package references no class, interface or configuration of another package 
 suite cooperates is a seam of its own: a contract with a default that fails closed, an event, or a helper the
 application calls. `laravel-iam` holds the adapters that bind those seams to `laravel-authentication` and `laravel-mfa`.
 This guide is the adapter's specification: every contract under `Contracts` and every event, the
-`laravel-authentication` requirement (`AUTH-…`) each one meets, the transaction rule, the lock order, the one place each
+`laravel-authentication` requirement (`AUTH-x.y`) each one meets, the transaction rule, the lock order, the one place each
 write happens, and the checks an adapter must pass before it ships. An application that wires the siblings itself,
 without `laravel-iam`, follows it the same way.
 
@@ -15,37 +15,35 @@ without `laravel-iam`, follows it the same way.
 
 ## Where the sibling names come from
 
-- **PR #127**: `laravel-authentication`'s phase 14a, merged as commit `c7b6b119` on its `master` (2026-11-03):
+- **PR #127**: `laravel-authentication`'s external sign-in, merged as commit `c7b6b119` on its `master` (2026-11-03):
   `ExternalIdentityLinks::find()`, `signInExternally()`, `reauthenticateExternally()`, `externalStanding()`,
   `ExternalResult`, `ExternalEvidencePolicy`, `linkRemoved()`, `linkScopeWidened()`, the connection guard rows, its
   storage setting, its events and their context keys, its provenance table, its application policy and its identifier
-  normaliser, all read in that merged tree.
-- **PR #128**: `laravel-authentication`'s phase 14b, merged as commit `a29d2751` on its `master` (2026-11-03):
-  `Auth::context()`, `Contracts\AuthenticationContextContributor`, `Context\ContributionSubject`,
+  normaliser.
+- **PR #128**: `laravel-authentication`'s context contributors, merged as commit `a29d2751` on its `master`
+  (2026-11-03): `Auth::context()`, `Contracts\AuthenticationContextContributor`, `Context\ContributionSubject`,
   `Context\ContextContributors`, `ExternalResult::$requestReference`, and the `connection_id` and `request_reference`
-  keys of its event context, all read in that merged tree.
+  keys of its event context.
 - **PR #129**: `laravel-authentication`'s per-session issuance guard and provider context, merged as commit `86ec3ba6`
   on its `master` (2026-11-03): `External\ProviderContext`, `ExternalResult::$providerContext`,
   `Proofs\Provenance::$providerContext` and the issuance guard every issuance of an access token for a session writes
-  (`issuance_sequence` on its sessions table), all read in that merged tree.
+  (`issuance_sequence` on its sessions table).
 
-No tagged release carries any of the three PRs yet, so their names are final and merged but not a released contract.
+Each name was read in that merged tree. No tagged release carries any of the three PRs yet, so their names are final
+but not a released contract.
 
-- **Reported**: what `laravel-authentication`'s maintainer reported for its phases 9, 10, 11 and 13 (its PRs #118,
-  #119, #120 and #123), and what `laravel-mfa` reported on 2026-11-02, confirmed against this package's PR #14. None
-  is released.
+- **Reported**: what `laravel-authentication`'s maintainer reported for its PRs #118, #119, #120 and #123, and what
+  `laravel-mfa` reported on 2026-11-02, confirmed against this package's PR #14. None is released.
 
-Where a PR #127 name supersedes a reported one, both are given. Phase 13 reported `linkRemoved(Identity $identity,
-string $connectionId)`; phase 14a re-keyed it to the link, and PR #127 has `linkRemoved(Identity $identity, string
-$connectionId, string $linkId)`. Every other name in this guide is the package's own.
+Where a PR #127 name supersedes a reported one, both are given. PR #123 reported `linkRemoved(Identity $identity,
+string $connectionId)`; PR #127 re-keyed it to the link, as `linkRemoved(Identity $identity, string $connectionId,
+string $linkId)`. Every other name in this guide is the package's own.
 
 ## Handoff codes are this package's
 
-The package issues, stores and redeems every handoff code, under `laravel-iam` as alone. `laravel-authentication`
-stores no handoff codes: its maintainer decided so for its phase 14a, and it exposes only the external sign-in and
-re-authentication entry points the adapter calls inside the transaction, after the package's `admit()`. FEATURES'
-SSO-9.2 and its seam table, which bind the codes to AUTH-3.10's under `laravel-iam`, predate that decision; the
-requirement closure matrix records the reconciliation (SSO-9.2/f).
+The package issues, stores and redeems every handoff code, under `laravel-iam` as without it. `laravel-authentication`
+stores no handoff codes: it exposes only the external sign-in and re-authentication entry points the adapter calls
+inside the transaction, after the package's `admit()`.
 
 So the adapter keeps `Contracts\HandoffIssuer` bound to its default, `Handoffs\DatabaseHandoffStore`, and redeems with
 `Handoffs\HandoffRedemption`. It never binds an issuer of its own, and never uses `Handoffs\HandoffRecheck`, which is
@@ -61,8 +59,8 @@ changes nothing.
 
 ## The transaction rule
 
-Decision D5: every write that must be atomic with the package goes through **the same Laravel connection, inside the
-same transaction**. Reaching the same database through another Laravel connection is not atomic, and neither is a write
+Every write that must be atomic with the package goes through **the same Laravel connection, inside the same
+transaction**. Reaching the same database through another Laravel connection is not atomic, and neither is a write
 made after the package's transaction has committed.
 
 - `sso.storage.connection` and `laravel-authentication`'s `authentication.storage.connection` (PR #127) name the same
@@ -81,8 +79,8 @@ made after the package's transaction has committed.
   session's proofs, `reauthenticateExternally()` included, so of two issuances racing for one session the later fails
   to serialise the same way. A serialisation failure, a deadlock and an `Exceptions\LinkCandidatesChanged` are retried
   only as the caller's whole transaction, from its start, never in part.
-- Events wait for the commit, of either package, and none is reported when the transaction rolls back (SSO-10.5). No
-  security decision is made by a listener.
+- Events wait for the commit, of either package, and none is reported when the transaction rolls back. No security
+  decision is made by a listener.
 
 ## Seam inventory
 
@@ -155,7 +153,7 @@ command. So do the contract methods that report: `Linker::resolve()`, `LinkStora
 Every event implements `Contracts\SsoEvent`, carries `Events\EventContext`, and is dispatched after the transaction that
 caused it commits, except `ResultUnlinked`. None carries a secret, an assertion, a provider token, a verifier, a handoff
 code, protocol state, a raw payload or a transport header. Events report: no adapter makes a security decision on one,
-since the synchronous contracts do that (SSO-10.5).
+since the synchronous contracts do that.
 
 | Event                                                                                                       | When                                                                     | AUTH counterpart                                                                                        |
 |-------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
@@ -177,9 +175,9 @@ since the synchronous contracts do that (SSO-10.5).
 
 ## Redeeming by purpose
 
-A code is redeemed only by the endpoint of its purpose, which fixes the purpose server side (SSO-9.9). Every response
-carrying a code, a verifier or a credential is sent with `Cache-Control: no-store` (SSO-9.8, AUTH-7.6), and a
-credential leaves only after the transaction committed.
+A code is redeemed only by the endpoint of its purpose, which fixes the purpose server side. Every response carrying
+a code, a verifier or a credential is sent with `Cache-Control: no-store` (AUTH-7.6), and a credential leaves only
+after the transaction committed.
 
 | Purpose          | Package call                               | Then, in the same transaction                                          | Creates                      |
 |------------------|--------------------------------------------|------------------------------------------------------------------------|------------------------------|
@@ -243,13 +241,13 @@ The package runs this block in its examples against stand-ins for both, since it
   commit; return it as the refusal.
 - **A refusal by authentication rolls back.** `sso_required`, `method_not_allowed`, `identity_unknown`,
   `session_expired`, `external_result_unlinked`, `link_mismatch` or any other failed `SignInResult` is thrown out of
-  the transaction, so the consumption, a reservation's activation and the connection's completed sign-in (SSO-4.3) are
-  undone with it, and no `HandoffRedeemed` reports a sign-in that did not happen. The code stays unspent until it
+  the transaction, so the consumption, a reservation's activation and the connection's completed sign-in are undone
+  with it, and no `HandoffRedeemed` reports a sign-in that did not happen. The code stays unspent until it
   expires.
 - **Pending is a success.** A pending session (AUTH-6.9) commits with the redemption, and its provenance is written
   with it, kept unchanged when it becomes active. The pending credential leaves only after the commit.
 - **An unlinked handoff is refused.** Keep `unlinked_handoffs` off for every application the adapter serves; the
-  adapter still treats an admitted result with no `linkedIdentity` as a refusal, and rolls back (SSO-8.6).
+  adapter still treats an admitted result with no `linkedIdentity` as a refusal, and rolls back.
 - **The result the sibling is given.** `ExternalResults::from()` builds authentication's `External\ExternalResult`
   (PR #127) from the admitted redemption alone: `connectionId`, `issuer` and `subject` from `$redemption->result`,
   `tenantId` from its `tenantId` (the connection's), `authenticatedAt` from
@@ -280,8 +278,8 @@ The caller comes from authentication's current session, never from the request b
 that session's id. The package checks its identity against the one the code is bound to, then asks freshness
 (`sso.link.create`) and, for an identity that holds or held a verified domain link, `LinkConfirmation` for that caller
 as given, with eligibility and the link's continuity, then creates or confirms the link and commits before it answers.
-`isAdmitted()` is false, and nothing written afterwards is protected by it. FEATURES' SSO-9.9 routes a `link` through
-authentication's link redemption first; with the codes this package's, no sibling call is needed.
+`isAdmitted()` is false, and nothing written afterwards is protected by it. No sibling call is needed: the codes are
+this package's.
 
 ### Reauthenticate: one renewal
 
@@ -316,7 +314,7 @@ external entry point needs to find the link, so the renewal is written once, aft
 Never call `reauthenticateExternally()` from `renewAuthentication()`, never call it when `admit()` refused or recorded
 nothing, and never write the session's time anywhere else. A renewal never sets MFA as present, adds an `amr` value,
 moves the last step-up time or renews earlier MFA evidence, unless the evidence contract accepted this authentication's
-own evidence (SSO-9.5, AUTH-3.11); the sign-in's provenance is never rewritten. What the renewal is enough for is
+own evidence (AUTH-3.11); the sign-in's provenance is never rewritten. What the renewal is enough for is
 authentication's decision.
 
 ## The lock order
@@ -388,10 +386,10 @@ Every person in the call gains a principal in the one tenant it is given.
 
 ## Revocation
 
-The adapter binds `Contracts\SessionRevocation` to authentication's revocation helpers (reported for phases 11 and 13,
-with the PR #127 names on `Auth::sessions()`). It revokes inside the transaction the package calls it in, through the
-same connection, throws on failure (which rolls the change back), and never reports a revocation it did not make. The
-count each helper returns is not the package's concern.
+The adapter binds `Contracts\SessionRevocation` to authentication's revocation helpers (reported for its PRs
+#120 and #123, with the PR #127 names on `Auth::sessions()`). It revokes inside the transaction the package calls it
+in, through the same connection, throws on failure (which rolls the change back), and never reports a revocation it
+did not make. The count each helper returns is not the package's concern.
 
 | Scope (`RevocationScope::$kind`) | Reason                                      | Helper                                                                                           | Switch                                                                               |
 |----------------------------------|---------------------------------------------|--------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
@@ -417,7 +415,7 @@ count each helper returns is not the package's concern.
   sessions. Revoking every session of the identity through the connection instead is broader and never narrower;
   revoking fewer never is.
 
-Bearer requests do not recheck the tenant policy's version (reported for phase 11), so a session's access tokens stay
+Bearer requests do not recheck the tenant policy's version (reported for PR #120), so a session's access tokens stay
 valid until they expire unless a revocation ends the session: synchronous revocation is what makes a change take
 effect.
 
@@ -438,10 +436,10 @@ choice of principal, on every switch and on refresh:
    an unlisted connection as `enforcement_unsatisfied` without asking ([Enforcement](enforcement.md#exemptions)).
 4. A non-compliant session is refused as `sso_required` (reported), with no pending continuation.
 
-The redemption rechecks enforcement under its locks (SSO-4.6), and the version it judged there, never the one the
+The redemption rechecks enforcement under its locks, and the version it judged there, never the one the
 completion checked, is recorded on the session's provenance (`RedemptionResult::$enforcementVersion`, as the policy
 version), so a rule changed between completion and redemption is the one the session names. A change reaches existing
-sessions only through the mandatory revocation above, never through `EnforcementChanged` (SSO-9.3).
+sessions only through the mandatory revocation above, never through `EnforcementChanged`.
 
 ## Freshness
 
@@ -476,8 +474,8 @@ Links are this package's: `laravel-authentication` stores none (AUTH-3.9). The a
   a re-authentication: an `ExternalLink` of the identity `$redemption->linkedIdentity` names and `$redemption->linkId`
   when the connection, issuer and subject are exactly the admitted result's, and `null` otherwise;
 - it never looks a link up again, by email, by any attribute, or by issuer and subject alone: a SAML link is keyed by
-  the `NameID` format as well (SSO-6.9), which `find()` cannot carry, and a second lookup after the locks
-  could see another link;
+  the `NameID` format as well, which `find()` cannot carry, and a second lookup after the locks could see
+  another link;
 - the session records `$redemption->linkId`, so a re-authentication accepts only the exact link that established the
   session, and a link removed and made again for the same identity is another link.
 
@@ -554,7 +552,7 @@ the identity-level requirement (AUTH-3.6) and the tenant's (AUTH-2.12), through 
 ## Session provenance and the authentication context
 
 `Sessions\AuthenticationContext` owns AUTH-11.8's `sso` namespace and fills it by reading the session's
-external-provider provenance (SSO-9.7): `AuthenticationContext::fromStored()` projects the stored array, and
+external-provider provenance: `AuthenticationContext::fromStored()` projects the stored array, and
 `AuthenticationContext::of()` a `Sessions\Provenance`. Both are pure. Authentication exposes that provenance for
 reading and never writes into the `sso` namespace itself: the adapter fills it through authentication's contributor
 seam (PR #128), with a contributor of its own that projects the stored form the adapter kept with the session (see
@@ -564,7 +562,7 @@ seam (PR #128), with a contributor of its own that projects the stored form the 
 The provenance is captured once, inside the admitted redemption's transaction, by the package itself:
 `RedemptionResult::$provenance` is a `Sessions\Provenance` for an admitted `sign_in`, and `null` for anything else. The
 adapter writes it with the session, pending or active; nothing rewrites it, on activation, refresh, a switch or a
-re-authentication (SSO-9.10). These keys are history: they never stand in for current revocation, enforcement or
+re-authentication. These keys are history: they never stand in for current revocation, enforcement or
 freshness checks.
 
 | Key                                    | From `$redemption->provenance`     | Also in authentication's own fields (PR #127 `authentication_provenance`)                     |
@@ -723,7 +721,7 @@ $this->app->make(ContextContributors::class)->register('sso', SsoContextContribu
 
 ## Event context and correlation
 
-The context names (SSO-9.6) and authentication's, as PR #127 has them with the two keys PR #128 added:
+The context names and authentication's, as PR #127 has them with the two keys PR #128 added:
 
 | This package            | Meaning                                      | Authentication (PR #127, PR #128)                           |
 |-------------------------|----------------------------------------------|-------------------------------------------------------------|
@@ -769,7 +767,7 @@ answers, the session provenance and the redemption result, never by asking a pro
   provider's raw deadline, kept even when `ProviderSessionDeadline` ignored it, is
   `Provenance::$providerSessionDeadline` in the stored form (`sso.provider_session_deadline`).
 - **No `NameID` format in `find()`.** `ExternalIdentityLinks::find()` takes the connection, issuer and subject only, so
-  it cannot tell two SAML links apart by format (SSO-6.9). The adapter never looks a link up there: it answers from the
+  it cannot tell two SAML links apart by format. The adapter never looks a link up there: it answers from the
   redemption admitted in this request, whose `linkedIdentity` and `linkId` the package resolved under its locks with
   the format, and passes `$redemption->linkId` on the `ExternalResult`, so authentication refuses any other answer as
   `link_mismatch`.
@@ -875,20 +873,20 @@ An adapter ships only when each holds, on SQLite, MySQL and PostgreSQL, with the
 
 ## Requirements this guide maps
 
-| AUTH                | Requirement                              | This package                                                                                          | Section                                                                                    |
-|---------------------|------------------------------------------|-------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
-| AUTH-2.12           | Tenant authentication policy, revocation | `Enforcement`, `EnforcementExemption`, `EnforcementInheritance`, `SessionRevocation` (SSO-4, SSO-9.3) | [Enforcement](#enforcement-in-the-tenant-authentication-policy), [Revocation](#revocation) |
-| AUTH-3.1            | Email normalisation                      | `LinkEmailMatcher` (SSO-8.8)                                                                          | [Linking](#linking-by-a-verified-domain-and-confirmation)                                  |
-| AUTH-3.6, AUTH-3.12 | Further factors, `laravel-mfa`'s seams   | `EvidencePolicy` (SSO-8.7)                                                                            | [Evidence](#evidence-and-laravel-mfa)                                                      |
-| AUTH-3.7            | Methods by application                   | `ApplicationPolicy` (SSO-5.1, SSO-9.2)                                                                | [Contracts](#contracts)                                                                    |
-| AUTH-3.9            | External-provider seam, links            | `VerifiedResult`, `Linker`, `LinkStorage`, provisioning (SSO-8.1 to SSO-8.6, SSO-9.1)                 | [Links](#links), [Provisioning](#provisioning)                                             |
-| AUTH-3.10           | Handoff codes                            | the package's own codes (SSO-9.2, reconciled)                                                         | [Handoff codes](#handoff-codes-are-this-packages)                                          |
-| AUTH-3.11, AUTH-8.2 | Freshness, re-authentication             | `Freshness`, `ReauthenticationSessions` (SSO-2.12, SSO-9.4, SSO-9.5)                                  | [Freshness](#freshness), [Re-authentication](#reauthenticate-one-renewal)                  |
-| AUTH-5.7            | One kind, one validation                 | codes, references and verifiers never interchangeable (SSO-9.2)                                       | [Handoff codes](#handoff-codes-are-this-packages)                                          |
-| AUTH-6.1            | Session records                          | the provenance a session keeps (SSO-9.10)                                                             | [Provenance](#session-provenance-and-the-authentication-context)                           |
-| AUTH-6.9            | Pending sessions                         | nothing: a redemption may lead to one                                                                 | [Sign-in](#sign-in)                                                                        |
-| AUTH-7.6            | Secrets in responses                     | `no-store` and redaction (SSO-9.8)                                                                    | [Redeeming by purpose](#redeeming-by-purpose)                                              |
-| AUTH-8.1            | Sign-in helper                           | `admit()` then the external sign-in (SSO-9.1, SSO-9.9)                                                | [Sign-in](#sign-in)                                                                        |
-| AUTH-9.x            | Events and their context                 | the package's events (SSO-9.6, SSO-10)                                                                | [Event context](#event-context-and-correlation)                                            |
-| AUTH-10.x           | Operational rules                        | the same rules here (SSO-11)                                                                          | [The transaction rule](#the-transaction-rule)                                              |
-| AUTH-11.8           | Authentication context                   | the `sso` namespace (SSO-9.7)                                                                         | [Provenance](#session-provenance-and-the-authentication-context)                           |
+| AUTH                | Requirement                              | This package                                                                         | Section                                                                                    |
+|---------------------|------------------------------------------|--------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| AUTH-2.12           | Tenant authentication policy, revocation | `Enforcement`, `EnforcementExemption`, `EnforcementInheritance`, `SessionRevocation` | [Enforcement](#enforcement-in-the-tenant-authentication-policy), [Revocation](#revocation) |
+| AUTH-3.1            | Email normalisation                      | `LinkEmailMatcher`                                                                   | [Linking](#linking-by-a-verified-domain-and-confirmation)                                  |
+| AUTH-3.6, AUTH-3.12 | Further factors, `laravel-mfa`'s seams   | `EvidencePolicy`                                                                     | [Evidence](#evidence-and-laravel-mfa)                                                      |
+| AUTH-3.7            | Methods by application                   | `ApplicationPolicy`                                                                  | [Contracts](#contracts)                                                                    |
+| AUTH-3.9            | External-provider seam, links            | `VerifiedResult`, `Linker`, `LinkStorage`, provisioning                              | [Links](#links), [Provisioning](#provisioning)                                             |
+| AUTH-3.10           | Handoff codes                            | the package's own codes                                                              | [Handoff codes](#handoff-codes-are-this-packages)                                          |
+| AUTH-3.11, AUTH-8.2 | Freshness, re-authentication             | `Freshness`, `ReauthenticationSessions`                                              | [Freshness](#freshness), [Re-authentication](#reauthenticate-one-renewal)                  |
+| AUTH-5.7            | One kind, one validation                 | codes, references and verifiers never interchangeable                                | [Handoff codes](#handoff-codes-are-this-packages)                                          |
+| AUTH-6.1            | Session records                          | the provenance a session keeps                                                       | [Provenance](#session-provenance-and-the-authentication-context)                           |
+| AUTH-6.9            | Pending sessions                         | nothing: a redemption may lead to one                                                | [Sign-in](#sign-in)                                                                        |
+| AUTH-7.6            | Secrets in responses                     | `no-store` and redaction                                                             | [Redeeming by purpose](#redeeming-by-purpose)                                              |
+| AUTH-8.1            | Sign-in helper                           | `admit()` then the external sign-in                                                  | [Sign-in](#sign-in)                                                                        |
+| AUTH-9.x            | Events and their context                 | the package's events                                                                 | [Event context](#event-context-and-correlation)                                            |
+| AUTH-10.x           | Operational rules                        | the same rules here                                                                  | [The transaction rule](#the-transaction-rule)                                              |
+| AUTH-11.8           | Authentication context                   | the `sso` namespace                                                                  | [Provenance](#session-provenance-and-the-authentication-context)                           |

@@ -3,11 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The completion routes of `docs/guides/completion-responses.md` (SSO-12.5),
- * as an application's `routes/api.php` holds them: the SAML assertion consumer
- * service and the OIDC callback, each answering through the controller that
- * turns a completion's result into its response. Laravel prefixes the file's
- * routes with `api`, which `sso.endpoints.base_url` carries.
+ * The completion routes of `docs/guides/completion-responses.md`, in
+ * `routes/api.php`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -8,10 +8,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 
 /**
- * A stand-in for `laravel-authentication`'s real `External\ExternalEvidence`,
- * which this package does not install, with its exact constructor
- * (`docs/guides/integrating-with-laravel-iam.md`): the methods and context a
- * provider stated, and when it authenticated the identity, to the second.
+ * A stand-in for `laravel-authentication`'s `External\ExternalEvidence`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

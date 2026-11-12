@@ -7,11 +7,8 @@ namespace Tests\Integration\Examples\Enforcement;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The example application's session, an Eloquent model of its own `sessions`
- * table (SSO-4.1, SSO-4.5, SSO-4.6): the identity it is for, the tenant it is
- * active in, the connection and the link it was established through (none for a
- * session established without SSO), the enforcement version it was last judged
- * against, and when and why it was revoked.
+ * The example application's session, recording how it was established and the
+ * enforcement version it was last judged against.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

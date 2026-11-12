@@ -7,11 +7,7 @@ namespace Tests\Integration\Examples\Secrets;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 
 /**
- * The example application's secret encrypter (SSO-2.5): it keeps the package's
- * secrets under its key management service's `sso-secrets` key rather than
- * `APP_KEY`, and holds nothing but the service's client, so it may be bound
- * scoped. What the service cannot encrypt or decrypt is its `RuntimeException`,
- * which never carries the secret.
+ * A secret encrypter that keeps secrets under the KMS key `sso-secrets`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,7 +23,7 @@ final readonly class KmsSecretEncrypter implements SecretEncrypter
      */
     public function __construct(
 
-        /** The key management service the secrets are kept under. */
+        /** The KMS the secrets are kept under. */
         private KmsClient $kms,
     ) {}
 

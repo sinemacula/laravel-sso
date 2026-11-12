@@ -8,11 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use SineMacula\Laravel\Authentication\Context\ContextContributors;
 
 /**
- * The adapter's service provider of
- * `docs/guides/integrating-with-laravel-iam.md` (SSO-9.10, SSO-12.5): in
- * `boot()`, never in configuration, it registers the `sso` contributor with
- * authentication's registry, the examples' stand-in for
- * `laravel-authentication`'s (`IntegratingWithLaravelIam/Authentication`).
+ * The adapter's service provider, which registers the `sso` contributor.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

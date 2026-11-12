@@ -3,14 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The logging guide's published `config/sso.php` (SSO-5.7, SSO-9.8, SSO-11.9,
- * SSO-12.5): the channel and the diagnostic length read from the environment,
- * and the key names of the application's own adapters added to those the
- * package redacts. `LoggingExampleTest` lays it over the package's
- * configuration, as Laravel lays a published file over a package's. It stands
- * in for the application's own configuration file, where reading the
- * environment belongs, so the rule against `env()` outside a configuration
- * directory is ignored here.
+ * The logging guide's published `config/sso.php`; it stands in for an
+ * application config file, so `env()` is allowed here.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

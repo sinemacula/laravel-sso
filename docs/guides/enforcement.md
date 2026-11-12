@@ -25,7 +25,7 @@ Before you turn a tenant's rule on, decide what should happen to the sessions it
 > `laravel-authentication`, bind your own `Contracts\SessionRevocation` (see [Revoking sessions](#revoking-sessions)),
 > or accept that turning enforcement on leaves every existing session as it was: only sessions established afterwards
 > are judged by the new rule. Under `laravel-iam` there is nothing to bind: it binds the contract to
-> `laravel-authentication`'s revocation (AUTH-2.12), which an enforcement change then always runs.
+> `laravel-authentication`'s revocation, which an enforcement change then always runs.
 
 ## Turning it on
 
@@ -125,8 +125,8 @@ been disabled, the rule is still required and nobody complies until an administr
 turns it off.
 
 Under `laravel-iam` you do not call it yourself: it is folded into `laravel-authentication`'s tenant authentication
-policy (AUTH-2.12), asked at sign-in, at the choice of principal, on every switch and on refresh. Bearer requests do not
-recheck that policy's version, so a change reaches existing sessions only through the synchronous revocation below. See
+policy, asked at sign-in, at the choice of principal, on every switch and on refresh. Bearer requests do not recheck
+that policy's version, so a change reaches existing sessions only through the synchronous revocation below. See
 [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#enforcement-in-the-tenant-authentication-policy).
 
 ### Admitting a session while the rule changes
@@ -219,8 +219,7 @@ identity or not. An exemption admits a session your application establishes some
 your sign-in accepts while the rule is on), asked from your tenant authentication policy or wherever you refuse a
 non-compliant session; it never turns a sign-in through an unlisted connection into an accepted one. Keeping the
 exemption at one gate keeps one place that grants it and reports it, so every exemption used is in your
-`ExemptionUsed` trail. This is a recommended default (2026-11-03), recorded as RD-31 in the [requirement closure
-matrix](../design/requirements.md#recorded-decisions).
+`ExemptionUsed` trail.
 
 ## Revoking sessions
 
@@ -232,8 +231,8 @@ called with `RevocationScope::connection()` when a connection is disabled or del
 `RevocationScope::identityInConnection()` when a link is removed. Turning a rule off calls nothing (see
 [below](#turning-a-rule-off-revokes-nothing)).
 
-Here `RevokeSessions`, a `final readonly` class that implements `Contracts\SessionRevocation`, marks revoked the rows
-of the application's own `sessions` table, the one `UserSession` above reads, with the reason the scope gives.
+Here `RevokeSessions`, a `final readonly` class that implements `Contracts\SessionRevocation`, marks revoked the rows of
+the application's own `sessions` table, the one `UserSession` above reads, with the reason the scope gives.
 `Database\StorageConnection::name()` names the Laravel connection the package writes through (`sso.storage.connection`).
 The class imports `Illuminate\Database\Query\Builder`, `Illuminate\Support\Facades\DB` and, from
 `SineMacula\Laravel\Sso`, `Database\StorageConnection`, `Revocation\Enums\RevocationScopeKind` and
@@ -298,28 +297,27 @@ The tenant scope carries only `$scope->tenantId`, the enforcing tenant: resolvin
 yours, and leaving them out leaves their sessions in place. A connection's or a link's scope carries the connection's
 tenant, which need not be the tenant a session established through it is active in now: a session that switched its
 active tenant still began through the connection, so match it by the connection or the link alone, never by the tenant
-it is active in. A session established without SSO usually records no
-connection; match it with `whereNull()` alongside `whereNotIn()`, since SQL never counts `NULL` as outside a list.
+it is active in. A session established without SSO usually records no connection; match it with `whereNull()`
+alongside `whereNotIn()`, since SQL never counts `NULL` as outside a list.
+
+Write through the same Laravel connection the package uses, so your writes commit or roll back with the change; a write
+through another connection, even to the same database, is not atomic with it. Find the sessions with an update or delete
+(a current read), never by reading them first inside the change's transaction: a session committed by a redemption the
+change waited for is newer than that transaction's snapshot. Signal failure by throwing: the change is rolled back (no
+new version, no event) and the exception reaches your caller as a server error. Never return as if you revoked what you
+did not.
+
+Under `laravel-iam` the contract is bound to `laravel-authentication`'s session revocation, which runs inside the
+package's transaction, so you bind nothing. An enforcement change and a widened scope always revoke; a disabled or
+deleted connection and a removed link revoke unless `laravel-authentication`'s own switch for them is off. See
+[Integrating with `laravel-iam`](integrating-with-laravel-iam.md#revocation).
 
 ### Turning a rule off revokes nothing
 
-Turning a rule off calls nothing, and that is deliberate (the owner's decision of 2026-11-03, recorded in the
-[requirement closure matrix](../design/requirements.md#recorded-decisions)). A rule turned off requires nothing, so no
-session falls out of compliance: every session that met the rule meets no rule just as well, and a session the rule
-would have refused was revoked when the rule went on or its connections changed. Calling the contract anyway would
-hand it a policy whose `connectionIds` is empty, and a revocation written as above, revoking every session not
-established through one of them, would then end every session of the tenant, the very ones the rule had just admitted.
-The rule's new version is still written and `EnforcementChanged` still reports the change, so a session that recorded
-the old version can be told apart; nothing needs ending.
-
-Write through the same Laravel connection the package uses, so your writes commit or roll back with the change; a
-write through another connection, even to the same database, is not atomic with it. Find the sessions with an update
-or delete (a current read), never by reading them first inside the change's transaction: a session committed by a
-redemption the change waited for is newer than that transaction's snapshot. Signal failure by throwing: the
-change is rolled back (no new version, no event) and the exception reaches your caller as a server error. Never return
-as if you revoked what you did not.
-
-Under `laravel-iam` the contract is bound to `laravel-authentication`'s session revocation (AUTH-2.12, AUTH-6.4,
-AUTH-6.5), which runs inside the package's transaction, so you bind nothing. An enforcement change and a widened scope
-always revoke; a disabled or deleted connection and a removed link revoke unless `laravel-authentication`'s own switch
-for them is off. See [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#revocation).
+Turning a rule off calls nothing, deliberately. A rule turned off requires nothing, so no session falls out of
+compliance: every session that met the rule meets no rule just as well, and a session the rule would have refused was
+revoked when the rule went on or its connections changed. Calling the contract anyway would hand it a policy whose
+`connectionIds` is empty, and a revocation written as above, revoking every session not established through one of them,
+would then end every session of the tenant, the very ones the rule had just admitted. The rule's new version is still
+written and `EnforcementChanged` still reports the change, so a session that recorded the old version can be told apart;
+nothing needs ending.

@@ -11,7 +11,7 @@ completion answers with the right status, the right redirect and the right heade
 `SineMacula\Laravel\Sso\Responses\CompletionResponse`, which Laravel sends as it is when a controller returns it. Pass
 the method the completion arrived by: it decides the redirect's status.
 
-With the example route layout (SSO-12.5), and the controller imported:
+With the example route layout, and the controller imported:
 
 <!-- snippet: tests/Integration/Examples/CompletionResponses/routes.php#response-routes -->
 ```php
@@ -125,11 +125,11 @@ or anything else is added, and a native application's private-use scheme is kept
 setting (`sso.applications.<name>.delivery`) says where:
 
 ```text
-fragment (the default)  https://app.example.com/sso#code=…&reference=…
-                        com.example.app:/sso#code=…&reference=…
-query                   https://app.example.com/sso?code=…&reference=…
-query, after a query    https://app.example.com/sso?tenant=acme&code=…&reference=…
-a failure, either way   https://app.example.com/sso#error=request_expired&reference=…
+fragment (the default)  https://app.example.com/sso#code=...&reference=...
+                        com.example.app:/sso#code=...&reference=...
+query                   https://app.example.com/sso?code=...&reference=...
+query, after a query    https://app.example.com/sso?tenant=acme&code=...&reference=...
+a failure, either way   https://app.example.com/sso#error=request_expired&reference=...
 ```
 
 `code` (or `error`) comes first, then `reference`. Every value is base64url or a lower-case code, so none needs
@@ -185,10 +185,10 @@ logs, and send `Referrer-Policy: no-referrer` from that page as well.
 
 ## Errors
 
-`CompletionResponses` catches nothing. A database error during a completion is a server error (SSO-11.4): the
-completion never answers it as a result, so it never becomes a failure redirect, and it reaches your exception handler
-as a `500`. Do not catch it to send the browser to your redirect URI with an `error`: a refused sign-in and an outage
-are different things, and only the first is the person's to act on.
+`CompletionResponses` catches nothing. A database error during a completion is a server error: the completion never
+answers it as a result, so it never becomes a failure redirect, and it reaches your exception handler as a `500`. Do not
+catch it to send the browser to your redirect URI with an `error`: a refused sign-in and an outage are different things,
+and only the first is the person's to act on.
 
 ## Logging and debugging
 

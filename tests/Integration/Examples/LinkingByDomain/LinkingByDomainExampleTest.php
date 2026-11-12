@@ -30,19 +30,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/linking-by-domain.md` (SSO-8.8, SSO-12.5), on
- * the shared example harness, with the application's users, principals and
- * sessions in its own tables: its service provider binds the package's link
- * store and its own three linking contracts, which link a member's first
- * sign-in by their verified email where the defaults refused it, and refuse a
- * membership accepted no earlier than the domain's verification; an
- * administrator turns the connection's linking on for a shared issuer, which
- * then links only a result carrying the organisation's value, and invalid
- * settings come back as the application's validation errors, naming the setting
- * and the code; and granting a principal of another tenant, or a platform
- * principal, reports the widened scope first, which suspends the link for good
- * and revokes the session established through it, while a principal of the
- * connection's own tenant suspends nothing.
+ * Examples of `docs/guides/linking-by-domain.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,7 +50,7 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     /** @var string Another tenant of the application. */
     private const string OTHER = 'tenant-2';
 
-    /** @var \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider The tenant's identity provider, an issuer shared by organisations. */
+    /** @var \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider The tenant's shared issuer. */
     private FakeOpenIdProvider $provider;
 
     /** @var string The connection that trusts it. */
@@ -75,9 +63,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     private Caller $caller;
 
     /**
-     * Switch domain linking on, create the application's tables with the
-     * member, a member of the tenant for two days, make the tenant's OIDC
-     * connection, and verify its domain.
+     * Enable domain linking, create the application's tables and member, and
+     * verify the connection's domain.
      *
      * @return void
      */
@@ -149,10 +136,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * Under the defaults, each of which refuses, a member's first sign-in with
-     * their verified email reserves nothing and ends `unlinked`; once the
-     * application's provider binds the link store and its contracts, the next
-     * one reserves a link to the member that its admission activates.
+     * A member's first sign-in is `unlinked` under the defaults and linked once
+     * the application's bindings are registered.
      *
      * @return void
      *
@@ -174,9 +159,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * A membership the person accepted at the domain's verification, not
-     * strictly before it, is no membership for linking: the sign-in reserves
-     * nothing and ends `unlinked`.
+     * A membership accepted at the domain's verification, not before it, links
+     * nothing.
      *
      * @return void
      *
@@ -193,10 +177,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * Turning linking on for a shared issuer answers `updated`, naming each
-     * setting that changed, and stores them under the first linking version; a
-     * result carrying another organisation's value then reserves nothing, and
-     * one carrying this organisation's links the member.
+     * Linking on a shared issuer links only a result carrying the
+     * organisation's value.
      *
      * @return void
      *
@@ -225,10 +207,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * A shared issuer with no organisation value is invalid, answered as the
-     * application's validation error naming the setting and its code, and
-     * changes nothing; a caller who did not authenticate recently enough is
-     * refused `freshness_required` before anything is judged.
+     * Invalid settings are validation errors and a stale caller is refused
+     * before judging.
      *
      * @return void
      *
@@ -260,10 +240,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * Granting the linked member a principal of another tenant suspends the
-     * link and revokes the session established through it, with the reason
-     * `scope_widened`, in the transaction that writes the principal; the next
-     * sign-in is `link_suspended`, and stays so once the principal is removed.
+     * A principal of another tenant suspends the link for good and revokes its
+     * session.
      *
      * @return void
      *
@@ -290,10 +268,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * A principal of the connection's own tenant leaves the link and its
-     * session alone, and the member still signs in through it; a platform
-     * principal, granted with no tenant, then suspends it and revokes the
-     * session.
+     * A principal of the connection's own tenant widens nothing, and a platform
+     * principal does.
      *
      * @return void
      *
@@ -323,8 +299,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * Turn the connection's linking on, its issuer shared and the tenant's
-     * organisation holding the domain under `hd`.
+     * Turn linking on for a shared issuer whose organisation holds the domain
+     * under `hd`.
      *
      * @return void
      */
@@ -334,8 +310,8 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * Add a user with the verified email, holding a principal of the tenant the
-     * person accepted at the instant given.
+     * Add a user with the verified email and a tenant principal accepted at the
+     * instant given.
      *
      * @param  string  $id
      * @param  string  $email
@@ -351,9 +327,7 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a `sign_in` and have the provider answer it with the verified email
-     * and the organisation's value under `hd`, delivering the answer to the
-     * connection's completion endpoint.
+     * Start a `sign_in` and complete it with the verified email and `hd` value.
      *
      * @param  string  $email
      * @param  string  $organization
@@ -385,9 +359,7 @@ final class LinkingByDomainExampleTest extends ExampleTestCase
     }
 
     /**
-     * Sign the member in through the connection, admitting the code and
-     * recording the session it establishes with the link it was established
-     * through.
+     * Sign the member in and record the session against its link.
      *
      * @param  string  $sessionId
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult

@@ -26,12 +26,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The README's configuration and wiring (SSO-12.5), run on the shared example
- * harness: the application its published `config/sso.php` registers receives
- * the handoff on exactly its redirect URI, and one it does not register, or
- * registers without external sign-in, is refused; the schedule its
- * `bootstrap/app.php` wires runs the package's operations once Artisan starts,
- * and nothing while no protocol is on.
+ * The README's configuration and schedule wiring.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,9 +42,7 @@ final class ReadmeExampleTest extends ExampleTestCase
     private const string README_REDIRECT_URI = 'https://app.example.com/auth/sso/complete';
 
     /**
-     * The README's application signs in through a linked SAML connection, and
-     * the browser is sent back to exactly its redirect URI, with a code the
-     * application admits.
+     * The README's application receives the handoff on its redirect URI.
      *
      * @return void
      *
@@ -90,8 +83,8 @@ final class ReadmeExampleTest extends ExampleTestCase
     }
 
     /**
-     * An application the configuration does not register, and one it registers
-     * without `external_sign_in`, never start a flow.
+     * An unregistered application, or one without `external_sign_in`, is
+     * refused.
      *
      * @return void
      */
@@ -115,8 +108,7 @@ final class ReadmeExampleTest extends ExampleTestCase
     }
 
     /**
-     * Once Artisan starts, the schedule the README wires holds each of the
-     * package's operations on its default cadence.
+     * The README's schedule holds each operation on its default cadence.
      *
      * @return void
      */
@@ -131,8 +123,8 @@ final class ReadmeExampleTest extends ExampleTestCase
     }
 
     /**
-     * While no protocol is on, the schedule the README wires holds none of the
-     * package's operations, since the tables they read may not exist.
+     * With no protocol on, the schedule holds no operation: its tables may not
+     * exist.
      *
      * @return void
      */
@@ -145,8 +137,8 @@ final class ReadmeExampleTest extends ExampleTestCase
     }
 
     /**
-     * Lay the README's published configuration over the package's, key by key,
-     * as Laravel merges a published file with a package's.
+     * Lay the README's published configuration over the package's, as Laravel
+     * does.
      *
      * @return void
      */
@@ -162,10 +154,8 @@ final class ReadmeExampleTest extends ExampleTestCase
     }
 
     /**
-     * Configure the application under test with the README's
-     * `bootstrap/app.php`, start Artisan as `php artisan` does, and answer the
-     * package's operations the schedule then holds, each command's cadence by
-     * the command.
+     * Each operation's cadence, by command, once the README's bootstrap starts
+     * Artisan.
      *
      * @return array<string, string>
      */

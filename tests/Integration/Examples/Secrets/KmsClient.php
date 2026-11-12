@@ -7,13 +7,8 @@ namespace Tests\Integration\Examples\Secrets;
 use Random\RandomException;
 
 /**
- * The example application's client of its key management service (SSO-2.5),
- * standing in for the service itself: it holds each named key's versions of
- * material, encrypts under a key's current version with AES-256-GCM, decrypts
- * under whichever version encrypted, so a rotation of its own keys never stops
- * it decrypting what it encrypted, and refuses with a `RuntimeException` what
- * no version of its keys decrypts. It counts the requests it is sent, as the
- * service's audit log would.
+ * A stand-in KMS with versioned AES-256-GCM keys; a rotation still decrypts
+ * what earlier versions encrypted.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,7 +26,7 @@ final class KmsClient
     /** @var int The length of an authentication tag, in bytes. */
     private const int TAG_LENGTH = 16;
 
-    /** @var array<string, list<string>> Each key's versions of material, by its name, the last the current one. */
+    /** @var array<string, list<string>> Each key's versions, the last current. */
     private array $keys = [];
 
     /** @var int How many requests the service has been sent. */
@@ -52,8 +47,7 @@ final class KmsClient
     }
 
     /**
-     * The plaintext, encrypted under the current version of the named key: the
-     * key's name, the version and the sealed value, joined by colons.
+     * Encrypt under the key's current version, as `name:version:sealed`.
      *
      * @param  string  $keyName
      * @param  string  $plaintext
@@ -80,8 +74,7 @@ final class KmsClient
     }
 
     /**
-     * The plaintext the ciphertext holds, decrypted under the version of the
-     * key that encrypted it.
+     * Decrypt under the key version that encrypted the ciphertext.
      *
      * @param  string  $ciphertext
      * @return string
@@ -105,8 +98,7 @@ final class KmsClient
     }
 
     /**
-     * Add a new version of the named key's material, which encrypts from now
-     * on; every earlier version still decrypts what it encrypted.
+     * Add a new current version of the key; earlier versions still decrypt.
      *
      * @param  string  $keyName
      * @return void
@@ -145,8 +137,8 @@ final class KmsClient
     }
 
     /**
-     * The plaintext the sealed value holds under the material, or `false` when
-     * it is not one the material sealed.
+     * The plaintext of the sealed value, or `false` when the material did not
+     * seal it.
      *
      * @param  string  $material
      * @param  false|string  $sealed

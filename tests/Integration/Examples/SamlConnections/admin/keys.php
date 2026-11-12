@@ -3,12 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The keys step of `docs/guides/saml-connections.md` (SSO-2.7, SSO-12.5), as
- * the application's administration screen runs it for the tenant's SAML
- * connection, given the tenant, the connection's id and the acting identity:
- * the package generates the service provider's signing key and encryption key,
- * each the first of its use and so made current at once. It answers the
- * connection's keys, for the screen to show.
+ * The keys step of `docs/guides/saml-connections.md`: the first key of each use
+ * is made current at once.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

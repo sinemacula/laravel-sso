@@ -8,10 +8,8 @@ use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Logging\SanitizingLogger;
 
 /**
- * The example application's secret encrypter (SSO-2.5, SSO-11.9): the package's
- * secrets kept by the application's key management service, and each refusal of
- * the service logged through the package's own logger, so the line is sanitised
- * and redacted as the package's are, and lands on its channel.
+ * A KMS secret encrypter that logs refusals through the package's logger, so
+ * they are redacted and land on its channel.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +34,7 @@ final readonly class KmsSecretEncrypter implements SecretEncrypter
     ) {}
 
     /**
-     * The secret, encrypted by the key management service; a refusal is logged
-     * through the package's logger and thrown as a `RuntimeException`.
+     * Encrypt the secret; a refusal is logged and rethrown as a runtime error.
      *
      * @param  string  $secret
      * @return string

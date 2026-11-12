@@ -25,16 +25,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/saml-connections.md` (SSO-2.3, SSO-2.6, SSO-2.7,
- * SSO-2.11, SSO-12.5), on the shared example harness, with the application's
- * own tenant: the administration screen creates the tenant's SAML connection
- * disabled and not yet usable, generates its signing and encryption keys, each
- * made current at once, trusts the identity provider's signing certificate and
- * enables it, after which the connection is usable and a person links through
- * it with an assertion the provider encrypted for the published encryption
- * certificate. A connection enabled before it trusts a certificate is enabled
- * but never used, so a flow through it never starts; and an elliptic curve key
- * or certificate is refused when it is configured, writing nothing.
+ * Integration tests for the examples of `docs/guides/saml-connections.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,12 +62,8 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Each step in the guide's order: the connection is created disabled with
-     * the settings given, gets a current signing key and a current encryption
-     * key, trusts the provider's certificate, and is enabled, after which it is
-     * usable; the key changes ask `sso.keys.rotate` and the trust change asks
-     * `sso.connection.trust`. A person then links through it, the provider
-     * encrypting its assertion for the connection's encryption certificate.
+     * The guide's steps in order leave a usable connection a person links
+     * through.
      *
      * @return void
      *
@@ -114,9 +101,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Enabling does not check that the connection is complete: one that trusts
-     * no certificate is enabled, but is not usable, and a flow through it is
-     * refused as `connection_unavailable`.
+     * A connection enabled with no trusted certificate is not usable.
      *
      * @return void
      */
@@ -135,10 +120,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * SAML is RSA only: an elliptic curve key for either of the service
-     * provider's uses is invalid as `key_type` `not_allowed`, and an elliptic
-     * curve certificate trusted as the provider's signing certificate is
-     * invalid as `certificate` `unsupported`. None is stored.
+     * Elliptic curve keys and certificates are refused, and nothing is stored.
      *
      * @return void
      */
@@ -158,8 +140,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A person links through the connection, the provider encrypting its
-     * assertion for the certificate: the code is redeemed for the person.
+     * Link a person through the connection with an encrypted assertion.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider  $idp
      * @param  string  $connectionId
@@ -194,8 +175,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run the enable step for the connection as the administrator, and answer
-     * its result.
+     * Run the enable step for the connection as the administrator.
      *
      * @param  string  $connectionId
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
@@ -210,8 +190,8 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run a step of the administration screen with the tenant, the
-     * administrator and the rest of its input, and answer what it answers.
+     * Run a step of the administration screen with the tenant and the
+     * administrator.
      *
      * @param  string  $step
      * @param  array<string, mixed>  $input
@@ -249,8 +229,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The PEM certificate of the connection's current encryption key, which its
-     * metadata publishes for the provider to encrypt for.
+     * The PEM certificate of the connection's current encryption key.
      *
      * @param  mixed  $listed
      * @return string
@@ -282,8 +261,7 @@ final class SamlConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A self-signed P-256 certificate, such as an identity provider that signs
-     * only with ECDSA would give.
+     * A self-signed P-256 certificate, as an ECDSA-only provider would give.
      *
      * @return string
      */

@@ -47,18 +47,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/managing-connections.md` (SSO-2.11 to SSO-2.13,
- * SSO-4.5, SSO-12.5), on the shared example harness, with the application's own
- * tenant, administrator and session revocation: the services are resolved from
- * the container; the create endpoint makes a disabled connection from the
- * `google` preset, and sends an invalid form back with each violation under its
- * setting; an update changes a setting, removes another, renames the connection
- * and changes its mapping, refused while the caller is stale; a connection is
- * read and the tenant's listed, oldest first; one is enabled, disabled with its
- * sessions revoked, and deleted, each refused while the caller is stale; and a
- * migration to a new issuer relinks two links and removes two, refused while a
- * link is left out, after which the relinked person signs in through their new
- * subject and the leaver does not.
+ * The examples of `docs/guides/managing-connections.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -86,12 +75,11 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     /** @var \Tests\Integration\Examples\ManagingConnections\User The administrator who manages them. */
     private User $user;
 
-    /** @var \Tests\Integration\Examples\ManagingConnections\RevokedSessions The application's session revocation. */
+    /** @var \Tests\Integration\Examples\ManagingConnections\RevokedSessions The session revocation. */
     private RevokedSessions $revocations;
 
     /**
-     * Keep sessions in memory, declare the application's custom mapping target,
-     * and bind its session revocation.
+     * Keep sessions in memory, declare a custom target and bind revocation.
      *
      * @return void
      */
@@ -111,9 +99,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The three services resolve from the container, and each scopes its calls
-     * to the tenant: another tenant's connection, or one whose tenant id
-     * differs only in case, is answered as an unknown one.
+     * The services scope calls to the tenant, case-sensitively.
      *
      * @return void
      */
@@ -131,9 +117,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The create endpoint makes a disabled connection from the preset and the
-     * form, with the secret set and never shown, the preset's mapping, and the
-     * administrator on the event it reports.
+     * The create endpoint makes a disabled connection from the preset.
      *
      * @return void
      */
@@ -175,8 +159,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A secret longer than 1024 bytes sends the form back with `too_long` under
-     * `client_secret`, and creates nothing.
+     * A secret over 1024 bytes sends the form back with `too_long`.
      *
      * @return void
      */
@@ -194,9 +177,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * An update replaces a setting, removes another, renames the connection,
-     * maps a custom target and removes a mapped one, keeping the secret it does
-     * not name; a stale caller's trust change is refused and writes nothing.
+     * An update changes settings, name and mapping; a stale caller is refused.
      *
      * @return void
      */
@@ -239,8 +220,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A connection is read by its tenant alone, compared byte for byte, and the
-     * tenant's are listed oldest first.
+     * A connection is read by its tenant alone, and listed oldest first.
      *
      * @return void
      */
@@ -267,9 +247,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Enabling asks freshness every time: it enables a disabled connection,
-     * succeeds as `unchanged` for an enabled one, and is refused while the
-     * caller is stale.
+     * Enabling always asks freshness, even when the connection is enabled.
      *
      * @return void
      */
@@ -299,9 +277,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Disabling turns the connection off, revokes every session established
-     * through it and reports it; disabling it again succeeds as `unchanged`,
-     * and revokes and reports nothing.
+     * Disabling revokes the connection's sessions once; again is `unchanged`.
      *
      * @return void
      */
@@ -335,9 +311,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Deleting removes the connection for good, revokes every session
-     * established through it and reports it once; a stale caller's deletion is
-     * refused and leaves the connection.
+     * Deleting revokes the connection's sessions; a stale caller is refused.
      *
      * @return void
      */
@@ -372,11 +346,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A migration to a new issuer that leaves a link out is refused and changes
-     * nothing; one that accounts for every link relinks two and removes two,
-     * reports the change, each link removed and each relinked, and revokes the
-     * removed links' sessions. The relinked person then signs in through their
-     * new subject, and the leaver's old subject is unlinked.
+     * A migration must account for every link, then relinks and removes them.
      *
      * @return void
      *
@@ -469,8 +439,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Post the create form, with the client secret given, to the create
-     * endpoint as the administrator, and answer what it answers.
+     * Post the create form as the administrator.
      *
      * @param  string  $secret
      * @return mixed
@@ -526,8 +495,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Link the person through a whole `link` flow, the provider asserting the
-     * subject given, and answer the link's id.
+     * Link the person to the subject through a `link` flow.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider  $provider
      * @param  string  $connectionId
@@ -550,9 +518,8 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Have the provider answer the start under the new issuer, in the ID
-     * token's `iss` and the callback's RFC 9207 `iss` alike, asserting the
-     * subject given, and read the redirect the browser comes back with.
+     * Answer the start under the new issuer, in the ID token and the RFC 9207
+     * callback `iss` alike.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider  $provider
      * @param  string  $connectionId
@@ -599,8 +566,7 @@ final class ManagingConnectionsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The events of the classes given the package reports from now on, as they
-     * are dispatched.
+     * The events of the given classes dispatched from now on.
      *
      * @param  class-string<\SineMacula\Laravel\Sso\Contracts\SsoEvent>  ...$events
      * @return \ArrayObject<int, \SineMacula\Laravel\Sso\Contracts\SsoEvent>

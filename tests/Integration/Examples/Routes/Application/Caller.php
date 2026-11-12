@@ -10,15 +10,8 @@ use SineMacula\Laravel\Sso\Identities\Caller as SsoCaller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * Who the example application's request is authenticated as, in the package's
- * terms (SSO-12.5): the caller (`Identities\Caller`), its identity on the
- * session it authenticated with, which freshness and the link confirmation
- * judge and a management change names as acting; the tenant the caller is
- * active in; and the session it is on.
- *
- * Each comes from the application's own authentication, never from the request
- * body: a `link` or `reauthenticate` start, a link redemption and every
- * management call take them from here.
+ * The authenticated caller, tenant and session of a request, each from the
+ * application's authentication, never the request body.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -33,8 +26,7 @@ final class Caller
     private function __construct() {}
 
     /**
-     * The caller the request is authenticated as: the identity, on the session
-     * it authenticated with.
+     * The identity the request is authenticated as, on its session.
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \SineMacula\Laravel\Sso\Identities\Caller
@@ -88,9 +80,7 @@ final class Caller
     }
 
     /**
-     * The user the request's authentication resolved, whatever the guard's
-     * configured model, or an `AuthenticationException` when it is not this
-     * application's user.
+     * The resolved user, when it is this application's user.
      *
      * @param  mixed  $user
      * @return \Tests\Integration\Examples\Routes\Application\User

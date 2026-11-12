@@ -7,14 +7,8 @@ namespace Tests\Integration\Examples\Routes\Application;
 use Illuminate\Contracts\Auth\Authenticatable;
 
 /**
- * The example application's user, as its authentication hands it to a route
- * (SSO-12.5): who the request is authenticated as, the tenant it is active in,
- * the session it authenticated with, and whether it administers that tenant's
- * single sign-on.
- *
- * It is never stored: a test authenticates as one with `actingAs()`. An
- * application's own user model, and the authentication behind it, answer the
- * same questions from its own tables, and name the identity by its morph class.
+ * The example application's user, as its authentication hands it to a route;
+ * never stored, a test authenticates as one with `actingAs()`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,8 +58,7 @@ final readonly class User implements Authenticatable
     }
 
     /**
-     * Whether the user administers single sign-on for the tenant they are
-     * active in.
+     * Whether the user administers single sign-on for their active tenant.
      *
      * @return bool
      */

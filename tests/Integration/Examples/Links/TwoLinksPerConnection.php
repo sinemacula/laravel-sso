@@ -9,8 +9,7 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * The example application's link limit (SSO-8.4): an identity may hold two
- * links in one connection, where the package's default allows one.
+ * The example application's link limit: two links per identity per connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

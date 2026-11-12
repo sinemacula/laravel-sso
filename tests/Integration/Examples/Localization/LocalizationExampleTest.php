@@ -12,13 +12,8 @@ use SineMacula\Laravel\Sso\Localization\Messages;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/localization.md` (SSO-12.6, SSO-12.5), on the
- * shared example harness, with this directory's `lang` as the application's
- * lang directory: the messages read in the current locale, in French and with a
- * replacement, the English override of one line, and the French translation of
- * every message. Each asserts the lines read and the fallback: a line a file
- * leaves out, and a locale with no file, read in English rather than as a
- * translation key.
+ * The examples of `docs/guides/localization.md`, with this directory's `lang`
+ * as the application's.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,9 +55,8 @@ final class LocalizationExampleTest extends ExampleTestCase
     }
 
     /**
-     * In English, the title is the package's line, read in French it is the
-     * application's translation, and a replacement the line does not hold
-     * leaves the line as it is.
+     * Each message is read in its locale, and an unused replacement changes
+     * nothing.
      *
      * @return void
      */
@@ -92,8 +86,8 @@ final class LocalizationExampleTest extends ExampleTestCase
     }
 
     /**
-     * A line of the application's that holds `:name` has it replaced, while a
-     * message that locale has no line for is read in English, never as its key.
+     * A line holding `:name` has it replaced; a missing line falls back to
+     * English.
      *
      * @return void
      */
@@ -111,8 +105,7 @@ final class LocalizationExampleTest extends ExampleTestCase
     }
 
     /**
-     * The English override rewords the one line it holds, and every line it
-     * leaves out is the package's.
+     * The English override rewords only the line it holds.
      *
      * @return void
      */
@@ -127,8 +120,8 @@ final class LocalizationExampleTest extends ExampleTestCase
     }
 
     /**
-     * The French file translates every message, while a locale with no file is
-     * read in English, the override included, never as a key.
+     * The French file translates every message; a locale with no file reads
+     * English.
      *
      * @return void
      */
@@ -148,8 +141,7 @@ final class LocalizationExampleTest extends ExampleTestCase
     }
 
     /**
-     * Without the application's lang directory, French has no line, and the
-     * messages are the package's English.
+     * Without the application's lang directory, the messages are English.
      *
      * @return void
      */
@@ -164,8 +156,7 @@ final class LocalizationExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run the guide's reading of the messages, in a scope of its own, and
-     * answer the three lines it read.
+     * Run the guide's reading of the messages in a scope of its own.
      *
      * @return array{0: string, 1: string, 2: string}
      */
@@ -178,9 +169,8 @@ final class LocalizationExampleTest extends ExampleTestCase
     }
 
     /**
-     * Make the directory the application's lang directory, and forget the
-     * translator and its loader, so the next to resolve them reads it, as an
-     * application booting with it does.
+     * Make the directory the application's lang directory, forgetting the
+     * translator so the next resolution reads it.
      *
      * @param  string  $path
      * @return void

@@ -5,9 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\OidcConnections;
 
 /**
- * The example application's tenant (SSO-2.1): the organisation whose OIDC
- * connection its administration screens set up, known to the package only by
- * its opaque string id.
+ * The example application's tenant, known to the package by its id.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

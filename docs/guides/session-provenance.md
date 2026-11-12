@@ -4,8 +4,7 @@ A session your application starts from a redeemed `sign_in` handoff keeps a reco
 its tenant, the protocol, when the provider authenticated the person, the evidence accepted at redemption, the exact
 link and its provenance, the provider's session deadline and the cap it set, and the enforcement version. The package
 captures that record for you, inside the redemption, and projects it on later requests into the `sso.*` keys of the
-authentication context, so a policy can require "signed in through SSO" without depending on the package (SSO-9.7,
-SSO-9.10).
+authentication context, so a policy can require "signed in through SSO" without depending on the package.
 
 ## Capturing it
 
@@ -48,8 +47,7 @@ the record historical:
 An application that redeems handoff codes of its own through `HandoffRecheck::admit()`
 ([Redeeming codes of your own](redeeming-a-handoff.md#redeeming-codes-of-your-own)) captures the same record itself, in
 the same transaction, from the `Admission` that call answers and what its code was bound to:
-`Provenance::capture($result, $admission, $sessionNotAfter)`, which is `null` for anything but a
-passed `sign_in`.
+`Provenance::capture($result, $admission, $sessionNotAfter)`, which is `null` for anything but a passed `sign_in`.
 
 Carry the stored array unchanged from a pending session to an active one, and across refreshes and switches of the
 active tenant. Never rebuild it from the connection, the link or the evidence policy as they are now, and never rewrite
@@ -106,19 +104,19 @@ nothing else and keep nothing.
 | `sso.session_not_after`                | UTC instant string, null    | The cap that deadline set on your session, to the second              |
 | `sso.enforcement_version`              | string, null                | The enforcement version the sign-in's redemption judged               |
 
-- **Absent versus null.** A session with no provenance from the package contributes no `sso.*` key at all. A session
+- A session with no provenance from the package contributes no `sso.*` key at all. A session
   established through the package contributes every key, and a `null` value means that fact was not stated.
-- **Types.** Every value is plain: a string, a list of strings or `null`. No object crosses into the context, neither an
+- Every value is plain: a string, a list of strings or `null`. No object crosses into the context, neither an
   instant nor a type of the package, so the keys can be handed as they are to anything that holds only plain values.
-- **Instants.** Each time is a string in `Provenance::INSTANT_FORMAT` (`Y-m-d\TH:i:s.u\Z`), the form the stored
+- Each time is a string in `Provenance::INSTANT_FORMAT` (`Y-m-d\TH:i:s.u\Z`), the form the stored
   provenance keeps it in: UTC, its microseconds kept exactly, such as `2026-11-01T09:29:00.123456Z`. The provider's
   times keep their microseconds; `sso.session_not_after` is whole seconds. So `of($provenance)` and
   `fromStored($provenance->toArray())` answer identical arrays. Parse one with
   `CarbonImmutable::createFromFormat(Provenance::INSTANT_FORMAT, $value, 'UTC')` when you need to compare it; a
   `Provenance` itself keeps its times as UTC `CarbonImmutable` instants.
-- **What is never there.** The subject, the issuer, the provider session's id, an email, groups, mapped attributes and
+- The subject, the issuer, the provider session's id, an email, groups, mapped attributes and
   tokens are never captured or projected. Use `sso.connection` as the reference to the provider.
-- **Stability.** The key names are the constants on `AuthenticationContext` and, with their meanings and types, are
+- The key names are the constants on `AuthenticationContext` and, with their meanings and types, are
   stable from 1.0.0.
 
 > [!IMPORTANT]
@@ -131,19 +129,18 @@ nothing else and keep nothing.
 
 Under `laravel-iam`, its adapter does both halves: it hands the captured provenance to `laravel-authentication` with the
 session it starts, and its authentication context contributor calls `AuthenticationContext::fromStored()` for the `sso`
-namespace of AUTH-11.8. That namespace is this package's: `laravel-authentication` exposes the session's provenance for
-reading and never writes into it. Its contributor seam (its PR #128, merged as `a29d2751`:
-`Contracts\AuthenticationContextContributor`, registered with `Context\ContextContributors::register('sso', ...)`) holds
-plain values only, which every value of the projection already is, so the contributor answers each key without its
-`sso.` prefix and changes no value; see [The `sso` contributor](integrating-with-laravel-iam.md#the-sso-contributor).
+namespace. That namespace is this package's: `laravel-authentication` exposes the session's provenance for reading and
+never writes into it. Its contributor seam (its PR #128: `Contracts\AuthenticationContextContributor`, registered with
+`Context\ContextContributors::register('sso', ...)`) holds plain values only, which every value of the projection
+already is, so the contributor answers each key without its `sso.` prefix and changes no value; see
+[The `sso` contributor](integrating-with-laravel-iam.md#the-sso-contributor).
 
 The provenance `laravel-authentication` keeps per session in its PR #127 (`Proofs\Provenance` and its
-`authentication_provenance` table, merged as `c7b6b119`) holds the connection, the tenant, the provider's
-authentication time to the whole second, one session deadline, the policy version, the link id and accepted evidence.
-It has no field for the protocol, the link's provenance or the provider's raw deadline as distinct from the cap, and it
-drops microseconds, so the projection never rebuilds the package's provenance from those fields. Its PR #129 (merged as
-`86ec3ba6`; no tagged release carries any of the three yet) adds an opaque provider context to that record, of at most
-4,096 bytes as JSON, which the stored form always fits: the adapter passes `toArray()` as it, authentication keeps it
-with the session once and hands it back, and the contributor projects it. Against a `laravel-authentication` without
-PR #129, the adapter stores `toArray()` itself, beside the session. See [Integrating with
-`laravel-iam`](integrating-with-laravel-iam.md#keeping-the-stored-form).
+`authentication_provenance` table) holds the connection, the tenant, the provider's authentication time to the whole
+second, one session deadline, the policy version, the link id and accepted evidence. It has no field for the protocol,
+the link's provenance or the provider's raw deadline as distinct from the cap, and it drops microseconds, so the
+projection never rebuilds the package's provenance from those fields. Its PR #129 adds an opaque provider context to
+that record, of at most 4,096 bytes as JSON, which the stored form always fits: the adapter passes `toArray()` as it,
+authentication keeps it with the session once and hands it back, and the contributor projects it. Against a
+`laravel-authentication` without PR #129, the adapter stores `toArray()` itself, beside the session. See
+[Integrating with `laravel-iam`](integrating-with-laravel-iam.md#keeping-the-stored-form).

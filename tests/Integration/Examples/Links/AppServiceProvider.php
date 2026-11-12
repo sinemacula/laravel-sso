@@ -12,11 +12,8 @@ use SineMacula\Laravel\Sso\Contracts\LinkLimit;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 
 /**
- * The example application's service provider (SSO-8.3 to SSO-8.5, SSO-8.8): it
- * binds the package's link store as the linker, and the application's own link
- * limit, link confirmation and link eligibility, each in place of the package's
- * default. It registers after the package's provider, as an application's
- * providers do, so its bindings replace the defaults as any later binding does.
+ * The example application's service provider: binds the link store and its own
+ * link contracts over the package's defaults.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

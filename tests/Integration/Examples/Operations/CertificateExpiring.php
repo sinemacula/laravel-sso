@@ -10,9 +10,7 @@ use Illuminate\Notifications\Notification;
 
 /**
  * The application's notification that a connection's key or certificate needs
- * rotating (SSO-2.6, SSO-12.5), which the operations guide's listener sends the
- * security team for each `KeyNearingExpiry`: the connection, the fingerprint an
- * administrator compares, the end of the validity and the threshold reached.
+ * rotating.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

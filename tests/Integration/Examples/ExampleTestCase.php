@@ -43,29 +43,11 @@ use Tests\Integration\Examples\Application\ExampleSessions;
 use Tests\TestCase;
 
 /**
- * The shared example harness (SSO-12.4, SSO-12.5): the test case an application
- * would write to test its SSO flows without a network, from which the testing
- * guide's snippets are taken (`docs/guides/testing.md`), and on which every
- * other executable example in the documentation runs.
+ * The shared example harness: the test case an application would write to test
+ * its SSO flows without a network, on which every documented example runs.
  *
- * It stands on the package's public API alone. It binds the package's fakes and
- * the application's own contracts, configures both protocols, and has the base
- * class create the package's tables through its shipped migrations, as an
- * application runs them; the steps a client and an identity provider take are
- * its methods, each calling one public helper of the package or one fake.
- * Nothing here, and nothing in an example, uses the package's own test traits
- * or fixtures, reads the package's tables, or builds a verified result by hand:
- * the base class only supplies the database connection the suite runs on and
- * the package's tables, as an application's own `TestCase` does. The flows'
- * helpers refuse to run inside a transaction on the package's storage
- * connection, so an example never wraps itself in one as `RefreshDatabase`
- * does. `tests/Unit/Documentation/ExamplesUsePublicApiTest.php` holds every
- * example to that, and `ExampleSnippetsTest` holds every snippet in the
- * documentation to its source here.
- *
- * Examples call the package's helpers in place of the routes an application
- * adds, since the package adds none: a route only turns a helper's value into a
- * response.
+ * It uses the package's public API alone, and never wraps a test in a
+ * transaction, since the flows' helpers refuse to run inside one.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -275,7 +257,7 @@ abstract class ExampleTestCase extends TestCase
         string $sessionId = 'session-1',
     ): RedemptionResult {
         $client = Clients::browser();
-        $caller = new Caller($identity, $sessionId); // the signed-in person and their session
+        $caller = new Caller($identity, $sessionId);
         // @snippet-start redeem-link
         return app(HandoffRedemption::class)->redeem(Purpose::LINK, self::APPLICATION, $connectionId, $redirect->code(), self::verifierOf($start), $client, $caller);
         // @snippet-end redeem-link

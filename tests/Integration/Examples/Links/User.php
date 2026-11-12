@@ -7,12 +7,7 @@ namespace Tests\Integration\Examples\Links;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The example application's user, an Eloquent model identified by a string key
- * (SSO-8.3, SSO-8.4): the person who links an identity provider from their
- * account screen, named to the package by its morph class and key.
- *
- * It is never stored: an example makes one in memory, as the application's
- * authentication hands its own user to an account screen.
+ * The example application's user, keyed by a string and never stored.
  *
  * @method int|string getKey() The key, a string here, an integer in many applications.
  *

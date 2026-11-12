@@ -13,10 +13,8 @@ use SineMacula\Laravel\Sso\Responses\CompletionResponse;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 
 /**
- * The example application's completion routes (SSO-12.1, SSO-12.5): the SAML
- * assertion consumer service and the OIDC callback, which take no session, no
- * authentication and, for the assertion consumer service alone, no CSRF token,
- * since the identity provider's response is checked by the completion itself.
+ * The example application's SAML assertion consumer service and OIDC callback.
+ * They take no session or authentication; the completion checks the response.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

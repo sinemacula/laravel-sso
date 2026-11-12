@@ -12,11 +12,8 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * The example application's session revocation (SSO-8.8, SSO-9.3): it marks
- * revoked, in the application's own `user_sessions` table and through the
- * package's storage connection, so it commits or rolls back with the change,
- * the sessions each scope names. Each session records the link it was
- * established through, so a widened scope revokes exactly that link's.
+ * The example application's session revocation, writing through the package's
+ * storage connection so it commits or rolls back with the change.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

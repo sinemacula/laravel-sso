@@ -19,14 +19,14 @@ the description states it.
 
 | Field                      | Protocol | Value                                                                                                    |
 |----------------------------|----------|----------------------------------------------------------------------------------------------------------|
-| Entity id, or audience     | SAML     | The connection's metadata URL, `…/auth/sso/connections/{connection}/metadata`                            |
-| Assertion consumer service | SAML     | `…/auth/sso/connections/{connection}/assertions`, by HTTP-POST only                                      |
+| Entity id, or audience     | SAML     | The connection's metadata URL, `.../auth/sso/connections/{connection}/metadata`                          |
+| Assertion consumer service | SAML     | `.../auth/sso/connections/{connection}/assertions`, by HTTP-POST only                                    |
 | NameID format              | SAML     | Persistent, unless the subject is an attribute (see [A stable subject](#a-stable-subject))               |
 | Signing certificate        | SAML     | The service provider's signing certificate, when the connection signs its requests                       |
 | Encryption certificate     | SAML     | The service provider's encryption certificate, when assertions are encrypted                             |
 | Metadata URL               | SAML     | The same metadata URL, for a provider that fetches it rather than taking a file                          |
-| Redirect URI, or callback  | OIDC     | `…/auth/sso/connections/{connection}/callback`, exactly                                                  |
-| Client authentication      | OIDC     | A client secret, or `private_key_jwt` with the public JWKS at `…/auth/sso/connections/{connection}/jwks` |
+| Redirect URI, or callback  | OIDC     | `.../auth/sso/connections/{connection}/callback`, exactly                                                |
+| Client authentication      | OIDC     | A client secret, or `private_key_jwt` with the JWKS at `.../auth/sso/connections/{connection}/jwks`      |
 | Grant and scopes           | OIDC     | The authorisation code flow with PKCE (S256), scopes `openid`, `email` and `profile`                     |
 | Start URL, or sign-on URL  | both     | Your application's own start page, only when the provider asks for one (a portal tile)                   |
 

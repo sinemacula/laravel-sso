@@ -13,11 +13,7 @@ use SineMacula\Laravel\Sso\Responses\CompletionResponse;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 
 /**
- * The controller of `docs/guides/completion-responses.md` (SSO-5.6, SSO-5.7,
- * SSO-12.1): the SAML assertion consumer service and the OIDC callback, each
- * completing the flow and returning the response `CompletionResponses` builds
- * for its result, with the status the method the completion arrived by calls
- * for.
+ * The completion controller of `docs/guides/completion-responses.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

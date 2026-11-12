@@ -97,15 +97,15 @@ php artisan model:prune --model="SineMacula\Laravel\Sso\Models\SingleUseKey" --p
 Bind your own implementation of `SingleUseStore` (in a service provider's `register()`) only if it gives every
 guarantee the default does:
 
-- **Atomic**: two concurrent records of one key answer exactly one `recorded`.
-- **Shared**: every server, process and queue worker records in the same store; an in-process array or a per-server
+- Atomic: two concurrent records of one key answer exactly one `recorded`.
+- Shared: every server, process and queue worker records in the same store; an in-process array or a per-server
   cache does not qualify.
-- **Kept until the expiry**: a key is never evicted before its expiry; a cache that may evict under memory pressure,
+- Kept until the expiry: a key is never evicted before its expiry; a cache that may evict under memory pressure,
   or on restart, does not qualify.
-- **Read from the primary**: never from a replica, which may lag behind a record just made.
-- **Certain or thrown**: on any error, timeout or answer it doubts, it throws; it never answers `recorded` (or `seen`)
+- Read from the primary: never from a replica, which may lag behind a record just made.
+- Certain or thrown: on any error, timeout or answer it doubts, it throws; it never answers `recorded` (or `seen`)
   it is not sure of.
-- **Careful with the key**: it may be a secret, so keep only a digest of it, and never log it or put it in an exception
+- Careful with the key: it may be a secret, so keep only a digest of it, and never log it or put it in an exception
   message.
 
 One that does keeps only each key's digest, in a table of your own on the storage connection, where a primary key on
