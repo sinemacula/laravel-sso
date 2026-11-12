@@ -12,9 +12,7 @@ use SineMacula\Laravel\Sso\Protocols\Navigation;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Unit tests for the navigation a started flow answers with: a redirect or a
- * posted form, to an absolute `https` URL, serialised whole as SSO-12.5's
- * `navigation`, and never showing a query value or a field's value in a dump.
+ * Unit tests for the navigation a started flow answers with.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -187,9 +185,8 @@ final class NavigationTest extends TestCase
     }
 
     /**
-     * A redirect's dump shows its type and its URL with every query value and
-     * any fragment redacted, while its URL and its serialised form carry the
-     * URL whole.
+     * A redirect's dump redacts every query value and fragment, while its URL
+     * and serialised form keep the URL whole.
      *
      * @param  string  $url
      * @param  string  $dumped
@@ -224,9 +221,8 @@ final class NavigationTest extends TestCase
     }
 
     /**
-     * No dump of an OIDC redirect or a SAML post, by `var_dump()`, `print_r()`,
-     * `var_export()` or Symfony's VarDumper, shows a query value or a field's
-     * value.
+     * No dump by PHP's dumpers or Symfony's VarDumper shows a query value or a
+     * field's value.
      *
      * @return void
      */
@@ -246,9 +242,8 @@ final class NavigationTest extends TestCase
     }
 
     /**
-     * A navigation back to the application leads exactly to the URL it
-     * registered, a native scheme or loopback `http` included, and refuses
-     * anything that is not an exact redirect URI.
+     * A navigation back to the application accepts only an exact registered
+     * redirect URI.
      *
      * @return void
      */

@@ -26,11 +26,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * Unit tests for the SAML adapter's values (SSO-6.3, SSO-9.8, SSO-11.9): each
- * holds what the provider asserted behind its accessors, never shows a value to
- * a dump, an array cast or `json_encode()`, and refuses to be serialised; the
- * envelope's request id; the read result; and the response policy, which asks
- * for its keys only when called.
+ * Unit tests for the SAML adapter's values.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -185,9 +181,7 @@ final class MessageValuesTest extends TestCase
     }
 
     /**
-     * Rows of `[inResponseTo, requestId, unsolicited]`: an envelope's
-     * `InResponseTo`s, the one request id they name, and whether it is
-     * unsolicited.
+     * Rows of `[inResponseTo, requestId, unsolicited]` for an envelope.
      *
      * @return iterable<string, array{0: list<string>, 1: ?string, 2: bool}>
      */

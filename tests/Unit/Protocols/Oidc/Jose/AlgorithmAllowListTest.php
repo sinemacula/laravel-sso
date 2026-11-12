@@ -10,9 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList;
 
 /**
- * Unit tests for a connection's ID token algorithm allow-list (SSO-7.3): only
- * the asymmetric algorithms at 256 bits and above, never `none` or HMAC, each
- * with the key type and curve it needs.
+ * Unit tests for a connection's ID token algorithm allow-list.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

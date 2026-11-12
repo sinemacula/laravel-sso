@@ -15,11 +15,7 @@ use SineMacula\Laravel\Sso\Protocols\ReplayRecord;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Unit tests for what a driver asks the completion to record against replay
- * (SSO-6.6): a SAML assertion's versioned, length-prefixed key, so no choice of
- * values makes two tuples share one; the expiry kept as given; a dump that
- * never shows the key; the completion carrying it; and re-initiation's two
- * outcomes (SSO-5.8).
+ * Unit tests for what a driver asks the completion to record against replay.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -32,9 +28,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 final class ReplayRecordTest extends TestCase
 {
     /**
-     * A SAML assertion's key is the version, then each part as its length in
-     * bytes, a colon and the part, in the namespace for assertions, until the
-     * moment given.
+     * A SAML assertion's key is the version, then each part prefixed by its
+     * byte length, in the assertions namespace.
      *
      * @return void
      */

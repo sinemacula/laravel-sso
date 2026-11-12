@@ -49,12 +49,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the token request and reading its answer (SSO-5.4, SSO-7.2,
- * SSO-7.6): exactly one client authentication by the connection's method, with
- * no credential a `null`; the client assertion's claims and its `jti`, fresh on
- * each attempt; the exact form, timeout and cap; one attempt, never inside a
- * transaction; and every answer mapped to its exact reason, with the tokens the
- * only thing kept of a body.
+ * Feature tests for the token request and reading its answer.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -214,10 +209,8 @@ final class TokenExchangeTest extends TestCase
     }
 
     /**
-     * `private_key_jwt` carries the client id and an assertion of RFC 7523's
-     * claims, verifying with the connection's current key: `iss` and `sub` the
-     * client id, `aud` the token endpoint exactly, a fresh `jti`, `iat` now and
-     * `exp` a minute later, under `typ` `JWT`, `ES256` and the key's `kid`.
+     * `private_key_jwt` carries an assertion of RFC 7523's claims under
+     * `ES256`, verifying with the current key.
      *
      * @return void
      */
@@ -270,10 +263,8 @@ final class TokenExchangeTest extends TestCase
     }
 
     /**
-     * The request is a token request to the token endpoint exactly, by `POST`,
-     * with exactly the form RFC 6749 §4.1.3 and RFC 7636 §4.5 ask for, the
-     * connection's callback as `redirect_uri`, one client authentication, and
-     * the default timeout and cap.
+     * The token request is exactly the form RFC 6749 section 4.1.3 and RFC 7636
+     * section 4.5 ask for, with the default timeout and cap.
      *
      * @return void
      */
@@ -479,9 +470,8 @@ final class TokenExchangeTest extends TestCase
     }
 
     /**
-     * An answer not refused gives the ID token, the access token and the token
-     * type as the provider gave it, and nothing of the rest of the body, which
-     * no dump of the tokens shows.
+     * An answer gives the ID token, the access token and the token type, and
+     * nothing else of the body.
      *
      * @return void
      */

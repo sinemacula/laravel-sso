@@ -19,13 +19,7 @@ use Tests\Concerns\DumpsValues;
 use Tests\TestCase;
 
 /**
- * Feature tests for the SAML adapter's request writer and the value it answers
- * (SSO-5.3, SSO-5.10, SSO-9.8): the request valid against the protocol schema
- * for each binding, signed or not; the HTTP-Redirect message deflated raw at
- * level 9 and inflating back; the issue instant in UTC; `ForceAuthn` written
- * before the signature; the one refusal for anything the library refuses, with
- * no previous exception; and the outgoing request's redaction, its query
- * encoding and its refusal to be serialised.
+ * Feature tests for the SAML adapter's request writer and the value it answers.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -97,8 +91,7 @@ final class AuthnRequestWriterTest extends TestCase
 
     /**
      * The HTTP-Redirect message is the XML deflated raw at level 9 and base64
-     * encoded, and inflates back to the XML exactly. The single sign-on URL is
-     * long and repetitive, so the deflated bytes are those of level 9 alone.
+     * encoded; the long URL makes level 9's bytes distinct.
      *
      * @return void
      */

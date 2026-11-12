@@ -21,12 +21,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the UserInfo request and its answer (SSO-2.9, SSO-7.5): one
- * attempt with the access token alone, in its own timeout and cap; every
- * status; the content types; the caps at, under and over; a body that is not a
- * strict JSON object; `sub` exactly equal, byte for byte; the types of the
- * claims the package reads; and the error code of `WWW-Authenticate` and
- * nothing else of it.
+ * Feature tests for the UserInfo request and its answer.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

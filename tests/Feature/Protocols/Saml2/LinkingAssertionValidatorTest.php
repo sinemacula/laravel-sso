@@ -31,14 +31,9 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for SAML's linking evidence (SSO-8.1, SSO-8.8): the one
- * attribute the connection names by exact `Name` and `NameFormat`, present once
- * with exactly one non-empty string value, and the acknowledgement; no fallback
- * to a `FriendlyName` or an email-format `NameID`; no linking email while
- * linking is off; and the organisation under the same exactness. Signed
- * responses from the fake identity provider go through the validator; what the
- * fake cannot write (a `FriendlyName`, an attribute named twice, a value that
- * is not text, an encrypted attribute) is judged on the assertion the validator
+ * Feature tests for SAML's linking evidence.
+ *
+ * What the fake provider cannot write is judged on the assertion the validator
  * would read.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -103,9 +98,8 @@ final class LinkingAssertionValidatorTest extends TestCase
     }
 
     /**
-     * The attribute named, once, with one value, in exactly the format, is the
-     * linking email, kept exactly as asserted, and the mapped attributes are as
-     * they were.
+     * The attribute named, once, with one value in exactly the format, is the
+     * linking email, kept as asserted.
      *
      * @return void
      */
@@ -397,9 +391,8 @@ final class LinkingAssertionValidatorTest extends TestCase
     }
 
     /**
-     * Validate a signed response with the attributes and format, through a
-     * connection with those linking columns, and answer what it verified, which
-     * it must have.
+     * Validate a signed response with the attributes and format given and
+     * answer what it verified.
      *
      * @param  array<string, mixed>  $linking
      * @param  array<string, list<string>>  $attributes

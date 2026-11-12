@@ -33,14 +33,7 @@ use Tests\Fixtures\Secrets\CountingSecretEncrypter;
 use Tests\TestCase;
 
 /**
- * Feature tests for the one core that validates a SAML response (SSO-6.2 to
- * SSO-6.11), with responses from the fake identity provider: the claims and
- * replay record of a solicited response and of the unsolicited profile; the
- * profile against whether a request was consumed; an unsuccessful response's
- * envelope, request and logged, sanitised status; a missing response and a
- * refused read, logged by its rule; each rule set answering in order; the
- * attributes of every attribute statement; the clock, skew and maximum age read
- * afresh; and decryption keys decrypted only for an encrypted assertion.
+ * Feature tests for the core that validates a SAML response.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -83,9 +76,8 @@ final class AssertionValidatorTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock and a counting encrypter, configure the endpoints,
-     * capture the logs, and create the tables and a connection that trusts the
-     * identity provider and has an encryption key.
+     * Create a connection that trusts the identity provider and has an
+     * encryption key.
      *
      * @return void
      */
@@ -116,10 +108,8 @@ final class AssertionValidatorTest extends TestCase
     }
 
     /**
-     * A solicited response is verified with the identity provider as issuer,
-     * the encoded subject and its format, the attributes, the authentication
-     * context and no linking email, and the replay record of its assertion
-     * until its earliest bound; nothing is logged or decrypted.
+     * A solicited response is verified with its claims and replay record, and
+     * nothing is logged or decrypted.
      *
      * @return void
      */
@@ -162,8 +152,7 @@ final class AssertionValidatorTest extends TestCase
     }
 
     /**
-     * A solicited response with no consumed request, and an unsolicited one
-     * with a consumed request, are each `request_unknown`: an `InResponseTo`
+     * The profile must match whether a request was consumed: an `InResponseTo`
      * anywhere is never unsolicited.
      *
      * @return void
@@ -175,9 +164,8 @@ final class AssertionValidatorTest extends TestCase
     }
 
     /**
-     * An unsuccessful response from the identity provider to the assertion
-     * consumer service is `provider_error`, its status codes and its message,
-     * sanitised, logged with the connection and the request's reference.
+     * An unsuccessful response is `provider_error`, its sanitised status logged
+     * with the request's reference.
      *
      * @return void
      */
@@ -237,9 +225,7 @@ final class AssertionValidatorTest extends TestCase
     }
 
     /**
-     * An unsuccessful response from another issuer or naming none, to another
-     * destination or for another request is refused for that, and nothing is
-     * logged.
+     * An unsuccessful response is held to its envelope, and nothing is logged.
      *
      * @param  array<string, mixed>  $changes
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -333,9 +319,8 @@ final class AssertionValidatorTest extends TestCase
     }
 
     /**
-     * The attributes are those of every attribute statement, by name, each the
-     * list of its string values in order: an attribute named twice holds both
-     * lists' values, and a value that is not text is left out.
+     * The attributes are the string values of every attribute statement, merged
+     * by name in order.
      *
      * @return void
      */
@@ -353,9 +338,7 @@ final class AssertionValidatorTest extends TestCase
     }
 
     /**
-     * The time rules read the clock's now once the response is read, the skew
-     * from `sso.clock.skew_seconds` and the maximum age from
-     * `sso.saml2.issue_instant_max_age_seconds`, afresh on each call.
+     * The clock, skew and maximum age are read afresh on each call.
      *
      * @return void
      */
@@ -429,9 +412,8 @@ final class AssertionValidatorTest extends TestCase
     }
 
     /**
-     * A valid response from the trusted identity provider, made now, for the
-     * connection's service provider and answering the request, with a fixed
-     * session index.
+     * A valid response from the trusted provider answering the request, with a
+     * fixed session index.
      *
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
      */

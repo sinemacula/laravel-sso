@@ -36,13 +36,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the `oidc` driver's own decisions (SSO-2.2, SSO-2.4,
- * SSO-2.8, SSO-5.4): it is built from the container and reads OIDC settings; a
- * connection is complete only with complete settings and its client
- * authentication's credential (a client secret, or a current `private_key_jwt`
- * key); a start and a completion are refused with `metadata_expired` once what
- * a refresh applied expires, its JWKS included, and go on to their collaborator
- * until then; and the correlation and the description are its collaborators'.
+ * Feature tests for the `oidc` driver's own decisions.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -108,9 +102,8 @@ final class OidcDriverTest extends TestCase
     }
 
     /**
-     * Rows of `[settings, secret, key, complete]`: a connection's settings,
-     * whether its client secret is set, the state of its client assertion key
-     * if it has one, and whether it is complete.
+     * Rows of `[settings, secret, key, complete]`: whether a connection with a
+     * client secret or key state is complete.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: bool, 2: ?\SineMacula\Laravel\Sso\Keys\Enums\KeyState, 3: bool}>
      */
@@ -169,9 +162,7 @@ final class OidcDriverTest extends TestCase
 
     /**
      * A start and a completion are refused with `metadata_expired` once the
-     * discovery document or the JWKS expires, and go on to their collaborator
-     * until then: the start navigates, and the completion reads the provider's
-     * error, with no token request.
+     * discovery document or the JWKS expires.
      *
      * @return void
      *
@@ -212,9 +203,8 @@ final class OidcDriverTest extends TestCase
     }
 
     /**
-     * The reasons a start and a completion through the connection were refused
-     * with, the callback naming the provider's error so that no token request
-     * is sent.
+     * The reasons a start and a completion were refused with; the callback
+     * names an error so no token request is sent.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return list<?\SineMacula\Laravel\Sso\Events\Enums\FailureReason>

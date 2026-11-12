@@ -26,9 +26,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the solicited response path (SSO-6.2 to SSO-6.10): the
- * validator holds a response to every rule against the request consumed for it,
- * answering its claims and replay record, or why it is refused.
+ * Feature tests for validating a solicited response against its consumed
+ * request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

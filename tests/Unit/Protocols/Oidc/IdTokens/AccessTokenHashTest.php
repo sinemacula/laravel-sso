@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens\AccessTokenHash;
 
 /**
- * Unit tests for an ID token's `at_hash` (OpenID Connect Core §3.1.3.8,
- * SSO-7.4): the left half of the access token's hash for each algorithm size,
- * pinned against values computed apart from the package, absent accepted, and
- * every near miss refused.
+ * Unit tests for an ID token's `at_hash` (OpenID Connect Core 3.1.3.8).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

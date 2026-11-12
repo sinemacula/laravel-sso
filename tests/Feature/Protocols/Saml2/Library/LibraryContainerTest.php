@@ -14,13 +14,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Library\LibraryContainer;
 use Tests\TestCase;
 
 /**
- * Tests of the container the SAML library reads its process-wide services from
- * (SSO-6.1, SSO-11.2): set once by the package and kept, a container set by
- * anything else refused, by `ensure()` and by a parse alike, and every service
- * the package never uses refused.
+ * Tests of the container the SAML library reads its process-wide services from.
  *
- * The library is named here only to observe its container; the package's code
- * names it only inside the adapter.
+ * The library is named here only to observe its container.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -32,9 +28,8 @@ use Tests\TestCase;
 final class LibraryContainerTest extends TestCase
 {
     /**
-     * In a process where no container is set yet, the package sets its own,
-     * once, and keeps it: ensuring it again, as every request of a long-running
-     * process does, keeps the same instance.
+     * The package sets its own container once and keeps it however often it is
+     * ensured again.
      *
      * @return void
      */

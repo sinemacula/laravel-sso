@@ -21,13 +21,8 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the rules of a SAML assertion's conditions and of the
- * `IssueInstant`s (SSO-6.4, SSO-6.5): `NotBefore` and `NotOnOrAfter` with the
- * skew, each at, one under and one over its bound; every audience restriction
- * naming the service provider, an empty one refused; `OneTimeUse` and
- * `ProxyRestriction` accepted and any other condition refused; no conditions
- * accepted; both `IssueInstant`s neither in the future nor older than the
- * maximum age, each with the skew; and the order the rules answer in.
+ * Feature tests for the rules of a SAML assertion's conditions and
+ * `IssueInstant`s.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -153,9 +148,8 @@ final class ConditionRulesTest extends TestCase
     }
 
     /**
-     * Rows of `[response, assertion, reason]`: each `IssueInstant`, in seconds
-     * from now, and the refusal; the skew is 60 seconds and the maximum age
-     * 300.
+     * Rows of `[response, assertion, reason]`, each `IssueInstant` in seconds
+     * from now, with a 60-second skew and 300-second maximum age.
      *
      * @return iterable<string, array{0: int, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -191,8 +185,7 @@ final class ConditionRulesTest extends TestCase
     }
 
     /**
-     * The rules answer in their order: the window before the audience, the
-     * audience before an unknown condition, an unknown condition before the
+     * The rules answer in order: window, audience, unknown condition, then
      * `IssueInstant`s.
      *
      * @return void
@@ -207,9 +200,7 @@ final class ConditionRulesTest extends TestCase
     }
 
     /**
-     * The skew and the maximum age are the context's: with none, a window ends
-     * exactly at its `NotOnOrAfter` and an `IssueInstant` may be no older than
-     * the maximum age.
+     * The skew and the maximum age are the context's.
      *
      * @return void
      */

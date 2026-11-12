@@ -18,13 +18,7 @@ use Tests\Concerns\TreatsWarningsAsErrors;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
 
 /**
- * Unit tests for the URL of an OIDC authorisation code request (SSO-5.4,
- * SSO-5.10, SSO-2.4): the exact string for each purpose; `max_age` at 0, at a
- * configured value and absent; `prompt=login` winning for a reauthentication;
- * extra parameters in their stored order, never one the flow controls, in any
- * case; an endpoint's own query kept, or the request refused when it names a
- * parameter the request sets; and RFC 3986 encoding. A start without a nonce or
- * a PKCE verifier is the pipeline's bug.
+ * Unit tests for the URL of an OIDC authorisation code request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -118,9 +112,8 @@ final class AuthorizationUrlTest extends TestCase
     }
 
     /**
-     * An extra `prompt` is sent for a sign in, after `max_age`, and left out
-     * for a reauthentication, whose `prompt=login` wins, the other extra
-     * parameters kept.
+     * An extra `prompt` is sent for a sign in and left out for a
+     * reauthentication, whose `prompt=login` wins.
      *
      * @return void
      */
@@ -179,9 +172,8 @@ final class AuthorizationUrlTest extends TestCase
     }
 
     /**
-     * An extra parameter whose name the request already sets is left out in any
-     * case: `prompt` and `max_age` for a reauthentication, and `max_age` when
-     * the connection configures one.
+     * An extra parameter whose name the request already sets is left out, in
+     * any case.
      *
      * @return void
      */
@@ -243,9 +235,8 @@ final class AuthorizationUrlTest extends TestCase
     }
 
     /**
-     * Rows of `[query, settings, purpose]`: an endpoint's query that names a
-     * parameter the request sets, however it writes the name, or one the flow
-     * controls and never sets.
+     * Rows of `[query, settings, purpose]`: an endpoint query naming a
+     * parameter the request sets or the flow controls.
      *
      * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: \SineMacula\Laravel\Sso\Flows\Enums\Purpose}>
      */
@@ -278,9 +269,8 @@ final class AuthorizationUrlTest extends TestCase
     }
 
     /**
-     * An endpoint whose own query names a parameter the request sets, in any
-     * case or encoding, or one the flow controls, gives no URL: nothing is
-     * overridden or sent twice.
+     * An endpoint query naming a parameter the request sets or the flow
+     * controls, in any case or encoding, gives no URL.
      *
      * @param  string  $query
      * @param  array<string, mixed>  $settings
@@ -294,9 +284,7 @@ final class AuthorizationUrlTest extends TestCase
     }
 
     /**
-     * What the request does not send is free for the endpoint's own query:
-     * `max_age` and `prompt` with neither configured, and an extra parameter
-     * the connection does not set.
+     * An endpoint query may name a parameter the request does not send.
      *
      * @return void
      */

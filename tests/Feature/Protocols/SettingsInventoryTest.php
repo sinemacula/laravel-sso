@@ -15,21 +15,11 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
 use Tests\TestCase;
 
 /**
- * The inventory behind "every check is always on, whatever the connection's
- * settings" (SSO-6, SSO-7, FEATURES "Every feature is opt-in"): every setting a
- * SAML or an OIDC connection can hold is listed here with what it does to the
- * checks, so a setting added later fails this test until it is placed. None
- * turns a check off. A setting either names what the checks compare against
- * (`identifies`), shapes only what the package sends (`requests`), adds a check
- * (`tightens`), or chooses within a check that stays on (`chooses`); and each
- * `chooses` setting refuses the value that would weaken its check below the
- * floor the clause sets.
+ * Feature tests holding every connection setting to the rule that none turns a
+ * check off.
  *
- * Every `chooses` setting is placed: either a row of `provideWeakeningValues()`
- * refuses its weakening value here, or `PROVEN_ELSEWHERE` names the test that
- * proves its floor, with the reason no value of it can be refused alone. A
- * `chooses` setting with neither fails this test. AES-CBC decrypts only inside
- * a verified response signature (`SamlAdapterTest`).
+ * A new setting fails until placed; a `chooses` one needs a weakening row or a
+ * `PROVEN_ELSEWHERE` entry.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -83,7 +73,7 @@ final class SettingsInventoryTest extends TestCase
         'metadata_refresh'           => 'chooses',
     ];
 
-    /** @var array<string, string> The `chooses` settings whose floor another test proves, by protocol and setting, with that test and why no value is refused alone. */
+    /** @var array<string, string> The `chooses` settings whose floor another test proves, with that test and why. */
     private const array PROVEN_ELSEWHERE = [
         'saml2.want_assertions_signed' => 'SamlAdversarialCompletionTest::testAnUnsignedAssertionPassesOnlyThroughTheResponsesSignature:'
             . ' either value is valid, and off still needs the response\'s trusted signature',
@@ -159,9 +149,8 @@ final class SettingsInventoryTest extends TestCase
     }
 
     /**
-     * Every `chooses` setting of either protocol is placed exactly once: a row
-     * above refuses its weakening value, or another test proves its floor;
-     * and nothing is placed that is not a `chooses` setting.
+     * Every `chooses` setting is placed exactly once, by a weakening row or
+     * another test, and nothing else is placed.
      *
      * @return void
      */

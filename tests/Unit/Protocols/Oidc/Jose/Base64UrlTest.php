@@ -11,9 +11,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Base64Url;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for strict unpadded base64url: the canonical encoding is read, and
- * padding, the standard alphabet, whitespace and non-canonical trailing bits
- * are refused.
+ * Unit tests for strict unpadded base64url.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

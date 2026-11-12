@@ -25,12 +25,7 @@ use Tests\Fixtures\Secrets\CountingSecretEncrypter;
 use Tests\TestCase;
 
 /**
- * Feature tests for what the SAML adapter holds a connection's response to
- * (SSO-2.6, SSO-6.2, SSO-6.7, SSO-6.8): the identity provider signing
- * certificates the connection trusts now, oldest first, and no anchor or other
- * connection's; the algorithms its settings allow, AES-CBC only when listed;
- * and its decryption keys, current then retiring within their overlap, read and
- * decrypted only when the adapter asks.
+ * Feature tests for what the SAML adapter holds a connection's response to.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -84,9 +79,8 @@ final class ResponsePoliciesTest extends TestCase
     }
 
     /**
-     * The trusted certificates are the connection's identity provider signing
-     * certificates, oldest first; a metadata signing anchor and another
-     * connection's certificate are not among them.
+     * The trusted certificates are the connection's provider signing
+     * certificates, oldest first, and no anchor or other's.
      *
      * @return void
      */
@@ -126,10 +120,8 @@ final class ResponsePoliciesTest extends TestCase
     }
 
     /**
-     * The decryption keys are read and decrypted only when asked for: the
-     * current key, then each retiring one still within its overlap, newest
-     * first; an expired one, a signing key and another connection's are not
-     * among them.
+     * Decryption keys are decrypted only when asked: the current, then retiring
+     * ones within their overlap, newest first.
      *
      * @return void
      */

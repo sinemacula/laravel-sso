@@ -43,11 +43,7 @@ use Tests\TestCase;
 
 /**
  * Feature tests for judging an OpenID Connect callback against its consumed
- * request (SSO-5.4, SSO-7.1, SSO-7.2): the query read again; `iss` checked
- * first, byte for byte; `error` and `code`; a provider's error logged by its
- * code alone; no credential; the PKCE verifier decrypted only to build the
- * token request; and the answer handed on to doubles of the ID token's
- * validation and the claims' assembly, which record what they are given.
+ * request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -190,9 +186,8 @@ final class CallbackCompletionTest extends TestCase
     }
 
     /**
-     * `iss` present must equal the request's issuer byte for byte, and one
-     * absent is refused when the request requires it: `issuer_mismatch`, with
-     * no provider called; otherwise the code is exchanged.
+     * A present `iss` must equal the request's issuer byte for byte, and an
+     * absent one is refused when required.
      *
      * @param  ?string  $iss
      * @param  ?string  $expected
@@ -488,9 +483,8 @@ final class CallbackCompletionTest extends TestCase
     }
 
     /**
-     * A verified answer goes to the validation with the provider's tokens, then
-     * to the assembly with the validated token and the same tokens, and what
-     * the assembly answers is the answer.
+     * A verified answer goes to the validation, then to the assembly, whose
+     * answer is the result.
      *
      * @return void
      */

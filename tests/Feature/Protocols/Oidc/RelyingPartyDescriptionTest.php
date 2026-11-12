@@ -55,14 +55,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for what an administrator registers at the OpenID provider
- * (SSO-5.9, SSO-2.7, SSO-5.5): the exact JSON for each client authentication,
- * checked against the published RFC 7638 thumbprint; the published keys through
- * a rotation, current and then next; `PS256` and `ES256` by key type; the `kid`
- * the client assertion is signed under; no private member and no secret, in the
- * body or in a dump; the callback only the endpoint resolver builds; nothing to
- * describe with no key; nothing reported or written; and the fake provider
- * accepting the package's client assertion with the key published.
+ * Feature tests for what an administrator registers at the OpenID provider.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -86,12 +79,12 @@ final class RelyingPartyDescriptionTest extends TestCase
     /** @var string The PKCE verifier of the exchanged request. */
     private const string VERIFIER = 'the-pkce-verifier-of-the-exchanged-request-1';
 
-    /** @var string The modulus of RFC 7638 §3.1's example key. */
+    /** @var string The modulus of RFC 7638 section 3.1's example key. */
     private const string RSA_N = '0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXA'
         . 'rwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lF'
         . 'd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw';
 
-    /** @var string The thumbprint RFC 7638 §3.1 gives for its example key. */
+    /** @var string The thumbprint RFC 7638 section 3.1 gives for its example key. */
     private const string RSA_KID = 'NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs';
 
     /** @var string The `x` of RFC 7517 Appendix A.1's example P-256 key. */
@@ -156,9 +149,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * A client secret method is described exactly: the callback, the code flow
-     * and the method, in that order, slashes unescaped, and no key, even when
-     * the connection holds one.
+     * A client secret method is described exactly, slashes unescaped, and with
+     * no key even when one is held.
      *
      * @param  string  $method
      * @return void
@@ -238,9 +230,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * During a rotation the current key is listed first and the next second,
-     * whichever was stored first, each with its own algorithm, and the signing
-     * algorithm is the current key's alone.
+     * During a rotation the current key is listed before the next, and the
+     * signing algorithm is the current key's.
      *
      * @return void
      */
@@ -271,9 +262,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * A next key with no current one, which the key service never leaves but a
-     * stored row can, is published under its own algorithm: it is what will
-     * sign.
+     * A next key with no current one, which only a stored row can leave, is
+     * published under its own algorithm.
      *
      * @return void
      */
@@ -290,10 +280,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * The description follows a rotation by the key service: the current key
-     * alone; the current and the next, in that order; once the next is made
-     * current, it alone, the replaced key retiring and gone; and it stays gone
-     * once retired.
+     * The description follows a rotation by the key service, and a retired key
+     * stays gone.
      *
      * @return void
      */
@@ -378,9 +366,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * The `kid` published is the one the client assertion is signed under, with
-     * the algorithm published, and is the thumbprint of the key's public half;
-     * the signature verifies with the key stored.
+     * The published `kid` is the public key's thumbprint the client assertion
+     * is signed under.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
      * @param  string  $algorithm
@@ -414,9 +401,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * No private member, private key, ciphertext, client secret, client id or
-     * other key id ever appears, in the body or in any dump of the description,
-     * for a key of either type while the connection also holds a client secret.
+     * No private member, ciphertext, client secret, client id or other key id
+     * appears in the body or any dump.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
      * @param  string  $algorithm
@@ -749,10 +735,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * The public JWKS follows a rotation by the key service, which is what a
-     * `jwks_uri` relies on: the current key alone; the current and the next, in
-     * that order; once the next is made current, it alone, the replaced key
-     * retiring and gone; and it stays gone once retired.
+     * The public JWKS a `jwks_uri` serves follows a rotation by the key
+     * service, and a retired key stays gone.
      *
      * @return void
      */
@@ -794,8 +778,7 @@ final class RelyingPartyDescriptionTest extends TestCase
 
     /**
      * Rows of `[algorithm, type, signing algorithm]`: a pinned algorithm that
-     * fits its key: the assertion's header, the JWK's `alg` and the description
-     * agree, under the same `kid`.
+     * fits its key.
      *
      * @return iterable<string, array{0: ?string, 1: \SineMacula\Laravel\Sso\Keys\Enums\KeyType, 2: string}>
      */
@@ -868,9 +851,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * An algorithm stored past validation that its key cannot sign under, or
-     * the package does not sign with, is `settings_invalid` in every document,
-     * and the connection is not complete.
+     * An algorithm stored past validation that its key cannot sign under is
+     * `settings_invalid`, and the connection is incomplete.
      *
      * @param  string  $pinned
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
@@ -911,9 +893,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * What a connection holds is validated short of requiring it complete: a
-     * valid method and key with none of the provider's settings is described,
-     * so it can be registered before it is enabled.
+     * A valid method and key are described without the provider's settings, so
+     * the client can be registered before enabling.
      *
      * @return void
      */
@@ -972,9 +953,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * The fake provider, registered with the public key the description
-     * publishes, accepts the package's client assertion at its token endpoint,
-     * and refuses it with any other key registered.
+     * The fake provider accepts the package's client assertion with the
+     * published key, and refuses it with any other.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
      * @param  string  $algorithm
@@ -1006,10 +986,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * Registering the next key the description publishes is what makes the
-     * rotation seamless: the provider refuses the current key's assertion once
-     * it holds only the next, and accepts the assertions signed once the next
-     * is made current.
+     * A provider holding only the published next key refuses the current key's
+     * assertion, and accepts those signed once the next is made current.
      *
      * @return void
      *
@@ -1217,9 +1195,8 @@ final class RelyingPartyDescriptionTest extends TestCase
     }
 
     /**
-     * Have the provider grant a code for the connection's callback, exchange it
-     * with the package's client assertion, and answer the token endpoint's HTTP
-     * status.
+     * Exchange a granted code with the package's client assertion and answer
+     * the token endpoint's HTTP status.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider  $provider
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection

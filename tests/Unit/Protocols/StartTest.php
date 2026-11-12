@@ -11,9 +11,7 @@ use SineMacula\Laravel\Sso\Protocols\Navigation;
 use SineMacula\Laravel\Sso\Protocols\Start;
 
 /**
- * Unit tests for how a driver started a flow: navigating with what the request
- * keeps, typed, or refused with a reason, each outcome with only its own
- * payload.
+ * Unit tests for how a driver started a flow.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

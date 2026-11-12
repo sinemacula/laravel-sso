@@ -20,11 +20,7 @@ use Tests\Fixtures\Protocols\ExampleDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the protocol registry (SSO-2.2): the container binding, the
- * package's own drivers, drivers registered with `extend()`, the refusals for a
- * driver that is unknown, reserved, misnamed or not a driver, building drivers
- * with the application serving, when a protocol is available and a connection
- * usable (SSO-2.1), and the presets.
+ * Feature tests for the protocol registry, its drivers and its presets.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -189,9 +185,8 @@ final class ProtocolManagerTest extends TestCase
     }
 
     /**
-     * A driver resolves only by the exact name it was registered under, so a
-     * connection cannot name a second spelling of one protocol; `driver()`
-     * holds to the same rule as `protocol()`.
+     * A driver resolves only by the exact name it was registered under, through
+     * `driver()` and `protocol()` alike.
      *
      * @param  string  $name
      * @return void
@@ -258,10 +253,8 @@ final class ProtocolManagerTest extends TestCase
     }
 
     /**
-     * A manager resolved by one application builds its drivers with the one now
-     * serving, as an Octane sandbox is, and the booted application, serving
-     * again, gets drivers of its own once more; a registered driver stays
-     * registered throughout.
+     * A manager builds its drivers with the application now serving, as under
+     * Octane; a registered driver stays registered.
      *
      * @return void
      */
@@ -302,10 +295,8 @@ final class ProtocolManagerTest extends TestCase
     }
 
     /**
-     * Forgetting the scoped instances, as a queue worker does before each job,
-     * forgets the drivers built in that scope with them: each is built again,
-     * and once, by its creator if it is a registered one. A forgotten scope is
-     * no reason to forget what a manager holds of a container of its own.
+     * Forgetting the scoped instances, as a queue worker does, rebuilds that
+     * scope's drivers once each, but not another container's.
      *
      * @return void
      */

@@ -13,10 +13,7 @@ use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for pairing an email with its `email_verified` (SSO-7.7, SSO-8.8):
- * every combination of the two sources, never mixed; the flag exactly as
- * asserted; the types the claims must have; and when a pair gives a linking
- * email.
+ * Unit tests for pairing an email with its `email_verified`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,10 +51,8 @@ final class EmailPairingTest extends TestCase
     }
 
     /**
-     * A flag that is not a JSON boolean gives no evidence from either source:
-     * the pair is unknown, nothing is coerced and no linking email follows, and
-     * the other source's flag never stands in for it when the source has the
-     * email.
+     * A flag that is not a JSON boolean leaves the pair unknown, and the other
+     * source's flag never stands in.
      *
      * @param  mixed  $flag
      * @return void
@@ -136,8 +131,7 @@ final class EmailPairingTest extends TestCase
 
     /**
      * The pair comes from the ID token when it carries `email`, else from
-     * UserInfo when that does, and is never mixed; a missing flag stays
-     * unknown.
+     * UserInfo, and is never mixed.
      *
      * @param  array<string, mixed>  $idToken
      * @param  ?array<string, mixed>  $userInfo

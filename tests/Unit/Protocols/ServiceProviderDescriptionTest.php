@@ -10,8 +10,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 
 /**
- * Unit tests for the description of a connection's service provider side: a
- * document with its content type, or unavailable with a reason.
+ * Unit tests for the description of a connection's service provider side.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

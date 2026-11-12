@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\TestCase;
 
 /**
- * Feature tests for the signed descriptor the metadata reader verifies through
- * (SSO-6.2, SSO-6.11): an `EntityDescriptor` or an `EntitiesDescriptor` read
- * for its `ID`, its one signature and the element it came from, whatever else
- * it holds; anything else, or two signatures, refused; and never written.
+ * Feature tests for the signed descriptor the metadata reader verifies through.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

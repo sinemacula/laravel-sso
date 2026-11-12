@@ -31,16 +31,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for a SAML connection's service provider metadata (SSO-5.9),
- * through the driver: every element and attribute, pinned as the whole
- * document; the document valid against the SAML 2.0 metadata schema through the
- * package's hardened parser; the current and next certificates published during
- * a rotation and only the current one once it ends; the encryption methods
- * following the allow-list, never AES-256-GCM or RSA 1.5; the flags and NameID
- * format following the settings; a connection with no identity provider
- * settings still described; another connection's keys, and a key with no
- * certificate, left out; no private key or secret anywhere; and the same bytes
- * for the same state.
+ * Feature tests for a SAML connection's service provider metadata, through the
+ * driver.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -110,9 +102,8 @@ final class ServiceProviderMetadataTest extends TestCase
     }
 
     /**
-     * The metadata is the whole document expected, as
-     * `application/samlmetadata+xml`, valid against the SAML 2.0 metadata
-     * schema; another connection's key is not in it.
+     * The metadata is the whole document expected, schema valid, without
+     * another connection's key.
      *
      * @return void
      */
@@ -140,9 +131,8 @@ final class ServiceProviderMetadataTest extends TestCase
     }
 
     /**
-     * During a rotation the current and next certificates of each use are
-     * published, the current first; once the next is made current only it is
-     * published, and so it stays after the old key is retired.
+     * During a rotation the current and next certificates are published,
+     * current first, and afterwards only the current.
      *
      * @return void
      */
@@ -187,9 +177,8 @@ final class ServiceProviderMetadataTest extends TestCase
     }
 
     /**
-     * Rows of `[encryption algorithms, methods]`: the algorithms a connection
-     * stores and the encryption methods its metadata advertises, data
-     * algorithms first, each group in the order stored.
+     * Rows of `[encryption algorithms, methods]`: data algorithms first, each
+     * group in the order stored.
      *
      * @return iterable<string, array{0: ?list<string>, 1: list<string>}>
      */
@@ -499,9 +488,8 @@ final class ServiceProviderMetadataTest extends TestCase
     }
 
     /**
-     * The whole metadata document expected for the connection, its signing and
-     * encryption certificates, and the options given: `signed`, `wanted`,
-     * `format` and `methods`, each defaulted as a connection's setting is.
+     * The whole metadata document expected, the options defaulted as a
+     * connection's settings are.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  list<string>  $signing

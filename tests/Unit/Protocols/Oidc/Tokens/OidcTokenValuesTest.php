@@ -13,11 +13,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Unit tests for the values a completion's provider tokens are held in (SSO-7.2
- * to SSO-7.6): each gives its tokens and claims only through its accessors,
- * shows none of them in any dump or in JSON, and refuses to be serialised or
- * unserialised; a validated ID token carries its own issuer and a non-empty
- * subject.
+ * Unit tests for the values a completion's provider tokens are held in.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

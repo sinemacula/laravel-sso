@@ -10,11 +10,8 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\SchemaDateTime;
 
 /**
- * Unit tests for the strict `xs:dateTime` check the metadata reader judges
- * every `validUntil` by: each field at and one past its bounds (the month, the
- * day of each kind of month and of February in leap and common years, the hour,
- * 24:00:00, the minute, the second and the zone's offset), any fractions, no
- * zone, and every form the pattern refuses.
+ * Unit tests for the strict `xs:dateTime` check applied to metadata
+ * `validUntil`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

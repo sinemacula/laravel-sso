@@ -15,10 +15,8 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for correlating an OpenID Connect callback (SSO-7.1): only a
- * `GET`; its parameters read from the raw query alone; its `state` exactly the
- * package's 43 base64url characters; every refusal uncorrelated, so nothing is
- * consumed; the limits read from the configuration; and nothing logged.
+ * Feature tests for correlating an OpenID Connect callback; every refusal is
+ * uncorrelated, so nothing is consumed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

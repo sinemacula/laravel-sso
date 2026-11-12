@@ -12,11 +12,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\SubjectEncoding;
 
 /**
- * Unit tests for the subject a verified SAML identifier is stored as (SSO-6.9):
- * a versioned, length-prefixed tuple of a `NameID`'s kind, format, qualifiers
- * and value, or of an attribute's kind, name, name format and value; an absent
- * part written apart from an empty one; lengths counted in bytes; and no two
- * different tuples sharing an encoding.
+ * Unit tests for the subject a verified SAML identifier is stored as.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -13,11 +13,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\OidcLimits;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Unit tests for reading an OpenID Connect callback's raw query (SSO-7.1): the
- * splitting and form decoding; every refusal (empty, repeated once decoded,
- * array-shaped, over each cap at, under and over, invalid UTF-8, a control
- * character); unknown names ignored; and the values shown by no dump, JSON
- * encoding or serialisation.
+ * Unit tests for reading an OpenID Connect callback's raw query.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

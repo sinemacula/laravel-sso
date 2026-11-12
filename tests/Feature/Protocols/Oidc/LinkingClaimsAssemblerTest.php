@@ -27,12 +27,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for OpenID Connect's linking evidence (SSO-8.1, SSO-8.8,
- * SSO-7.7): no linking email while linking is off; `email_verified` as boolean
- * true, from the one source the email came from; the organisation claim the
- * connection names read from that same source, only when it is a string a
- * result can hold, and never from the other source, the email's domain or a
- * mapped attribute; and a UserInfo response of another subject refused.
+ * Feature tests for OpenID Connect's linking evidence.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -196,9 +191,8 @@ final class LinkingClaimsAssemblerTest extends TestCase
     }
 
     /**
-     * The organisation is set only when it is such a string, and the email is
-     * still the linking email without it: what is ineligible is for the policy
-     * to judge.
+     * The organisation is set only when it is a string a result can hold; the
+     * email links without it.
      *
      * @param  mixed  $value
      * @param  ?string  $kept
@@ -271,9 +265,8 @@ final class LinkingClaimsAssemblerTest extends TestCase
     }
 
     /**
-     * Assemble the claims of an ID token with those given and a UserInfo
-     * response of those given, when any are, for a connection whose linking is
-     * as given.
+     * Assemble the claims of the ID token and UserInfo response given, for a
+     * connection with linking as given.
      *
      * @param  array<string, mixed>  $idToken
      * @param  ?array<string, mixed>  $userInfo

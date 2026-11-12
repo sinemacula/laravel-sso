@@ -11,9 +11,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens\AudienceRules;
 
 /**
- * Unit tests for who an ID token is for (SSO-7.4): the client id exactly among
- * `aud`, every other audience trusted, `azp` required with several audiences
- * and the client id when present, and each way round those rules refused.
+ * Unit tests for the `aud` and `azp` rules of an ID token.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Protocols\Correlation;
 use SineMacula\Laravel\Sso\Protocols\Enums\CorrelationKind;
 
 /**
- * Unit tests for what a driver read to find a response's request: a solicited
- * response's state, held as a secret and looked up by its digest, and its SAML
- * request id; an unsolicited or uncorrelated response carries neither.
+ * Unit tests for what a driver read to find a response's request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -22,12 +22,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the subject of a verified SAML assertion (SSO-6.9): a
- * persistent `NameID` by default, the email and unspecified formats only by
- * opt-in, an absent format only for unspecified, transient never; strict
- * qualifiers; a non-empty value; an attribute subject present once with one
- * non-empty string value; the encoded subject capped at, under and over 1024
- * bytes, never truncated; and an unknown source failing closed.
+ * Feature tests for the subject of a verified SAML assertion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -199,9 +194,8 @@ final class SubjectRulesTest extends TestCase
     }
 
     /**
-     * An attribute subject is the one value of the one attribute named exactly
-     * `subject_attribute`, encoded with its name format, and carries no NameID
-     * format; the subject's `NameID` plays no part.
+     * An attribute subject is the one value of the attribute named
+     * `subject_attribute`, the `NameID` playing no part.
      *
      * @return void
      */

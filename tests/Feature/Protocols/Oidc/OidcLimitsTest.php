@@ -12,9 +12,7 @@ use Tests\TestCase;
 
 /**
  * Feature tests for the caps, windows and timeouts every OIDC connection is
- * held to (SSO-2.9, SSO-7.1 to SSO-7.5, SSO-12.3): each default, each bound at,
- * under and over, a malformed value failing closed with its key, and `[oidc]`
- * checking each the same way, only while the `oidc` feature is on.
+ * held to.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

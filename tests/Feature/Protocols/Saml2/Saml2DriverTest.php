@@ -30,12 +30,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for the SAML driver's own part (SSO-2.1, SSO-2.3, SSO-2.8): it
- * is built from the container and reads SAML settings; a connection is complete
- * only with its settings complete, a trusted signing certificate and each
- * current key its settings need; and a start, a completion and a re-initiation
- * are refused with `metadata_expired`, before any collaborator is asked, while
- * what a metadata refresh applied has expired.
+ * Feature tests for the SAML driver's own decisions.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -145,8 +140,7 @@ final class Saml2DriverTest extends TestCase
 
     /**
      * A start, a completion and a re-initiation are refused with
-     * `metadata_expired` once what a refresh applied expires, and go on to
-     * their collaborator until then.
+     * `metadata_expired` once a refresh's metadata expires.
      *
      * @return void
      *

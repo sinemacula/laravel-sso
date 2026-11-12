@@ -19,15 +19,9 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
 use Tests\TestCase;
 
 /**
- * The library spike's 40 adversarial fixtures (BL-0A), each read through the
- * package's SAML adapter under the default policy, with the outcome the
- * manifest records for the package (SSO-6.1 to SSO-6.3, SSO-6.7, SSO-6.8):
- * every fixture SSO-6 requires refused is refused, with the exact reason and
- * rule; every one it requires accepted is read with the legitimate subject,
- * except AES-256-GCM, which is out until saml2 v7; a comment inside a signed
- * NameID yields the whole value; no external entity is ever read; and AES-CBC
- * decrypts only when the connection lists it, after a verified response
- * signature.
+ * Feature tests for the adversarial SAML fixtures, read through the adapter.
+ *
+ * The AES-256-GCM fixture stays refused until saml2 v7.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,8 +47,8 @@ final class AdversarialFixturesTest extends TestCase
     private const string AES128_CBC = 'http://www.w3.org/2001/04/xmlenc#aes128-cbc';
 
     /**
-     * Rows of `[name, expect, package]`: each fixture, the outcome SSO-6
-     * requires, and the outcome the package gives under the default policy.
+     * Rows of `[name, expect, package]`: each fixture, the outcome required,
+     * and the outcome the package gives.
      *
      * @return iterable<string, array{0: string, 1: string, 2: array<string, mixed>}>
      */
@@ -95,9 +89,8 @@ final class AdversarialFixturesTest extends TestCase
     }
 
     /**
-     * What the package does is at least what SSO-6 requires: every fixture that
-     * must be refused is, and every fixture read yields the legitimate subject,
-     * or the whole signed value of a NameID a comment splits.
+     * The package is never laxer than required, and every fixture read yields
+     * the legitimate subject or the whole signed `NameID`.
      *
      * @param  string  $name
      * @param  string  $expect
@@ -122,9 +115,8 @@ final class AdversarialFixturesTest extends TestCase
     }
 
     /**
-     * With AES-CBC listed, the fixture encrypted with RSA-OAEP and AES-128-CBC
-     * in a signed response is read; its response signature was verified before
-     * anything was decrypted.
+     * With AES-CBC listed, a signed response's AES-128-CBC assertion is read,
+     * the response signature verified before decryption.
      *
      * @return void
      */
