@@ -22,54 +22,8 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 
 /**
- * Consumes the authorisation request a response answers (SSO-5.1, SSO-11.3,
- * SSO-11.5): the only place a request is consumed. The completion calls it once
- * the driver has read the response's correlation and before anything in the
- * response is validated, so a request is consumed once, whether the response
- * then passes or fails.
- *
- * In a transaction of its own on the storage connection (a savepoint inside the
- * caller's), the request is read with a locking read on the write connection,
- * so a lagging replica or the snapshot of a caller's older transaction never
- * answers: a SAML response's by its `InResponseTo` within the connection the
- * response arrived for, compared again exactly, never by its `RelayState`; any
- * other's by the digest of its state. None is `unknown`, and nothing is
- * consumed. A request consumed before, or one the single-use store has seen
- * (keyed by its id until its expiry, and at least a second), is `replayed`, and
- * is written nothing more. Otherwise it is consumed: it is recorded in the
- * store and its `consumed_at` set, both in the transaction, so racing servers
- * consume it exactly once.
- *
- * A request whose application is no longer registered is
- * `application_not_allowed`, with no redirect target, ahead of every other
- * reason. Its completion goes no further, so it is terminal at once: the same
- * write sets its `completed_at` with its `consumed_at`, since no later step
- * that would mark it completed runs without an application to answer to.
- *
- * Once that commits it is judged, in this order: a SAML request whose state's
- * digest is not the digest of the response's `RelayState`, compared in constant
- * time, or that the response gave no `RelayState` for, is `request_mismatch`
- * (SSO-5.3); a request a change to its connection voided is
- * `connection_unavailable`; one started through another connection than the
- * response arrived for is `connection_mismatch`; one whose trust version is not
- * the connection's (the connection as the caller read it, locked) is
- * `connection_unavailable`, as a voided one is, so no response is validated or
- * provider called for a flow a trust change has overtaken; one whose expiry is
- * not after now is `request_expired`. Each of these keeps the application, so
- * the completion redirects to it with the failure. Otherwise it is `consumed`,
- * with what the driver is given of it: its PKCE verifier, still encrypted, with
- * the encrypter that decrypts it only when the driver asks for it to build the
- * token request; its nonce digest, the issuer it expects, its SAML request id
- * and when it started. Nothing is decrypted here, so a ciphertext no key
- * decrypts never stops a request being consumed.
- *
- * It reports nothing: the completion reports how it ended. A database error, a
- * store that cannot answer and a malformed application's settings propagate
- * (SSO-11.4); each is thrown inside the transaction, so the request stays
- * unconsumed.
- *
- * It holds the store, the encrypter, the registry and the clock, none of which
- * keeps anything of one request for the next (SSO-11.2).
+ * Consumes the authorisation request a response answers, before the response is
+ * validated.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -105,8 +59,7 @@ final readonly class RequestConsumption
     ) {}
 
     /**
-     * Consume the request the correlation names, for a response that arrived
-     * for the connection.
+     * Consume the request the correlation names.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
@@ -124,8 +77,7 @@ final readonly class RequestConsumption
     }
 
     /**
-     * In the transaction: find the request locked, and consume it unless it was
-     * consumed before.
+     * Lock the request and consume it unless it was consumed before.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
@@ -150,9 +102,8 @@ final readonly class RequestConsumption
     }
 
     /**
-     * Consume the request and answer it with its registered application; one
-     * whose application is no longer registered is completed in the same write
-     * and refused `application_not_allowed`, with no redirect target.
+     * Consume the request; one whose application is gone is completed in the
+     * same write, since no later step runs for it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  \Carbon\CarbonImmutable  $now
@@ -170,8 +121,7 @@ final readonly class RequestConsumption
     }
 
     /**
-     * Record the request in the single-use store until its expiry, and at least
-     * a second from now; whether it was new.
+     * Record the request in the single-use store; whether it was new.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  \Carbon\CarbonImmutable  $now
@@ -187,8 +137,7 @@ final readonly class RequestConsumption
     }
 
     /**
-     * Once consumed: the result the request, its application and the response
-     * come to.
+     * Judge the consumed request against the response.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
@@ -211,8 +160,8 @@ final readonly class RequestConsumption
     }
 
     /**
-     * What the driver is given of the request: the PKCE verifier still
-     * encrypted, with what decrypts it.
+     * What the driver is given of the request, its PKCE verifier still
+     * encrypted.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @return \SineMacula\Laravel\Sso\Protocols\ConsumedRequest
@@ -236,8 +185,7 @@ final readonly class RequestConsumption
     }
 
     /**
-     * Why the consumed request refuses the response, or `null` when it may go
-     * on.
+     * Why the consumed request refuses the response, or `null` when it may.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
@@ -248,32 +196,18 @@ final readonly class RequestConsumption
     private static function refusal(AuthorizationRequest $request, Connection $routeConnection, Correlation $correlation, CarbonImmutable $now): ?FailureReason
     {
         return match (true) {
-            self::isRelayStateMismatch($request, $correlation) => FailureReason::REQUEST_MISMATCH,
-            $request->voided_at     !== null                   => FailureReason::CONNECTION_UNAVAILABLE,
-            $request->connection_id !== $routeConnection->id   => FailureReason::CONNECTION_MISMATCH,
-            self::isTrustChanged($request, $routeConnection)   => FailureReason::CONNECTION_UNAVAILABLE,
-            $request->expires_at <= $now                       => FailureReason::REQUEST_EXPIRED,
-            default                                            => null,
+            self::isRelayStateMismatch($request, $correlation)          => FailureReason::REQUEST_MISMATCH,
+            $request->voided_at     !== null                            => FailureReason::CONNECTION_UNAVAILABLE,
+            $request->connection_id !== $routeConnection->id            => FailureReason::CONNECTION_MISMATCH,
+            $request->trust_version !== $routeConnection->trust_version => FailureReason::CONNECTION_UNAVAILABLE,
+            $request->expires_at <= $now                                => FailureReason::REQUEST_EXPIRED,
+            default                                                     => null,
         };
     }
 
     /**
-     * Whether the connection's trust version is no longer the one the request
-     * captured when it started.
-     *
-     * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
-     * @return bool
-     */
-    private static function isTrustChanged(AuthorizationRequest $request, Connection $routeConnection): bool
-    {
-        return $request->trust_version !== $routeConnection->trust_version;
-    }
-
-    /**
-     * Whether a SAML response, found by its `InResponseTo`, carries no
-     * `RelayState`, or one whose digest is not the request's state digest,
-     * compared in constant time. A response found by its state never is.
+     * Whether a SAML response found by its `InResponseTo` lacks the request's
+     * `RelayState`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
@@ -291,10 +225,8 @@ final readonly class RequestConsumption
     }
 
     /**
-     * The request the correlation names, locked for update on the write
-     * connection: by its SAML request id within the connection when the
-     * response gave one, by its state's digest otherwise, and none when it gave
-     * neither.
+     * Lock the request by SAML request id within the connection, else by state
+     * digest.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
@@ -312,8 +244,8 @@ final readonly class RequestConsumption
     }
 
     /**
-     * The connection's request with exactly the SAML request id, locked for
-     * update. A row the column's collation merely counts as equal is not found.
+     * Lock the connection's request with exactly the SAML request id; a row the
+     * collation merely counts as equal is not found.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $routeConnection
      * @param  string  $samlRequestId
@@ -327,7 +259,7 @@ final readonly class RequestConsumption
     }
 
     /**
-     * A locking read of the requests on the write connection (SSO-11.3).
+     * A locking read of the requests on the write connection.
      *
      * @return \Illuminate\Database\Eloquent\Builder<\SineMacula\Laravel\Sso\Models\AuthorizationRequest>
      */

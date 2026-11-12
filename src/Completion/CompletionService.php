@@ -17,55 +17,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
- * Completes a flow where the identity provider sends the browser back (SSO-5.5,
- * SSO-5.6, SSO-5.7, SSO-12.1): one call, `complete()`, for a connection's SAML
- * assertion consumer service and its OIDC callback alike, told which endpoint
- * the response arrived at (`Enums\CompletionEndpoint`), answering a
- * `Completion\CompletionResult` the application's controller turns into its
- * response (`Responses\CompletionResponses`). It takes what arrived as a
- * `Protocols\CompletionRequest` and the client it came from as an
- * `Http\ClientContext`, each built from the request by the application's
- * controller, and never reads the request being served itself.
+ * Completes a flow at a connection's assertion consumer service or callback.
  *
- * The connection is the one the application's route names, whose endpoint URL
- * the endpoint resolver built from configuration, never from the request
- * (SSO-5.5).
- *
- * A completion runs outside any transaction open on the storage connection:
- * called inside one, it is a `LogicException` before anything is written, the
- * attempt included. A caller's rollback would otherwise undo the request's
- * consumption, so the same response could be replayed (SSO-5.1), and the
- * caller's transaction would keep the connection's lock across the driver's
- * validation, which may reach the identity provider (SSO-11.5).
- *
- * Before the completion's steps run, in this order, each refusal reporting
- * exactly one `FlowFailed` (`Flow::ASSERTION` or `Flow::CALLBACK`):
- *
- * 1. the completion is counted against the client's IP address and the
- *    connection (SSO-11.8), and a full limit is `rate_limited` with its wait:
- *    one count for both endpoints, made before the method is looked at;
- * 2. the method must be the endpoint's: `POST` (HTTP-POST binding) at the
- *    assertion consumer service, `GET` at the callback, compared exactly;
- *    anything else is `rejected(request_unknown)`;
- * 3. the connection is read by exactly its id, of any tenant, from the write
- *    connection (SSO-11.3); an unknown one is
- *    `rejected(connection_unavailable)`;
- * 4. its protocol must complete at the endpoint: `saml2` at the assertion
- *    consumer service, `oidc` at the callback, and a protocol an application
- *    registered, which the package cannot place, at either, while its driver is
- *    registered; anything else is `rejected(connection_unavailable)`.
- *
- * A connection that is no longer usable (disabled since the start, say) is
- * refused only once the request the response names is consumed, so its request
- * is consumed, and its failure redirected to the application (SSO-5.7). Then
- * `Completion\CompletionPipeline` runs the steps and answers.
- *
- * A database error, a misconfiguration and a contract's exception propagate as
- * server errors (SSO-11.4), never as a failure.
- *
- * It holds the limiter, the drivers' registry, the pipeline and the reporter,
- * none of which keeps anything of one request for the next (SSO-11.2). Resolve
- * it from the container per request.
+ * Call outside any transaction on the storage connection.
  *
  * @api
  *
@@ -74,10 +28,10 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  */
 final readonly class CompletionService
 {
-    /** @var int The length of a connection's id, a ULID: a longer one names no connection. */
+    /** @var int The length of a connection's id, a ULID. */
     private const int CONNECTION_ID_LENGTH = 26;
 
-    /** @var string Why a completion called inside a transaction on the storage connection is refused. */
+    /** @var string Thrown for a completion inside a storage transaction. */
     private const string INSIDE_TRANSACTION = 'A completion runs outside any transaction on the package\'s storage connection: a rollback would undo its consumption.';
 
     /**
@@ -104,9 +58,7 @@ final readonly class CompletionService
     ) {}
 
     /**
-     * Complete at the connection's endpoint, with what arrived there from the
-     * client: what the identity provider's response posted to the assertion
-     * consumer service, or the authorisation response's query at the callback.
+     * Complete at the connection's endpoint with what arrived there.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
      * @param  string  $connectionId
@@ -132,8 +84,8 @@ final readonly class CompletionService
     }
 
     /**
-     * Find the connection and check its protocol completes at the endpoint
-     * (steps 3 and 4), then run the completion's steps.
+     * Find the connection, check its protocol completes here, then run the
+     * steps.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
@@ -159,8 +111,7 @@ final readonly class CompletionService
     }
 
     /**
-     * Report a completion refused before its steps, with the endpoint's flow,
-     * and answer it: `rejected` for the reason unless the answer is given.
+     * Report a refusal before the steps and answer it, `rejected` by default.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
@@ -178,9 +129,8 @@ final readonly class CompletionService
     }
 
     /**
-     * Whether a connection over the protocol completes at the endpoint: `saml2`
-     * at the assertion consumer service, `oidc` at the callback, and a protocol
-     * an application registered at either.
+     * Whether the protocol completes at the endpoint; an application's own
+     * protocol completes at either.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
      * @param  string  $protocol
@@ -196,9 +146,7 @@ final readonly class CompletionService
     }
 
     /**
-     * The connection with exactly the id, of any tenant, read from the write
-     * connection, or `null` when there is none. An id longer than a ULID, or
-     * empty, names none and is not looked up; a row the column's collation
+     * The connection with exactly the id, of any tenant; a row the collation
      * merely counts as equal is not found.
      *
      * @param  string  $connectionId

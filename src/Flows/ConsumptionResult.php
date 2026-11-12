@@ -11,25 +11,7 @@ use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 
 /**
- * How consuming the authorisation request a response answers ended (SSO-5.1,
- * SSO-5.7, SSO-11.5), as `RequestConsumption` answers it to the completion:
- *
- * - `consumed`: the request, what the driver is given of it, and the registered
- *   application;
- * - `refused`: the request was consumed, but the response may not go on, for
- *   the reason given; with the application when it is still registered, so the
- *   completion can redirect to it with the failure;
- * - `unknown`: no request matches, `request_unknown`, and no redirect target;
- * - `replayed`: the request was consumed before, `request_unknown`, and no
- *   redirect target.
- *
- * It holds the consumed request, whose PKCE verifier is decrypted, so a dump
- * shows only the status, the public reference, the application's name and the
- * reason, and it refuses to be serialised or unserialised: it lives only for
- * the completion that consumed the request. A dumper that shows every property
- * whatever `__debugInfo()` answers, as `dump()` does, shows the request's
- * columns, its digests among them, and never the PKCE verifier, which stays in
- * a `Secrets\Secret`.
+ * How consuming the authorisation request a response answers ended.
  *
  * @api
  *
@@ -66,7 +48,7 @@ final readonly class ConsumptionResult
     ) {}
 
     /**
-     * What a dump shows: never the request's columns or its secrets.
+     * Dump without the request's columns or secrets.
      *
      * @return array<string, mixed>
      */
@@ -81,7 +63,7 @@ final readonly class ConsumptionResult
     }
 
     /**
-     * Refuse to be serialised: it may hold the decrypted PKCE verifier.
+     * Refuse to be serialised: it holds the consumed request.
      *
      * @return array<string, mixed>
      *
@@ -111,8 +93,7 @@ final readonly class ConsumptionResult
     }
 
     /**
-     * The request was consumed now, and the response may be validated against
-     * it.
+     * The request was consumed now and the response may be validated.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
@@ -125,8 +106,7 @@ final readonly class ConsumptionResult
     }
 
     /**
-     * The request was consumed now, but the response may not go on; with the
-     * application when it is still registered.
+     * The request was consumed now but the response may not go on.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
@@ -200,9 +180,7 @@ final readonly class ConsumptionResult
     }
 
     /**
-     * Whether the completion knows a trusted target to redirect to: the
-     * request's application is still registered (SSO-5.7). Without one, the
-     * completion answers with a 400 and no redirect.
+     * Whether the request's application is still registered to redirect to.
      *
      * @return bool
      */

@@ -7,12 +7,10 @@ namespace SineMacula\Laravel\Sso\Handoffs\Enums;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * What rechecking a handoff at its redemption came to (SSO-4.6, SSO-8.5,
- * SSO-9.9), as `Handoffs\HandoffRecheck::recheck()` answers it: `passed`, or
- * the first of the checks that refused it, each with the `FailureReason` of its
- * own value that a redemption refused by it reports (`reason()`).
+ * What rechecking a handoff at redemption came to; each refusal maps to the
+ * `FailureReason` of the same value.
  *
- * The values are stable once released: a case is never renamed or reused.
+ * Values are stable: a case is never renamed or reused.
  *
  * @api
  *
@@ -21,8 +19,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  */
 enum RecheckOutcome: string
 {
-    // The connection is usable, satisfies its tenant's enforcement, and the
-    // result's link resolves to the identity it resolved to at completion
+    // Every check passed
     case PASSED = 'passed';
 
     // The connection is gone, disabled, or no longer complete or available
@@ -31,15 +28,13 @@ enum RecheckOutcome: string
     // The tenant's enforcement now requires sign-in through other connections
     case ENFORCEMENT_UNSATISFIED = 'enforcement_unsatisfied';
 
-    // The link was removed, now names another identity, or appeared where there
-    // was none at completion
+    // The link was removed, reassigned, or appeared since completion
     case LINK_CHANGED = 'link_changed';
 
     // The link is suspended until a confirming `link`
     case LINK_SUSPENDED = 'link_suspended';
 
-    // The link's verified domain provenance needs the principal scope contract,
-    // which could not judge its identity; nothing is suspended
+    // The principal scope contract could not judge the link's identity
     case PRINCIPAL_SCOPE_UNKNOWN = 'principal_scope_unknown';
 
     // A live reservation holds the subject, which a `link` waits out
@@ -48,8 +43,7 @@ enum RecheckOutcome: string
     // The identity may not link through the connection
     case LINK_INELIGIBLE = 'link_ineligible';
 
-    // The caller's authentication does not stand apart from the verified domain
-    // links its identity holds
+    // The caller's authentication depends on the identity's domain links
     case INDEPENDENT_AUTHENTICATION_REQUIRED = 'independent_authentication_required';
 
     // The caller, or the result's link, is not the flow's identity
@@ -74,8 +68,7 @@ enum RecheckOutcome: string
     case AUTHENTICATION_EXPIRED = 'authentication_expired';
 
     /**
-     * The reason a redemption refused by the outcome reports, or `null` when
-     * the recheck passed.
+     * The reason a redemption refused by the outcome reports, or `null`.
      *
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
      */

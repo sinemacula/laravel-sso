@@ -5,16 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Flows;
 
 /**
- * An authorisation request's public reference (SSO-5.1, SSO-9.8): the one flow
- * identifier the package returns to the client, puts on a completion's redirect
- * and carries in events and logs, under `request_reference`.
- *
- * It is 32 base64url characters from 24 random bytes, so it is unguessable and
- * stays under the 40-character run the log sanitiser redacts. It is not a
- * secret and grants nothing: it is never the OIDC `state` or the SAML
- * `RelayState` (random references of their own), never a verifier and never a
- * handoff code, each a distinct type the package never accepts as another
- * (SSO-5.2, SSO-9.2).
+ * An authorisation request's public reference: the one flow identifier in
+ * events and logs, and not a secret.
  *
  * @api
  *
@@ -26,7 +18,7 @@ final readonly class RequestReference implements \JsonSerializable, \Stringable
     /** @var int The length of a reference, in characters. */
     public const int LENGTH = 32;
 
-    /** @var int The random bytes a reference is made from. */
+    /** @var int Random bytes, giving a length under the log sanitiser's 40. */
     private const int BYTES = 24;
 
     /** @var string A reference: exactly 32 base64url characters. */
@@ -106,8 +98,7 @@ final readonly class RequestReference implements \JsonSerializable, \Stringable
     }
 
     /**
-     * The reference, as the start response and a completion's redirect carry
-     * it.
+     * The reference, as the start response and a redirect carry it.
      *
      * @return string
      */

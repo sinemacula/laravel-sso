@@ -19,32 +19,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 
 /**
- * Reports how a redemption through the package's own redemption helper ended
- * (SSO-10.1, SSO-10.2, SSO-10.4), once per redemption: `HandoffRedeemed` for a
- * code redeemed, and exactly one `FlowFailed` (`Flow::REDEMPTION`) with its
- * reason for a refused one, a full limit included.
- *
- * Each event's context is built through the one projection
- * (`Events\EventContexts`) from what the redemption had established. Before a
- * stored code was found, it names only the purpose the application asked to
- * redeem. Once found, it names the code's connection, application, purpose and
- * request's public reference, the identity it concerns (the one a `link` or a
- * `reauthenticate` flow was started for, and otherwise the one the result's
- * link resolved to at completion), and the session a `reauthenticate` flow was
- * started on; once the connection's row was read, its tenant and protocol too.
- * The public reference is the only flow identifier it carries (SSO-9.8); never
- * the code, its digest, the verifier, the challenge, the subject or an
- * attribute (SSO-10.4).
- *
- * Each event is handed to `Events\AfterCommitDispatcher`: reported inside the
- * redemption's transaction, it reaches listeners once that commits, and never
- * when it, or the caller's transaction around it, rolls back (SSO-10.5).
- *
- * Every method takes the client the action is taken for (`Http\ClientContext`),
- * whose IP address and user agent the event's context carries; nothing reads
- * the request being served. It holds the projection and the dispatcher, which
- * read the clock and the transaction from the container on each call, so
- * nothing of one redemption is kept for the next (SSO-11.2).
+ * Reports how a redemption ended, once, after its transaction commits.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -69,8 +44,7 @@ final readonly class HandoffEvents
     ) {}
 
     /**
-     * Report the code redeemed through the connection. Called inside the
-     * transaction that consumed it, after the write.
+     * Report the code redeemed, from inside the transaction that consumed it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -94,8 +68,7 @@ final readonly class HandoffEvents
     }
 
     /**
-     * Report a redemption refused for the reason before any stored code was
-     * found, for the purpose the application asked to redeem.
+     * Report a redemption refused before any stored code was found.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -110,8 +83,7 @@ final readonly class HandoffEvents
     }
 
     /**
-     * Report a redemption of the stored code refused for the reason, with its
-     * connection once its row was read.
+     * Report a redemption of the stored code refused.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Models\HandoffCode  $code
@@ -127,7 +99,7 @@ final readonly class HandoffEvents
     }
 
     /**
-     * The context of the redemption, with what it had established.
+     * The event context of what the redemption had established.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
@@ -162,9 +134,7 @@ final readonly class HandoffEvents
     }
 
     /**
-     * The identity the code concerns: the one a `link` or a `reauthenticate`
-     * flow was started for, and otherwise the one the result's link resolved to
-     * at completion; none when it names neither, or no code was found.
+     * The identity the flow was started for, else the one its link resolved to.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\HandoffCode  $code
      * @return ?\SineMacula\Laravel\Sso\Identities\IdentityReference

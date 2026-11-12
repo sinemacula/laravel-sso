@@ -13,22 +13,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 
 /**
- * The `replay_recording` step (SSO-6.6, SSO-11.5): the first step of the
- * completion's locked transaction, with the connection's row and the request's
- * locked, so it runs only after the driver's validation passed and before any
- * downstream effect (link resolution, enforcement, a handoff code).
- *
- * A result the driver asked nothing to record goes on. Otherwise the record is
- * made through the single-use store in its namespace until its expiry, inside
- * the transaction, so a completion that rolls back records nothing: `recorded`
- * goes on; `seen` is refused with `replayed`. A record whose expiry is no
- * longer after now (the response stopped being acceptable while it was
- * validated) is refused with `assertion_expired`, recording nothing. A store
- * that cannot answer throws, which rolls the completion back as a server error
- * (SSO-11.4): a failure to record is never a pass.
- *
- * It holds the store and the clock, neither of which keeps anything of one
- * completion for the next (SSO-11.2).
+ * The `replay_recording` step: records the verified response against replay,
+ * first in the locked transaction.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,7 +39,8 @@ final readonly class RecordReplay implements CompletionStage
     ) {}
 
     /**
-     * Record what the driver asked to record, once.
+     * Record what the driver asked to record, once, refusing a record already
+     * expired.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return \SineMacula\Laravel\Sso\Completion\StageOutcome

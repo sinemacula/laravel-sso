@@ -5,12 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Completion\Enums;
 
 /**
- * How a completion at an assertion consumer service or a callback ended
- * (SSO-5.6, SSO-5.7, SSO-5.8, SSO-11.8): completed, with a handoff code for
- * the application's redirect URI; failed, with a code for that same URI;
- * rejected, with no trusted redirect target to send the browser to; rate
- * limited, with the seconds until it may be tried again; or re-initiated, an
- * unsolicited SAML response answered with the connection's start URL.
+ * How a completion ended.
  *
  * @api
  *

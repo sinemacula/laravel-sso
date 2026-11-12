@@ -33,99 +33,9 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * The checks every redemption of a handoff code makes again (SSO-4.6, SSO-8.5,
- * SSO-8.8, SSO-9.9), the purpose's writes, and the acknowledgement of a
- * completed sign-in (SSO-4.3): the package's own redemption asks them, and so
- * does a redeemer that consumes a code of its own inside its transaction, with
- * the verified result its code carries and a `Handoffs\HandoffBinding` of what
- * that code was bound to.
+ * Rechecks a redemption under its locks and makes the purpose's writes.
  *
- * Each runs only inside a transaction the redeemer has open on the package's
- * storage connection, the one that consumes its code, so the locks, the checks,
- * the consumption, the activation, the acknowledgement and the session the
- * redeemer writes commit or roll back together; called with no transaction open
- * there, each throws a `LogicException` (decision D5). A redeemer writing
- * through another connection is not atomic with them.
- *
- * `lock()` comes first, before the redeemer locks its own code, so every
- * redemption takes the package's lock order (`docs/design/linking.md`): the
- * identity's guard, the tenant's enforcement row, connection rows in id order,
- * for a code bound to a reservation its domain claim, then the code. A code
- * bound to a reservation names it, and a `link` code names the identity it was
- * started for (`$confirming`). The reservation's identity and domain are found
- * by a plain read of it, which `recheck()` confirms under the lock; the guard
- * is then taken (`Linking\IdentityLock`). For a `link`, a locking read of the
- * guard then says whether the identity has ever held an active link by a
- * verified domain, and a plain read finds the connections holding that
- * identity's verified domain links, so those are locked in order too: every
- * link row read later stands under its connection's lock. Any other code takes
- * no guard. Under the package's default `Contracts\Enforcement`
- * (`DatabaseEnforcement`) with the `enforcement` feature on, it asks the bound
- * `Contracts\EnforcementInheritance` for the enforcing tenant, locks that
- * tenant's row (inserted unconfigured when it has none,
- * `Enforcement\EnforcementLock`), and then, in one locking statement in id
- * order, the result's connection, those connections and the connections the
- * rule names. Otherwise (the feature off, or another contract bound) it locks
- * the connections alone, and asks nothing. A rule change waits for the
- * redeemer's transaction, and its revocation then sees the session the redeemer
- * wrote; a redeemer that waited on a change sees the rule as changed. On
- * PostgreSQL under `REPEATABLE READ`, a redeemer that waited may instead fail
- * to serialise: the error propagates, and the redeemer retries its whole
- * transaction, never a part of it.
- *
- * `recheck()` takes that lock, for the result's tenant, connection and
- * application (another is a `LogicException`), and answers, in this order, the
- * first that refuses:
- *
- * 1. `connection_unavailable`: the result's connection is gone, belongs to
- *    another tenant than the result names, or is no longer usable (disabled, or
- *    its protocol unavailable or its settings incomplete), as its locked row
- *    shows; its trust version under the lock is not the one the binding says
- *    the code was issued under, or the binding names none (SSO-2.13), so a
- *    trust change, a disable and a later enable included, refuses every code
- *    issued before it whichever store holds it, while a change that only adds a
- *    key or certificate raises no version and refuses nothing; or the
- *    inheritance contract, asked again, no longer names the enforcing tenant
- *    whose rule is locked, which is never locked out of order.
- * 2. `enforcement_unsatisfied`: the enforcement of the connection's tenant on
- *    the result's application requires sign-in through connections this one is
- *    not among. Under the default contract it is judged from the locked rows;
- *    another contract bound is asked now, and must itself keep a change to its
- *    rule from committing between its answer and the session's commit (a
- *    current read alone is not enough), or the session escapes the change.
- * 3. the purpose's own rules (`Contracts\PurposeBranch`): `SignInBranch`,
- *    `LinkBranch` or `ReauthenticationBranch`, which compare the link as it is
- *    now with the one observed at completion by its id, so identity equality
- *    alone never hides a link removed and made again.
- *
- * Otherwise it answers `passed`. A refusal is a value; the redeemer refuses its
- * redemption, and keeps its code consumed.
- *
- * `admit()` is `recheck()` followed by the purpose's writes: activating a
- * reservation, creating or confirming a link, or renewing a session's
- * authentication time, and answers an `Admission`, which carries the version of
- * the enforcement the connection was judged by under the lock and, for a
- * `sign_in`, the provenance of the link established as it stood under it
- * (SSO-9.10). A session keeps that version, never the one the completion
- * checked, since a rule may change between the two. `discardReservation()`
- * removes the reservation of a code refused after it was consumed, by its
- * identity and handoff reference and never merely by the subject, in the same
- * transaction. `recheck()` and `admit()` take the client the redemption is made
- * for (`Http\ClientContext`), which every event of the purpose's writes, and of
- * a link the judgement suspends, carries.
- *
- * `acknowledgeSignIn()` records, on the locked connection, that a `sign_in`
- * through it has been redeemed (SSO-4.3), which enforcement needs before it can
- * be turned on. The redeemer calls it after the recheck passed, for a `sign_in`
- * result that resolved to an identity, inside the same transaction, so a
- * redemption rolled back records nothing. A result of another purpose is a
- * `LogicException`: a `link` or a `reauthenticate` never completes a sign-in.
- *
- * A database error and a contract's exception propagate (SSO-11.4). It holds
- * the connection lookup, the drivers' registry, the enforcement contract, the
- * storage binding, the identity lock and the container, none of which keeps
- * anything of one redemption for the next (SSO-11.2); resolve it from the
- * container per request.
+ * Each call runs inside the redeemer's storage transaction; lock() comes first.
  *
  * @api
  *
@@ -166,13 +76,7 @@ final readonly class HandoffRecheck
     ) {}
 
     /**
-     * Take the locks a redemption through the tenant's connection, for the
-     * application, holds before it locks its code: the guard of the identity of
-     * the reservation named, or of the `link` it confirms for; the enforcing
-     * tenant's rule, then the connection, those holding that identity's
-     * verified domain links and the rule's connections, in id order, under the
-     * default enforcement contract with the feature on; those connections alone
-     * otherwise; then the domain claim of the reservation named, if any.
+     * Take the locks a redemption holds before it locks its code.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -210,9 +114,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * Check again, under the lock, that the result's connection is usable and
-     * satisfies its tenant's enforcement, and that the result's purpose's rules
-     * hold for what the code was bound to.
+     * Check the connection, enforcement and purpose rules again under the lock.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
@@ -231,10 +133,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * Recheck, and make the purpose's writes when it passes, under the lock, in
-     * the redeemer's transaction, handing the purpose the provenance of the
-     * link its rules judged, so the admission carries it out with the version
-     * of the enforcement judged under the lock (SSO-9.10).
+     * Recheck, and make the purpose's writes when it passes.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
@@ -261,8 +160,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * Remove the reservation of a code refused after it was consumed, in the
-     * redeemer's transaction; anything but exactly that reservation is left.
+     * Remove the reservation of a code refused after it was consumed.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
      * @param  string  $connectionId
@@ -282,8 +180,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * Record that a `sign_in` through the result's connection was redeemed, on
-     * the connection's locked row.
+     * Record on the locked connection that a `sign_in` through it was redeemed.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
@@ -309,8 +206,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * What the recheck comes to under the lock: the connection's, its trust
-     * version's and enforcement's refusal, if any, or the purpose's judgement.
+     * Judge the redemption under the lock.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
@@ -342,8 +238,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * Whether the locked connection's trust version is exactly the one the
-     * binding says the code was issued under; a binding naming none never is.
+     * Whether the binding names the locked connection's trust version.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -355,10 +250,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * The enforcement the locked connection is judged by, or `null` when the
-     * redemption is refused as `connection_unavailable` before its link is
-     * asked about: the connection is gone or unusable (and enforcement is then
-     * never asked), or the enforcing tenant moved.
+     * The policy to judge by, or `null` when the connection is unavailable.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @return ?\SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy
@@ -373,10 +265,8 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * The enforcement the connection is judged by: from the locked rows when
-     * the default contract locked them, `null` when the inheritance contract no
-     * longer names the tenant whose rule is locked; asked of the bound contract
-     * now otherwise.
+     * The locked policy, or the bound contract's when none was locked; `null`
+     * when the enforcing tenant moved.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @return ?\SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy
@@ -395,9 +285,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * Refuse a call outside a transaction on the storage connection, or under a
-     * lock taken for another tenant, connection or application than the
-     * result's.
+     * Refuse a call outside a transaction or under another result's lock.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
@@ -433,9 +321,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * Refuse a call made out of turn: outside the redeemer's transaction, under
-     * another result's lock, for a result that completes no sign-in, or before
-     * the recheck.
+     * Refuse a call made out of turn.
      *
      * @param  string  $message
      * @return never
@@ -448,9 +334,8 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * The reservation named, by a plain read, since it is locked only after the
-     * code; what it binds is immutable, and the branch confirms it under the
-     * lock. `null` when none is named, or it is gone.
+     * Find the reservation by a plain read; it is locked only after the code,
+     * and the branch confirms it under the lock.
      *
      * @param  string  $connectionId
      * @param  ?string  $reservationId
@@ -466,8 +351,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * The domain claim of the reservation, locked; `null` when there is no
-     * reservation, or its claim is gone.
+     * Lock the reservation's domain claim.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Link  $reservation
      * @return ?\SineMacula\Laravel\Sso\Models\Domain
@@ -500,9 +384,7 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * The connections locked when no enforcement took them: the one connection
-     * by its tenant's lookup, or several, in id order, by one locking
-     * statement.
+     * Lock the connections in id order when enforcement locked none.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId

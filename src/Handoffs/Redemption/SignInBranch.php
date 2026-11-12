@@ -14,30 +14,8 @@ use SineMacula\Laravel\Sso\Linking\ReservationActivation;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 
 /**
- * A `sign_in` at redemption (SSO-8.2, SSO-8.8, SSO-9.9):
- *
- * - a code bound to a reservation is judged and activated by
- *   `Linking\ReservationActivation`, and nothing else: a missing or invalid
- *   reservation is `reservation_invalid`, never a fallback to provisioning or
- *   an unlinked handoff;
- * - a code that resolved to a link needs that same link still there, by its id,
- *   for that same identity: a suspended one is `link_suspended`, one whose
- *   scope could not be judged `principal_scope_unknown`, and anything else
- *   `link_changed`;
- * - an unlinked handoff needs the subject still absent, and a code that
- *   observed a link for no identity is never one: the same refusals follow.
- *
- * Accepted evidence is asked of the bound policy (`Contracts\EvidencePolicy`)
- * once, at redemption and after any activation, and only once an identity is
- * established: an unlinked handoff and a refusal never ask.
- *
- * The admission carries out the provenance of the link it established
- * (SSO-9.10): for an existing link, what the linker stated of it in `judge()`,
- * under the locks; for an activated reservation, what the activation made it.
- * Neither is read again afterwards.
- *
- * It holds the linker, the activation, the policy and the clock, none of which
- * keeps anything of one redemption for the next (SSO-11.2).
+ * Judges and admits a `sign_in` redemption: a reserved code is activated, any
+ * other needs its link exactly as observed at completion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -93,9 +71,8 @@ final readonly class SignInBranch implements PurposeBranch
     }
 
     /**
-     * Activate the code's reservation, if it holds one, and answer the identity
-     * it established, its link with that link's provenance, and the evidence
-     * accepted.
+     * Activate any reservation, then ask for evidence once an identity is
+     * established.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Admission
@@ -118,9 +95,8 @@ final readonly class SignInBranch implements PurposeBranch
     }
 
     /**
-     * Whether the link is as the code was bound to it: a subject still absent
-     * for an unlinked handoff, or that same link, active, for that same
-     * identity.
+     * Whether the subject is still unlinked, or still on the same active link
+     * for the same identity.
      *
      * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $now
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $before

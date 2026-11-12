@@ -7,16 +7,8 @@ namespace SineMacula\Laravel\Sso\Completion\Enums;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 
 /**
- * The endpoint a completion arrived at (SSO-5.3, SSO-5.4, SSO-5.5): a
- * connection's SAML assertion consumer service or its OIDC callback, the two
- * the identity provider sends the browser back to. The application's route for
- * each names its endpoint when it calls `Completion\CompletionService`.
- *
- * Each endpoint takes one HTTP method, and its refusals report one flow: the
- * assertion consumer service takes `POST` (the HTTP-POST binding) and reports
- * `Flow::ASSERTION`; the callback takes `GET` and reports `Flow::CALLBACK`. The
- * values are those of the matching cases of `Endpoints\Enums\Endpoint`, whose
- * paths the endpoint resolver builds.
+ * The endpoint a completion arrived at, with the method it takes and the flow
+ * its refusals report.
  *
  * @api
  *
@@ -26,11 +18,9 @@ use SineMacula\Laravel\Sso\Events\Enums\Flow;
 enum CompletionEndpoint: string
 {
     // The SAML assertion consumer service, which accepts HTTP-POST only
-    // (SSO-5.3)
     case ASSERTION_CONSUMER_SERVICE = 'assertion_consumer_service';
 
     // The OIDC callback, which accepts the authorisation response's GET
-    // (SSO-5.4)
     case CALLBACK = 'callback';
 
     /**

@@ -11,11 +11,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * The rows a completion's transaction holds locked, in the package's order
- * (`flows.md`): the identity's guard when a reservation may be made, the
- * enforcing tenant's rule and connections when the default contract applies,
- * the relevant domain claim, the request. It lives only for the transaction it
- * was taken in.
+ * The rows a completion's transaction holds locked; valid only in that
+ * transaction.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,7 +41,7 @@ final readonly class CompletionLock
         /** The enforcement locked, when the default contract applies. */
         public ?LockedEnforcement $enforcement,
 
-        /** The connection's claim of the linking email's domain, when there is one. */
+        /** The connection's claim of the linking email's domain, if any. */
         public ?Domain $domain,
 
         /** What plain reads found to lock before these were taken. */

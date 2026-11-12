@@ -18,42 +18,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Reports how a completion at an assertion consumer service or a callback ended
- * (SSO-10.1, SSO-10.2, SSO-10.4), once per completion:
- *
- * - completed: `ResultVerified`, then `HandoffIssued`;
- * - refused after its response was verified: `ResultVerified`, then exactly one
- *   `FlowFailed` with the flow and the reason;
- * - stopped at the provisioning boundary: `ResultVerified` alone, once its
- *   transaction commits, and the final continuation reports only how it ended,
- *   so a result is reported verified once;
- * - refused before (a full limit, a method or a connection the endpoint does
- *   not take, a response no request matches, a refused consumption or
- *   validation): exactly one `FlowFailed`;
- * - an unsolicited SAML response re-initiated (SSO-5.8):
- *   `UnsolicitedResponseReinitiated` alone, its context naming the connection,
- *   its tenant and its protocol and nothing of the response; refused, exactly
- *   one `FlowFailed` with that same context.
- *
- * Each event's context is built through the one projection
- * (`Events\EventContexts`) from what the completion had established: the
- * connection, its tenant and protocol once it was read; the application, the
- * purpose and the request's public reference once the request was consumed; the
- * identity (the one the result's link resolved to for a `sign_in`, the one the
- * request was started for for a `link` or a `reauthenticate`) and the session a
- * `reauthenticate` was started on. The public reference is the only flow
- * identifier it carries (SSO-9.8); never a subject, an attribute, the protocol
- * state, a nonce, a verifier, an assertion or a code (SSO-10.4).
- *
- * Each event is handed to `Events\AfterCommitDispatcher`: reported inside the
- * completion's transaction, it reaches listeners once that commits, and never
- * when it rolls back (SSO-10.5).
- *
- * Every method takes the client the action is taken for (`Http\ClientContext`),
- * whose IP address and user agent the event's context carries; nothing reads
- * the request being served. It holds the projection and the dispatcher, which
- * read the clock and the transaction from the container on each call, so
- * nothing of one completion is kept for the next (SSO-11.2).
+ * Reports how a completion ended, once, after its transaction commits.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -78,8 +43,7 @@ final readonly class CompletionEvents
     ) {}
 
     /**
-     * Report how the completion of the flow ended: completed when the outcome
-     * proceeds, refused for its reason otherwise.
+     * Report how the completion ended.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
      * @param  \SineMacula\Laravel\Sso\Completion\StageOutcome  $outcome
@@ -114,10 +78,7 @@ final readonly class CompletionEvents
     }
 
     /**
-     * Report an unsolicited response through the connection re-initiated: its
-     * context names the connection, its tenant and its protocol only, never a
-     * request, an application or an identity, since the response answers none
-     * and its subject never carries into the new flow (SSO-10.4).
+     * Report an unsolicited response re-initiated, naming the connection only.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
@@ -133,7 +94,7 @@ final readonly class CompletionEvents
     }
 
     /**
-     * The context of the completion, with what it had established.
+     * The event context of what the completion had established.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return \SineMacula\Laravel\Sso\Events\EventContext
@@ -161,9 +122,8 @@ final readonly class CompletionEvents
     }
 
     /**
-     * The identity the completion concerns: the one the result's link resolved
-     * to for a `sign_in`, and the one the request was started for for a `link`
-     * or a `reauthenticate`; none before the request was consumed.
+     * The linked identity of a `sign_in`, or the identity a `link` or
+     * `reauthenticate` was started for.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return ?\SineMacula\Laravel\Sso\Identities\IdentityReference

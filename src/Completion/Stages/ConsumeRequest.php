@@ -20,38 +20,8 @@ use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
 
 /**
- * The `consumption` step (SSO-5.1, SSO-5.6, SSO-11.5): the request the
- * correlation names is consumed through `Flows\RequestConsumption`, the only
- * place a request is consumed, before anything in the response is validated, so
- * it is consumed once whether the response then passes or fails.
- *
- * The consumption runs in a transaction of its own on the storage connection
- * (the completion runs outside any other, `CompletionService`) that first locks
- * the row of the connection the response arrived for, so a completion takes its
- * locks in the package's order, the connection's row before its request's, and
- * commits the consumption before the response is validated. A change that voids
- * the connection's requests (a disable, a trust change) takes the same locks in
- * the same order, and the two never deadlock. The request is judged against the
- * connection as that locking read gives it, so a request whose trust version is
- * no longer the connection's is refused before the driver validates anything or
- * calls the provider; a connection gone by then is judged as the completion
- * read it, and refused again under the completion's lock.
- *
- * The result maps to the state:
- *
- * - `consumed`: the request, what the driver is given of it and its application
- *   go on;
- * - `refused` with the application still registered: refused for the reason,
- *   with the request and the application, so the completion redirects to it
- *   with the failure (SSO-5.7). The driver is never given a refused request, so
- *   it is kept without its nonce digest or its PKCE verifier;
- * - `refused` without the application (`application_not_allowed`): refused,
- *   with no trusted redirect target;
- * - `unknown` and `replayed`: refused with `request_unknown`, with no trusted
- *   redirect target.
- *
- * It holds the consumption, which keeps nothing of one completion for the next
- * (SSO-11.2). A database error propagates (SSO-11.4).
+ * The `consumption` step: consumes the request in its own transaction, under
+ * the connection's lock, before the response is validated.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,8 +42,7 @@ final readonly class ConsumeRequest implements CompletionStage
     ) {}
 
     /**
-     * Consume the request the correlation names, with the connection's row
-     * locked first.
+     * Consume the request the correlation names.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return \SineMacula\Laravel\Sso\Completion\StageOutcome
@@ -94,9 +63,8 @@ final readonly class ConsumeRequest implements CompletionStage
     }
 
     /**
-     * Consume the request the correlation names, in a transaction on the
-     * storage connection that locks the connection's row first, judged against
-     * the connection as locked.
+     * Lock the connection's row before the request's, the package's order, and
+     * consume against the row as locked.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
@@ -141,8 +109,7 @@ final readonly class ConsumeRequest implements CompletionStage
     }
 
     /**
-     * Go on with the consumed request, what the driver is given of it and its
-     * application.
+     * Go on with the consumed request and its application.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  \SineMacula\Laravel\Sso\Flows\ConsumptionResult  $result
@@ -160,8 +127,7 @@ final readonly class ConsumeRequest implements CompletionStage
     }
 
     /**
-     * Refuse for the consumption's reason, with the request and its application
-     * when the application is still registered.
+     * Refuse, keeping the request and application when it can be redirected.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  \SineMacula\Laravel\Sso\Flows\ConsumptionResult  $result
@@ -183,9 +149,8 @@ final readonly class ConsumeRequest implements CompletionStage
     }
 
     /**
-     * What a refused request is kept as: its purpose, application, reference,
-     * start and expectations, never its nonce digest or its PKCE verifier,
-     * since no driver is given it.
+     * A refused request without its nonce digest or PKCE verifier, since no
+     * driver is given it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @return \SineMacula\Laravel\Sso\Protocols\ConsumedRequest

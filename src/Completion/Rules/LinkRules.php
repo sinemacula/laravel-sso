@@ -12,18 +12,8 @@ use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 
 /**
- * What a `link` requires at completion (SSO-5.11, SSO-8.5): the identity it was
- * started for may link through the connection (`link_ineligible`); the subject
- * is held by no live reservation, which is busy rather than converted
- * (`link_reserved`); and no other identity holds it, active or suspended
- * (`subject_already_linked`, naming nobody); and its link's scope could be
- * judged (`principal_scope_unknown`). A subject suspended on this same identity
- * goes on, so the person can confirm it (SSO-8.8). The bound linker must be
- * backed by `Contracts\LinkStorage`, since a `link` writes what it resolves:
- * another is a `LogicException`, before anything is written.
- *
- * It holds the eligibility contract and the storage binding, which keep nothing
- * of one completion for the next (SSO-11.2).
+ * What a `link` requires at completion; a subject suspended on the same
+ * identity goes on, so the person can confirm it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,7 +61,7 @@ final readonly class LinkRules
     }
 
     /**
-     * Why the subject may not be linked to the identity, as it resolved.
+     * Why the subject, as resolved, may not be linked to the identity.
      *
      * @param  ?\SineMacula\Laravel\Sso\Links\LinkResolution  $resolution
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity

@@ -13,32 +13,8 @@ use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 
 /**
- * A `reauthenticate` at redemption (SSO-5.10, SSO-9.5, SSO-9.9): only through
- * the caller's transaction (`HandoffRedemption::admit()`), since its write and
- * its session's lock must commit together. The subject must still resolve
- * through the exact link observed at completion, to the identity the flow was
- * started for: a suspended link is `link_suspended`, and anything else
- * `identity_mismatch`. The session must then be active, of the application and
- * the connection, and bound to exactly that link, with its row locked through
- * the write (`Contracts\ReauthenticationSessions::lockedStanding()`), or it is
- * `session_ineligible`.
- *
- * A result stating no authentication time renews nothing, and is
- * `authentication_expired` before the session is asked about. The package's
- * completion never issues a code from one
- * (`Completion\Rules\ReauthenticationRules`), but an adapter that redeems its
- * own codes hands `Handoffs\HandoffRecheck` its own result, so this is
- * reachable and a refusal rather than an error. `admit()` runs only once
- * `judge()` passed for the same result, so the time is there by then.
- *
- * Admission renews the session's authentication time from the provider's, with
- * any evidence newly accepted from this authentication, and nothing else: no
- * lifetime, refresh token, sign-in provenance or earlier evidence changes
- * (SSO-9.5). It acknowledges no sign-in, activates no reservation and creates
- * no link.
- *
- * It holds the linker, the sessions, the policy and the clock, none of which
- * keeps anything of one redemption for the next (SSO-11.2).
+ * Judges and admits a `reauthenticate` redemption, which renews only the
+ * session's authentication time and evidence.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,9 +47,8 @@ final readonly class ReauthenticationBranch implements PurposeBranch
     ) {}
 
     /**
-     * Judge the exact link, that the result states when the provider
-     * authenticated, and the session bound to that link. A re-authentication
-     * never captures provenance, so it names no link provenance (SSO-9.10).
+     * Judge the exact link, the authentication time and the session bound to
+     * the link; an adapter's own result may lack the time, so that refuses.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement
@@ -115,8 +90,8 @@ final readonly class ReauthenticationBranch implements PurposeBranch
     }
 
     /**
-     * Whether the subject resolves to the flow's identity through the link
-     * observed at completion.
+     * Whether the subject resolves to the flow's identity through the observed
+     * link.
      *
      * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $now
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
@@ -133,7 +108,7 @@ final readonly class ReauthenticationBranch implements PurposeBranch
     }
 
     /**
-     * Whether the session is active and bound to exactly the link, locked.
+     * Lock the session and judge it active and bound to exactly the link.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @param  string  $linkId

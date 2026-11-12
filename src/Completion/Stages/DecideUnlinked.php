@@ -11,16 +11,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 
 /**
- * The `unlinked_decision` step (SSO-8.6): a `sign_in` whose result resolved to
- * no identity, and holds no reservation, ends with `unlinked` and no handoff,
- * unless its application allows unlinked handoffs, for an application that
- * resolves identities itself on redemption.
- *
- * A `link` or a `reauthenticate` passes unchanged: whether its result may be
- * linked to, or must already be linked to, the identity it was started for is
- * decided by its own rules.
- *
- * It holds nothing (SSO-11.2).
+ * The `unlinked_decision` step: an unlinked `sign_in` ends with `unlinked`
+ * unless its application allows unlinked handoffs.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -51,8 +43,7 @@ final readonly class DecideUnlinked implements CompletionStage
     }
 
     /**
-     * Whether the state is a `sign_in` whose result resolved to no identity and
-     * holds no reservation.
+     * Whether the state is a `sign_in` with no identity and no reservation.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return bool

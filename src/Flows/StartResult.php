@@ -9,19 +9,9 @@ use SineMacula\Laravel\Sso\Flows\Enums\StartStatus;
 use SineMacula\Laravel\Sso\Protocols\Navigation;
 
 /**
- * The answer to a start of an authorisation request (SSO-5.1, SSO-3.4,
- * SSO-12.5): started, with the request's public reference, the typed navigation
- * and, when the client sent no challenge, the verifier the package generated,
- * returned once; refused, with a reason; or rate limited, with `retryAfter`.
+ * The answer to a start of an authorisation request.
  *
- * `body()` is the start response's body, `{reference, navigation, verifier?}`,
- * and is the one place the generated verifier is revealed; `headers()` are the
- * headers that response is sent with, `Cache-Control: no-store` whenever it
- * carries a verifier and on every other answer too (SSO-9.8). A discovery miss
- * answers exactly this shape (SSO-3.5). A dump never shows the verifier, nor
- * the navigation's query values or form field values (the state, the nonce, a
- * `SAMLRequest`), which only `body()` carries; the result refuses to be
- * serialised.
+ * body() is the one place a generated verifier is revealed.
  *
  * @api
  *
@@ -54,19 +44,19 @@ final readonly class StartResult
         /** Where the client sends the browser, for a started one. */
         public ?Navigation $navigation = null,
 
-        /** The verifier the package generated, for a started one whose client sent no challenge. */
+        /** The verifier generated when the client sent no challenge. */
         public ?Verifier $verifier = null,
 
         /** Why it was refused, `rate_limited` included. */
         public ?FailureReason $reason = null,
 
-        /** Seconds, at least 1, until it may be tried again, for a rate limited one. */
+        /** Seconds, at least 1, until a rate limited one may be retried. */
         public ?int $retryAfter = null,
     ) {}
 
     /**
-     * What a dump shows: never the verifier, and the navigation as its own dump
-     * shows it, never a query value or a field's value.
+     * Dump without the verifier, and the navigation only as its own dump shows
+     * it.
      *
      * @return array<string, mixed>
      */
@@ -113,8 +103,7 @@ final readonly class StartResult
     }
 
     /**
-     * The client is sent on with the reference, and the verifier when the
-     * package generated one.
+     * The client is sent on with the reference and any generated verifier.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\RequestReference  $reference
      * @param  \SineMacula\Laravel\Sso\Protocols\Navigation  $navigation
@@ -191,9 +180,8 @@ final readonly class StartResult
     }
 
     /**
-     * The start response's body (SSO-12.5): `{reference, navigation,
-     * verifier?}` for a started one, revealing the generated verifier; the
-     * `error` code, and `retry_after` for a rate limited one, otherwise.
+     * The start response's body: `{reference, navigation, verifier?}`, or
+     * `{error, retry_after?}`.
      *
      * @return array<string, mixed>
      */
@@ -213,8 +201,7 @@ final readonly class StartResult
     }
 
     /**
-     * The headers the start response is sent with: `Cache-Control: no-store`,
-     * and `Retry-After` for a rate limited one.
+     * The start response's headers, with `Retry-After` when rate limited.
      *
      * @return array<string, string>
      */

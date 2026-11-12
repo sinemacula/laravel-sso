@@ -18,29 +18,8 @@ use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Reports how a start of an authorisation request ended (SSO-10.1, SSO-10.2):
- * `AuthorizationRequestStarted` for a request stored, and exactly one
- * `FlowFailed` (`Flow::AUTHORIZATION_REQUEST`) with its reason for a refused
- * start, a discovery fallback included. Each event's context is built through
- * the one projection (`Events\EventContexts`) and handed to
- * `Events\AfterCommitDispatcher`, so it reaches listeners once the request
- * commits, and never when the caller's transaction rolls it back (SSO-10.5).
- *
- * A started request's context names its connection, the connection's tenant and
- * protocol, the application, the purpose, the public reference, and the
- * identity and session it was started for. A refusal's names the purpose, the
- * identity of the caller the application gave and the session when the purpose
- * binds one (`Purpose::bindsSession()`), and as much more as the start had
- * established when it was refused: the application once admitted, the
- * connection once found, the public reference once made. The public reference
- * is the only flow identifier either carries (SSO-9.8); neither holds the
- * protocol state, the nonce, a verifier or a challenge (SSO-10.4).
- *
- * Every method takes the client the action is taken for (`Http\ClientContext`),
- * whose IP address and user agent the event's context carries; nothing reads
- * the request being served. It holds the projection and the dispatcher, which
- * read the clock and the transaction from the container on each call, so
- * nothing of one request is kept for the next (SSO-11.2).
+ * Reports how a start of an authorisation request ended, after its transaction
+ * commits.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,8 +44,7 @@ final readonly class RequestEvents
     ) {}
 
     /**
-     * Report the request started through the connection. Called inside the
-     * transaction that stored it, after the write.
+     * Report the request started, from inside the transaction that stored it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
@@ -94,8 +72,7 @@ final readonly class RequestEvents
     }
 
     /**
-     * Report a start refused for the reason, with what the start had
-     * established.
+     * Report a start refused, with what it had established.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose

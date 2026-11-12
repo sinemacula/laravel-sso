@@ -10,13 +10,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 
 /**
- * What a redemption's checks and writes came to (SSO-9.9, SSO-9.10): `passed`
- * with the identity it established, the link that identity resolved through,
- * the evidence accepted of the result's own assertion, for a `sign_in` the
- * provenance that link held under the redemption's locks (as the linker stated
- * it, or as an activation made it), and the version of the enforcement the
- * connection was judged by under those locks, carried out so neither is ever
- * read again; or the first check that refused it, which wrote nothing.
+ * What a redemption's checks and writes came to, carrying out what was judged
+ * under the locks so it is never read again.
  *
  * @api
  *
@@ -49,10 +44,10 @@ final readonly class Admission
         /** The evidence accepted of the result's own assertion, if any. */
         public ?AcceptedEvidence $evidence = null,
 
-        /** The provenance of the link a `sign_in` established, under the locks, if stated. */
+        /** The provenance of the link a `sign_in` established, if stated. */
         public ?LinkOrigin $linkProvenance = null,
 
-        /** The version of the enforcement judged under the redemption's locks, if it passed and the rule has one. */
+        /** The enforcement version judged under the locks, if it passed. */
         public ?string $enforcementVersion = null,
     ) {}
 
@@ -68,8 +63,8 @@ final readonly class Admission
     }
 
     /**
-     * The same admission, judged under the enforcement of the version given
-     * when it passed; a refusal is kept as it is, carrying its outcome alone.
+     * The same admission under the given enforcement version; a refusal is kept
+     * as it is.
      *
      * @param  ?string  $enforcementVersion
      * @return self

@@ -21,60 +21,7 @@ use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 
 /**
- * A `link` at redemption (SSO-5.11, SSO-8.5, SSO-8.8, SSO-9.9): it makes no
- * session and no further-factor proof, acknowledges no sign-in and never asks
- * the evidence contract. The identity of the caller the application has
- * authenticated must be the identity the code is bound to, compared byte for
- * byte, since possessing the code and its verifier does not prove that
- * (`identity_mismatch`). That caller, with the session the application gave
- * with it, is the one freshness and the confirmation judge, as given: never one
- * rebuilt from the binding.
- *
- * The package's locks come first: under the identity's guard and the
- * connections `Handoffs\HandoffRecheck::lock()` took, the identity's verified
- * domain links and the subject's link are read by locking reads, and only then
- * is any application contract asked, so its guards come after the package's.
- * Freshness (`sso.link.create`, `freshness_required`) and
- * `Contracts\LinkEligibility` (`link_ineligible`) are asked again, and
- * same-identity idempotence bypasses neither. An identity holding a link of
- * verified domain provenance, in any connection, or that has ever held an
- * active one, then needs `Linking\LinkConfirmationGate` to pass, or the
- * redemption is `independent_authentication_required`: the provider behind that
- * link cannot confirm it, nor add a second subject that escapes its rule, and
- * removing the link first does not change that. Then, in this order, against
- * the link as it is now:
- *
- * - a live reservation is busy, `link_reserved`: never converted, and never
- *   superseded by a fresh proof;
- * - a link another identity holds, active or suspended, is
- *   `subject_already_linked`, naming nobody;
- * - a link whose scope could not be judged is `principal_scope_unknown`, for
- *   this attempt, and nothing is confirmed;
- * - a link observed at completion that is gone or replaced is `link_changed`:
- *   links are compared by id, so a link removed and made again for the same
- *   identity is refused; a binding that names a linked identity but no link
- *   cannot be compared, and fails closed the same way;
- * - a link the bound identity holds, the one observed or, with none observed,
- *   any, passes, even when it is suspended;
- * - no link, with none observed, creates one (origin `link_purpose`):
- *   `link_limit_reached` or `subject_already_linked` when the store refuses it,
- *   with nothing written.
- *
- * Admission of a link the identity already holds is its confirmation: it clears
- * the link's verified domain provenance and any suspension for good, raises the
- * connection's links version and reports `LinkConfirmed`
- * (`Links\LinkStore::confirm()`); a link with no such provenance is left as it
- * is, and reports nothing. Admission judges the link it re-reads again, so a
- * wrapper whose answer moved can never make it write what `judge()` did not
- * pass.
- *
- * The bound `Contracts\Linker` must be backed by `Contracts\LinkStorage`, since
- * a link written here must be one the resolver reads: another is a
- * `LogicException` before anything is written.
- *
- * It holds the storage binding, the eligibility, the freshness gate and the
- * confirmation gate, none of which keeps anything of one redemption for the
- * next (SSO-11.2).
+ * Judges and admits a `link` redemption: no session, no evidence.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -107,9 +54,8 @@ final readonly class LinkBranch implements PurposeBranch
     ) {}
 
     /**
-     * Judge the caller; then, once the package's link locks are taken,
-     * freshness, eligibility, the confirmation and the link as it is now. A
-     * `link` captures no session provenance, so it names no link provenance.
+     * Judge the caller, then, under the package's locks, the application's
+     * contracts and the link as it is now.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement
@@ -136,8 +82,8 @@ final readonly class LinkBranch implements PurposeBranch
     }
 
     /**
-     * Create the link, or confirm the one the identity holds, unless the link
-     * as it is now is no longer one `judge()` passed.
+     * Create or confirm the link, judging it again so nothing is written that
+     * `judge()` did not pass.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @return \SineMacula\Laravel\Sso\Handoffs\Redemption\Admission
@@ -167,9 +113,8 @@ final readonly class LinkBranch implements PurposeBranch
     }
 
     /**
-     * Whether the identity of the caller the application has authenticated is
-     * the identity the code is bound to, byte for byte; no caller, or no
-     * identity, is not.
+     * Whether the caller is exactly the identity the code is bound to; holding
+     * the code and its verifier does not prove that.
      *
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -184,9 +129,7 @@ final readonly class LinkBranch implements PurposeBranch
     }
 
     /**
-     * Why an application contract refuses the redemption, or `null`, asked once
-     * the package's locks are held: freshness, eligibility, the confirmation.
-     * Freshness and the confirmation judge the caller, with its session.
+     * Why an application contract refuses the redemption, or `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context
      * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -207,8 +150,7 @@ final readonly class LinkBranch implements PurposeBranch
     }
 
     /**
-     * What the link as it is now means for the bound identity and what was
-     * observed at completion.
+     * Judge the link as it is now against the binding.
      *
      * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $now
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -227,8 +169,7 @@ final readonly class LinkBranch implements PurposeBranch
     }
 
     /**
-     * Whether a link holds the subject, active or suspended, and is not the
-     * identity's.
+     * Whether another identity's link holds the subject, active or suspended.
      *
      * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $now
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -240,9 +181,8 @@ final readonly class LinkBranch implements PurposeBranch
     }
 
     /**
-     * Whether the link observed at completion is not the one that holds the
-     * subject now. A binding naming a linked identity but no link cannot show
-     * the link is the same, and counts as replaced.
+     * Whether the link observed at completion is not the one now, by id; a
+     * binding naming a linked identity but no link counts as replaced.
      *
      * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $now
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffBinding  $binding
@@ -254,8 +194,8 @@ final readonly class LinkBranch implements PurposeBranch
     }
 
     /**
-     * Clear the identity's link of its verified domain provenance and any
-     * suspension, and answer it.
+     * Confirm the identity's link, clearing its domain provenance and any
+     * suspension.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\LinkStorage  $storage
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\RedemptionContext  $context

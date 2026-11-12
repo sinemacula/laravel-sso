@@ -23,37 +23,8 @@ use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 
 /**
- * Takes a completion's locks and judges what it may do under them (`flows.md`,
- * `docs/design/linking.md`), for its first locked transaction and its final
- * continuation alike.
- *
- * `discover()` runs before the first locked transaction opens, by plain reads
- * (`Linking\ReservationDiscovery`), and finds whether the completion touches
- * linking and whose identity it would reserve for. An ordinary linked sign-in
- * and any path with the feature off take no guard.
- *
- * `take()` locks, each by a locking read on the write connection (SSO-11.3):
- * first, in the first locked transaction of a completion whose discovery found
- * one, the identity's guard (`Linking\IdentityLock`). Then, for a completion
- * still going on under the default `Contracts\Enforcement` with the feature on,
- * the enforcing tenant's rule, then the connection and the rule's connections
- * in ascending id order; otherwise the connection alone. Then, in that first
- * locked transaction of a `sign_in` whose locked connection has linking on
- * under the `domain_linking` feature, unless its discovery found the subject
- * held, this connection's claim of the linking email's canonicalised domain
- * (absent, the connection's row guards its insertion). Then the request.
- *
- * `refusal()` then judges the rows as locked: `connection_unavailable` when the
- * connection is gone or no longer usable, the request gone, voided or of
- * another trust version (unless the receipt permits exactly that transition),
- * or the enforcing tenant has moved; `metadata_expired` when what was fetched
- * for the connection has expired; `request_expired` when the verified
- * response's deadline has passed.
- *
- * It holds the enforcement contract, the drivers' registry, the metadata
- * expiry, the deadlines, the finder, the discovery and the identity lock, none
- * of which keeps anything of one completion for the next (SSO-11.2). A database
- * error propagates (SSO-11.4).
+ * Takes a completion's locks in the package's order and judges what it may do
+ * under them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -160,7 +131,7 @@ final readonly class CompletionLocks
     }
 
     /**
-     * Take the guard of the identity the discovery found, first of the order.
+     * Take the guard of the identity the discovery found, first in the order.
      *
      * @param  ?\SineMacula\Laravel\Sso\Linking\LinkingDiscovery  $discovery
      * @param  bool  $preparing
@@ -202,9 +173,8 @@ final readonly class CompletionLocks
     }
 
     /**
-     * This connection's claim of the linking email's canonicalised domain,
-     * locked, for a `sign_in` whose locked connection has linking on; `null`
-     * otherwise.
+     * Lock this connection's claim of the linking email's domain, for a
+     * `sign_in` with linking on.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection

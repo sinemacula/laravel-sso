@@ -14,13 +14,8 @@ use SineMacula\Laravel\Sso\Contracts\CompletionStage;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 
 /**
- * The `purpose_rules` step (SSO-5.10, SSO-5.11, SSO-8.5, SSO-8.8): what the
- * flow's purpose requires of the link just resolved, each purpose's rules in a
- * class of their own (`Completion\Rules`). It runs in the locked transaction
- * and in the final continuation.
- *
- * It holds the container its rules are resolved from, per completion, which
- * keeps nothing of one completion for the next (SSO-11.2).
+ * The `purpose_rules` step: what the flow's purpose requires of the resolved
+ * link, by the purpose's rules class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

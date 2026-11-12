@@ -11,25 +11,7 @@ use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 
 /**
- * How a completion at an assertion consumer service or a callback ended
- * (SSO-5.6, SSO-5.7, SSO-5.8, SSO-11.8), the value the application's controller
- * turns into its response:
- *
- * - `completed`: a handoff code was issued; the browser goes to the
- *   application's redirect URI with the code and the request's public
- *   reference, in the fragment or the query as the application delivers.
- * - `failed`: the flow failed after its request was found, so its application's
- *   redirect URI is trusted; the browser goes there with the failure code and
- *   the reference, never a reason in prose.
- * - `rejected`: no trusted redirect target is known (an unknown connection, a
- *   response that matches no request); answered with a 400 and no redirect.
- * - `rate_limited`: a limit is full; answered with a 429 and `Retry-After`.
- * - `reinitiated`: an unsolicited SAML response; the browser goes to the
- *   connection's configured start URL, naming the connection.
- *
- * A database error is never one of these: it propagates as a server error
- * (SSO-11.4). It may hold the handoff code, so a dump never shows it and it
- * refuses to be serialised.
+ * How a completion ended, for the application's controller to answer.
  *
  * @api
  *
@@ -70,7 +52,7 @@ final readonly class CompletionResult
         /** The handoff issued, for a completed one. */
         public ?IssuedHandoff $handoff = null,
 
-        /** Seconds, at least 1, until it may be tried again, for a rate limited one. */
+        /** Seconds, at least 1, until a rate limited one may be retried. */
         public ?int $retryAfter = null,
 
         /** The connection's start URL, for a re-initiated one. */
@@ -78,7 +60,7 @@ final readonly class CompletionResult
     ) {}
 
     /**
-     * What a dump shows: never the code.
+     * Dump everything but the code.
      *
      * @return array<string, mixed>
      */
@@ -141,8 +123,7 @@ final readonly class CompletionResult
     }
 
     /**
-     * The flow failed, for the reason given, with the application's redirect
-     * URI trusted.
+     * The flow failed with the application's redirect URI trusted.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  string  $redirectUri

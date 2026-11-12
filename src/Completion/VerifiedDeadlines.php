@@ -9,16 +9,8 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Linking\LinkingSettings;
 
 /**
- * When a verified response stops being valid (SSO-8.6,
- * `docs/design/linking.md`): the earlier of its request's expiry and
- * `sso.linking.verified_result_max_age_seconds` from the moment it was
- * verified. A completion checks it under its locks, the provisioning helper
- * before its write, and the final continuation before it issues a handoff, so a
- * slow listener never finishes on an old response and no continuation extends a
+ * When a verified response stops being valid, so no continuation extends a
  * request's authority.
- *
- * It holds the clock and the settings, neither of which keeps anything of one
- * completion for the next (SSO-11.2).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,8 +35,8 @@ final readonly class VerifiedDeadlines
     ) {}
 
     /**
-     * When a response verified now stops being valid, given its request's
-     * expiry.
+     * When a response verified now stops being valid: the maximum age, capped
+     * by the request's expiry.
      *
      * @param  ?\Carbon\CarbonImmutable  $requestExpiry
      * @return \Carbon\CarbonImmutable
@@ -59,8 +51,7 @@ final readonly class VerifiedDeadlines
     }
 
     /**
-     * Whether the deadline has passed by now; a state not yet given one has
-     * nothing to judge.
+     * Whether the deadline has passed; no deadline never has.
      *
      * @param  ?\Carbon\CarbonImmutable  $deadline
      * @return bool

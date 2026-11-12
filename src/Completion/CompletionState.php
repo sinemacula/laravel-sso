@@ -25,32 +25,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * What a completion has established so far (SSO-5.6), handed from each stage to
- * the next in `Enums\CompletionStep`'s order: the connection the response
- * arrived for, what arrived and the client it came from, which every event of
- * the completion and every count against its client takes; the connection, read
- * from the write connection; the correlation the driver read; the authorisation
- * request, consumed, with what the driver is given of it and the registered
- * application; the enforcement policy as the locks the completion holds show
- * it; the claims the driver verified, what records them against replay, and the
- * result built from them; the identity the result's link resolved to; the
- * latest end of the application's session the provider's deadline sets; the
- * handoff issued; the receipt of a key rotation the response's own validation
- * made; how the result's link resolved; the candidate a reservation holds,
- * which is never the resolved identity; the domain claim locked for linking;
- * the linking policy version the response was validated under; when the
- * verified response stops being valid, which no continuation extends; and what
- * plain reads found to lock before its locked transaction.
- *
- * An unsolicited SAML response handed to re-initiation (SSO-5.8) only ever
- * holds the connection, its correlation and, under the connection's lock, its
- * replay record: no request, application, claims, result or identity, so
- * nothing of it carries into the flow the application starts next.
- *
- * Each `with…()` answers a new state with one part added and the rest kept;
- * nothing is ever removed. It lives only for the completion it describes: it
- * holds the response, the consumed request and the issued code, so a dump shows
- * only ids and what is set, and it refuses to be serialised or unserialised.
+ * What a completion has established so far, handed from each stage to the next.
  *
  * @api
  *
@@ -111,7 +86,7 @@ final readonly class CompletionState
      */
     private function __construct(
 
-        /** The id of the connection whose endpoint the response arrived at, as the application's route gave it. */
+        /** The connection id the application's route gave. */
         public string $connectionId,
 
         /** What arrived at the endpoint. */
@@ -135,7 +110,7 @@ final readonly class CompletionState
         /** The registered application the request is for. */
         public ?Application $application = null,
 
-        /** The enforcement policy judged from the rows the completion holds locked, when the default contract locked them. */
+        /** The enforcement policy from the locked rows, when the default contract locked them. */
         public ?EnforcementPolicy $enforcementPolicy = null,
 
         /** What the driver verified. */
@@ -147,16 +122,16 @@ final readonly class CompletionState
         /** The identity the result's link resolved to, if any. */
         public ?IdentityReference $linkedIdentity = null,
 
-        /** The latest end of the application's session the provider's deadline sets. */
+        /** The session's latest end, set by the provider's deadline. */
         public ?CarbonImmutable $sessionNotAfter = null,
 
         /** The handoff issued. */
         public ?IssuedHandoff $handoff = null,
 
-        /** What records the verified response against replay, when the driver asks for it. */
+        /** What records the verified response against replay, if the driver asks. */
         public ?ReplayRecord $replay = null,
 
-        /** What lets the request finish across the key rotation its own validation made. */
+        /** Lets the request finish across a key rotation its own validation made. */
         public ?TransitionReceipt $transitionReceipt = null,
 
         /** How the result's link resolved, as last asked. */
@@ -179,8 +154,7 @@ final readonly class CompletionState
     ) {}
 
     /**
-     * What a dump shows: ids, and which parts are set, never what arrived, the
-     * protocol state, the consumed request's secrets or the code.
+     * Dump only ids and which parts are set, never a secret.
      *
      * @return array<string, mixed>
      */
@@ -229,8 +203,7 @@ final readonly class CompletionState
     }
 
     /**
-     * The state of a completion that has just arrived at the connection's
-     * endpoint from the client.
+     * The state of a completion that has just arrived.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
@@ -243,9 +216,7 @@ final readonly class CompletionState
     }
 
     /**
-     * With the connection, read from the write connection, its claim of the
-     * linking email's domain when that was locked with it, and what plain reads
-     * found to lock before they were taken.
+     * With the connection, its locked linking domain and the linking discovery.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $linkingDomain
@@ -283,8 +254,7 @@ final readonly class CompletionState
     }
 
     /**
-     * With the enforcement policy judged from the rows the completion holds
-     * locked, which the enforcement step judges the connection by.
+     * With the enforcement policy judged from the locked rows.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @return self
@@ -339,10 +309,8 @@ final readonly class CompletionState
     }
 
     /**
-     * With how the result's link resolved, as last asked: the identity it
-     * resolved to replaces any earlier one, and a resolution that resolves
-     * nothing clears it; and with the candidate a reservation holds a link for,
-     * if any, which is never the resolved identity.
+     * With how the link resolved, replacing or clearing the linked identity,
+     * and any reserved candidate.
      *
      * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $resolution
      * @param  ?\SineMacula\Laravel\Sso\Links\ReservedCandidate  $candidate
@@ -354,8 +322,8 @@ final readonly class CompletionState
     }
 
     /**
-     * With what the validation was based on: the linking policy version, and
-     * when the verified response stops being valid.
+     * With the linking policy version validated under and the response's
+     * validity.
      *
      * @param  int  $linkingVersion
      * @param  \Carbon\CarbonImmutable  $verifiedUntil
@@ -367,8 +335,7 @@ final readonly class CompletionState
     }
 
     /**
-     * With the latest end of the application's session the provider's deadline
-     * sets.
+     * With the session's latest end, set by the provider's deadline.
      *
      * @param  \Carbon\CarbonImmutable  $notAfter
      * @return self
@@ -390,9 +357,8 @@ final readonly class CompletionState
     }
 
     /**
-     * Whether a refusal can be redirected to the application: the request was
-     * found and consumed, so its application and connection are trusted
-     * (SSO-5.7). Before then there is no trusted target.
+     * Whether a refusal can be redirected: the consumed request makes its
+     * application and connection trusted.
      *
      * @return bool
      */

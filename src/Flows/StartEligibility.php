@@ -13,18 +13,8 @@ use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Whether a purpose may start through a usable connection (steps 6 and 7 of a
- * start, `AuthorizationRequestService`): a `sign_in` always may; a `link` once
- * the freshness contract answers `fresh` for `sso.link.create` (SSO-2.12) for
- * the caller, with the session it gave, else `freshness_required`; a
- * `reauthenticate` once `Contracts\ReauthenticationSessions::standing()`
- * answers the caller's identity signed in on its session, of the application
- * the flow is started for, through the connection (SSO-5.10), else
- * `session_ineligible`. That alone, since the exact link is judged at
- * redemption, under the session's lock.
- *
- * It holds the freshness gate and the session contract, neither of which keeps
- * anything of one start for the next (SSO-11.2).
+ * Whether a purpose may start: freshness for a `link`, a signed-in session for
+ * a `reauthenticate`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,13 +34,12 @@ final readonly class StartEligibility
         /** Asks the freshness contract before a `link` starts. */
         private FreshnessGate $freshness,
 
-        /** Whether the identity of a `reauthenticate` is signed in on its session. */
+        /** Whether a `reauthenticate` caller is signed in on its session. */
         private ReauthenticationSessions $sessions,
     ) {}
 
     /**
-     * Why the purpose may not start for the application through the connection,
-     * for the caller, or `null` when it may.
+     * Why the purpose may not start, or `null` when it may.
      *
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -71,9 +60,8 @@ final readonly class StartEligibility
     }
 
     /**
-     * Whether the caller's identity is signed in on its session, of the
-     * application, through the connection. Only a `reauthenticate` asks, whose
-     * caller gives both.
+     * Whether the caller is signed in on its session, of the application,
+     * through the connection; the exact link is judged at redemption.
      *
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection

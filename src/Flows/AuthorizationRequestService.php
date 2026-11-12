@@ -25,74 +25,10 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
- * Starts a flow (SSO-5.1, SSO-5.2, SSO-5.12): for an application and a purpose,
- * through a named connection, it records an authorisation request and answers
- * the request's public reference and the typed navigation that sends the
- * browser to the identity provider, with `Cache-Control: no-store` (SSO-9.8).
+ * Starts a flow by recording an authorisation request and answering the
+ * navigation to the identity provider.
  *
- * A start runs outside any transaction open on the storage connection: called
- * inside one, it is a `LogicException` before anything else, since the driver
- * it calls may reach the identity provider while the caller's transaction kept
- * the connection's lock (SSO-11.5).
- *
- * `start()` goes in a fixed order, and every refusal reports exactly one
- * `FlowFailed` (`Flow::AUTHORIZATION_REQUEST`) and writes nothing:
- *
- * 1. the purpose's caller (`Identities\Caller`) is checked: `sign_in` with no
- *    caller, `link` for a caller, on a session or not, `reauthenticate` for a
- *    caller on a session; anything else is application code's mistake, an
- *    `InvalidArgumentException`, before anything else;
- * 2. the start is counted against the client's IP address (SSO-11.8), and a
- *    full limit is `rate_limited` with its wait;
- * 3. the application is admitted (`Applications\ApplicationGate`), else
- *    `application_not_allowed`;
- * 4. the client's S256 challenge of its own verifier is checked, else
- *    `challenge_invalid`; with none, the package generates the verifier, 256
- *    bits, and answers it once, in the body;
- * 5. the connection is read from the write connection (SSO-11.3), whatever its
- *    tenant; an unknown or unusable one is `connection_unavailable`, answered
- *    with the application's discovery fallback, in the same shape as a start,
- *    when the application offers discovery (SSO-3.5);
- * 6. a `link` asks the freshness contract (`sso.link.create`) for its caller,
- *    with the session given, else `freshness_required` (SSO-2.12);
- * 7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing()`
- *    whether the caller's identity is signed in on its session, of the
- *    application, through the connection, else `session_ineligible`
- *    (SSO-5.10); that alone, since the exact link is judged at redemption,
- *    under the session's lock;
- * 8. the connection's trust version, as step 5 read it, is captured, the
- *    protocol state is generated (`ProtocolState`) and the driver asked to
- *    start, outside any transaction the start opens; a refused start is refused
- *    with the driver's reason;
- * 9. the request is stored through its model in a transaction on the storage
- *    connection: the digests of the state and the nonce, never either; the PKCE
- *    verifier encrypted; the challenge; the caller's identity and, for a
- *    `reauthenticate` alone, its session; the trust version captured; and an
- *    expiry of `FlowSettings::requestTtlSeconds()`;
- *    the transaction first locks the connection's row, and a connection gone,
- *    changed in its switch, settings or secrets, or whose trust version is no
- *    longer the one captured (a certificate removed, say, which voided the
- *    requests stored before this one), is `connection_unavailable`, answered as
- *    step 5 answers it; a stored request raises the connection's flows version
- *    by one, under that lock, so a PostgreSQL `REPEATABLE READ` change that
- *    locks the row later fails to serialise rather than miss the request
- *    (`Connections\InFlightVoider`);
- * 10. `AuthorizationRequestStarted` is reported once that commits;
- * 11. the answer is `started`, with the generated verifier when one was.
- *
- * The public reference, the state, the nonce, the PKCE verifier and the
- * client's verifier are five independent random values (SSO-5.2, SSO-5.12); the
- * reference is the only flow identifier events and logs carry (SSO-9.8). A
- * database error, a misconfiguration and a driver's exception propagate
- * (SSO-11.4); a driver that answers a SAML request id already stored for the
- * connection is a driver's bug, and its unique violation propagates.
- *
- * It takes the client the start is made for as an `Http\ClientContext`, which
- * the application builds where it reads the request, and never reads the
- * request being served itself. It holds the limiter, the gate, the drivers, the
- * purpose's eligibility (`StartEligibility`, steps 6 and 7), the encrypter, the
- * settings, the clock and the reporter, none of which keeps anything of one
- * request for the next (SSO-11.2). Resolve it from the container per request.
+ * Call outside any transaction on the storage connection.
  *
  * @api
  *
@@ -101,7 +37,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
  */
 final readonly class AuthorizationRequestService
 {
-    /** @var string Why a start called inside a transaction on the storage connection is refused. */
+    /** @var string Thrown for a start inside a storage transaction. */
     private const string INSIDE_TRANSACTION = 'A start runs outside any transaction on the package\'s storage connection: it calls the protocol driver.';
 
     /**
@@ -127,7 +63,7 @@ final readonly class AuthorizationRequestService
         /** The protocol drivers, and whether a connection is usable. */
         private ProtocolManager $protocols,
 
-        /** Whether the purpose may start: the freshness of a `link`, the session of a `reauthenticate`. */
+        /** Whether the purpose may start. */
         private StartEligibility $eligibility,
 
         /** Encrypts the PKCE verifier for storage. */
@@ -144,12 +80,7 @@ final readonly class AuthorizationRequestService
     ) {}
 
     /**
-     * Start a flow for the application and the purpose through the connection,
-     * for the client, with the client's S256 challenge, or with a verifier the
-     * package generates when none is given; for the caller a `link` or a
-     * `reauthenticate` is started for, on the session a `reauthenticate` is
-     * bound to. A `link` stores its caller's identity and gives the session,
-     * when given, to freshness alone.
+     * Start a flow; with no challenge given, the package generates a verifier.
      *
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -168,7 +99,6 @@ final readonly class AuthorizationRequestService
         StorageConnection::assertNoTransaction(self::INSIDE_TRANSACTION);
         self::assertBinding($purpose, $caller);
 
-        // A client with no IP address counts against none.
         $attempt = $this->limiter->attempt(AttemptSubject::authorizationRequest($client));
 
         if ($attempt->retryAfter !== null) {
@@ -182,11 +112,8 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Start a flow for an application already admitted, through a connection
-     * already found and usable: the challenge, the purpose's checks, the
-     * driver's start and the stored request (steps 4 and 6 to 11). Discovery
-     * calls it once it has matched a connection; it counts no attempt, admits
-     * nothing and finds nothing itself.
+     * Start a flow for an admitted application through a usable connection, for
+     * discovery once it has matched one.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -215,10 +142,8 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * The answer that leads back to the application's discovery fallback, in
-     * the same shape as a start (SSO-3.5): a fresh reference that names no
-     * request, and a fresh verifier when the client sent no challenge. It
-     * stores nothing and reports nothing; the caller reports why.
+     * Answer the discovery fallback in the shape of a start, storing and
+     * reporting nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  bool  $challengeGiven
@@ -237,9 +162,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Whether the application offers discovery while the `discovery` feature is
-     * on, so a start that names an unknown or unusable connection leads to its
-     * fallback (SSO-3.5). Discovery asks it too before it routes an email.
+     * Whether the application offers discovery with the feature on.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @return bool
@@ -255,7 +178,6 @@ final readonly class AuthorizationRequestService
 
     /**
      * Whether the challenge is absent or has an S256 challenge's form.
-     * Discovery asks it too before it routes an email.
      *
      * @param  ?string  $codeChallenge
      * @return bool
@@ -268,10 +190,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Refuse a caller that does not fit the purpose: application code's
-     * mistake. A `sign_in` is started for no caller, a `link` for a caller,
-     * whose session, when given, freshness judges, and a `reauthenticate` for a
-     * caller on a session. Discovery asks it too, before it counts the attempt.
+     * Refuse a caller that does not fit the purpose.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -310,8 +229,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Admit the application and check the challenge (steps 3 and 4), then find
-     * the connection.
+     * Admit the application and check the challenge, then find the connection.
      *
      * @param  string  $name
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -339,9 +257,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Find the connection and judge whether it may be used (step 5), then
-     * begin; an unknown or unusable one leads to the discovery fallback when
-     * the application offers discovery, and is refused otherwise.
+     * Find a usable connection and begin.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -365,9 +281,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Report the connection unavailable, with what the start had established,
-     * and answer the application's discovery fallback when it offers discovery,
-     * or the refusal otherwise.
+     * Report the connection unavailable and answer the fallback or a refusal.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -399,7 +313,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Ask the driver to start and store the request (steps 8 to 11).
+     * Ask the driver to start, then store the request.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -452,21 +366,8 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Store the request through its model, in a transaction on the storage
-     * connection, and report it started once that commits; whether it was
-     * stored.
-     *
-     * The driver started outside the transaction, from the connection as it was
-     * read before, so the transaction first locks the connection's row, the
-     * first lock of every flow, and stores nothing when the connection is gone,
-     * its switch, settings or secrets changed since, or its trust version is no
-     * longer the one the request captured: a change that voids its connection's
-     * requests has then committed, and would not void this one.
-     *
-     * A stored request raises the connection's flows version by one, so the
-     * insert also writes the locked row: a PostgreSQL `REPEATABLE READ` change
-     * whose snapshot predates it then fails to serialise when it locks the row,
-     * rather than go on to void the connection's requests without this one.
+     * Store the request under the connection's lock unless the connection
+     * changed since the driver started; whether it was stored.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array<string, mixed>  $attributes
@@ -487,7 +388,7 @@ final readonly class AuthorizationRequestService
 
             $request->forceFill($attributes)->save();
 
-            // The insert also writes the locked connection's row.
+            // Writing the locked row keeps a stale voider from missing it.
             Connection::query()->useWritePdo()->whereKey($connection->id)->increment('flows_version');
 
             $this->events->started($connection, $request, $client);
@@ -497,12 +398,8 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Whether the connection, read again locked for update on the write
-     * connection, still exists with the switch, settings and secrets it was
-     * read with, and the trust version the request captured. The values are
-     * compared as cast, the settings' maps whatever their key order, since a
-     * JSON column need not keep the order it was given, and a connection just
-     * created holds its values as given.
+     * Whether the locked connection is as the start read it; settings ignore
+     * key order, which a JSON column need not keep.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  mixed  $trustVersion
@@ -517,8 +414,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * The value with the keys of every array in it sorted: a map's keys in
-     * order, and a list left in its order.
+     * Sort the keys of every array in the value, recursively.
      *
      * @param  array<array-key, mixed>  $value
      * @return array<array-key, mixed>
@@ -531,7 +427,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * Report a refused start, with what it had established, and answer it.
+     * Report a refused start and answer it.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -563,8 +459,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * The connection with exactly the id, of any tenant, read from the write
-     * connection, or `null` when there is none. A row the column's collation
+     * The connection with exactly the id, of any tenant; a row the collation
      * merely counts as equal is not found.
      *
      * @param  string  $connectionId
@@ -578,9 +473,7 @@ final readonly class AuthorizationRequestService
     }
 
     /**
-     * The verifier the package generates when the client gave no challenge, and
-     * the challenge the request keeps: the client's, or the generated
-     * verifier's.
+     * The generated verifier, if any, and the challenge the request keeps.
      *
      * @param  ?string  $codeChallenge
      * @return array{0: ?\SineMacula\Laravel\Sso\Flows\Verifier, 1: string}

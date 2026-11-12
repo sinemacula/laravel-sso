@@ -10,41 +10,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode as StoredCode;
 
 /**
- * The package's own handoff store (SSO-9.2): the default handoff issuer, whose
- * codes `Handoffs\HandoffRedemption` redeems.
- *
- * `issue()` generates a new `HandoffCode` and inserts one row through
- * `Models\HandoffCode`, on the storage connection, inside the transaction the
- * completion has open, so the code is kept only when the completion commits
- * (decision D5). The row holds the code's SHA-256 digest, never the code; what
- * the code is bound to: the result's purpose, application, connection and
- * request's public reference, the S256 challenge of the client's verifier, the
- * identity a `link` or `reauthenticate` flow was started for, the session a
- * `reauthenticate` flow was started on, the identity the result's link resolved
- * to, the link itself, and the reservation it holds (SSO-8.8); the verified
- * result, as the JSON of `VerifiedResult::toArray()` encrypted through
- * `Contracts\SecretEncrypter`, since it carries personal data; the
- * connection's trust version at issuance (SSO-2.13), which the redemption's
- * recheck compares with the connection's under its lock; the session's latest
- * end (SSO-9.10); and the expiry. Times are
- * kept to the whole second, so a code expires at most a second before its grant
- * says; the issued handoff carries the expiry as stored, and the row's id as
- * its opaque reference.
- *
- * The completion holds the connection's row lock when it asks, and the issue
- * raises the connection's flows version by one under it, so the code's insert
- * also writes the connection's row: a PostgreSQL `REPEATABLE READ` change whose
- * snapshot predates the code then fails to serialise when it locks the row,
- * rather than void the connection's codes without this one
- * (`Connections\InFlightVoider`).
- *
- * The code is answered once, in the `IssuedHandoff`, for the completion's
- * redirect; it is never stored, logged or put in an event. A database error, a
- * result that cannot be encoded and an encrypter that cannot encrypt propagate,
- * which refuses the completion as a server error (SSO-11.4).
- *
- * It holds the encrypter, which keeps nothing of one call for the next
- * (SSO-11.2), and is bound scoped.
+ * The default handoff issuer: stores a code's digest and encrypted result in
+ * the completion's transaction.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,7 +30,8 @@ final readonly class DatabaseHandoffStore implements HandoffIssuer
     ) {}
 
     /**
-     * Issue a new code for the grant, storing only its digest.
+     * Issue a new code for the grant, storing only its digest; expiry is kept
+     * to the whole second.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\HandoffGrant  $grant
      * @return \SineMacula\Laravel\Sso\Handoffs\IssuedHandoff
@@ -99,20 +67,9 @@ final readonly class DatabaseHandoffStore implements HandoffIssuer
             'expires_at'           => $grant->expiresAt,
         ])->save();
 
-        self::raiseFlowsVersion($result->connectionId);
+        // Writing the locked row keeps a stale voider from missing the code.
+        Connection::query()->useWritePdo()->whereKey($result->connectionId)->increment('flows_version');
 
         return new IssuedHandoff($code, $row->expires_at, $row->id);
-    }
-
-    /**
-     * Raise the connection's flows version by one, under the lock the
-     * completion holds, so the code's insert also writes the connection's row.
-     *
-     * @param  string  $connectionId
-     * @return void
-     */
-    private static function raiseFlowsVersion(string $connectionId): void
-    {
-        Connection::query()->useWritePdo()->whereKey($connectionId)->increment('flows_version');
     }
 }

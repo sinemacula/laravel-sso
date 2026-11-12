@@ -13,28 +13,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 
 /**
- * The `validation` step (SSO-5.6, SSO-6, SSO-7): the connection's driver
- * validates the response against the request just consumed for it, outside any
- * transaction, since a driver may fetch (an OIDC token request).
- *
- * A connection that is no longer usable (disabled since the start, its protocol
- * switched off, its settings incomplete) is refused with
- * `connection_unavailable` before its driver is asked, so no provider is
- * contacted for a connection that cannot complete; the request stays consumed.
- * The locked steps ask again under the connection's lock, since the connection
- * may change while the driver validates.
- *
- * A response the driver refuses is refused with its reason. A verified one goes
- * on with its claims, the `Protocols\ReplayRecord` the driver asked for, if any
- * (recorded by the `replay_recording` step under the completion's locks), the
- * `Protocols\TransitionReceipt` of a key rotation its own validation made, if
- * any (judged under the completion's locks), and the `Results\VerifiedResult`
- * built from them by `Completion\ResultBuilder`, with the linking policy
- * version of the connection the driver was given, and the deadline by which the
- * verified response must have finished (`Completion\VerifiedDeadlines`).
- *
- * It holds the drivers' registry, the builder and the deadlines, none of which
- * keeps anything of one completion for the next (SSO-11.2).
+ * The `validation` step: the driver validates the response outside any
+ * transaction, since it may fetch.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,8 +43,8 @@ final readonly class ValidateResponse implements CompletionStage
     ) {}
 
     /**
-     * Ask the connection's driver to validate the response, and build the
-     * verified result from what it verified.
+     * Refuse an unusable connection before any provider call, else validate and
+     * build the verified result.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return \SineMacula\Laravel\Sso\Completion\StageOutcome

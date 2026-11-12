@@ -16,28 +16,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * Builds the verified result of a completion (SSO-8.1), the only place one is
- * made from what a driver verified: never from client input.
- *
- * - The issuer, subject, NameID format, authentication context, linking email
- *   and asserted email are the claims', exactly as the driver verified them
- *   (SSO-6.9, SSO-7.7), and neither email is ever read from the attributes.
- * - The connection, its tenant and its protocol are the connection's the
- *   response arrived for, read from the write connection.
- * - The application, purpose and public reference are the consumed request's.
- * - The attributes are the claims' raw attributes read through the connection's
- *   attribute mapping (SSO-2.10), capped by `sso.mapping`.
- * - The email's domain is verified exactly when the mapped `email` is a string
- *   with a local part, an `@` and a domain that normalises
- *   (`Domains\DomainName`), and that domain routes for this same connection at
- *   the clock's now (`Domains\DomainStanding::routes()`, SSO-3.3): verified and
- *   not past its grace period. A domain of another connection, pending or
- *   lapsed, or an email that is not one, is not verified. The domain is read
- *   from the write connection (SSO-11.3).
- *
- * It holds the mapping caps, the domain finder and the clock, none of which
- * keeps anything of one completion for the next (SSO-11.2). A database error
- * propagates (SSO-11.4).
+ * Builds a completion's verified result, only ever from what a driver verified.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,8 +45,7 @@ final readonly class ResultBuilder
     ) {}
 
     /**
-     * The verified result of the claims, for the connection and the consumed
-     * request.
+     * Build the verified result of the claims.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedClaims  $claims
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -115,8 +93,8 @@ final readonly class ResultBuilder
     }
 
     /**
-     * The email's domain, normalised, or `null` when the email has no local
-     * part, no `@`, or a domain that does not normalise.
+     * The email's normalised domain, or `null` without a local part and a valid
+     * domain.
      *
      * @param  string  $email
      * @return ?string
