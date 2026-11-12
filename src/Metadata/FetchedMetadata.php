@@ -9,15 +9,10 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus;
 
 /**
- * What a refresh's fetch found (SSO-2.8): the document a source read and
- * validated whole, with the moment it validated it, or why there is none (a
- * fetch refused or failed, a response not `2xx`, a document refused); and how
- * the fetch itself ended, which a refresh that did not apply logs.
+ * What a refresh's fetch found: the document a source validated, or why there
+ * is none.
  *
- * The document is the source's own (`Protocols\Saml2\Messages\IdpMetadata`, the
- * OIDC source's discovery document and JWKS), held in a
- * `\SensitiveParameterValue`; a dump shows none of it, and it refuses to be
- * serialised.
+ * A dump shows none of the document and it refuses to be serialised.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -113,7 +108,7 @@ final readonly class FetchedMetadata
     }
 
     /**
-     * There is no document, for the reason given; the fetch ended as given.
+     * There is no document, for the reason.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus  $fetchStatus

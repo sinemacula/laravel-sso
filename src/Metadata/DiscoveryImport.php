@@ -7,17 +7,8 @@ namespace SineMacula\Laravel\Sso\Metadata;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How an import of an OpenID provider's discovery document ended (SSO-2.8,
- * SSO-2.11): proposed, with the settings it proposes; refused, with the reason;
- * or rate limited, with the seconds until another import of the connection may
- * be tried.
- *
- * A refusal is `protocol_unavailable` (OIDC is not available),
- * `settings_invalid` (an issuer that is not a valid setting),
- * `connection_not_found` (an unknown connection, another tenant's, or one that
- * is not OIDC), `fetch_refused` or `fetch_failed` (the discovery document or
- * the JWKS, whose detail goes only to the logs), `issuer_mismatch`,
- * `discovery_invalid` or `jwks_invalid`.
+ * How an import of an OpenID provider's discovery document ended: proposed,
+ * refused or rate limited.
  *
  * @api
  *

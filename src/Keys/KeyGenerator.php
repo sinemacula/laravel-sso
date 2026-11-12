@@ -11,27 +11,8 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * Generates the service provider's own key pairs, each with a self-signed
- * certificate (SSO-2.7), with PHP's OpenSSL extension alone, so the keys do not
- * depend on the SAML or JOSE library that later signs or decrypts with them.
- *
- * An RSA key has the modulus `sso.keys.rsa_bits` gives (3072 by default); an
- * elliptic curve key is on P-256 (`KeySettings::EC_CURVE`). The certificate
- * names the common name it is given (the connection's id), is signed with
- * SHA-256 by the key itself, has a random positive serial number, and is valid
- * from the moment it is signed for `sso.keys.certificate_days`.
- *
- * Every option is passed to OpenSSL explicitly, and the package ships no
- * `openssl.cnf`. OpenSSL builds a certificate request only from a configuration
- * file, and the system's would add its default subject fields (a country, an
- * organisation) and its own extensions, or be missing; so each call writes a
- * minimal configuration (`CONFIGURATION`: no default subject field, and only
- * `basicConstraints = critical,CA:FALSE`) to a temporary file of its own, uses
- * it for every OpenSSL step, and removes it, whatever happens.
- *
- * OpenSSL's warnings are silenced and its error queue cleared after each call,
- * so nothing of a key reaches a log or a later call. A step that fails throws a
- * `RuntimeException` naming the step, never the key. It never logs.
+ * Generates the service provider's own key pairs and their self-signed
+ * certificates with PHP's OpenSSL extension alone.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,7 +33,7 @@ final readonly class KeyGenerator
     /** @var string The section of `CONFIGURATION` that holds the certificate's extensions. */
     private const string EXTENSIONS = 'sso_certificate';
 
-    /** @var string The configuration every OpenSSL step reads: no default subject field, and a certificate that is not a CA's. */
+    /** @var string The configuration every OpenSSL step reads: no default subject, and not a CA. */
     private const string CONFIGURATION = "[req]\ndefault_bits = 3072\ndistinguished_name = sso_subject\n\n"
         . "[sso_subject]\n\n[sso_certificate]\nbasicConstraints = critical,CA:FALSE\n";
 
@@ -109,8 +90,7 @@ final readonly class KeyGenerator
     }
 
     /**
-     * The key pair and its certificate, generated with the configuration file
-     * given.
+     * The key pair and its certificate, generated with the configuration file.
      *
      * @param  string  $config
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
@@ -149,12 +129,10 @@ final readonly class KeyGenerator
     }
 
     /**
-     * Write `CONFIGURATION` to a temporary file of its own, and answer its
-     * path.
-     *
-     * Its `default_bits` never sizes a generated key, since an RSA key's size
-     * is always given: PHP 8.3 checks it against RSA's minimum even when
-     * generating an EC key, and refuses the key when it is unset.
+     * Write `CONFIGURATION` to a temporary file and answer its path, since
+     * OpenSSL reads a request's options only from a file and the system's adds
+     * subject fields. Its `default_bits` is there because PHP 8.3 checks it
+     * even for an EC key; an RSA key's size is always given.
      *
      * @return string
      *
@@ -178,8 +156,7 @@ final readonly class KeyGenerator
     }
 
     /**
-     * The options OpenSSL generates a key of the type with: the configured RSA
-     * modulus, or P-256.
+     * The options OpenSSL generates a key of the type with.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
      * @return array<string, int|string>
@@ -195,9 +172,8 @@ final readonly class KeyGenerator
     }
 
     /**
-     * The key's self-signed certificate, PEM-encoded: the common name as its
-     * subject and issuer, SHA-256, a random positive serial number, valid for
-     * the days given.
+     * The key's self-signed certificate, PEM-encoded, with the common name as
+     * its subject and issuer.
      *
      * @param  \OpenSSLAsymmetricKey  $key
      * @param  string  $commonName
@@ -269,8 +245,7 @@ final readonly class KeyGenerator
     }
 
     /**
-     * The certificate's canonical PEM, its public key and its fingerprint, as
-     * `Secrets\MaskedKey` reads them.
+     * The certificate's canonical PEM, its public key and its fingerprint.
      *
      * @param  string  $certificate
      * @return array{certificate: string, public_key: string, fingerprint: string}
@@ -345,9 +320,8 @@ final readonly class KeyGenerator
     }
 
     /**
-     * Run an OpenSSL call with its warnings silenced (its result says whether
-     * it failed) and its error queue cleared, so neither reaches a log or a
-     * later call.
+     * Run an OpenSSL call with its warnings silenced and its error queue
+     * cleared, so neither reaches a log or a later call.
      *
      * @template TResult
      *

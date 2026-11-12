@@ -8,15 +8,10 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
 
 /**
- * What one discovery and JWKS fetch of an OpenID provider gave (SSO-2.8,
- * SSO-7.3): the discovery document, the keys its JWKS gave and the moment the
- * JWKS was validated, which an import proposes from and a refresh writes; each
- * resource's stale limit counts from its own validated fetch. It travels in a
- * `FetchedMetadata`, which carries the moment the document was validated.
+ * The discovery document and JWKS one fetch of an OpenID provider gave.
  *
- * What it holds came from whoever serves the issuer's URL, so it is held in a
- * `\SensitiveParameterValue`: a dump and `json_encode()` show how many keys and
- * when, never a value, and it refuses to be serialised or unserialised.
+ * Its values are untrusted, so a dump shows none and it refuses to be
+ * serialised.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -69,8 +64,7 @@ final readonly class OidcMetadata implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: what was fetched lives only for its import or
-     * refresh.
+     * Refuse to be serialised: it lives only for its import or refresh.
      *
      * @return array<string, mixed>
      *

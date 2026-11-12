@@ -20,30 +20,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 
 /**
- * Sends one key's expiry warning at least once (SSO-2.6, SSO-11.12): a
- * duplicate is possible and a silent loss is not.
- *
- * 1. A short transaction locks the connection, then the key, in the order every
- *    key change takes them, and reads again whether the key is still
- *    reportable, which threshold it has reached, whether that is more urgent
- *    than the last it was warned of, and whether another reporter holds it. It
- *    then writes a claim until now plus `expiry_claim_seconds`, which only
- *    limits how many reporters send at once.
- * 2. With the transaction closed, the event is dispatched.
- * 3. Only then is the marker recorded, one statement that only ever makes it
- *    more urgent, and the claim released, if it is still this reporter's.
- *
- * A process that dies after step 1 leaves the claim to run out, and the next
- * run sends the warning; one that dies after step 2 has sent a warning a later
- * run sends again. A dispatch that throws, which may have reached some
- * listeners, releases the claim, records nothing, and is reported as `failed`,
- * logged by its exception's class alone. A key retired or removed after its
- * claim is warned of once more at most, and the marker's statements then touch
- * no row.
- *
- * It holds the reporter, the settings, the clock and the logger, none of which
- * keeps anything of one key for the next (SSO-11.2). A database error
- * propagates (SSO-11.4).
+ * Sends one key's expiry warning at least once: a duplicate is possible, a
+ * silent loss is not.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -79,8 +57,8 @@ final readonly class ExpiryNotifier
     ) {}
 
     /**
-     * Warn of the key read unless, under the locks, that is no longer due;
-     * `null` means the key is no longer reportable.
+     * Warn of the key unless, under the locks, that is no longer due; `null`
+     * when the key is no longer reportable.
      *
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
@@ -113,9 +91,8 @@ final readonly class ExpiryNotifier
     }
 
     /**
-     * Whether the key may still be reported at the instant: it has an end of
-     * validity, and is not a retiring key whose overlap has ended, which
-     * decryption no longer accepts.
+     * Whether the key has an end of validity and is not a retiring key whose
+     * overlap has ended.
      *
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  \DateTimeInterface  $now
@@ -131,8 +108,7 @@ final readonly class ExpiryNotifier
     }
 
     /**
-     * Why the key takes no claim: it was warned of this threshold or a more
-     * urgent one, or another reporter's claim holds; `null` when it takes one.
+     * Why the key takes no claim, or `null` when it takes one.
      *
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  int  $thresholdDays
@@ -149,8 +125,8 @@ final readonly class ExpiryNotifier
     }
 
     /**
-     * The key read again and locked for update until the transaction ends, or
-     * `null` when it is gone from the connection.
+     * The key read again under lock, or `null` when it is gone from the
+     * connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
@@ -176,9 +152,8 @@ final readonly class ExpiryNotifier
     }
 
     /**
-     * In one short transaction, under the connection's and the key's locks,
-     * write a claim on the key if it still needs a warning. Answers the claim,
-     * the notice that says why not, or `null` when it is no longer reportable.
+     * Claim the key under the connection's and its own lock if it still needs a
+     * warning; `null` when it is no longer reportable.
      *
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @return \SineMacula\Laravel\Sso\Keys\Enums\ExpiryNotice|\SineMacula\Laravel\Sso\Keys\ExpiryClaim|null
@@ -233,8 +208,8 @@ final readonly class ExpiryNotifier
     }
 
     /**
-     * Record that the warning was dispatched, only ever making the marker more
-     * urgent, and release the claim, if it is still this reporter's.
+     * Record the dispatch, only ever making the marker more urgent, and release
+     * the claim.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\ExpiryClaim  $claim
      * @return void

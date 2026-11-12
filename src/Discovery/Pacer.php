@@ -7,29 +7,8 @@ namespace SineMacula\Laravel\Sso\Discovery;
 use SineMacula\Laravel\Sso\Flows\FlowSettings;
 
 /**
- * Makes a discovery start answer no earlier than the least time it takes,
- * `FlowSettings::discoveryMinimumDurationMilliseconds()` (50 to 2000, default
- * 250), after it started (SSO-3.5): a timing mitigation, so a match and a miss
- * that both finish within the floor answer after the same time.
- *
- * It does not make them indistinguishable. An answer whose work outlasts the
- * floor (a slow driver start or provider call, a slow database) is not delayed
- * further, so its time can still differ from a miss's; the floor only hides the
- * differences that fit inside it. Every discovery start sleeps out the rest of
- * the floor, holding its worker that long, so the floor is part of capacity
- * planning: the workers serving discovery must cover its rate times the floor.
- *
- * The time is measured on the monotonic clock (`hrtime()`), in nanoseconds, and
- * waited out with `usleep()`, again until the floor is reached, since a sleep
- * may end early. It is not the package's `Contracts\Clock`, which a test may
- * freeze and which tells the time of day rather than how long something took.
- * The time remaining is never negative: an answer that already took longer than
- * the floor is not delayed further.
- *
- * `start()` reads the floor before any work, so a malformed one fails closed
- * with an `InvalidArgumentException` naming its key before anything is counted
- * or stored; `[flows]` refuses it at boot. It keeps nothing between calls: the
- * caller holds the instant it started (SSO-11.2).
+ * Holds a discovery answer until the configured minimum duration has passed
+ * since the start, measured on the monotonic clock, not `Contracts\Clock`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,8 +35,8 @@ final readonly class Pacer
     ) {}
 
     /**
-     * The instant an answer starts, on the monotonic clock, in nanoseconds,
-     * once the floor is known to be well formed.
+     * The instant an answer starts, in nanoseconds, once the floor is known to
+     * be well formed.
      *
      * @return int
      *
@@ -72,7 +51,8 @@ final readonly class Pacer
     }
 
     /**
-     * Wait until the floor has passed since the instant the answer started.
+     * Wait until the floor has passed since the answer started, again after a
+     * sleep that ends early.
      *
      * @param  int  $startedAt
      * @return void
@@ -89,8 +69,7 @@ final readonly class Pacer
     }
 
     /**
-     * The microseconds left until the floor has passed since the instant the
-     * answer started, and never fewer than none.
+     * The microseconds left until the floor has passed, never negative.
      *
      * @param  int  $startedAt
      * @return int
@@ -115,9 +94,8 @@ final readonly class Pacer
     }
 
     /**
-     * The microseconds left of the floor since the instant, never negative. The
-     * time elapsed is rounded down to whole microseconds, so what is left is
-     * rounded up and the wait never ends before the floor.
+     * The microseconds left of the floor, never negative; elapsed time rounds
+     * down so the wait never ends before the floor.
      *
      * @param  int  $startedAt
      * @param  int  $floor

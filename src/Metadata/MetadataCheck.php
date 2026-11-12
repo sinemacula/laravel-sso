@@ -10,11 +10,8 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[metadata]`: how large metadata may be, while the `saml2` feature is on, and
- * how the scheduled metadata refresh runs and is queued, while the
- * `metadata_refresh` feature is on too (SSO-2.8, SSO-12.3), each setting read
- * as `MetadataSettings` reads it, so the check, the import and the refresh
- * judge it the same way.
+ * `[metadata]`: checks the `sso.metadata` settings as `MetadataSettings` reads
+ * them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,8 +42,7 @@ final readonly class MetadataCheck implements ConfigurationCheck
     }
 
     /**
-     * The size cap, the interval, the backoff, the stale limit and the claim,
-     * then, while the schedule is on, the queue its refreshes are sent to.
+     * Every setting, and the queue only while the schedule is on.
      *
      * @return list<\Closure(): mixed>
      */

@@ -21,58 +21,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\OidcDriver;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions;
 
 /**
- * What an OpenID Connect connection refreshes on the schedule and when an
- * administrator asks (SSO-2.8, SSO-7.3, SSO-11.12): its discovery document,
- * from its pinned issuer, and its JWKS, through the shared refresh machinery
- * (`MetadataSource`).
- *
- * - The schedule refreshes it while its `metadata_refresh` setting is on and
- *   its `issuer` is a valid issuer: the only URL derived is the issuer's
- *   discovery document. An administrator may refresh it whatever the setting
- *   says.
- * - A connection no document was ever validated for (`metadata_fetched_at`
- *   unset), with a valid `jwks_uri` saved, may hold endpoints saved by hand and
- *   a provider with no discovery document. With its setting off it refreshes
- *   its keys alone, from the saved `jwks_uri`, leaving the endpoints and
- *   `metadata_fetched_at` untouched; the schedule does so once a fetch has
- *   stamped `jwks_fetched_at`, so that those keys never expire unattended. With
- *   the setting on, it tries the document first and, when that fails for any
- *   reason but `issuer_mismatch`, refreshes its keys alone instead; both
- *   failing is the document's failure. The saved URL is the one an
- *   unknown-`kid` refetch fetches, so this trusts nothing new.
- * - Its snapshot is its JWKS version and the settings a refresh depends on or
- *   may change, in a fixed order; it is read again from the locked row.
- * - It fetches as an import does (`DiscoveryImporter::fetch()`), pinned to the
- *   saved issuer, so a document naming another is `issuer_mismatch`, a refresh
- *   never changing the issuer, then the JWKS at the document's `jwks_uri`, read
- *   under the connection's own allow-list. An allow-list that cannot be built
- *   from what is stored is contained: the refresh is `settings_invalid`, and
- *   the exception is logged by its class alone, so a run goes on to the next
- *   connection.
- * - It writes through `RefreshWriter`, compared and judged alike whatever it
- *   fetched. Under the lock, a document with an endpoint that would not be a
- *   valid setting, or with no `userinfo_endpoint` while `fetch_userinfo` is on,
- *   is `discovery_invalid`, and a document or JWKS whose stale limit has passed
- *   by commit (`MetadataExpiry::hasExpired()`, each from its own validated
- *   moment) is `metadata_expired`; each records a failure and keeps the last
- *   good settings and keys.
- * - It may change only `authorization_endpoint`, `token_endpoint`, `jwks_uri`,
- *   `userinfo_endpoint` (set or changed, never removed) and `returns_iss`
- *   (false to true only), and replaces the JWKS exactly, never as a union.
- *   Nothing else a connection holds (its issuer, client id or authentication,
- *   secret, scopes, algorithms, mapping, subject meaning or enforcement) is
- *   ever written.
- * - A change of a setting, or a key removed or replaced under the same `kid`,
- *   voids what is in flight through the connection and raises its trust version
- *   once (`Connections\InFlightVoider::voidFor()`); a key added alone voids
- *   nothing and leaves it as it was. A changed setting is reported
- *   `ConnectionUpdated`, then `MetadataRefreshed` names them, in the order
- *   `OidcSetting` names them, then `jwks` when the keys changed.
- *
- * Every event is dispatched after the transaction commits (SSO-10.5). A
- * database error propagates (SSO-11.4). It holds the claims, the importer, the
- * writer, the voider, the reporter, the expiry and the logger, none of which
- * keeps anything of one refresh for the next (SSO-11.2).
+ * What an OpenID Connect connection refreshes: its discovery document from the
+ * pinned issuer and its JWKS, or the saved JWKS alone when it has no document.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -148,9 +98,8 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * Whether the schedule refreshes the connection: an OIDC connection with a
-     * valid issuer and either `metadata_refresh` on, or fetched keys from a URL
-     * saved by hand, with no document, which would otherwise expire unattended.
+     * Whether the schedule refreshes the connection: `metadata_refresh` is on,
+     * or keys fetched from a hand-saved URL would otherwise expire unattended.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
@@ -193,9 +142,8 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * Fetch the saved issuer's discovery document, then the JWKS it names, or
-     * only the saved JWKS for a connection that fetches no document, under the
-     * connection's own allow-list, noting each moment it validated.
+     * Fetch the issuer's discovery document and the JWKS it names, or only the
+     * saved JWKS for a connection that fetches no document.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @return \SineMacula\Laravel\Sso\Metadata\FetchedMetadata
@@ -219,9 +167,8 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * Write what was fetched, or record the failure, under the connection's
-     * lock, unless the claim was lost or the connection's settings or keys
-     * changed meanwhile.
+     * Write what was fetched, or record the failure, unless the claim was lost
+     * or the connection's settings or keys changed meanwhile.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \SineMacula\Laravel\Sso\Metadata\FetchedMetadata  $fetched
@@ -253,10 +200,8 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * The discovery document and the JWKS it names; when that fails and a saved
-     * JWKS URL was given, what that URL gives instead, or the first failure. A
-     * document naming another issuer is never passed over: something answers
-     * there that should not, and an administrator must look.
+     * The discovery document and its JWKS, falling back to the saved JWKS URL;
+     * never past `issuer_mismatch`, which an administrator must look at.
      *
      * @param  string  $issuer
      * @param  ?string  $saved
@@ -279,8 +224,8 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * The connection's own allow-list; `null`, once its exception is logged by
-     * its class alone, when what is stored cannot give one.
+     * The connection's own allow-list, or `null`, logged by the exception's
+     * class alone, so a run goes on to the next connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return ?\SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList
@@ -298,8 +243,7 @@ final readonly class OidcMetadataSource extends MetadataSource
 
     /**
      * Why what was fetched may not be written to the locked connection, or
-     * `null` when it may: a document that would not give valid settings, or
-     * anything validated at a moment whose stale limit has passed by now.
+     * `null` when it may.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Metadata\OidcMetadata  $metadata
@@ -320,9 +264,8 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * Change the settings the document moved and replace the keys exactly, void
-     * what is in flight when that is a trust change, write the refresh's
-     * bookkeeping and report them.
+     * Write the settings the document moved and the keys, voiding what is in
+     * flight for anything but an addition.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Metadata\OidcMetadata  $metadata
@@ -362,10 +305,8 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * Replace the keys exactly from a fetch of the saved JWKS alone, unless
-     * they were validated at a moment whose stale limit has passed by now: a
-     * key removed voids what is in flight, and neither an endpoint nor when the
-     * document was last validated is touched.
+     * Replace the keys from the saved JWKS alone, unless past their stale
+     * limit, leaving the endpoints and the document's stamp untouched.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet  $keys
@@ -401,8 +342,7 @@ final readonly class OidcMetadataSource extends MetadataSource
 
     /**
      * The snapshot of the connection's trust: its JWKS version and the settings
-     * a refresh depends on or may change, in a fixed order whatever order they
-     * were read in.
+     * a refresh depends on, in a fixed order.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return array{jwks_version: int, settings: array<string, mixed>}
@@ -444,9 +384,8 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * Whether the document gives what the locked connection needs: its UserInfo
-     * endpoint, while the connection fetches UserInfo. Every endpoint it gives
-     * has already passed the setting's own rule (`DiscoveryDocument`).
+     * Whether the document gives a UserInfo endpoint while the connection
+     * fetches UserInfo; `DiscoveryDocument` has already judged the endpoints.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Metadata\DiscoveryDocument  $document
@@ -460,8 +399,7 @@ final readonly class OidcMetadataSource extends MetadataSource
     }
 
     /**
-     * The settings the document moves on the locked connection, in the order
-     * `OidcSetting` names them: an endpoint it gives that differs, and
+     * The settings the document moves: an endpoint that differs, and
      * `returns_iss` from false to true, never back.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked

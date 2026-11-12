@@ -13,33 +13,11 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 
 /**
- * Whether a SAML connection follows its metadata URL (SSO-2.8), which
- * everything about its refresh and its stale deadline reads from here.
+ * Whether a SAML connection follows its metadata URL, for its refresh and its
+ * stale deadline.
  *
- * HTTPS proves only who served a file, so a metadata URL alone is never trust
- * in what it serves. A metadata signing anchor (a trusted
- * `KeyUse::METADATA_SIGNING` certificate) is, and `metadata_refresh` set `true`
- * is an administrator delegating that trust to the URL and its TLS, a trust
- * change like any other.
- *
- * - The schedule refreshes a connection with a valid `metadata_url` when
- *   `metadata_refresh` is `true`, or when it is unset and the connection has an
- *   anchor (`refreshes()`). Adding the anchor turns that default on and
- *   removing it turns it off, with no other change. `false` is always off.
- * - What was fetched holds a stale deadline when the connection has a valid
- *   `metadata_url` and either `metadata_refresh` is `true` or it has an anchor,
- *   so `false` on an anchored connection keeps what a validated fetch counts for
- *   (`holdsDeadline()`). Any other SAML connection behaves like one whose
- *   certificates were entered by hand: nothing it holds expires, whatever was
- *   stamped earlier, and nothing recovering it is needed.
- * - A connection that comes to hold a deadline starts with none running: the
- *   URL, the switch or the first anchor that brings it in clears what was
- *   stamped while it held none, and makes its first refresh due
- *   (`resetForSettings()`, `resetForAnchor()`), so an old stamp never expires
- *   it the moment it opts in.
- *
- * It reads the anchors on the write connection (SSO-11.3), only where the
- * answer depends on them, and holds nothing between calls (SSO-11.2).
+ * HTTPS proves only who served a file, so only an anchor or an explicit
+ * `metadata_refresh` of `true` makes the URL trusted.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,8 +46,8 @@ final class SamlRefreshRule
     }
 
     /**
-     * Whether the schedule refreshes the SAML connection, given whether it has
-     * an anchor, or reading that when it matters and is not given.
+     * Whether the schedule refreshes the SAML connection; `$anchored` is read
+     * when it matters and is not given.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?bool  $anchored
@@ -85,9 +63,8 @@ final class SamlRefreshRule
     }
 
     /**
-     * Which of the connections have an anchor, by id, reading the anchors once
-     * and only for those whose refresh depends on it: a due listing asks this
-     * of every connection it reads, on every run.
+     * Which of the connections have an anchor, by id, in one read and only for
+     * those whose refresh depends on it, since every run asks this.
      *
      * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $connections
      * @return array<string, true>
@@ -135,9 +112,8 @@ final class SamlRefreshRule
     }
 
     /**
-     * What an update changing the settings named, to the stored settings given,
-     * must also write to the locked connection: nothing, unless it brings a
-     * SAML connection to hold a deadline it did not hold before.
+     * What an update must also write to the locked connection when it brings it
+     * to hold a deadline, so an old stamp never expires it on opting in.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  list<string>  $changedSettings
@@ -158,9 +134,8 @@ final class SamlRefreshRule
     }
 
     /**
-     * What trusting an anchor must also write to the locked connection, asked
-     * before it is stored: nothing, unless the anchor is its first and brings
-     * it to hold a deadline it did not hold before.
+     * What trusting an anchor must also write when it is the first and brings
+     * the connection to hold a deadline; ask before the anchor is stored.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @return array<string, null>

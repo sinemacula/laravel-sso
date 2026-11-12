@@ -10,49 +10,11 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Whether what was fetched for a connection has stopped being usable (SSO-2.8):
- * settings from metadata whose `validUntil` has passed, or whose last validated
- * fetch is older than the stale limit, are not used, and the connection fails
- * with `metadata_expired` until it recovers.
+ * Whether what was fetched for a connection has passed its `validUntil` or the
+ * stale limit, counted from each resource's own validated fetch.
  *
- * Every validated fetched resource counts from its own validated fetch, and the
- * connection expires at the earliest of them, whether or not its refresh is
- * scheduled: turning the schedule off never means unlimited trust, only an
- * explicit `stale_limit_seconds` of 0 does. The exception is a SAML connection
- * that has not opted in to following its metadata URL, with no anchor and no
- * explicit `metadata_refresh` of `true` (`SamlRefreshRule::holdsDeadline()`):
- * it behaves like certificates entered by hand, nothing refreshes it, so
- * nothing it holds expires, whatever was stamped on it earlier.
- *
- * - The document a refresh wrote, or a fetched import's save
- *   (`metadata_fetched_at` set): the earlier of its `metadata_valid_until` (the
- *   earliest applicable `validUntil` found, an enclosing aggregate's included)
- *   and its last validated fetch (the moment the fetched document was
- *   validated, stamped as `metadata_fetched_at`) plus
- *   `MetadataSettings::staleLimitSeconds()`, when there is a limit.
- * - An OIDC connection's JWKS (`jwks_fetched_at` set, which a refresh and an
- *   unknown-`kid` refetch both stamp): its last validated fetch plus the same
- *   limit. A committed refetch resets this one alone, never the document's.
- *
- * A connection with nothing fetched yet has no deadline: settings and keys
- * saved by hand, metadata given as XML among them, are used as they stand until
- * the first fetch of each resource stamps it. Settings saved from a fetched
- * import count from that fetch where they hold a deadline, since
- * `Connections\ImportSaver::save()` stamps what the proposal carries. An
- * expired connection recovers through a scheduled refresh or an administrator's
- * (`MetadataRefresher::refreshNow()`), which for a connection saved by hand
- * with no document refreshes its keys alone from the saved `jwks_uri`, or
- * through a fetched import saved again; never through a callback: the driver
- * refuses it before any key is read, so a sign-in cannot fetch its way back.
- *
- * A refresh applies the same rule when it commits (`hasExpired()`), from the
- * moment it validated the document, so what it writes is never already expired.
- * The rows are read as the caller holds them, so a caller deciding a flow reads
- * the connection from the write connection first (SSO-11.3); a connection given
- * only through its contract is read again there, by its id.
- *
- * It holds the settings and the clock, neither of which keeps anything of one
- * request for the next (SSO-11.2).
+ * A caller deciding a flow passes the connection as read on the write
+ * connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -112,9 +74,8 @@ final readonly class MetadataExpiry
     }
 
     /**
-     * When metadata validated at the instant given, with the `validUntil`
-     * given, expires: the earlier of the `validUntil` and that instant plus the
-     * stale limit, when there is one; `null` when neither applies.
+     * The earlier of the `validUntil` and the validated instant plus the stale
+     * limit; `null` when neither applies.
      *
      * @param  ?\Carbon\CarbonImmutable  $validUntil
      * @param  \Carbon\CarbonImmutable  $validatedAt
@@ -130,8 +91,8 @@ final readonly class MetadataExpiry
     }
 
     /**
-     * Whether metadata validated at the instant given, with the `validUntil`
-     * given, has expired by now: what a refresh checks again when it commits.
+     * Whether metadata validated at the instant has expired by now: what a
+     * refresh checks again when it commits.
      *
      * @param  ?\Carbon\CarbonImmutable  $validUntil
      * @param  \Carbon\CarbonImmutable  $validatedAt
@@ -147,8 +108,8 @@ final readonly class MetadataExpiry
     }
 
     /**
-     * When the connection's document expires: never with none fetched, or where
-     * what was fetched holds no deadline.
+     * When the connection's document expires: never with none fetched, or for a
+     * SAML connection that holds no deadline.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $row
      * @return ?\Carbon\CarbonImmutable

@@ -17,51 +17,10 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
 use SineMacula\Laravel\Sso\Protocols\Oidc\OidcDriver;
 
 /**
- * The key an ID token's signature is checked with, from the JWKS stored with
- * its connection (SSO-7.3): chosen by exact `kid`, or by the missing-`kid`
- * rule, among the keys admitted again for the connection's allow-list
- * (`Protocols\Oidc\Jose\ProviderKeySet::select()`), read on the write
- * connection (SSO-11.3). It lives beside the refresh machinery, which writes
- * the JWKS it reads, since a protocol driver never reads a connection's row
- * itself.
+ * The key an ID token's signature is checked with, from the connection's stored
+ * JWKS, refetched once when the token's key is unknown.
  *
- * Only a selection that is unknown (a `kid` the stored JWKS does not hold, or
- * no `kid` and no admissible key) calls `JwksRefetcher`, once, and selects
- * again from what it leaves stored; a refused one (`none`, an HMAC, an
- * algorithm off the allow-list, two admissible keys with no `kid`) never
- * fetches, and a select never refetches twice or loops. A `kid` the refetch did
- * not bring stays unknown: it never falls back to a key without one. A caller
- * may first answer whether the token is already disqualified on its unverified
- * claims (`IdTokenValidator`): one that is stays unknown without touching the
- * shared cooldown, so a token that cannot pass never spends it.
- *
- * How each fetch ended is logged, through the sanitising logger, with its
- * reason and the fetch's status alone, never the URL, the body or a key. A
- * token the cooldown turns away logs nothing and fetches nothing: the refetcher
- * counts it, and the next claim of the cooldown, at most one per connection per
- * window across servers, logs how many were turned away since the last,
- * `sso.oidc.jwks_refetch_suppressed`, with the count alone.
- *
- * A connection gone, or a trust change found after a failed claim of the
- * cooldown or a compare and set lost (its trust version raised since it was
- * read), that leaves no key for the token is `overtaken`, so the completion
- * answers `connection_unavailable` rather than blaming the token's signature. A
- * refetch that lost to a change that is not one of trust stays unknown.
- *
- * A key found by a refetch that removed a key, for the consumed request whose
- * token asked, carries the `Protocols\TransitionReceipt` that lets that one
- * request finish across the trust change, naming the key it found
- * (`TransitionReceipts`).
- *
- * `resetFor()` is what an update of the connection's `issuer` or `jwks_uri`
- * clears in its locked transaction, so keys fetched for another issuer or URL
- * are never used (SSO-2.13), and what saving an endpoint by hand with the
- * connection's refresh off clears: from then on it follows no document, and has
- * no document's deadline.
- *
- * It holds the refetcher and the logger, neither of which keeps anything of one
- * call for the next (SSO-11.2). It is not final, so a test of the flow around
- * it can observe and answer its calls.
+ * Not final, so a test of the flow around it can observe and answer its calls.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -93,16 +52,8 @@ readonly class ProviderKeys
     ) {}
 
     /**
-     * What an update changing the settings named, to the stored settings given,
-     * must also write to the locked connection: nothing for a protocol but OIDC
-     * or for other settings. A change of the `issuer` or the `jwks_uri` clears
-     * the stored keys, raises their version and clears the cooldown and the
-     * refetch's token; a change of the `issuer` also clears when the discovery
-     * document was last validated, until when and when it next refreshes. An
-     * endpoint changed with the connection's `metadata_refresh` off clears when
-     * the document was last validated and until when, since the administrator
-     * has taken the endpoints over: turning the refresh off alone clears
-     * nothing, so it never means unlimited trust.
+     * What an update of the named settings must also write to the locked OIDC
+     * connection, so keys and stamps of another issuer or URL are never used.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  list<string>  $changedSettings
@@ -128,11 +79,8 @@ readonly class ProviderKeys
     }
 
     /**
-     * The key for the token among the connection's stored keys, the JWKS
-     * refetched once when none is the token's, unless the closure given says
-     * the token is already disqualified; a refetch's events carry the client.
-     * The consumed request, when given, is the one a key rotation the refetch
-     * makes spares.
+     * The key for the token among the stored keys, refetched once when none is
+     * the token's unless the token is already disqualified.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
@@ -221,9 +169,8 @@ readonly class ProviderKeys
     }
 
     /**
-     * Whether a trust change got there first: after a failed claim of the
-     * cooldown or a compare and set lost, the connection as read is gone, or
-     * its trust version has been raised since.
+     * Whether a trust change got there first, so the completion answers
+     * `connection_unavailable` rather than blaming the token's signature.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $read
      * @param  JwksRefetch  $refetch
@@ -237,10 +184,8 @@ readonly class ProviderKeys
     }
 
     /**
-     * Log how the refetch ended, with its reason and the fetch's status alone:
-     * a warning when it failed or lost to a change, information when it wrote,
-     * and nothing when the cooldown turned the token away; then, at most once a
-     * window, how many tokens the last window turned away.
+     * Log how the refetch ended, nothing when the cooldown turned it away, then
+     * how many tokens the last window turned away.
      *
      * @param  JwksRefetch  $refetch
      * @return void

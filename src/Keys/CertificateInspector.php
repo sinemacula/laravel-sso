@@ -11,22 +11,9 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 
 /**
- * Reads a signing certificate an administrator gives for the identity provider
- * (SSO-2.6) and judges it, before it is trusted: either the facts stored with
- * it (its canonical PEM, public key, fingerprint, key type and size, and
- * validity), or the violations, each at the setting `certificate`:
+ * Reads and judges an identity provider certificate before it is trusted.
  *
- * - longer than 16384 bytes: `too_long`;
- * - holding a private key: `private_key_refused`, before anything is parsed;
- * - not exactly one PEM-encoded X.509 certificate: `invalid_format`;
- * - an RSA key under 2048 bits, or an elliptic curve other than P-256, P-384 or
- *   P-521: `weak_key`;
- * - any other kind of key (DSA, Ed25519, ...): `not_allowed`.
- *
- * Its dates are read and reported, never judged: an expired certificate, or one
- * not yet valid, is accepted, since trust comes from the certificate an
- * administrator configured, not from its dates (SSO-2.6). A violation never
- * echoes the PEM.
+ * Its dates are reported, never judged: an expired certificate is accepted.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -58,8 +45,7 @@ final readonly class CertificateInspector
     public const string SETTING = 'certificate';
 
     /**
-     * The certificate's facts, or why it is refused: exactly one of the two is
-     * given.
+     * The certificate's facts or why it is refused, never both.
      *
      * @param  string  $pem
      * @return array{facts: ?CertificateFacts, violations: list<\SineMacula\Laravel\Sso\Connections\SettingViolation>}
@@ -112,8 +98,7 @@ final readonly class CertificateInspector
 
     /**
      * The canonical PEM, public key and fingerprint of exactly one X.509
-     * certificate, as `Secrets\MaskedKey` reads them, or `null` for anything
-     * else.
+     * certificate, or `null` for anything else.
      *
      * @param  string  $pem
      * @return ?array{certificate: string, public_key: string, fingerprint: string}
@@ -179,8 +164,7 @@ final readonly class CertificateInspector
     }
 
     /**
-     * Whether the key is strong enough: an RSA modulus of at least 2048 bits,
-     * or one of the accepted curves.
+     * Whether the RSA modulus is long enough or the curve is accepted.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
      * @param  array{type: int, bits: int, curve: ?string}  $details
@@ -215,9 +199,8 @@ final readonly class CertificateInspector
     }
 
     /**
-     * Run an OpenSSL read with its warnings silenced (its result says whether
-     * it failed) and its error queue cleared, so neither reaches a log or a
-     * later call.
+     * Run an OpenSSL read with its warnings silenced and its error queue
+     * cleared, so neither reaches a log or a later call.
      *
      * @template TResult
      *

@@ -9,17 +9,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyStatus;
 
 /**
- * What a key operation of `Keys\KeyService` did (SSO-2.6, SSO-2.7, SSO-2.11):
- * added a key pair, made one current, retired one, trusted a certificate or
- * removed one, each carrying the summary of the key it acted on; or nothing,
- * because it was refused (`reason`) or what was given was invalid
- * (`violations`).
- *
- * A summary never holds a private key (SSO-2.5). A refusal is one of
- * `freshness_required`, `connection_not_found`, `key_not_found` and
- * `key_state_conflict`; an invalid result is `settings_invalid`, with at least
- * one `Connections\SettingViolation`, each naming a setting and a code, never a
- * value.
+ * What a key operation of `Keys\KeyService` did, or why it did nothing.
  *
  * @api
  *
@@ -50,7 +40,7 @@ final readonly class KeyResult implements \JsonSerializable
         /** How the operation ended. */
         public KeyStatus $status,
 
-        /** The key or certificate acted on, as it is now, or as it was before it was removed. */
+        /** The key or certificate acted on, as it was before a removal. */
         public ?KeySummary $key = null,
 
         /** For `made_current`, the key it replaced, now retiring, when there was one. */
@@ -75,8 +65,7 @@ final readonly class KeyResult implements \JsonSerializable
     }
 
     /**
-     * A key was made current, replacing the previous current key, now retiring,
-     * when there was one.
+     * A key was made current, replacing the previous one, now retiring.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\KeySummary  $key
      * @param  ?\SineMacula\Laravel\Sso\Keys\KeySummary  $previous
@@ -110,8 +99,7 @@ final readonly class KeyResult implements \JsonSerializable
     }
 
     /**
-     * A trusted certificate was removed; the summary is the certificate as it
-     * was.
+     * A trusted certificate was removed; the summary is it as it was.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\KeySummary  $key
      * @return self
@@ -186,8 +174,7 @@ final readonly class KeyResult implements \JsonSerializable
     }
 
     /**
-     * The result, with snake_case keys: the status, the key and the previous
-     * key as their summaries, the reason and the violations.
+     * The result, with snake_case keys.
      *
      * @return array<string, mixed>
      */

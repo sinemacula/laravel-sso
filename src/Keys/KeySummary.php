@@ -13,16 +13,7 @@ use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 
 /**
- * What a helper returns for one of a connection's keys or trusted certificates
- * (SSO-2.5, SSO-2.6, SSO-2.7): its id, connection, use and state, its type and
- * size, its public half masked as `Secrets\MaskedKey` (the certificate, the
- * public key and the fingerprint), the certificate's validity, when it was made
- * current, and until when a retiring key is still accepted. It never holds a
- * private key.
- *
- * A certificate's dates are reported, never enforced: trust comes from the
- * configured certificate (SSO-2.6). `isExpiredAt()` and `expiresWithin()`
- * answer the report.
+ * One of a connection's keys or trusted certificates, without its private key.
  *
  * @api
  *
@@ -58,7 +49,7 @@ final readonly class KeySummary implements \JsonSerializable
         /** What it is for. */
         public KeyUse $use,
 
-        /** Where a key of the service provider's own is in its rotation; `null` for a trusted certificate. */
+        /** Where an own key is in its rotation; `null` for a trusted certificate. */
         public ?KeyState $state,
 
         /** The kind of key. */
@@ -116,8 +107,8 @@ final readonly class KeySummary implements \JsonSerializable
     }
 
     /**
-     * Whether the certificate's validity has ended by the instant given. A key
-     * with no certificate never expires.
+     * Whether the certificate's validity has ended by the instant; a key with
+     * no certificate never expires.
      *
      * @param  \Carbon\CarbonInterface  $now
      * @return bool
@@ -128,8 +119,8 @@ final readonly class KeySummary implements \JsonSerializable
     }
 
     /**
-     * Whether the certificate's validity ends within the seconds given of the
-     * instant given, or has already ended.
+     * Whether the certificate's validity ends within the seconds of the
+     * instant, or has already ended.
      *
      * @param  \Carbon\CarbonInterface  $now
      * @param  int  $seconds
@@ -141,8 +132,7 @@ final readonly class KeySummary implements \JsonSerializable
     }
 
     /**
-     * The summary, with snake_case keys and each time as an ISO 8601 UTC
-     * string.
+     * The summary, with snake_case keys and times as ISO 8601 UTC strings.
      *
      * @return array<string, mixed>
      */

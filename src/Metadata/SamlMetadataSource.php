@@ -9,7 +9,6 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
-use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
@@ -21,34 +20,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 
 /**
- * What a SAML connection refreshes (SSO-2.8, SSO-11.12): its identity
- * provider's metadata, from the `metadata_url` the administrator saved.
- *
- * - The schedule refreshes it when its `metadata_url` is a valid `https` URL
- *   and `metadata_refresh` is `true`, or is unset on a connection with a
- *   metadata signing anchor (`SamlRefreshRule`): HTTPS proves only who served
- *   the file, so a URL alone never replaces trusted certificates by itself. The
- *   URL the administrator saved is the only one ever fetched. An administrator
- *   may refresh it whatever the setting says.
- * - Its snapshot is the connection's metadata signing anchors and identity
- *   provider signing certificates, read after the connection itself: the sorted
- *   fingerprints of both sets (`RefreshClaim::trustedOf()`), with the anchors'
- *   certificates the metadata is read with.
- * - It fetches the saved URL through the package's fetcher as a metadata
- *   request held to `sso.metadata.max_bytes` (SSO-2.9), never the fetcher's own
- *   cap, and reads it for the pinned `idp_entity_id` with the anchors and the
- *   current binding (`Protocols\Saml2\Library\MetadataReader`), noting the
- *   moment it validated. A refused or failed fetch is `fetch_refused` or
- *   `fetch_failed` (a response that is not `2xx` or is larger than the cap
- *   included), and metadata refused is its reader's reason. An exception the
- *   reader throws for one connection, rather than refusing the document, is
- *   contained: the metadata is `metadata_invalid`, and the exception is logged
- *   by its class alone, so a run goes on to the next connection.
- * - It writes through `MetadataApplier`.
- *
- * It holds the key ring, the claims, the fetcher, the reader, the applier, the
- * clock and the logger, none of which keeps anything of one refresh for the
- * next (SSO-11.2).
+ * What a SAML connection refreshes: its identity provider's metadata, from the
+ * `metadata_url` the administrator saved and no other.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -106,9 +79,8 @@ final readonly class SamlMetadataSource extends MetadataSource
     }
 
     /**
-     * Whether the schedule refreshes the connection's metadata: a SAML
-     * connection with an `https` `metadata_url` that has opted in, or that has
-     * a metadata signing anchor and has not switched it off.
+     * Whether the schedule refreshes the connection's metadata: it has an
+     * `https` URL and opted in, or has an anchor and did not opt out.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
@@ -136,8 +108,7 @@ final readonly class SamlMetadataSource extends MetadataSource
     }
 
     /**
-     * Whether the connection's metadata can be refreshed: a SAML connection
-     * with an `https` `metadata_url`.
+     * Whether the connection is SAML with an `https` `metadata_url`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
@@ -180,16 +151,16 @@ final readonly class SamlMetadataSource extends MetadataSource
         $fetched    = $this->fetcher->fetch(FetchRequest::metadata(self::setting($connection, Saml2Setting::METADATA_URL), $this->reader->maxBytes()));
 
         if (!$fetched->isSuccessful()) {
-            return FetchedMetadata::refused(self::fetchFailure($fetched), $fetched->status);
+            return FetchedMetadata::refused($fetched->reason ?? FailureReason::FETCH_FAILED, $fetched->status);
         }
 
         $metadata = $this->read($connection, (string) $fetched->body(), $claim->anchors);
 
-        // The moment the document was validated, read once the reader is done
         if (!$metadata->isRead()) {
             return FetchedMetadata::refused($metadata->reason ?? FailureReason::METADATA_INVALID, $fetched->status);
         }
 
+        // The moment the document was validated, read once the reader is done
         return FetchedMetadata::read($metadata, $this->clock->now());
     }
 
@@ -217,9 +188,8 @@ final readonly class SamlMetadataSource extends MetadataSource
     }
 
     /**
-     * The fetched metadata of the connection's pinned entity, read with its
-     * anchors' certificates, its current binding preferred; a reader that
-     * throws, rather than refusing the document, refused it as invalid.
+     * The metadata of the connection's pinned entity, read with the anchors; a
+     * reader that throws is contained so a run goes on to the next connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $xml
@@ -270,16 +240,5 @@ final readonly class SamlMetadataSource extends MetadataSource
         $value = $connection->settings[$setting->value] ?? null;
 
         return is_string($value) ? $value : '';
-    }
-
-    /**
-     * Why a fetch that brought no `2xx` response failed: refused, or failed.
-     *
-     * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $fetched
-     * @return \SineMacula\Laravel\Sso\Events\Enums\FailureReason
-     */
-    private static function fetchFailure(FetchResult $fetched): FailureReason
-    {
-        return $fetched->reason ?? FailureReason::FETCH_FAILED;
     }
 }

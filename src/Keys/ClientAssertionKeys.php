@@ -17,17 +17,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
 
 /**
  * Whether a connection's `client_assertion_algorithm` and its
- * `client_assertion` keys fit each other (SSO-2.4, RFC 7523), which is refused
- * wherever either changes: a change of the setting asks whether its keys fit it
- * (`Connections\ConnectionService`), and a key added asks whether it fits the
- * setting (`KeyService`).
- *
- * A change holds the connection's lock when it asks, so `publishedFit()` reads
- * the current and next keys with a locking read, which answers the latest
- * committed rows rather than an older snapshot of the caller's transaction; a
- * retiring key signs nothing, so it does not count.
- *
- * It holds nothing between calls (SSO-11.2).
+ * `client_assertion` keys fit each other.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,8 +32,7 @@ final class ClientAssertionKeys
     private function __construct() {}
 
     /**
-     * Whether a key of the use and type may be added to the connection as it
-     * holds its settings: a client assertion key must fit its pinned algorithm.
+     * Whether a key of the use and type fits the connection's pinned algorithm.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
@@ -56,9 +45,8 @@ final class ClientAssertionKeys
     }
 
     /**
-     * The problem with the settings' pinned algorithm, when a change of it
-     * names one the package signs with but the locked connection's current or
-     * next key cannot sign under: `unsupported`, read under its lock.
+     * An `unsupported` violation when a change pins a known algorithm the
+     * locked connection's current or next key cannot sign under.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $stored
@@ -79,8 +67,8 @@ final class ClientAssertionKeys
     }
 
     /**
-     * Whether the locked connection's current and next client assertion keys
-     * can all sign under the pinned algorithm given, read with a locking read.
+     * Whether the current and next client assertion keys can all sign under the
+     * algorithm; read locked, so it sees rows newer than the caller's snapshot.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  ?string  $pinned

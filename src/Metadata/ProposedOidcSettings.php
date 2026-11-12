@@ -9,28 +9,11 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKey;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
 
 /**
- * The settings an import of an OpenID provider's discovery document proposes
- * for a connection (SSO-2.8), for an administrator to review: nothing in it is
- * written or trusted until it is saved through
- * `Connections\ImportSaver::save()`, with freshness.
+ * The settings an import of an OpenID provider's discovery document proposes,
+ * trusted only once saved through `Connections\ImportSaver::save()`.
  *
- * - `settings()`: `issuer`, `authorization_endpoint`, `token_endpoint`,
- *   `jwks_uri`, `userinfo_endpoint` when the document names one, `returns_iss`
- *   and `id_token_algorithms`, as the connection's settings name them, ready to
- *   give `update()`;
- * - `authMethods()`: the client authentication methods the document lists, for
- *   choosing the connection's `client_authentication`, which the import never
- *   proposes;
- * - `keys()`: each admitted key's `kid`, `kty` and `alg`, for review. No other
- *   member of a key is held, and no secret: the keys themselves are stored by
- *   the first refresh or refetch, never by a save;
- * - `fetch()`: the fetch the document came from, to give
- *   `Connections\ImportSaver::save()` so the stale limit counts from it.
- *
- * Everything in it came from whoever serves the issuer's URL, so it is held in
- * a `\SensitiveParameterValue`: a dump and `json_encode()` show the names and
- * how many of each, never a value, and it refuses to be serialised or
- * unserialised.
+ * Its values are untrusted, so a dump shows names and counts alone and it
+ * refuses to be serialised.
  *
  * @api
  *
@@ -75,8 +58,8 @@ final readonly class ProposedOidcSettings implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the names of the settings and how many client
-     * authentication methods and keys it holds, never a value.
+     * What a dump shows: the setting names and how many methods and keys, never
+     * a value.
      *
      * @return array<string, mixed>
      */
@@ -121,8 +104,7 @@ final readonly class ProposedOidcSettings implements \JsonSerializable
     }
 
     /**
-     * What the read document, validated at the moment given, and the keys its
-     * JWKS gave propose.
+     * What the read document and the keys its JWKS gave propose.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\DiscoveryDocument  $document
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet  $keys
@@ -152,8 +134,8 @@ final readonly class ProposedOidcSettings implements \JsonSerializable
     }
 
     /**
-     * The client authentication methods the document lists; none when it lists
-     * none.
+     * The client authentication methods the document lists, for choosing
+     * `client_authentication`, which the import never proposes.
      *
      * @return list<string>
      */
@@ -163,8 +145,8 @@ final readonly class ProposedOidcSettings implements \JsonSerializable
     }
 
     /**
-     * Each admitted key's `kid`, `kty` and `alg`, in the order the JWKS gave
-     * them, `null` for a member the key does not have.
+     * Each admitted key's `kid`, `kty` and `alg`, for review; a save never
+     * stores the keys themselves.
      *
      * @return list<ProposedKey>
      */

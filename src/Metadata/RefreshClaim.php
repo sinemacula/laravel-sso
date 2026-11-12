@@ -9,24 +9,8 @@ use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * One server's claim on a connection's refresh, and the configuration snapshot
- * the refresh is judged against when it writes (SSO-2.8, SSO-2.13): the
- * connection as it was read before the claim (its metadata and trust versions),
- * the random token the claim wrote with `metadata_claimed_until`, and the
- * snapshot of the connection's trust its source read before the claim too: for
- * SAML, the sorted fingerprints of the connection's identity provider signing
- * certificates and metadata signing anchors (`trustedOf()`), with the anchors'
- * certificates the fetched metadata is read with; for OIDC, its JWKS version
- * and the settings a refresh may change.
- *
- * `RefreshWriter` writes, success or failure, only while the locked connection
- * still holds this token (no other server took the claim over once it expired),
- * the same versions and exactly this snapshot, so a refresh never removes a
- * certificate or key an administrator or a refetch added while it fetched, and
- * a refresh whose claim was taken over writes nothing.
- *
- * It lives only while its refresh runs, in one process, and is never
- * serialised: the token is a random value of no use beyond its claim.
+ * One server's claim on a connection's refresh, and the snapshot its write is
+ * compared against under the lock.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,16 +38,16 @@ final readonly class RefreshClaim
         /** The token the claim was written with. */
         public string $token,
 
-        /** The snapshot of the connection's trust, as its source reads it: comparable with `===`. */
+        /** The snapshot of the connection's trust as its source reads it, comparable with `===`. */
         public array $trusted,
 
-        /** The PEM certificates the fetched document is verified with: a SAML connection's metadata signing anchors. */
+        /** The PEM metadata signing anchors the fetched document is verified with. */
         public array $anchors = [],
     ) {}
 
     /**
-     * The snapshot of the certificates and anchors given: each use's
-     * fingerprints, sorted.
+     * The snapshot of the certificates and anchors: each use's fingerprints,
+     * sorted.
      *
      * @param  list<\SineMacula\Laravel\Sso\Keys\KeySummary>  $certificates
      * @param  list<\SineMacula\Laravel\Sso\Keys\KeySummary>  $anchors

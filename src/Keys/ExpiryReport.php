@@ -16,43 +16,10 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 
 /**
- * Lists every key and certificate, of any connection, whose validity ends
- * within a number of days or has already ended, and warns of those that have
- * reached a threshold (SSO-2.6, SSO-11.12), which `sso:keys:expiring` runs.
+ * Lists every key and certificate whose validity ends within a window or has
+ * ended, and warns of those that have reached a threshold.
  *
- * The window listed is the days given, 1 to 365, or the largest of
- * `sso.keys.expiry_thresholds` (`KeySettings`), each a day of 86400 seconds
- * counted from the clock's now. A key or certificate is listed when its
- * `not_after` is at or before the end of the window, an expired one included; one
- * with no end of validity never is, and neither is a retiring key whose overlap
- * has ended, which decryption no longer accepts. A row whose connection is gone
- * is skipped. What is listed does not depend on what was notified before, so a
- * problem nobody has solved stays visible.
- *
- * The warnings do not depend on the window given: every key that has reached a
- * threshold is looked at, and each gets at most one `Events\KeyNearingExpiry`
- * for the most urgent threshold it has reached, through `ExpiryNotifier`, which
- * sends it at least once. A key warned of that threshold or a more urgent one
- * already takes no lock. Several servers may run it at once: the claim limits
- * how many send, and a duplicate remains possible.
- *
- * The rows are read on the write connection in pages of `PAGE_SIZE`, by keyset
- * on (`not_after`, `id`), never all at once, and each page's connections are
- * loaded in one query. So that a run's memory does not grow with the keys, each
- * entry is handed to the callback given as it is read, ordered by `not_after`
- * and then by id, and the answer holds counts.
- *
- * It reports and enforces nothing: trust comes from the configured certificate,
- * never its dates, and an expired one is still trusted (SSO-2.6). It refuses to
- * run inside a transaction on the storage connection (a `LogicException`),
- * since a warning must be dispatched before it is recorded, which a transaction
- * would hold back until its commit. A database error propagates (SSO-11.4); a
- * dispatch that throws ends that key with `failed` and the run goes on.
- *
- * It takes the client each warning's `Events\KeyNearingExpiry` carries as an
- * `Http\ClientContext` and reads no request: `sso:keys:expiring` passes
- * `new ClientContext(null, null)`. It holds the notifier, the key settings and
- * the clock, none of which keeps anything of one call for the next (SSO-11.2).
+ * Call outside any transaction on the storage connection.
  *
  * @api
  *
@@ -93,10 +60,8 @@ final readonly class ExpiryReport
     ) {}
 
     /**
-     * Warn of every key that has reached a threshold, and list those whose
-     * validity ends within the days given, or the largest threshold when none
-     * are, or has already ended, handing each to the callback, ordered by the
-     * end of validity and then by id; each warning's event carries the client.
+     * Warn of every key that has reached a threshold, and hand the callback
+     * each one ending within the days given, or the largest threshold.
      *
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?int  $withinDays
@@ -136,8 +101,7 @@ final readonly class ExpiryReport
     }
 
     /**
-     * Those of the page whose connection is still there: the connections are
-     * read in one query, on the write connection.
+     * The keys of the page whose connection still exists, read in one query.
      *
      * @param  array<int, \SineMacula\Laravel\Sso\Models\ConnectionKey>  $page
      * @return array<int, \SineMacula\Laravel\Sso\Models\ConnectionKey>
@@ -156,10 +120,8 @@ final readonly class ExpiryReport
     }
 
     /**
-     * The next page after the key given: every key and certificate whose
-     * validity ends at or before the end of the window, but for a retiring key
-     * whose overlap ended by now, read on the write connection, ordered by the
-     * end of validity and then by id.
+     * The next page of keys ending by the end of the window, by keyset after
+     * the key given, leaving out a retiring key whose overlap has ended.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\ConnectionKey  $after
      * @param  \DateTimeInterface  $until
@@ -200,7 +162,6 @@ final readonly class ExpiryReport
 
     /**
      * The run with the key counted, and listed when it falls within the window.
-     * A key that stopped being reportable since it was read is left out.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\ExpiryRun  $run
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
@@ -242,10 +203,8 @@ final readonly class ExpiryReport
     }
 
     /**
-     * What this run does about warning of the key, as it was read: nothing for
-     * one that has reached no threshold, or was warned of it or a more urgent
-     * one already, which takes no lock, and otherwise what the notifier found.
-     * `null` means it stopped being reportable since it was read.
+     * What this run does about warning of the key, checking the marker before
+     * any lock; `null` when it stopped being reportable since it was read.
      *
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @param  ?int  $threshold

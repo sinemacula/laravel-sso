@@ -10,21 +10,8 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Takes a server's claim on a connection's refresh (SSO-2.8, SSO-11.12),
- * outside any transaction, for any source (`MetadataSource`), with the snapshot
- * of the connection's trust the source read after the connection and before the
- * claim.
- *
- * `claim()` claims the connection with one conditional update:
- * `metadata_claimed_until` now plus `claim_seconds` and `metadata_claim_token`
- * a fresh random token, only while no claim holds (none, or one not after now)
- * and the metadata version is still the one read. It answers the
- * `RefreshClaim`, which holds the connection as read, the token and the
- * snapshot, or `null` when another server holds the claim or another refresh
- * has written since.
- *
- * It holds the settings and the clock, neither of which keeps anything of one
- * refresh for the next (SSO-11.2).
+ * Takes a server's claim on a connection's refresh with one conditional update,
+ * outside any transaction.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,9 +36,9 @@ final readonly class RefreshClaims
     ) {}
 
     /**
-     * Claim the refresh of the connection as it was read, with the snapshot of
-     * its trust and the certificates its document is verified with, read
-     * before; the claim, or `null` when it was not claimed.
+     * Claim the refresh of the connection as read, with the trust snapshot and
+     * anchors read before; `null` when another server holds it or another
+     * refresh has written since.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array<string, mixed>  $trusted

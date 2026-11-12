@@ -28,54 +28,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 
 /**
- * The management helpers of a connection's keys and certificates (SSO-2.5 to
- * SSO-2.7, SSO-2.11, SSO-2.12): generate a key pair of the service provider's
- * own and add it as `next`, make it current, retire the key it replaced; trust
- * a signing certificate of the identity provider or a metadata signing anchor,
- * and remove one.
- *
- * Each change is scoped to a tenant (a connection of another tenant is
- * `connection_not_found`, exactly as an unknown one), and goes in a fixed
- * order: find the connection and the key on the write connection; validate what
- * was given; check the key's state; ask the freshness contract
- * (`sso.keys.rotate` for a key of the service provider's own,
- * `sso.connection.trust` for a trusted certificate); generate the key, when one
- * is added; then, in one transaction on the storage connection, read the
- * connection again locked for update (which serialises a connection's
- * rotations), check the state again, write, and report through
- * `Administration\AdministrationEvents`. A state that changed in between is
- * `key_state_conflict`. A refusal at any step writes nothing and reports
- * nothing.
- *
- * A private key is encrypted through `Contracts\SecretEncrypter` before it is
- * written, and never returned: a result carries `Keys\KeySummary` values only
- * (SSO-2.5). A failed write of it is a `RuntimeException` that quotes nothing
- * of the ciphertext. A trusted certificate's dates are reported, never
- * enforced: an expired certificate is trusted (SSO-2.6).
- *
- * Removing a trusted certificate, and any change to the metadata signing
- * anchors, is a trust change (SSO-2.13): in its transaction, under the
- * connection's lock, it voids the authorisation requests and handoff codes in
- * flight through the connection and raises its trust version
- * (`Connections\InFlightVoider`), so none completes or is redeemed against the
- * certificates it was started under. A connection's first anchor also brings it
- * to hold a stale deadline and, unless it is off, to refresh, so it clears what
- * was stamped before and makes its first refresh due
- * (`Metadata\SamlRefreshRule::resetForAnchor()`); removing its last anchor
- * stops that, with what was stamped no longer holding a deadline. Adding an
- * identity provider signing certificate is additive: every response a flow in
- * flight could verify before still verifies, so it voids nothing and leaves the
- * trust version as it was, and a provider rotating its key never voids its own
- * flows. Only RSA certificates are trusted for SAML, the only keys its library
- * verifies. Rotating a key of the service provider's own keeps what subjects
- * mean and voids nothing. A client assertion key that does not fit the
- * connection's `client_assertion_algorithm` (`ClientAssertionKeys`) is refused
- * as `key_type` `not_allowed`, before it is generated and again under the lock.
- *
- * A metadata refresh replaces the identity provider signing certificates
- * exactly, under the connection's lock it already holds, through
- * `replaceTrustedCertificatesLocked()`: the same judgement, the same events,
- * and a void only when a certificate is removed.
+ * The management helpers of a connection's keys and trusted certificates.
  *
  * @api
  *
@@ -140,17 +93,15 @@ final readonly class KeyService
         /** Reports each change, inside its transaction. */
         private AdministrationEvents $events,
 
-        // Assigned rather than promoted, which keeps this constructor's shape
-        // apart from DomainService's, whose dependencies it otherwise mirrors
+        // Assigned, not promoted, to keep its shape apart from DomainService's
         InFlightVoider $voider,
     ) {
         $this->voider = $voider;
     }
 
     /**
-     * Generate a key pair of the use and add it to the connection: as `next`,
-     * or as `current` when the connection has no current key of the use. RSA
-     * unless another type is given.
+     * Generate a key pair of the use, RSA unless another type is given, and add
+     * it as `next`, or `current` when the use has none.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -181,8 +132,8 @@ final readonly class KeyService
     }
 
     /**
-     * Make the connection's `next` key current. The current key of the same use
-     * becomes `retiring`, accepted for decryption until the overlap ends.
+     * Make the `next` key current; the current key of the use becomes
+     * `retiring`, still decrypting until the overlap ends.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -210,9 +161,8 @@ final readonly class KeyService
     }
 
     /**
-     * Retire and remove one of the connection's own keys that is `retiring`, or
-     * `next` and never made current. The current key is never retired, and a
-     * trusted certificate is removed by `distrustCertificate()`.
+     * Remove one of the connection's own keys that is `retiring` or `next`; the
+     * current key is never retired.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -238,11 +188,8 @@ final readonly class KeyService
     }
 
     /**
-     * Trust a certificate for the SAML connection, alongside those it already
-     * trusts for the use: a signing certificate of the identity provider (by
-     * default), which voids nothing, or a metadata signing anchor, which voids
-     * what is in flight through the connection. An expired certificate is
-     * trusted: its dates are reported, never enforced.
+     * Trust a certificate for the SAML connection alongside those it trusts for
+     * the use; only a metadata signing anchor voids what is in flight.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -273,10 +220,8 @@ final readonly class KeyService
     }
 
     /**
-     * Stop trusting one of the connection's identity provider certificates or
-     * metadata signing anchors, remove it and void what is in flight through
-     * the connection. Removing the last signing certificate is allowed; the
-     * connection is then incomplete until another is trusted.
+     * Stop trusting one of the connection's certificates and void what is in
+     * flight through it; removing the last one is allowed.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -302,26 +247,10 @@ final readonly class KeyService
     }
 
     /**
-     * Make the identity provider signing certificates the locked connection
-     * trusts exactly the certificates given, never their union with those it
-     * trusts now (SSO-2.8): each trusted now that is not given is distrusted
-     * and removed, and each given that is not trusted now is trusted; one
-     * trusted and given is kept as it is.
-     *
-     * The certificates are judged first, in order, as `trustCertificate()`
-     * judges one (read by the inspector, RSA only, not given twice, at most
-     * `MAX_TRUSTED_CERTIFICATES`), each violation named at `certificate.<n>`;
-     * with any violation nothing is written or reported. Otherwise the rows are
-     * read again with a locking read, the certificates removed are deleted and
-     * reported retired, what is in flight through the connection is voided and
-     * its trust version raised once when any was removed
-     * (`Connections\InFlightVoider`), and the certificates added are inserted
-     * and reported added. Adding alone is additive and voids nothing.
-     *
-     * For the metadata refresh, which asks no freshness here, having asked any
-     * it needs before it fetched: called inside the transaction on the storage
-     * connection that holds the connection's row lock. It answers what it added
-     * and removed, each as it was, and the violations.
+     * Make the locked connection trust exactly the identity provider signing
+     * certificates given, voiding what is in flight only when one is removed.
+     * Call inside the transaction holding the connection's lock; it asks no
+     * freshness.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  list<string>  $pems
@@ -382,9 +311,8 @@ final readonly class KeyService
     }
 
     /**
-     * Every key and certificate of the connection, by use, then by state
-     * (current, next, retiring, then a trusted certificate's none), then oldest
-     * first; `null` when the tenant has no such connection.
+     * Every key and certificate of the connection, by use, state and age;
+     * `null` when the tenant has no such connection.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -416,9 +344,7 @@ final readonly class KeyService
 
     /**
      * The connection a key pair of the use and type may be added to, or why
-     * not: no such connection, a use or type it does not allow, a type its
-     * pinned client assertion algorithm does not fit, a `next` key of the use
-     * already, or a caller who is not fresh enough.
+     * not.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -454,9 +380,7 @@ final readonly class KeyService
 
     /**
      * The facts of the certificate the connection may trust for the use, or why
-     * not: no such connection, not a SAML connection, a certificate refused by
-     * the inspector or not RSA, one it already trusts for the use or one too
-     * many, or a caller who is not fresh enough.
+     * not.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -496,10 +420,8 @@ final readonly class KeyService
     }
 
     /**
-     * Change one of the connection's keys: find it, check it is of the kind the
-     * change acts on and in a state the change allows, ask the freshness
-     * contract, then find and check it again under the connection's lock and
-     * write.
+     * Check the key and the caller's freshness, then check the key again under
+     * the connection's lock and write.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -534,8 +456,8 @@ final readonly class KeyService
     }
 
     /**
-     * Run the change in one transaction on the storage connection, against the
-     * connection read again locked for update.
+     * Run the change in one transaction against the connection read again
+     * locked for update.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -556,11 +478,8 @@ final readonly class KeyService
     }
 
     /**
-     * Insert the generated key pair for the locked connection: `current` when
-     * it has no current key of the use, else `next`; refused when a `next` key
-     * of the use was added meanwhile, or its pinned client assertion algorithm
-     * changed meanwhile and no longer fits. A failed insert propagates as a
-     * `RuntimeException` that quotes nothing of the encrypted private key.
+     * Insert the generated key pair as `current` when the use has none, else
+     * `next`, unless a `next` key or the pinned algorithm changed meanwhile.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
@@ -621,9 +540,8 @@ final readonly class KeyService
     }
 
     /**
-     * Insert the inspected certificate as one the locked connection trusts for
-     * the use, and void what is in flight through the connection when it is a
-     * metadata signing anchor; refused when it was trusted, or the cap reached,
+     * Trust the certificate for the use, voiding what is in flight for a
+     * metadata signing anchor, unless it was trusted or the cap reached
      * meanwhile.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
@@ -673,8 +591,8 @@ final readonly class KeyService
     }
 
     /**
-     * Make the key current for the locked connection; its current key of the
-     * same use, if any, becomes `retiring` until the overlap ends.
+     * Make the key current; the use's current key, if any, becomes `retiring`
+     * until the overlap ends.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
@@ -698,10 +616,8 @@ final readonly class KeyService
     }
 
     /**
-     * Delete the locked connection's key and report it retired, answering the
-     * key as it was before. Removing a trusted certificate is a trust change,
-     * which voids what is in flight through the connection; retiring a key of
-     * the service provider's own voids nothing.
+     * Delete the key and report it retired, answering it as it was; removing a
+     * trusted certificate voids what is in flight.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
@@ -747,10 +663,8 @@ final readonly class KeyService
     }
 
     /**
-     * What is wrong with trusting the certificate for the connection and the
-     * use: a key type other than RSA, one it already trusts for the use, or one
-     * more than it may. The fingerprints trusted are read from the connection's
-     * rows unless given.
+     * What is wrong with trusting the certificate for the use, reading the
+     * fingerprints trusted unless given.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  CertificateFacts  $facts
@@ -792,14 +706,8 @@ final readonly class KeyService
     }
 
     /**
-     * A query of the connection's keys and certificates, on the write
-     * connection.
-     *
-     * Every read made under the connection's lock locks what it reads too. A
-     * plain read there would answer from the snapshot of a transaction the
-     * caller opened (MySQL's `REPEATABLE READ`), which may predate a change
-     * committed before the lock was taken; a locking read always sees the
-     * latest committed rows.
+     * A query of the connection's keys on the write connection; under its lock,
+     * read locked so a caller's older snapshot cannot answer.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  bool  $forUpdate

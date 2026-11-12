@@ -5,13 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Metadata;
 
 /**
- * The metadata sources the package refreshes, by protocol (SSO-2.8): a SAML
- * connection's metadata (`SamlMetadataSource`) and an OIDC connection's
- * discovery document and JWKS (`OidcMetadataSource`). A protocol an application
- * registered has none, so its connections never refresh.
- *
- * It holds the sources, none of which keeps anything of one refresh for the
- * next (SSO-11.2).
+ * The metadata sources the package refreshes, by protocol; a protocol an
+ * application registered has none.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
