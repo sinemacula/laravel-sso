@@ -13,12 +13,7 @@ use SineMacula\Laravel\Sso\Fetching\AddressPolicy;
 use SineMacula\Laravel\Sso\Fetching\FetcherSettings;
 
 /**
- * PHPBench suite for judging an address
- * (`Fetching\AddressPolicy::isRefused()`), which the fetcher asks of every
- * address a host resolves to before it connects: allowed public addresses,
- * which are checked against every range, and refused ones. It resolves nothing
- * and connects nowhere, and needs no application. A subject answers whether the
- * address is refused.
+ * `AddressPolicy::isRefused()` on allowed and refused addresses.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

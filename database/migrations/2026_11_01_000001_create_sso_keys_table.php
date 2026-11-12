@@ -9,8 +9,7 @@ use SineMacula\Laravel\Sso\Database\MigrationCollisionGuard;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * Create the keys and certificates table: each connection's own key pairs and
- * the identity provider certificates it trusts.
+ * Create the keys and certificates table.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,40 +35,32 @@ return new class extends Migration {
         $schema->create($table, static function (Blueprint $blueprint) use ($table): void {
             $blueprint->char('id', 26)->primary();
 
-            // The connection the row belongs to. No foreign key: deleting a
-            // connection deletes its keys in the same transaction, whatever the
-            // engine.
+            // No foreign key: deleting a connection deletes its keys in the
+            // same transaction, whatever the engine.
             $blueprint->char('connection_id', 26);
 
-            // `sp_signing`, `sp_encryption`, `client_assertion` or
-            // `idp_signing`; `next`, `current` or `retiring` for a key of the
-            // service provider's own, and none for a trusted certificate.
+            // State is null for a trusted certificate.
             $blueprint->string('use', 32);
             $blueprint->string('state', 16)->nullable();
 
             $blueprint->string('key_type', 8);
             $blueprint->unsignedSmallInteger('key_bits');
 
-            // PEM. The private key is the SecretEncrypter's ciphertext, and
-            // only a key of the service provider's own has one.
+            // PEM; the private key is encrypted and only the SP's own has one.
             $blueprint->text('certificate')->nullable();
             $blueprint->text('public_key');
             $blueprint->longText('private_key')->nullable();
 
-            // Lower-case hex SHA-256 of the certificate's DER, or of the public
-            // key's when there is no certificate.
+            // SHA-256 hex of the certificate's DER, else the public key's.
             $blueprint->char('fingerprint', 64);
 
-            // Whole seconds in UTC. The certificate's dates are reported, never
-            // enforced; the rotation times come from the package's clock.
+            // Certificate dates are reported, never enforced.
             $blueprint->dateTime('not_before', 0)->nullable();
             $blueprint->dateTime('not_after', 0)->nullable();
             $blueprint->dateTime('made_current_at', 0)->nullable();
             $blueprint->dateTime('retiring_until', 0)->nullable();
 
-            // The expiry report's marker, written only once the warning has
-            // been dispatched: the most urgent threshold warned of, in days,
-            // and when; and until when one reporter holds the key to send it.
+            // Written only once the expiry warning has been dispatched.
             $blueprint->unsignedSmallInteger('expiry_notified_threshold')->nullable();
             $blueprint->dateTime('expiry_notified_at', 0)->nullable();
             $blueprint->dateTime('expiry_claimed_until', 0)->nullable();
@@ -77,9 +68,6 @@ return new class extends Migration {
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);
 
-            // One row per key or certificate of a use in a connection; the
-            // rotation reads a connection's keys of one use by state; the
-            // expiry report pages by the end of validity, by keyset.
             $blueprint->unique(['connection_id', 'use', 'fingerprint'], self::indexName($table, 'fingerprint_unique'));
             $blueprint->index(['connection_id', 'use', 'state'], self::indexName($table, 'rotation_index'));
             $blueprint->index(['not_after', 'id'], self::indexName($table, 'expiry_index'));
@@ -100,8 +88,7 @@ return new class extends Migration {
     }
 
     /**
-     * The connection the table lives on, the one the model reads and writes it
-     * on: the storage connection (see `StorageConnection::connectionFor()`).
+     * The storage connection, which the model uses too.
      *
      * @return ?string
      *
@@ -128,8 +115,7 @@ return new class extends Migration {
     }
 
     /**
-     * An index name built from the table's, as Laravel builds one: lower case,
-     * with a schema's dot as an underscore.
+     * An index name built from the table's the way Laravel builds one.
      *
      * @param  string  $table
      * @param  string  $suffix

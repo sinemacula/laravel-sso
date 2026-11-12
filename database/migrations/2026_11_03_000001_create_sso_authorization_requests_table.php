@@ -9,8 +9,7 @@ use SineMacula\Laravel\Sso\Database\MigrationCollisionGuard;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * Create the authorisation requests table: each attempt at a flow, until its
- * response consumes it.
+ * Create the authorisation requests table.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,53 +35,39 @@ return new class extends Migration {
         $schema->create($table, static function (Blueprint $blueprint) use ($table): void {
             $blueprint->char('id', 26)->primary();
 
-            // The public reference, the only flow identifier ever shown.
+            // The only flow identifier ever shown.
             $blueprint->string('reference', 64);
 
-            // The lower-case hex SHA-256 of the random protocol state (the OIDC
-            // state, the SAML RelayState): the state itself is never stored,
-            // and a response is looked up by its digest.
+            // SHA-256 of the OIDC state or SAML RelayState, never stored raw.
             $blueprint->char('state_digest', 64);
 
-            // What the flow is for, the application and the connection. No
-            // foreign key: deleting a connection deletes its requests in the
+            // No foreign key: deleting a connection deletes its requests in the
             // same transaction, whatever the engine.
             $blueprint->string('purpose', 16);
             $blueprint->string('application', 64);
             $blueprint->char('connection_id', 26);
 
-            // The issuer the response must come from, and whether it must
-            // return iss (RFC 9207).
+            // Whether the response must return iss (RFC 9207).
             $blueprint->string('expected_issuer', 1024)->nullable();
             $blueprint->boolean('issuer_required')->default(false);
 
-            // The OIDC nonce's digest; the PKCE verifier the package uses with
-            // the identity provider, encrypted (never the client's); the SAML
-            // AuthnRequest id InResponseTo must equal.
+            // The encrypted verifier is the package's own with the provider,
+            // never the client's.
             $blueprint->char('nonce_digest', 64)->nullable();
             $blueprint->text('code_verifier')->nullable();
             $blueprint->string('saml_request_id', 255)->nullable();
 
-            // The S256 challenge of the client's verifier.
+            // S256 challenge of the client's verifier.
             $blueprint->char('handoff_challenge', 43);
 
-            // The connection's trust version when the flow started, compared
-            // with the connection's before the response is validated and again
-            // under the completion's lock, so a trust change that voided
-            // nothing it could see (the request not yet stored) still refuses
-            // the flow.
+            // Rechecked under the completion's lock, so a trust change made
+            // before the request was stored still refuses the flow.
             $blueprint->unsignedBigInteger('trust_version');
 
-            // The identity a link or reauthenticate flow was started for, and
-            // the session a reauthenticate flow was started on.
             $blueprint->string('identity_type', 255)->nullable();
             $blueprint->string('identity_id', 255)->nullable();
             $blueprint->string('session_id', 255)->nullable();
 
-            // Whole seconds in UTC, from the package's clock: when it expires,
-            // was consumed by a completion, had its response verified and
-            // recorded against replay, was voided by a change to its
-            // connection, and completed.
             $blueprint->dateTime('expires_at', 0);
             $blueprint->dateTime('consumed_at', 0)->nullable();
             $blueprint->dateTime('verified_at', 0)->nullable();
@@ -91,10 +76,6 @@ return new class extends Migration {
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);
 
-            // A response finds its request by its state's digest, or a SAML
-            // response by its connection and request id; a change to a
-            // connection voids its unfinished requests; pruning pages requests
-            // by expiry, by keyset.
             $blueprint->unique(['reference'], self::indexName($table, 'reference_unique'));
             $blueprint->unique(['state_digest'], self::indexName($table, 'state_unique'));
             $blueprint->unique(['connection_id', 'saml_request_id'], self::indexName($table, 'saml_request_unique'));
@@ -117,8 +98,7 @@ return new class extends Migration {
     }
 
     /**
-     * The connection the table lives on, the one the model reads and writes it
-     * on: the storage connection (see `StorageConnection::connectionFor()`).
+     * The storage connection, which the model uses too.
      *
      * @return ?string
      *
@@ -145,8 +125,7 @@ return new class extends Migration {
     }
 
     /**
-     * An index name built from the table's, as Laravel builds one: lower case,
-     * with a schema's dot as an underscore.
+     * An index name built from the table's the way Laravel builds one.
      *
      * @param  string  $table
      * @param  string  $suffix

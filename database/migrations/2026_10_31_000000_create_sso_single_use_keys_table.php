@@ -34,24 +34,18 @@ return new class extends Migration {
         $schema->create($this->table(), static function (Blueprint $blueprint): void {
             $blueprint->bigIncrements('id');
 
-            // What the key is (`saml_assertion`, `authorization_request`,
-            // `handoff_code`), as the caller names it.
             $blueprint->string('namespace', 64);
 
-            // The lower-case hex SHA-256 digest of the key: the key may be a
-            // secret (a handoff code), so the table never holds it.
+            // SHA-256 hex digest: the key may be a secret (a handoff code).
             $blueprint->char('key_digest', 64);
 
-            // Whole seconds in UTC, whatever the application timezone, so a
-            // daylight-saving change never repeats a value; compared with the
-            // store's clock.
+            // UTC whole seconds, so a daylight-saving change never repeats one.
             $blueprint->dateTime('expires_at', 0);
 
-            // A key is held once in its namespace: the index is what answers
-            // `seen`, atomically, however many servers record at once.
+            // Answers `seen` atomically across servers.
             $blueprint->unique(['namespace', 'key_digest']);
 
-            // Pruning reads expired keys in this order, by keyset.
+            // Pruning keyset order.
             $blueprint->index(['expires_at', 'id']);
         });
     }
@@ -70,8 +64,7 @@ return new class extends Migration {
     }
 
     /**
-     * The connection the table lives on, the one the model reads and writes it
-     * on: the storage connection (see `StorageConnection::connectionFor()`).
+     * The storage connection, which the model uses too.
      *
      * @return ?string
      *

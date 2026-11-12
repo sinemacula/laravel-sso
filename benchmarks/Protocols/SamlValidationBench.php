@@ -28,14 +28,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 
 /**
- * PHPBench suite for validating a posted SAML response
- * (`Protocols\Saml2\Validation\AssertionValidator::validate()`), valid and
- * rejected, from `Testing\FakeSamlIdentityProvider`. Keys, certificates and
- * responses are made once, before any revolution; each revolution validates, so
- * a subject answers what the validator answered, and is timed reading the
- * connection's keys from a local database but generating nothing and calling no
- * provider. A response is never recorded against replay here: that is the
- * completion's, in `SamlCompletionQueryBudgetTest`.
+ * `AssertionValidator::validate()` on valid and rejected SAML responses.
+ *
+ * Fixtures are built in `setUp`, so each revolution times validation only.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -84,8 +79,7 @@ final class SamlValidationBench
     private CompletionRequest $wrongAudience; // @phpstan-ignore property.uninitialized
 
     /**
-     * Boot the application, store a connection trusting the identity provider
-     * with an encryption key of its own, and make every response once.
+     * Store a connection trusting the provider and make every response once.
      *
      * @return void
      */
@@ -118,8 +112,7 @@ final class SamlValidationBench
     }
 
     /**
-     * The versions of the packages this bench's times depend on, recorded in
-     * the report as its parameter set.
+     * The versions of the packages these times depend on.
      *
      * @return array<string, array<string, string>>
      */

@@ -23,18 +23,10 @@ use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use SineMacula\Laravel\Sso\Testing\FrozenClock;
 
 /**
- * The minimal application a validator needs, for a bench's prepared fixtures:
- * the package's provider, its connections and keys tables in an in-memory
- * SQLite database of its own, whatever `DB_CONNECTION` says, an encrypter, a
- * log channel that writes nowhere, a frozen clock, and a fetcher with no
- * answers, so a bench that reached for the network would be refused rather than
- * time it.
+ * The minimal application a validator bench needs, on in-memory SQLite.
  *
- * It is the only code the benches share. `SineMacula\Laravel\Sso\Testing`
- * builds what each validates; a bench builds that here once, in its
- * `#[BeforeMethods]`, so no bench times key generation, DNS or HTTP. What a
- * validator reads of the connection and its keys is part of what it costs, on
- * that one local database.
+ * The fetcher has no answers, so a bench that reached for the network fails
+ * instead of timing it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,8 +56,7 @@ final class BenchApplication
     private function __construct() {}
 
     /**
-     * Build and boot the application, make it the current one, and create the
-     * tables.
+     * Build and boot the application as the current one, with its tables.
      *
      * @return \Illuminate\Foundation\Application
      */
@@ -101,9 +92,7 @@ final class BenchApplication
     }
 
     /**
-     * Forget the current application, so what runs next starts with none: its
-     * connections closed, and the models, facades and console no longer bound
-     * to it.
+     * Close the current application's connections and unbind it globally.
      *
      * @return void
      */
@@ -140,8 +129,7 @@ final class BenchApplication
     }
 
     /**
-     * The parameter set that records the versions of the packages named in a
-     * bench's report: one set, named by them, each package by its version.
+     * One parameter set recording the given packages' versions in the report.
      *
      * @param  string  ...$packages
      * @return array<string, array<string, string>>

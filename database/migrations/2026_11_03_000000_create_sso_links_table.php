@@ -9,8 +9,7 @@ use SineMacula\Laravel\Sso\Database\MigrationCollisionGuard;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * Create the links table: each connection's issuer and subject associated with
- * an identity.
+ * Create the links table.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,48 +35,29 @@ return new class extends Migration {
         $schema->create($table, static function (Blueprint $blueprint) use ($table): void {
             $blueprint->char('id', 26)->primary();
 
-            // The connection the link was made through. No foreign key:
-            // deleting a connection deletes its links in the same transaction,
-            // whatever the engine.
+            // No foreign key: deleting a connection deletes its links in the
+            // same transaction, whatever the engine.
             $blueprint->char('connection_id', 26);
 
-            // The issuer and, for SAML, the subject's NameID format, kept as
-            // received; the subject byte for byte, in a binary column, never
-            // trimmed or normalised.
+            // The subject is kept byte for byte, never trimmed or normalised.
             $blueprint->string('issuer', 1024);
             $blueprint->string('name_id_format', 255)->nullable();
             $blueprint->binary('subject');
 
-            // The lower-case hex SHA-256 of the issuer, the format and the
-            // subject, each length-prefixed: unique with the connection, so one
-            // subject is linked once however two creations race, and compared
-            // exactly whatever the engine's collation.
+            // SHA-256 of issuer, format and subject, so uniqueness is exact
+            // whatever the engine's collation.
             $blueprint->char('subject_key', 64);
 
-            // The identity, an opaque reference the application gives.
             $blueprint->string('identity_type', 255);
             $blueprint->string('identity_id', 255);
 
-            // Active; reserved by a completion that matched the subject by a
-            // verified domain until its handoff is redeemed; or suspended, a
-            // link made by a verified domain whose identity was found to hold a
-            // principal outside the tenant, latched until a confirming link
-            // (suspended_at is the marker).
             $blueprint->string('state', 16);
             $blueprint->dateTime('suspended_at', 0)->nullable();
 
-            // How the link came to stand as it does: a value of LinkOrigin. A
-            // confirming link replaces verified_domain with link_purpose.
+            // A value of LinkOrigin.
             $blueprint->string('provenance', 32)->default('link_purpose');
 
-            // A reservation's binding, all cleared on activation: its unique
-            // identity; when it expires, exactly when its handoff does; the
-            // request it was made for; the handoff's opaque reference, which
-            // works for the package's codes and an adapter's; the salted digest
-            // of the linking email; the organisation claim's accepted value;
-            // the domain claim with its verification generation; and the
-            // linking policy version the evidence was accepted under. The
-            // matched identity is the row's own identity.
+            // A reservation's binding, all cleared on activation.
             $blueprint->char('reservation_id', 26)->nullable();
             $blueprint->dateTime('reservation_expires_at', 0)->nullable();
             $blueprint->string('reservation_reference', 64)->nullable();
@@ -88,14 +68,10 @@ return new class extends Migration {
             $blueprint->unsignedBigInteger('reservation_domain_generation')->nullable();
             $blueprint->unsignedBigInteger('reservation_linking_version')->nullable();
 
-            // Whole seconds in UTC, from the package's clock.
             $blueprint->dateTime('last_used_at', 0)->nullable();
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);
 
-            // One link per subject in a connection; an identity's links, by
-            // connection, for listing and for the link limit; pruning pages
-            // reservations by expiry, by keyset.
             $blueprint->unique(['connection_id', 'subject_key'], self::indexName($table, 'subject_unique'));
             $blueprint->unique(['reservation_id'], self::indexName($table, 'reservation_unique'));
             $blueprint->index(['connection_id', 'reservation_domain_id'], self::indexName($table, 'reservation_domain_index'));
@@ -118,8 +94,7 @@ return new class extends Migration {
     }
 
     /**
-     * The connection the table lives on, the one the model reads and writes it
-     * on: the storage connection (see `StorageConnection::connectionFor()`).
+     * The storage connection, which the model uses too.
      *
      * @return ?string
      *
@@ -146,8 +121,7 @@ return new class extends Migration {
     }
 
     /**
-     * An index name built from the table's, as Laravel builds one: lower case,
-     * with a schema's dot as an underscore.
+     * An index name built from the table's the way Laravel builds one.
      *
      * @param  string  $table
      * @param  string  $suffix
