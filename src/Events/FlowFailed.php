@@ -9,20 +9,9 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 
 /**
- * Dispatched once for every refused authorisation request, SAML response, OIDC
- * callback and handoff redemption, with the flow and a machine-readable reason
- * (SSO-10.2). One refused operation fires exactly one, however many checks it
- * failed: the reason is the first that refused it.
+ * One refused flow, with the first reason that refused it.
  *
- * Carries as much context as the flow established before it was refused (the
- * connection once it was found, the request reference once the request was
- * read, the identity once it was resolved), and nothing else: no free-text
- * message, since a provider's diagnostic text goes to the logs, sanitised, and
- * never to an event. Never a secret, assertion, provider token, verifier,
- * handoff code, protocol state, raw payload or transport header (SSO-10.4).
- *
- * It holds a context of strings and two enums, so it crosses a queue as it is
- * and a queued listener receives what a synchronous one does.
+ * Its context holds only what the flow established before it was refused.
  *
  * @api
  *

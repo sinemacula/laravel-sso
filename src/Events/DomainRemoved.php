@@ -8,15 +8,8 @@ use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 
 /**
- * A connection's claim of a domain was removed (SSO-3, SSO-10.3), in whatever
- * state it was; a verified domain no longer routes discovery or allows linking,
- * and its open link reservations are void.
- *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol, and the acting identity as the application passed it (SSO-10.4). It
- * reports only, and never holds the verification token or a record's value; it
- * crosses a queue as it is.
+ * A connection's claim of a domain was removed, in whatever state it was, and
+ * its open link reservations are void.
  *
  * @api
  *

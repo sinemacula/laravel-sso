@@ -9,25 +9,11 @@ use SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * A `sign_in` result resolved to no identity and holds no reservation
- * (SSO-8.6): a listener may create a new identity, its membership and the link
- * just in time, through `Provisioning\ProvisioningHelper` with the grant.
+ * A `sign_in` result resolved to no identity, so a listener may provision one
+ * through `Provisioning\ProvisioningHelper` with the grant.
  *
- * It is the one event that is not dispatched after commit: it is dispatched
- * synchronously, with no package transaction open, before any handoff is
- * issued. A queued listener is too late: the event refuses to be serialised, so
- * queuing it fails, and the grant is void once the dispatch returns. A listener
- * opens its own transaction on the storage connection for the identity,
- * membership and link, and has committed or rolled it back before it returns.
- * Resolving an existing identity from an email or any mapped attribute is
- * forbidden: attaching to an existing identity goes through the `link` purpose
- * or a verified domain only. It is dispatched once for a completion, and never
- * for a retry.
- *
- * It is also the one event that carries mapped attributes, in the result, which
- * a listener reads as `$event->result`; the result is held wrapped, so a dump,
- * `var_export()`, an array cast and `json_encode()` show only its context, and
- * the subject and attributes never reach a log.
+ * Dispatched synchronously before any handoff: a listener must create a new
+ * identity, never resolve an existing one from the result's attributes.
  *
  * @api
  *
@@ -103,7 +89,7 @@ final readonly class ResultUnlinked implements \JsonSerializable, SsoEvent
     }
 
     /**
-     * Refuse to be serialised: a queued listener is too late (SSO-8.6).
+     * Refuse to be serialised: a queued listener is too late.
      *
      * @return array<string, mixed>
      *

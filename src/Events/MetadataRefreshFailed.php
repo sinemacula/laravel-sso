@@ -9,19 +9,8 @@ use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * A refresh of a connection's metadata failed (SSO-2.8, SSO-10.3): the fetch
- * was refused or failed, the metadata was invalid, unsigned or signed by no
- * anchor, did not hold the pinned entity, or lost to a change of the connection
- * made while it fetched. The connection keeps its last good settings, until
- * they expire (`metadata_expired`).
- *
- * It carries the reason, how many refreshes have failed in a row, and when the
- * next is due after the backoff. Dispatched after the transaction that recorded
- * the failure commits, and never when it rolls back (SSO-10.5). Its context
- * names the connection, its tenant and protocol, and the acting identity when
- * an administrator asked for the refresh (SSO-10.4). It never holds the
- * metadata, a URL or the fetcher's diagnostics, which are logged only through
- * the sanitiser; it crosses a queue as it is.
+ * A refresh of a connection's metadata failed; the connection keeps its last
+ * good settings until they expire.
  *
  * @api
  *
@@ -40,16 +29,16 @@ final readonly class MetadataRefreshFailed implements SsoEvent
      */
     public function __construct(
 
-        /** Who asked for the refresh, if anyone, and which connection it was for. */
+        /** Who asked for the refresh, if anyone, and for which connection. */
         public EventContext $context,
 
         /** Why the refresh failed. */
         public FailureReason $reason,
 
-        /** How many refreshes of the connection have failed in a row, this one included. */
+        /** How many refreshes have failed in a row, this one included. */
         public int $failures,
 
-        /** When the next scheduled refresh is due, in UTC, or `null` when none is scheduled. */
+        /** When the next scheduled refresh is due, in UTC; `null` when none is. */
         public ?CarbonImmutable $nextAttemptAt,
     ) {}
 

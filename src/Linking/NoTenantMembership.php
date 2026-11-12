@@ -8,10 +8,7 @@ use SineMacula\Laravel\Sso\Contracts\TenantMembership;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * The default tenant membership contract (SSO-8.8): the package keeps no
- * memberships, so no identity holds one that counts.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The default tenant membership contract: the package keeps no memberships.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

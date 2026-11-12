@@ -7,17 +7,8 @@ namespace SineMacula\Laravel\Sso\Events;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * An unsolicited SAML response passed the unsolicited profile and was answered
- * with re-initiation (SSO-5.8, SSO-10.1): its assertion was recorded against
- * replay and the browser sent to the connection's start URL. Nobody was signed
- * in.
- *
- * Dispatched after the transaction that recorded the assertion commits, and
- * never when it rolls back (SSO-10.5). Its context names the connection, its
- * tenant and protocol and the request context (SSO-10.4); there is no
- * authorisation request, application or identity. It never holds the response,
- * its subject or the identity provider's `RelayState`, and crosses a queue as
- * it is.
+ * An unsolicited SAML response was answered by re-initiating a flow at the
+ * connection's start URL; nobody was signed in.
  *
  * @api
  *

@@ -8,8 +8,7 @@ use Carbon\CarbonImmutable;
 
 /**
  * An identity's membership of a tenant as `Contracts\TenantMembership` answered
- * it (SSO-8.8): accepted by the person at a time, or not usable for linking
- * (missing, revoked, not accepted, or unknown).
+ * it.
  *
  * @api
  *
@@ -25,7 +24,7 @@ final readonly class MembershipStanding
      */
     private function __construct(
 
-        /** When the person accepted the current membership; `null` when no usable one exists. */
+        /** When the person accepted it; `null` when none is usable. */
         public ?CarbonImmutable $acceptedAt = null,
     ) {}
 

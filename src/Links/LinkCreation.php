@@ -8,12 +8,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Links\Enums\LinkCreationStatus;
 
 /**
- * How a link's creation ended (SSO-8.4): `created`, with the link's summary; or
- * refused, with `subject_already_linked` or `link_limit_reached`.
- *
- * A refusal is a value, never thrown, and changed nothing: no link was written
- * and no event dispatched. It never says which identity holds a subject already
- * linked.
+ * How a link's creation ended; a refusal is returned, never thrown, and never
+ * names who holds the subject.
  *
  * @api
  *
@@ -109,7 +105,7 @@ final readonly class LinkCreation implements \JsonSerializable
     }
 
     /**
-     * The result, with snake_case keys: the status, the link and the reason.
+     * The result with snake_case keys.
      *
      * @return array{status: string, link: ?array<string, mixed>, reason: ?string}
      */

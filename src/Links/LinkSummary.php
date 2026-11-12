@@ -10,14 +10,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 
 /**
- * What the link helpers return for one link (SSO-8.4): its id, the connection
- * it was made through with that connection's tenant and protocol, the issuer
- * and the subject's `NameID` format, its state, whether it was made by a
- * verified domain (SSO-8.8), and when it was created and last used.
- *
- * It never holds the subject: a list of an identity's links shows where they
- * sign in from, not who they are at the provider. It holds ids, names, flags
- * and times, never a secret.
+ * What the link helpers return for one link; never the subject.
  *
  * @api
  *
@@ -63,7 +56,7 @@ final readonly class LinkSummary implements \JsonSerializable
         /** The SAML `NameID` format; `null` for none. */
         public ?string $nameIdFormat,
 
-        /** Whether the link resolves (active), is held for a redemption (reserved), or is suspended until confirmed. */
+        /** Where the link stands. */
         public LinkState $state,
 
         /** Whether the link was made by a verified domain and not since confirmed. */
@@ -100,8 +93,7 @@ final readonly class LinkSummary implements \JsonSerializable
     }
 
     /**
-     * The summary, with snake_case keys and each time as an ISO 8601 UTC
-     * string. It holds no subject.
+     * The summary with snake_case keys and ISO 8601 UTC times.
      *
      * @return array<string, bool|string|null>
      */

@@ -10,10 +10,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
 
 /**
- * The default link eligibility contract (SSO-8.5): no identity may link through
- * any connection until the application binds its own.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The default link eligibility contract: no identity may link.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

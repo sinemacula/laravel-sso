@@ -23,58 +23,10 @@ use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * The scheduled recheck of verified domains (SSO-3.3, SSO-11.12), which
- * `sso:domains:recheck` runs: each verified claim's TXT record is looked up
- * again, and the claim is confirmed, suspended, restored or lapsed.
+ * The scheduled recheck of verified domains that `sso:domains:recheck` runs.
  *
- * - A record that still carries the token moves the last successful check to
- *   now and keeps the verification time.
- * - A record absent or changed suspends linking by the domain at once and fixes
- *   when it lapses, at now plus the grace period read at that moment; while the
- *   grace runs, the domain still routes discovery. A record back within the
- *   grace restores it.
- * - A claim whose grace has run out lapses without a lookup, whatever its
- *   record now holds: only a new verification restores it.
- * - A lookup that failed changes nothing and is reported; it is never read as a
- *   record gone or as a success, so linking by the domain still stops once its
- *   last successful check is older than the linking maximum age.
- * - A resolver that throws, which the contract forbids, is contained: the
- *   claim's lease is released and nothing else about it is written or reported,
- *   the exception is logged by its class alone, the claim is `resolver_threw`,
- *   never a failed lookup, and the run goes on.
- *
- * Several servers may run it at once. The verified claims not changed since the
- * run began are read on the write connection in chunks of `CHUNK_SIZE`, by
- * keyset on (`last_successful_check_at`, `id`). Each claim is then leased for
- * `LEASE_SECONDS` by one conditional update, made under its connection's lock
- * and only while the claim is verified, unleased (or its lease has expired) and
- * unchanged since it was selected: a claim another server holds, or has checked
- * meanwhile, is `skipped`. The record is looked up outside any transaction. The
- * result is written in one transaction on the storage connection that locks the
- * connection's row and then the claim, in the order every domain change takes
- * them, and reads again with those locking reads whether the claim is still the
- * one looked up and still under this check's lease: a lookup that outlasted its
- * lease, or whose claim another server has leased since, writes nothing and is
- * `skipped`. Each write goes through the model, releases the lease, and reports
- * through `Administration\DomainEvents` after the write; a skip or an exception
- * leaves the lease to expire. A resolver that threw releases it, under the
- * connection's lock, only while it is still this check's, and without stamping
- * the claim: its last successful check does not move, so the next run reaches
- * it in its place, the least recently confirmed first, and checks it again.
- *
- * Whatever stops linking by a domain (a suspension or a lapse) calls
- * `DomainWithdrawal::linkingWithdrawn()` under both locks, before the write. A
- * lapse runs in that one transaction, which linking by a verified domain
- * extends to void the domain's open link reservations.
- *
- * It asks no freshness and takes no rate-limit attempt: it is a system job,
- * with no caller and no tenant. It takes the client its events carry as an
- * `Http\ClientContext` and reads no request: the console command and the
- * schedule pass `new ClientContext(null, null)`. A database error, or anything
- * else thrown but by the resolver, propagates (SSO-11.4) and stops the run. It
- * holds the finder, the resolver, the settings, the clock, the reporter, the
- * withdrawal and the logger, none of which keeps anything of one run for the
- * next (SSO-11.2); resolve it per run.
+ * Safe on several servers at once: each claim is leased before its lookup, and
+ * the lookup runs outside any transaction.
  *
  * @api
  *
@@ -89,7 +41,7 @@ final readonly class DomainRechecker
     /** @var int How many claims are read at a time. */
     public const int CHUNK_SIZE = 100;
 
-    /** @var int How many times a transaction a deadlock rolled back is tried in all. */
+    /** @var int Attempts in all at a transaction a deadlock rolled back. */
     private const int ATTEMPTS = 3;
 
     /**
@@ -120,7 +72,7 @@ final readonly class DomainRechecker
         /** Reports each change, inside its transaction. */
         private DomainEvents $events,
 
-        /** Withdraws what depends on linking by a domain that is suspended or lapses. */
+        /** Withdraws what depends on a domain that is suspended or lapses. */
         private DomainWithdrawal $withdrawal,
 
         /** The sanitising logger a resolver that threw is logged to. */
@@ -159,9 +111,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * Check the verified claim, as it was read: lease it, look its record up
-     * unless its grace has run out, and write what the check found. A resolver
-     * that throws is contained: the lease is released and nothing else written.
+     * Lease the claim, look its record up unless its grace has run out, and
+     * write what the check found.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
@@ -189,8 +140,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * The next verified claims after the one given, in order of their last
-     * successful check and id, leaving out any changed since the run began.
+     * The next verified claims by keyset on (`last_successful_check_at`, `id`),
+     * leaving out any changed since the run began.
      *
      * @param  \Carbon\CarbonImmutable  $startedAt
      * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $after
@@ -222,10 +173,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * Take the claim's lease, under its connection's lock: only while it is
-     * verified, unchanged since it was read, and not leased, or leased no
-     * longer. Answers when the lease taken runs out, or `null` when it was not
-     * taken.
+     * Lease the claim if it is verified, unchanged and free; when the lease
+     * ends, or `null` when not taken.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @return ?\Carbon\CarbonImmutable
@@ -258,9 +207,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * The claim's record as the resolver answered it, `null` without a lookup
-     * when its grace has run out, or what the resolver threw: only the
-     * resolver's own call is contained.
+     * The resolver's answer, `null` past the grace period, or what the resolver
+     * threw.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @return \SineMacula\Laravel\Sso\Domains\DnsLookup|\Throwable|null
@@ -275,8 +223,7 @@ final readonly class DomainRechecker
 
         try {
             return $this->resolver->txt($name);
-            // The contract declares no @throws, and promises `lookup_failed`
-            // instead, though an application's resolver may still throw.
+            // The contract forbids throwing, but an application's resolver may
             // @phpstan-ignore catch.neverThrown
         } catch (\Throwable $thrown) {
             return $thrown;
@@ -284,10 +231,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * The resolver threw: the exception is logged by its class alone, and the
-     * claim's lease released, under its connection's lock and only while it is
-     * still this check's, by a statement that stamps nothing else. Nothing
-     * about the claim is written or reported, and it is never a failed lookup.
+     * Log the exception's class alone and release this check's lease without
+     * stamping the claim, so the next run checks it first.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \Carbon\CarbonImmutable  $lease
@@ -316,10 +261,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * Inside the transaction: lock the claim's connection, then the claim, and
-     * write what the lookup found, unless the claim went, changed or is no
-     * longer verified meanwhile, or this check's lease ran out or was taken
-     * over. Without a lookup, the claim's grace had run out when it was read.
+     * Lock the connection then the claim, and write what the lookup found
+     * unless the claim changed or this check lost its lease.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \Carbon\CarbonImmutable  $lease
@@ -350,8 +293,7 @@ final readonly class DomainRechecker
     }
 
     /**
-     * Its record carries the token: the check time moves to now, the
-     * verification time is kept, and a suspension is lifted.
+     * Move the check time to now and lift any suspension.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $locked
@@ -380,10 +322,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * Its record is absent or changed: linking by it is suspended from now,
-     * after what depends on it is withdrawn, and it lapses at the end of the
-     * grace period, fixed now; a claim already suspended keeps both times. It
-     * lapses at once when the grace has run out.
+     * Suspend linking and fix the lapse time, unless already suspended; lapse
+     * at once past the grace period.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $locked
@@ -419,8 +359,7 @@ final readonly class DomainRechecker
     }
 
     /**
-     * The resolver could not answer: nothing about the claim changes but its
-     * lease, and the failure is reported with the lapse time as it stands.
+     * Release the lease and report the failure; nothing else changes.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $locked
@@ -437,10 +376,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * The grace period has run out: what depends on linking by the domain is
-     * withdrawn, then the claim lapses, freeing the domain for another
-     * connection and keeping its last successful check for display. Called
-     * inside the transaction that holds the connection's and the claim's locks.
+     * Withdraw what depends on the domain, then lapse the claim, freeing the
+     * domain for another connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $locked
@@ -468,8 +405,7 @@ final readonly class DomainRechecker
     }
 
     /**
-     * Run the work in one transaction on the storage connection, retried when a
-     * deadlock rolled back the outermost transaction.
+     * Run the work in one storage transaction, retried on deadlock.
      *
      * @template TResult
      *
@@ -484,9 +420,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * The claim's connection, locked for update until the transaction ends, or
-     * `null` when it is gone. A recheck is not scoped to a tenant: it reaches
-     * every connection's claims.
+     * The claim's connection, locked for update, or `null` when it is gone;
+     * deliberately unscoped by tenant.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @return ?\SineMacula\Laravel\Sso\Models\Connection
@@ -499,9 +434,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * Whether the row read again under the lock is still the claim that was
-     * read and looked up: the same row, still under this check's lease,
-     * verified, with the same token.
+     * Whether the locked row is still the claim looked up: leased by this
+     * check, verified, with the same token.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $locked
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
@@ -525,9 +459,8 @@ final readonly class DomainRechecker
     }
 
     /**
-     * Whether the row read again under the lock still carries the lease this
-     * check took, and it has not run out: a lookup that outlasted it may be
-     * older than what a server that took the claim over has since written.
+     * Whether this check's lease is still on the row and unexpired; a lookup
+     * that outlasted it may be staler than another server's write.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $locked
      * @param  \Carbon\CarbonImmutable  $lease
@@ -558,8 +491,7 @@ final readonly class DomainRechecker
     }
 
     /**
-     * Why a lookup that answered did not confirm the claim: no record, or none
-     * that is the token.
+     * Why a lookup that answered did not confirm the claim.
      *
      * @param  \SineMacula\Laravel\Sso\Domains\DnsLookup  $lookup
      * @return \SineMacula\Laravel\Sso\Domains\Enums\RecheckFailure

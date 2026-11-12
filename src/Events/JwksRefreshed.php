@@ -7,21 +7,8 @@ namespace SineMacula\Laravel\Sso\Events;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * An OIDC connection's JWKS was refetched because an ID token named a `kid` it
- * did not hold (SSO-7.3, SSO-10.3): fetched from the connection's `jwks_uri`
- * within the refetch cooldown, validated whole, and stored in place of the keys
- * it held. It says how many keys the refetch added and how many it removed (a
- * key kept under its `kid` in another form counts as both), the connection's
- * JWKS version after it, and whether it changed the connection's trust: a key
- * removed or replaced does, which voids the flows in flight through it; keys
- * only added never do, so a refetch never voids the flow that asked for it. A
- * scheduled refresh of the discovery document and the JWKS is reported as
- * `MetadataRefreshed`.
- *
- * Dispatched after the transaction that stored the keys commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol (SSO-10.4). It reports only, and holds no key, URL, token or other
- * value of the JWKS; it crosses a queue as it is.
+ * An OIDC connection's JWKS was refetched because an ID token named an unknown
+ * `kid`; a scheduled refresh reports `MetadataRefreshed` instead.
  *
  * @api
  *

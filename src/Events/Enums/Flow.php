@@ -5,12 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Events\Enums;
 
 /**
- * The operation a `FlowFailed` event reports a refusal of (SSO-10.2): each
- * refused authorisation request, SAML response, OIDC callback and handoff
- * redemption fires one failure event naming its flow and its reason.
+ * The operation a `FlowFailed` event reports a refusal of.
  *
- * Backed, so a listener counts refusals by flow without reading the event's
- * class, and stable once released: a case is never renamed or reused.
+ * Stable once released: a case is never renamed or reused.
  *
  * @api
  *
@@ -19,17 +16,15 @@ namespace SineMacula\Laravel\Sso\Events\Enums;
  */
 enum Flow: string
 {
-    // Starting a flow: an authorisation request for a connection, discovery by
-    // email domain included (SSO-5.1, SSO-3.4)
+    // Starting a flow, discovery by email domain included
     case AUTHORIZATION_REQUEST = 'authorization_request';
 
-    // A SAML response at the assertion consumer service, solicited or
-    // unsolicited (SSO-6, SSO-5.8)
+    // A SAML response, solicited or unsolicited
     case ASSERTION = 'assertion';
 
-    // An OIDC authorisation response at the callback (SSO-7)
+    // An OIDC authorisation response at the callback
     case CALLBACK = 'callback';
 
-    // A handoff code presented for redemption (SSO-9.2, SSO-9.9)
+    // A handoff code presented for redemption
     case REDEMPTION = 'redemption';
 }

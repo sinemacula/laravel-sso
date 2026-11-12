@@ -8,15 +8,8 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * A domain was claimed for a connection (SSO-3.1, SSO-10.3): pending, with a
- * new verification token, until a TXT record at `recordName` carries it or the
- * claim expires at `pendingExpiresAt`.
- *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol, and the acting identity as the application passed it (SSO-10.4). It
- * reports only, and never holds the verification token or a record's value; it
- * crosses a queue as it is.
+ * A domain was claimed for a connection and is pending verification; it never
+ * holds the verification token.
  *
  * @api
  *

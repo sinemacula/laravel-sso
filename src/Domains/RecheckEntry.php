@@ -9,13 +9,7 @@ use SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * How the scheduled check of one verified domain ended (SSO-3.3, SSO-11.12):
- * the claim, its connection, the domain, the outcome, and when the domain
- * lapses unless a check succeeds first.
- *
- * It holds ids, the normalised domain, an outcome and a time: never the
- * verification token or a DNS record's value, so it can be printed, logged or
- * encoded as it is.
+ * How the scheduled check of one verified domain ended; safe to log as it is.
  *
  * @api
  *
@@ -47,13 +41,13 @@ final readonly class RecheckEntry implements \JsonSerializable
         /** How its check ended. */
         public RecheckOutcome $outcome,
 
-        /** When it lapses unless a check succeeds first, in UTC; `null` when no record failure is pending, or the claim was skipped. */
+        /** When it lapses, in UTC; `null` with no record failure pending or when skipped. */
         public ?CarbonImmutable $lapsesAt = null,
     ) {}
 
     /**
-     * The entry of the claim, as it stands after its check ended with the
-     * outcome; a skipped claim's lapse time is not reported.
+     * The claim's entry after its check; a skipped claim's lapse time is not
+     * reported.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome  $outcome

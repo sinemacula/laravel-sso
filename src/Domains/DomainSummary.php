@@ -9,18 +9,10 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * What a helper returns for one of a connection's domains (SSO-3.1 to SSO-3.3):
- * its id, connection, normalised domain and state; the name the TXT record is
- * looked up at (`recordName`, `_sso-verification.example.com`); when it was
- * claimed and when a pending claim expires; when it became verified and last
- * passed a check; when linking by it was suspended and when it lapses, once a
- * recheck found its record gone; and when it lapsed.
+ * What a helper returns for one of a connection's domains.
  *
- * The token the record must carry is for the administrator to publish, so it is
- * read only through `verificationToken()`. It is held in a
- * `\SensitiveParameterValue`, shown in no dump, left out of `json_encode()`,
- * and the summary refuses to be serialised or unserialised, so it never reaches
- * a log, a queue or an event by accident.
+ * The verification token is read only through `verificationToken()`; it is
+ * never dumped, encoded or serialised.
  *
  * @api
  *
@@ -160,8 +152,7 @@ final readonly class DomainSummary implements \JsonSerializable
     }
 
     /**
-     * The value the TXT record at `recordName` must hold, exactly, for the
-     * domain to be verified.
+     * The exact value the TXT record at `recordName` must hold.
      *
      * @return string
      */
@@ -185,8 +176,7 @@ final readonly class DomainSummary implements \JsonSerializable
     }
 
     /**
-     * The summary, with snake_case keys and each time as an ISO 8601 UTC
-     * string; never the token, which `verificationToken()` gives.
+     * The summary with snake_case keys and ISO 8601 UTC times; never the token.
      *
      * @return array<string, ?string>
      */

@@ -9,16 +9,8 @@ use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * What a reservation is made under and bound to (SSO-8.8): the request it was
- * made for, the linking email, the organisation claim's accepted value, the
- * domain claim locked, with its verification generation, the linking policy
- * version the evidence was accepted under, and when it expires.
- *
- * It holds the email only to digest it and the organisation only to store it,
- * each in a `\SensitiveParameterValue` behind its accessor, so a dump shows
- * ids, `json_encode()` writes both `[redacted]`, and it refuses to be
- * serialised or unserialised. It keeps the domain claim's id and generation and
- * not the claim.
+ * What a reservation is made under and bound to; the email and organisation are
+ * held wrapped and never dumped, encoded or serialised.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -58,12 +50,11 @@ final readonly class ReservationTerms implements \JsonSerializable
         #[\SensitiveParameter]
         string $email,
 
-        // The organisation claim's accepted value, if the issuer is shared; held
-        // wrapped
+        // The organisation claim's value, if the issuer is shared; held wrapped
         #[\SensitiveParameter]
         ?string $organization,
 
-        // The domain claim, locked; its id and generation are kept
+        // The locked domain claim; only its id and generation are kept
         Domain $domain,
 
         /** The linking policy version the evidence was accepted under. */
@@ -79,8 +70,7 @@ final readonly class ReservationTerms implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the request and the domain claim, never the email or
-     * the organisation.
+     * What a dump shows: the ids, never the email or the organisation.
      *
      * @return array<string, int|string>
      */
@@ -120,8 +110,7 @@ final readonly class ReservationTerms implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: the ids, with the email and the organisation
-     * redacted.
+     * What `json_encode()` writes: the ids, with the rest redacted.
      *
      * @return array<string, int|string>
      */

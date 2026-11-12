@@ -7,21 +7,10 @@ namespace SineMacula\Laravel\Sso\Linking;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * What plain reads found before a completion took its locks (SSO-8.8,
- * `docs/design/linking.md`), so it can lock in the package's order, the
- * identity first: it decides nothing, and everything is judged again under the
- * locks.
+ * What plain reads found before a completion took its locks, so it can lock in
+ * order.
  *
- * - `notApplicable()`: nothing about the completion touches linking: no domain
- *   is locked and no guard is taken.
- * - `subjectHeld()`: a row already holds the subject, so an ordinary linked
- *   sign-in pays for neither a guard nor a domain lock. A subject absent under
- *   the lock is a link that changed, not an unlinked result.
- * - `open()`: the subject was absent. The domain claim is locked, with the
- *   guard of the identity matched, if any; a reservation is made only for that
- *   identity, and any other under the lock is refused.
- *
- * It holds an opaque reference, never an email or a subject.
+ * It decides nothing: everything is judged again under the locks.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,7 +49,7 @@ final readonly class LinkingDiscovery
     }
 
     /**
-     * A row already holds the subject.
+     * A row already holds the subject, so no guard or domain lock is needed.
      *
      * @return self
      */

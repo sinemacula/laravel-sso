@@ -5,14 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Domains\Enums;
 
 /**
- * What a TXT lookup through the `Contracts\DnsResolver` answered (SSO-3.2,
- * SSO-3.3, decision D3): records found at the name, none there, or no answer at
- * all.
+ * What a TXT lookup through the `Contracts\DnsResolver` answered.
  *
- * `lookup_failed` is never read as `absent` or as a record: a resolver that
- * could not answer verifies nothing, and a recheck it fails changes nothing.
- *
- * Backed, and stable once released: a value is never renamed or reused.
+ * `lookup_failed` proves nothing either way, so it is never read as `absent`.
  *
  * @api
  *

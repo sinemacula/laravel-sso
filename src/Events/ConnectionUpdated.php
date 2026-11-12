@@ -7,15 +7,8 @@ namespace SineMacula\Laravel\Sso\Events;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * A connection's settings, attribute mapping or display name changed (SSO-2.11,
- * SSO-10.3). It names the settings that changed, never their values before or
- * after, and is not dispatched when nothing changed.
- *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol, and the acting identity as the application passed it (SSO-10.4). It
- * reports only, and holds no secret, private key or setting value; it crosses a
- * queue as it is.
+ * A connection's settings, attribute mapping or display name changed; it names
+ * the settings that changed, never their values.
  *
  * @api
  *
@@ -35,7 +28,7 @@ final readonly class ConnectionUpdated implements SsoEvent
         /** Who made the change, and to which connection. */
         public EventContext $context,
 
-        /** The names of the settings that changed, in order, each once (`sso_url`, `client_secret`, `attribute_mapping`, `display_name`). */
+        /** The names of the settings that changed, in order, each once. */
         public array $changedSettings,
     ) {}
 

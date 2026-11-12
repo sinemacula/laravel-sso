@@ -9,11 +9,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
 
 /**
- * The default principal scope contract (SSO-8.8): the package keeps no
- * principals, so it knows no identity's complete set and answers `unknown`,
- * which refuses.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The default principal scope contract: it keeps no principals, so it answers
+ * `unknown`, which refuses.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

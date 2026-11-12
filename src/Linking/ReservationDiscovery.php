@@ -22,33 +22,11 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * Finds, before a completion opens its locked transaction, what it needs to
- * lock in the package's order (SSO-8.8, `docs/design/linking.md`): whether the
- * completion touches linking at all, and whose identity guard to take first.
- * Every read is plain and decides nothing; `Linking\DomainLinkEligibility`
- * judges it all again under the locks, and refuses a target it holds no guard
- * of.
+ * Finds, by plain reads before a completion locks, what it must lock and whose
+ * identity guard to take first.
  *
- * In this order, each answer ending it:
- *
- * 1. a result that is no `sign_in`, holds no linking email, or arrives with the
- *    feature or the connection's linking off is `notApplicable()`, with nothing
- *    read;
- * 2. the bound `Contracts\Linker` not backed by `Contracts\LinkStorage` is a
- *    `LogicException`: linking by a verified domain is on, and nothing it wrote
- *    would be resolved;
- * 3. one plain read of the subject's row: any but an expired reservation is
- *    `subjectHeld()`, so an ordinary linked sign-in costs what it did and takes
- *    no guard;
- * 4. one plain read of this connection's claim of the email's domain: none, or
- *    one whose standing does not allow linking, is `open()` with no identity,
- *    and the application's contract is not asked;
- * 5. `Contracts\LinkEmailMatcher` is asked; exactly one match is `open()` with
- *    that identity, and anything else `open()` with none.
- *
- * It holds the container's binding, the eligibility, the finder, the settings
- * and the clock, none of which keeps anything of one completion for the next
- * (SSO-11.2). A contract's exception propagates.
+ * It decides nothing: `DomainLinkEligibility` judges it all again under the
+ * locks.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -128,9 +106,8 @@ final readonly class ReservationDiscovery
     }
 
     /**
-     * Whether a row holds the subject in the connection, by a plain read,
-     * compared byte for byte as well as by its key: any but an expired
-     * reservation, which is logically absent.
+     * Whether a row other than an expired reservation holds the subject, by a
+     * plain read.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
@@ -152,8 +129,8 @@ final readonly class ReservationDiscovery
     }
 
     /**
-     * Whether this connection's claim of the email's domain allows linking, as
-     * a plain read shows it.
+     * Whether this connection's claim of the email's domain allows linking, by
+     * a plain read.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Results\LinkingEmail  $email

@@ -7,8 +7,8 @@ namespace SineMacula\Laravel\Sso\Linking;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * What the link email contract found (SSO-8.8): no identity, exactly one, or
- * more than one, which links nothing and never names any of them.
+ * What the link email contract found; an ambiguous match links nothing and
+ * names no one.
  *
  * @api
  *

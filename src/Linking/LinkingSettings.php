@@ -8,25 +8,10 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * Reads `sso.linking` (SSO-8.6, SSO-8.7, SSO-8.8):
+ * Reads `sso.linking`.
  *
- * - `verified_result_max_age_seconds`: how long a verified response may keep
- *   finishing, across a provisioning listener, 5 to 300 seconds (default 120).
- *   It never extends the request's own expiry.
- * - `evidence_max_age_seconds`: the longest time since the provider's
- *   authentication that a connection's evidence may be accepted, 60 to 3600
- *   seconds (default 900).
- * - `shared_issuers`: issuers shared by many organisations, each with the claim
- *   naming the organisation. It adds to `SHARED_ISSUERS`, and an entry can
- *   never change or remove one of those: a built-in shared issuer is never
- *   downgraded.
- *
- * Microsoft Entra's `common` and `organizations` are no issuers and are not
- * listed: they are tenant-independent authorities, and the issuer of a token
- * they lead to names its tenant. A connection's issuer is that real issuer, and
- * explicit classification applies to it: under the `microsoft_entra` preset,
- * which knows those issuers, it is `shared`, told apart by `tid`
- * (`docs/guides/linking-by-domain.md`).
+ * Entra's `common` and `organizations` are authorities, not issuers, so they
+ * are deliberately not in `SHARED_ISSUERS`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,7 +20,7 @@ use SineMacula\Laravel\Sso\Config\IntegerSetting;
  */
 final readonly class LinkingSettings
 {
-    /** @var array<string, string> The issuers known to be shared, each with the claim that tells its organisations apart. */
+    /** @var array<string, string> Shared issuers, each with its organisation claim. */
     public const array SHARED_ISSUERS = [
         'https://accounts.google.com' => 'hd',
         'accounts.google.com'         => 'hd',
@@ -72,7 +57,8 @@ final readonly class LinkingSettings
     ) {}
 
     /**
-     * How long a verified response may keep finishing, in seconds.
+     * How long a verified response may keep finishing, in seconds; never past
+     * the request's own expiry.
      *
      * @return int
      *
@@ -99,8 +85,8 @@ final readonly class LinkingSettings
     }
 
     /**
-     * Every known shared issuer with its organisation claim: the configured
-     * ones, and the built-in ones over them, so none is ever downgraded.
+     * The configured shared issuers, with the built-in ones over them so none
+     * is downgraded.
      *
      * @return array<string, string>
      *

@@ -21,40 +21,10 @@ use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * The lifecycle of a link reservation (SSO-8.8, `docs/design/linking.md`), the
- * one place a reserved row is written. Every method runs inside a transaction
- * that holds the connection's row lock, so it is serialised with every other
- * change to the connection's links, and every creation, replacement, deletion
- * and activation raises the connection's links version, so a PostgreSQL
- * `REPEATABLE READ` transaction whose snapshot predates it fails to serialise
- * rather than miss it.
+ * The lifecycle of a link reservation, the one place a reserved row is written.
  *
- * - `reserve()`: under SSO-8.4's uniqueness and link limit, inserts the row for
- *   the matched identity with a new unique reservation identity and its
- *   binding. An expired reservation of the subject is logically absent and is
- *   replaced; any other row of the subject, the unique index included, reserves
- *   nothing.
- * - `bindHandoff()`: stores the handoff's opaque reference and its
- *   authoritative stored expiry on the row, in the transaction that issued it,
- *   so reservation and handoff expire together. An issuer that bound nothing,
- *   or stored a later expiry than it was given, is a `LogicException` that
- *   rolls the completion back: an issuer that cannot hold a reservation fails
- *   closed.
- * - `discard()`: removes the completion's own reservation when it refuses after
- *   making one.
- * - `locked()`: the row by its reservation identity alone, by a locking read.
- * - `isBoundTo()`: whether a locked row is exactly the handoff's reservation.
- * - `activate()`: makes the row active with verified domain provenance and
- *   clears every reservation field, inside the transaction that redeems its
- *   handoff.
- * - `deleteRefused()`: removes the reservation of a handoff refused after it
- *   was consumed, by its reservation identity and handoff reference and never
- *   merely by the subject, so a later reservation of that subject is untouched.
- *
- * The linking email is stored only as a digest salted with the reservation's
- * own identity. It holds the clock and the container, none of which keeps
- * anything of one flow for the next (SSO-11.2). A database error propagates
- * (SSO-11.4).
+ * Call inside a transaction holding the connection's row lock; every write
+ * raises the links version.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -82,7 +52,8 @@ final readonly class LinkReservations
     ) {}
 
     /**
-     * The digest of the linking email under the reservation's identity.
+     * The linking email's digest, salted with the reservation's id; the email
+     * itself is never stored.
      *
      * @param  string  $reservationId
      * @param  string  $email
@@ -94,8 +65,8 @@ final readonly class LinkReservations
     }
 
     /**
-     * Reserve the subject for the identity on the terms, or answer `null` when
-     * the subject is held or the identity holds as many links as it may.
+     * Reserve the subject for the identity, replacing an expired reservation;
+     * `null` when held or at the limit.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
@@ -137,8 +108,8 @@ final readonly class LinkReservations
     }
 
     /**
-     * Store the handoff's reference and stored expiry on the reservation it was
-     * issued for.
+     * Store the handoff's reference and expiry on its reservation, so both
+     * expire together; fails closed.
      *
      * @param  \SineMacula\Laravel\Sso\Links\ReservedCandidate  $candidate
      * @param  \SineMacula\Laravel\Sso\Handoffs\IssuedHandoff  $issued
@@ -180,8 +151,8 @@ final readonly class LinkReservations
     }
 
     /**
-     * The reservation with the identity, by a locking read on the write
-     * connection, or `null` when it is gone.
+     * The reservation with the id, by a locking read, or `null` when it is
+     * gone.
      *
      * @param  string  $reservationId
      * @return ?\SineMacula\Laravel\Sso\Models\Link
@@ -198,9 +169,8 @@ final readonly class LinkReservations
     }
 
     /**
-     * Whether the locked row is exactly the reservation the handoff reference
-     * is bound to, unexpired, in the connection, for the subject and the
-     * identity.
+     * Whether the locked row is exactly the handoff's unexpired reservation for
+     * the subject in the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $row
      * @param  string  $handoffReference
@@ -251,8 +221,8 @@ final readonly class LinkReservations
     }
 
     /**
-     * Remove the reservation of a handoff refused after it was consumed, by its
-     * identity and handoff reference; a row that no longer holds both is left.
+     * Remove a refused handoff's reservation by its id and handoff reference,
+     * never by subject alone.
      *
      * @param  string  $connectionId
      * @param  string  $reservationId
@@ -273,8 +243,7 @@ final readonly class LinkReservations
     }
 
     /**
-     * Delete the subject's reservation when it has expired: logically absent,
-     * it holds nothing, and a later reservation takes another identity.
+     * Delete the subject's reservation when it has expired.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
@@ -324,8 +293,8 @@ final readonly class LinkReservations
     }
 
     /**
-     * Save the row in a savepoint, or answer `false` when the unique index on
-     * the connection and the subject's key refuses it.
+     * Save the row in a savepoint; `false` when the subject's unique index
+     * refuses it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $row
      * @return bool
@@ -344,8 +313,7 @@ final readonly class LinkReservations
     }
 
     /**
-     * Whether the identity holds as many links in the connection as it may:
-     * active, suspended and live reserved ones, by a locking read.
+     * Whether the identity is at its link limit in the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -361,7 +329,8 @@ final readonly class LinkReservations
     }
 
     /**
-     * Raise the connection's links version by one.
+     * Raise the links version, so a stale PostgreSQL snapshot fails to
+     * serialise.
      *
      * @param  string  $connectionId
      * @return void
