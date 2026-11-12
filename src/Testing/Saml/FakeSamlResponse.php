@@ -9,51 +9,10 @@ use Random\RandomException;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 
 /**
- * One SAML `Response` from the fake SAML identity provider (SSO-12.4), built
- * from options a test changes one at a time: valid for the service provider it
- * was made for by default, and any part of it wrong, missing, repeated,
- * unsigned, signed by another key, encrypted, or wrapped on request. Every
- * change answers a new response, so one response is a template for many.
- *
- * By default it is a successful response with a `Destination`, an assertion
- * signed with RSA-SHA256 (the response itself unsigned), a persistent `NameID`
- * of `alice`, one bearer confirmation whose `Recipient` is the assertion
- * consumer service and whose `NotOnOrAfter` is five minutes after now,
- * `Conditions` from a minute before now to five minutes after with one audience
- * restriction naming the service provider, one `AuthnStatement` a minute old
- * with a session index, an eight-hour `SessionNotOnOrAfter` and the
- * password-protected-transport class, and an `email` attribute; unsolicited
- * until `inResponseTo()` names a request.
- *
- * `with()` changes any option. The options, and what each holds:
- *
- * - `response_id`, `assertion_id`: the `ID`s; `issue_instant`,
- *   `assertion_issue_instant`: the `IssueInstant`s;
- * - `issuer` (the response's, `null` leaves it out), `assertion_issuer`,
- *   `destination` (`null` leaves it out), `in_response_to` (the response's);
- * - `status`, `sub_status`, `status_message`; `assertion` (`false` leaves the
- *   assertion out, as an unsuccessful response usually does);
- * - `subject` (`false` leaves the `Subject` out), `name_id` (`null` leaves the
- *   `NameID` out), `name_id_format`, `name_qualifier`, `sp_name_qualifier`;
- * - `confirmations`: each a `method`, whether it has `data`, and its
- *   `recipient`, `not_before`, `not_on_or_after` and `in_response_to`;
- * - `conditions` (`false` leaves them out), `not_before`, `not_on_or_after`,
- *   `audiences` (each restriction's audiences), and how many `one_time_use`,
- *   `proxy_restriction` and `unknown_conditions` it carries (a `Condition` of a
- *   type no schema defines, so the response fails schema validation; a
- *   condition the schema accepts but the package does not use is written by
- *   editing the XML);
- * - `authn_statements`: each an `instant`, `session_index`,
- *   `session_not_on_or_after` and `class` (`null` writes a declaration
- *   reference instead);
- * - `attributes` (values by name) and `attribute_name_format`; `advice`;
- * - `sign_response`, `sign_assertion`, `algorithm`, `digest`, `comments`
- *   (canonicalise `SignedInfo` with comments) and `uri` (the reference, `''`
- *   for the whole document);
- * - `encrypt`: the certificate, key transport and data algorithm the assertion
- *   is encrypted for, or `null`;
- * - `wrap`: a variant of `SignatureWrapping`, or `null`; `evil_name_id`: the
- *   subject the wrapping's evil element carries.
+ * One SAML `Response` from the fake identity provider, valid and unsolicited by
+ * default; every change returns a new response. In `with()`, `false` or `null`
+ * leaves a part out, and `unknown_conditions` adds conditions that fail schema
+ * validation.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -116,8 +75,8 @@ final readonly class FakeSamlResponse
     ) {}
 
     /**
-     * The options of a valid response from the identity provider to the service
-     * provider at the instant.
+     * The options of a valid response at the instant, with a signed assertion
+     * and an unsigned envelope.
      *
      * @param  string  $idpEntityId
      * @param  string  $spEntityId
@@ -191,8 +150,8 @@ final readonly class FakeSamlResponse
     }
 
     /**
-     * A response to the request with the id: the response's `InResponseTo` and
-     * every confirmation's, or none of them for `null`.
+     * A response whose own and every confirmation's `InResponseTo` is the id;
+     * `null` clears them.
      *
      * @param  ?string  $requestId
      * @return self
@@ -209,8 +168,7 @@ final readonly class FakeSamlResponse
     }
 
     /**
-     * A response signed as given: the response itself, the assertion, both or
-     * neither.
+     * A response with the response and assertion signatures as given.
      *
      * @param  bool  $response
      * @param  bool  $assertion
@@ -222,7 +180,7 @@ final readonly class FakeSamlResponse
     }
 
     /**
-     * A response whose signatures another key makes, carrying its certificate.
+     * A response signed by another key, carrying its certificate.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\XmlSigner  $signer
      * @return self
@@ -284,7 +242,7 @@ final readonly class FakeSamlResponse
     }
 
     /**
-     * The response as the HTTP-POST binding carries it: base64, never deflated.
+     * The response base64 encoded for the HTTP-POST binding, never deflated.
      *
      * @return string
      *
@@ -309,8 +267,7 @@ final readonly class FakeSamlResponse
     }
 
     /**
-     * What arrives at the assertion consumer service when the browser posts the
-     * response.
+     * What arrives at the ACS when the browser posts the response.
      *
      * @param  ?string  $relayState
      * @return \SineMacula\Laravel\Sso\Protocols\CompletionRequest
@@ -323,7 +280,7 @@ final readonly class FakeSamlResponse
     }
 
     /**
-     * What `toXml()` answers, a DOM failure let through.
+     * The XML `toXml()` returns, letting a DOM failure through.
      *
      * @return string
      *
@@ -348,11 +305,7 @@ final readonly class FakeSamlResponse
     }
 
     /**
-     * The default bearer confirmation and authentication statement: the
-     * confirmation's recipient the assertion consumer service, valid for five
-     * minutes and answering no request; the statement a minute old, with a
-     * session index, an eight-hour session deadline and the
-     * password-protected-transport class.
+     * The default bearer confirmation and authentication statement.
      *
      * @param  string  $acsUrl
      * @param  \Carbon\CarbonImmutable  $now
@@ -374,8 +327,7 @@ final readonly class FakeSamlResponse
     }
 
     /**
-     * The assertion part of the response: nothing when it is left out, or the
-     * assertion, signed when asked, and encrypted when asked.
+     * The assertion, signed and encrypted as asked, or nothing when left out.
      *
      * @return string
      *
@@ -404,8 +356,8 @@ final readonly class FakeSamlResponse
     }
 
     /**
-     * The response wrapped with the variant: a signed response for XSW1 and
-     * XSW2, a response with a signed assertion for every other.
+     * The response wrapped with the variant; XSW1 and XSW2 sign the response,
+     * the others the assertion.
      *
      * @param  string  $variant
      * @return string

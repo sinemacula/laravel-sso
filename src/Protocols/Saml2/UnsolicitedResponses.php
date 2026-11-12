@@ -13,33 +13,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
 
 /**
- * Validates an unsolicited SAML response by the unsolicited profile (SSO-5.8,
- * SSO-6.11) for a connection that allows IdP-initiated sign-in, and answers the
- * connection's start URL and the replay record of its assertion.
- *
- * - A connection whose `idp_initiated` is off (the default) refuses every
- *   unsolicited response with `unsolicited_not_allowed`, before anything in it
- *   is read, and logs that it did, naming the connection alone.
- * - One that is on but holds no `idp_initiated_start_url` is incomplete, so it
- *   is refused with `connection_unavailable`; the settings never store such a
- *   connection, so this only fails closed.
- * - Otherwise the response is held to every rule of a successful response
- *   (`Validation\AssertionValidator`, with no consumed request): signatures,
- *   issuers, destination, encryption, conditions, audiences, the bearer
- *   confirmation, the subject and the authentication context. An `InResponseTo`
- *   anywhere, inside an encrypted assertion included, makes it solicited, which
- *   with no request is `request_unknown`; an unsuccessful status is
- *   `provider_error`. A refusal keeps the validator's reason.
- * - A response that passes is allowed: the start URL with the query parameter
- *   `connection` set to the connection's id, added after a `?`, or after an `&`
- *   when the URL already has a query, and the replay record of its assertion,
- *   which the completion records under the connection's lock.
- *
- * The posted `RelayState` is never read, so it can never become a redirect
- * target (SSO-5.8); the response's subject and attributes go no further than
- * the validator. Nothing of the response is logged, reported or kept. It holds
- * the validator and the sanitising logger, neither of which keeps anything
- * between calls (SSO-11.2).
+ * Validates an unsolicited SAML response for re-initiation. The posted
+ * `RelayState` is never read, so it can never become a redirect target.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,13 +37,12 @@ final readonly class UnsolicitedResponses
         /** Validates the response by the unsolicited profile. */
         private AssertionValidator $validator,
 
-        /** Logs a response refused for a connection that does not allow it; the package's sanitising logger. */
+        /** The package's sanitising logger. */
         private LoggerInterface $logger,
     ) {}
 
     /**
-     * Validate the unsolicited response and answer where re-initiation sends
-     * the browser.
+     * Validate the response by the unsolicited profile.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options  $options
@@ -92,8 +66,8 @@ final readonly class UnsolicitedResponses
     }
 
     /**
-     * The start URL naming the connection, or `null` when the connection does
-     * not allow IdP-initiated sign-in or holds no start URL; nothing is logged.
+     * The start URL naming the connection, or `null` when re-initiation is off
+     * or there is no start URL. Logs nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options  $options
@@ -111,8 +85,7 @@ final readonly class UnsolicitedResponses
     }
 
     /**
-     * The start URL naming the connection, or why the connection takes no
-     * unsolicited response.
+     * The start URL, or why the connection takes no unsolicited response.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options  $options
@@ -131,9 +104,7 @@ final readonly class UnsolicitedResponses
     }
 
     /**
-     * The URL with the `connection` query parameter added, its value encoded:
-     * after a `?` when it has no query, directly when it ends its query with a
-     * `?` or an `&`, and after an `&` otherwise.
+     * The URL with the `connection` query parameter appended.
      *
      * @param  string  $url
      * @param  string  $connectionId

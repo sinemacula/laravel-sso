@@ -7,10 +7,9 @@ namespace SineMacula\Laravel\Sso\Testing\Saml;
 use Carbon\CarbonImmutable;
 
 /**
- * Writes the XML of the fake SAML identity provider's responses and assertions
- * from a `FakeSamlResponse`'s options (SSO-12.4), every part in its SAML 2.0
- * schema position, every value escaped, and each part the options leave out
- * left out. A test tool; nothing here signs or encrypts.
+ * Writes the fake identity provider's response and assertion XML from a
+ * `FakeSamlResponse`'s options, every value escaped. It never signs or
+ * encrypts.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,8 +33,8 @@ final readonly class ResponseWriter
     private const string NS_XSI = 'http://www.w3.org/2001/XMLSchema-instance';
 
     /**
-     * The `samlp:Response` holding the assertion part given (an assertion, an
-     * encrypted assertion, or nothing).
+     * The `samlp:Response` holding the given assertion part, which may be
+     * empty.
      *
      * @param  ResponseOptions  $options
      * @param  string  $assertion

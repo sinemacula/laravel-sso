@@ -9,18 +9,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Enums\ValidationProfile;
 
 /**
- * A SAML `Response` the SAML adapter parsed and verified (SSO-6.1 to SSO-6.3,
- * SSO-6.11): its envelope (`ID`, `Issuer`, `IssueInstant`, `Destination`,
- * `InResponseTo` and status), whether the envelope's own signature was
- * verified, the validation profile it falls under, and its one assertion, if
- * the profile reads one.
- *
- * The envelope's fields come from the verified response when it is signed, and
- * from the parsed, unverified one otherwise (`isSigned()`), so identity and
- * correlation are taken only from signed content: the assertion's fields, or an
- * envelope that is itself signed. The adapter verified every signature present
- * before answering; nothing here is a judgement of issuer, audience, time or
- * subject, which the response validation makes.
+ * A parsed and verified SAML `Response`. Envelope fields are unverified unless
+ * `isSigned()`, so identity comes only from signed content.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -147,8 +137,8 @@ final readonly class SamlResponse implements \JsonSerializable
     }
 
     /**
-     * Whether the response's own signature was verified, so the envelope's
-     * fields are signed content.
+     * Whether the response's own signature was verified, making the envelope
+     * signed content.
      *
      * @return bool
      */

@@ -7,19 +7,15 @@ namespace SineMacula\Laravel\Sso\Testing\Saml;
 use Random\RandomException;
 
 /**
- * Encrypts an assertion for the service provider's certificate, as the fake
- * SAML identity provider's `EncryptedAssertion` (SSO-12.4), seeded from the
- * library spike's fixture generator: AES-GCM or AES-CBC content encryption with
- * a random session key, carried by RSA-OAEP or, for a hostile case, RSA PKCS#1
- * v1.5 key transport. A test tool, with OpenSSL alone; the package decrypts
- * only through its SAML adapter.
+ * Encrypts an assertion for the fake identity provider with OpenSSL alone; RSA
+ * PKCS#1 v1.5 key transport exists for hostile cases.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class AssertionEncryptor
 {
-    /** @var array<string, array{0: string, 1: string, 2: int}> Each data algorithm by short name: its URI, the OpenSSL cipher and the key length in bytes. */
+    /** @var array<string, array{0: string, 1: string, 2: int}> Data algorithms by short name: URI, OpenSSL cipher, key bytes. */
     public const array DATA_ALGORITHMS = [
         'aes128-gcm' => ['http://www.w3.org/2009/xmlenc11#aes128-gcm', 'aes-128-gcm', 16],
         'aes192-gcm' => ['http://www.w3.org/2009/xmlenc11#aes192-gcm', 'aes-192-gcm', 24],
@@ -28,7 +24,7 @@ final readonly class AssertionEncryptor
         'aes256-cbc' => ['http://www.w3.org/2001/04/xmlenc#aes256-cbc', 'aes-256-cbc', 32],
     ];
 
-    /** @var array<string, array{0: string, 1: int}> Each key transport by short name: its URI and the OpenSSL padding. */
+    /** @var array<string, array{0: string, 1: int}> Key transports by short name: URI, OpenSSL padding. */
     public const array KEY_TRANSPORTS = [
         'rsa-oaep-mgf1p' => ['http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p', OPENSSL_PKCS1_OAEP_PADDING],
         'rsa-oaep'       => ['http://www.w3.org/2009/xmlenc11#rsa-oaep', OPENSSL_PKCS1_OAEP_PADDING],
@@ -42,8 +38,8 @@ final readonly class AssertionEncryptor
     private const string NS_DS = 'http://www.w3.org/2000/09/xmldsig#';
 
     /**
-     * The `saml:EncryptedAssertion` carrying the serialised assertion,
-     * encrypted for the certificate.
+     * The `saml:EncryptedAssertion` of the assertion, encrypted for the
+     * certificate.
      *
      * @param  string  $assertion
      * @param  string  $certificate
@@ -73,8 +69,8 @@ final readonly class AssertionEncryptor
     }
 
     /**
-     * The ciphertext as XML encryption carries it: the initialisation vector,
-     * the ciphertext and, for GCM, the tag.
+     * The IV, the ciphertext and, for GCM, the tag, as XML encryption carries
+     * them.
      *
      * @param  string  $plaintext
      * @param  string  $cipher

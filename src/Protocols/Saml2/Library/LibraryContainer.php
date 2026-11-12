@@ -11,29 +11,8 @@ use SimpleSAML\SAML2\Compat\AbstractContainer;
 use SimpleSAML\SAML2\Compat\ContainerSingleton;
 
 /**
- * The container `simplesamlphp/saml2` reads its process-wide services from, set
- * once per process with nothing in it that changes, so it is safe under Octane
- * and in queue workers (SSO-11.2): every per-connection policy lives in the
- * per-call objects the adapter builds, never here.
- *
- * The package uses only the library's low-level parsing, schema, signature and
- * decryption calls (`docs/design/saml-library.md`), none of which needs the
- * library's clock, temporary files, redirects or HTTP-Redirect decoding (the
- * package reads only posted responses), so each of those fails closed with a
- * `LogicException` rather than reading the system's time or disk. The logger
- * discards everything and debug messages are dropped, so no message the library
- * might pass them ever reaches a log (SSO-9.8). Changing the blacklist is
- * refused: the adapter holds every algorithm to the connection's allow-list
- * itself.
- *
- * `ensure()` sets the package's own container when none is set yet, and does
- * nothing more when the one set is the package's, so it is idempotent across
- * requests in one process (Octane, queue workers). A container set by anything
- * else (an application that uses the library itself, say) is refused with a
- * `LogicException`, since its clock, logger, files and blacklist are not held
- * to the package's rules and would silently apply to every SAML message the
- * package reads; the package never runs SAML through a container it did not
- * set.
+ * The stateless process-wide container `simplesamlphp/saml2` reads. Services
+ * the package never uses throw rather than touch the system clock or disk.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,8 +29,8 @@ final class LibraryContainer extends AbstractContainer
         . 'the package runs SAML only through the container it sets itself.';
 
     /**
-     * Set the package's own container when none is set, keep it when it is set,
-     * and refuse a container something else set.
+     * Set the package's container if none is set. A foreign one is refused, as
+     * its clock, logger and blacklist would apply to every message.
      *
      * @return void
      *
@@ -73,8 +52,7 @@ final class LibraryContainer extends AbstractContainer
     }
 
     /**
-     * Refuse to change the blacklist: the adapter holds every algorithm to the
-     * connection's allow-list.
+     * Refuse: the adapter enforces each connection's algorithm allow-list.
      *
      * @param  ?array<mixed>  $algos
      * @return void
@@ -164,7 +142,7 @@ final class LibraryContainer extends AbstractContainer
     }
 
     /**
-     * Refuse: every time check reads the package's own clock (SSO-11.13).
+     * Refuse: every time check reads the package's own clock.
      *
      * @return \Psr\Clock\ClockInterface
      *
@@ -177,8 +155,7 @@ final class LibraryContainer extends AbstractContainer
     }
 
     /**
-     * Refuse: the package reads only posted responses, never an HTTP-Redirect
-     * message, so the library never inflates one for it.
+     * Refuse: the package reads only posted responses, which are not deflated.
      *
      * @return int
      *

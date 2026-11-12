@@ -8,25 +8,8 @@ use SineMacula\Laravel\Sso\Config\UrlSetting;
 use SineMacula\Laravel\Sso\Protocols\Enums\NavigationType;
 
 /**
- * How the application sends the browser to the identity provider (SSO-5.1): a
- * `redirect` to a URL, or a `post` of form fields to an action URL (an
- * HTTP-POST `AuthnRequest`, SSO-5.3). The application's controller turns it
- * into a response; `jsonSerialize()` is the `navigation` of SSO-12.5's start
- * response, `{type: redirect, url}` or `{type: post, url, fields}`.
- *
- * A navigation to an identity provider leads to an absolute `https` URL. One
- * back to the application itself, a discovery miss's fallback (SSO-3.5), leads
- * to the URL the application registered, which may be `http` on a loopback
- * address or a native application's private-use scheme, exactly as registered.
- *
- * Its URL and fields carry the flow's protocol values (an OIDC request's
- * `state`, `nonce` and `code_challenge`, a SAML form's `SAMLRequest` and
- * `RelayState`), so it holds them in `\SensitiveParameterValue` and gives them
- * only through `url()`, `fields()` and `jsonSerialize()`, which the start
- * response is built from. Every dump, PHP's own or Symfony's VarDumper behind
- * Laravel's dump helpers (which also lists private properties), shows the URL
- * with every query value and any fragment redacted, and a post's field names
- * with their values redacted.
+ * A redirect or form post that sends the browser on. The URL and fields carry
+ * protocol state, so dumps redact query values, fragments and field values.
  *
  * @api
  *
@@ -35,7 +18,7 @@ use SineMacula\Laravel\Sso\Protocols\Enums\NavigationType;
  */
 final readonly class Navigation implements \JsonSerializable
 {
-    /** @var string What a dump shows for each query value, fragment and field value. */
+    /** @var string Placeholder for each redacted value in a dump. */
     private const string REDACTED = '[redacted]';
 
     /** @var \SensitiveParameterValue The URL redirected to, or the form's action. */
@@ -56,11 +39,11 @@ final readonly class Navigation implements \JsonSerializable
         /** Whether the browser is redirected or posts a form. */
         public NavigationType $type,
 
-        // The URL redirected to, or the form's action; held wrapped.
+        // Held wrapped, so not promoted.
         #[\SensitiveParameter]
         string $url,
 
-        // The form's fields, by name; held wrapped.
+        // Held wrapped, so not promoted.
         #[\SensitiveParameter]
         array $fields,
     ) {
@@ -69,8 +52,7 @@ final readonly class Navigation implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the type, the URL with every query value and any
-     * fragment redacted, and the names of a post's fields, never their values.
+     * Show the type, the redacted URL and the field names, never a value.
      *
      * @return array{type: string, url: string, fields?: array<string, string>}
      */
@@ -99,8 +81,8 @@ final readonly class Navigation implements \JsonSerializable
     }
 
     /**
-     * Redirect the browser back to a URL the application registered, such as
-     * its discovery fallback: an exact redirect URI (`UrlSetting::redirect()`).
+     * Redirect the browser to a URL the application registered, which may be
+     * loopback `http` or a private-use scheme.
      *
      * @param  string  $url
      * @return self
@@ -158,7 +140,7 @@ final readonly class Navigation implements \JsonSerializable
     }
 
     /**
-     * The URL redirected to, or the form's action, whole.
+     * The URL redirected to, or the form's action, unredacted.
      *
      * @return string
      */
@@ -169,7 +151,7 @@ final readonly class Navigation implements \JsonSerializable
     }
 
     /**
-     * The form's fields, by name, whole; none for a redirect.
+     * The form's fields, unredacted; empty for a redirect.
      *
      * @return array<string, string>
      */
@@ -180,8 +162,7 @@ final readonly class Navigation implements \JsonSerializable
     }
 
     /**
-     * The navigation as SSO-12.5's start response carries it: the type and the
-     * URL, and the fields of a post, whole.
+     * The unredacted `navigation` of the start response.
      *
      * @return array{type: string, url: string, fields?: array<string, string>}
      */
@@ -198,7 +179,7 @@ final readonly class Navigation implements \JsonSerializable
     }
 
     /**
-     * The URL, once it is an absolute `https` URL.
+     * The URL, if it is an absolute `https` URL.
      *
      * @param  string  $url
      * @return string
@@ -218,8 +199,7 @@ final readonly class Navigation implements \JsonSerializable
     }
 
     /**
-     * The URL with the value of every query parameter, and any fragment,
-     * redacted: its scheme, host, path and parameter names kept.
+     * The URL with every query value and any fragment redacted.
      *
      * @param  string  $url
      * @return string
@@ -238,8 +218,7 @@ final readonly class Navigation implements \JsonSerializable
     }
 
     /**
-     * The query parameter with its value redacted: a name with no value is kept
-     * as it is.
+     * The query parameter with its value redacted; a bare name is kept.
      *
      * @param  string  $parameter
      * @return string

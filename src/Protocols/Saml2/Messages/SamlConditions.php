@@ -8,13 +8,8 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues;
 
 /**
- * A verified assertion's `Conditions` (SAML 2.0 Core §2.5), as the SAML adapter
- * read them: `NotBefore` and `NotOnOrAfter`, the audiences of each
- * `AudienceRestriction` in order (each restriction is a separate condition that
- * must hold, SSO-6.4), how many `OneTimeUse` and `ProxyRestriction` conditions
- * it carries, and the qualified names of every other condition, so the response
- * validation refuses a condition the package does not understand (SAML 2.0 Core
- * §2.5.1).
+ * A verified assertion's `Conditions`, naming any unmodelled condition so
+ * validation can refuse it (SAML 2.0 Core 2.5.1).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -80,7 +75,7 @@ final readonly class SamlConditions implements \JsonSerializable
     }
 
     /**
-     * The audiences of each `AudienceRestriction`, in order.
+     * The audiences of each `AudienceRestriction`, each of which must hold.
      *
      * @return list<list<string>>
      */
@@ -113,8 +108,7 @@ final readonly class SamlConditions implements \JsonSerializable
     }
 
     /**
-     * The qualified name (`{namespace}local`) of every other condition, in
-     * order.
+     * The `{namespace}local` name of every other condition, in order.
      *
      * @return list<string>
      */

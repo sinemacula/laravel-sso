@@ -5,13 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns;
 
 /**
- * Holds what an identity provider asserted, as the SAML adapter read it from a
- * verified element, so none of it leaves the value but through its accessors
- * (SSO-9.8, SSO-11.9): the values live in one `\SensitiveParameterValue`, so a
- * dump, by PHP's own functions or by the VarDumper behind Laravel's helpers
- * (which also lists private properties), an array cast and `json_encode()` show
- * `[redacted]`, and the value refuses to be serialised or unserialised, so it
- * never reaches a queue, a cache, a log or an event.
+ * Holds identity provider values so only accessors reveal them: dumps, casts
+ * and JSON show `[redacted]`, and serialising throws.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -24,7 +19,7 @@ trait HoldsProviderValues
     private readonly \SensitiveParameterValue $values;
 
     /**
-     * What a dump shows: never a value.
+     * Show no value in a dump.
      *
      * @return array<string, string>
      */
@@ -34,8 +29,7 @@ trait HoldsProviderValues
     }
 
     /**
-     * Refuse to be serialised: the value lives only for the completion that
-     * read it.
+     * Refuse to be serialised; the value lives only for its completion.
      *
      * @return array<string, mixed>
      *
@@ -65,7 +59,7 @@ trait HoldsProviderValues
     }
 
     /**
-     * What `json_encode()` writes: never a value.
+     * Encode no value.
      *
      * @return array<string, string>
      */

@@ -27,34 +27,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options;
 
 /**
- * Writes a SAML connection's service provider metadata (SAML 2.0 Metadata,
- * SSO-5.9) with the library's metadata element classes: one unsigned
- * `md:EntityDescriptor` for the service provider entity id, holding one
- * `md:SPSSODescriptor`.
- *
- * The descriptor carries:
- *
- * - `protocolSupportEnumeration` SAML 2.0, `AuthnRequestsSigned` and
- *   `WantAssertionsSigned` as the connection's switches say;
- * - a `KeyDescriptor` of use `signing` for each signing certificate given, then
- *   one of use `encryption` for each encryption certificate given, in the order
- *   given (the current key, then the next one during a rotation);
- * - on each encryption `KeyDescriptor`, an `EncryptionMethod` for each data
- *   encryption algorithm the connection allows (AES-128-GCM and AES-192-GCM by
- *   default, AES-CBC only when listed, never AES-256-GCM:
- *   `docs/design/saml-library.md`, condition 5), then each key transport it
- *   allows (RSA-OAEP, never RSA 1.5);
- * - the connection's NameID format, and one HTTP-POST
- *   `AssertionConsumerService` at the connection's assertion consumer service,
- *   index 0 and the default.
- *
- * It has no `ID`, `validUntil` or `cacheDuration`, so the same connection, keys
- * and endpoints always write the same bytes. Only a certificate's body is
- * written: each one given must be exactly one PEM certificate block, so a
- * private key, or anything else, is refused before the library sees it, and no
- * secret is ever written. A value the schema does not allow, such as an entity
- * id longer than 1024 characters, is an `InvalidArgumentException` that quotes
- * nothing given. It holds nothing between calls (SSO-11.2).
+ * Writes a SAML connection's unsigned SP metadata. It has no `ID`, `validUntil`
+ * or `cacheDuration`, so the same inputs always write the same bytes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,15 +40,14 @@ final readonly class MetadataWriter
     /** @var string Exactly one PEM certificate block, its body captured. */
     private const string CERTIFICATE = '/\A-----BEGIN CERTIFICATE-----([A-Za-z0-9+\/=\s]+)-----END CERTIFICATE-----\z/';
 
-    /** @var string The refusal of a certificate that is not one PEM certificate block. */
+    /** @var string Refusal of a value that is not one PEM certificate block. */
     private const string NOT_A_CERTIFICATE = 'A service provider certificate in the metadata must be exactly one PEM-encoded certificate.';
 
-    /** @var string The refusal of metadata the schema does not allow. */
+    /** @var string Refusal of metadata the schema does not allow; quotes nothing. */
     private const string UNWRITABLE = 'The service provider metadata cannot be written: its entity id, an endpoint or a certificate is not one SAML 2.0 Metadata allows.';
 
     /**
-     * The metadata of the service provider with the endpoints, options and
-     * certificates given, as XML.
+     * The service provider metadata as XML.
      *
      * @param  \SineMacula\Laravel\Sso\Endpoints\ConnectionEndpoints  $endpoints
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options  $options
@@ -133,8 +106,7 @@ final readonly class MetadataWriter
     }
 
     /**
-     * The one HTTP-POST assertion consumer service at the location, index 0 and
-     * the default.
+     * The one HTTP-POST assertion consumer service, index 0 and the default.
      *
      * @param  string  $location
      * @return \SimpleSAML\SAML2\XML\md\AssertionConsumerService
@@ -150,8 +122,7 @@ final readonly class MetadataWriter
     }
 
     /**
-     * A `KeyDescriptor` of the use carrying the certificate, with the
-     * encryption methods given.
+     * A `KeyDescriptor` of the use carrying the certificate.
      *
      * @param  \SimpleSAML\SAML2\XML\md\KeyTypesEnum  $use
      * @param  string  $body
@@ -166,9 +137,7 @@ final readonly class MetadataWriter
     }
 
     /**
-     * An `EncryptionMethod` for each data encryption algorithm the connection
-     * allows, then for each key transport it allows, in the order it lists
-     * them.
+     * An `EncryptionMethod` per allowed data algorithm, then per key transport.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options  $options
      * @return list<\SimpleSAML\SAML2\XML\md\EncryptionMethod>
@@ -182,8 +151,8 @@ final readonly class MetadataWriter
     }
 
     /**
-     * The base64 body of each certificate, whitespace removed, refusing any
-     * value that is not exactly one PEM certificate block.
+     * The base64 body of each certificate, so a private key or anything else is
+     * refused before the library sees it.
      *
      * @param  list<string>  $certificates
      * @return list<string>

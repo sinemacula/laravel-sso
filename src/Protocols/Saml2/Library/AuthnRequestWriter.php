@@ -29,38 +29,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * Writes a connection's SAML `AuthnRequest` for its binding, and signs it when
- * a key is given (SSO-5.3, SSO-5.10, SAML 2.0 Core §3.4.1, Bindings §3.4 and
- * §3.5, `docs/design/saml-requests.md`): the SAML adapter's one entry for
- * outgoing messages, so every call into `simplesamlphp/saml2` and
- * `simplesamlphp/xml-security` it needs is made here.
- *
- * - The request is version 2.0, with the `ID` and `IssueInstant` given (UTC),
- *   the service provider entity id as `Issuer`, the connection's single sign-on
- *   URL as `Destination`, the assertion consumer service URL with the HTTP-POST
- *   `ProtocolBinding` (the only binding responses are accepted by), a
- *   `NameIDPolicy` of the connection's format with `AllowCreate`,
- *   `ForceAuthn="true"` when asked, and a `RequestedAuthnContext` with
- *   `Comparison="exact"` listing the connection's classes when it lists any.
- * - HTTP-Redirect: the XML deflated raw (level 9), base64 encoded, and sent as
- *   `SAMLRequest`, then `RelayState`, then, signed, `SigAlg` and `Signature`
- *   over exactly the encoded `SAMLRequest=…&RelayState=…&SigAlg=…`. The XML
- *   carries no signature of its own.
- * - HTTP-POST: the XML, signed with an enveloped signature after `Issuer`
- *   (exclusive canonicalisation, the enveloped-signature transform, and the
- *   digest of the signature algorithm, SHA-256 or stronger), base64 encoded as
- *   `SAMLRequest`, with `RelayState`.
- *
- * A signature uses the first algorithm the connection allows, and the private
- * key is revealed only here, for the call that signs. The library writes no
- * `ForceAuthn` (saml2 v6 compares the typed value with `true`), so the request
- * is written by a subclass that adds it before anything is signed.
- *
- * A connection with no single sign-on URL is a `LogicException`; anything else
- * that cannot be written, a connection allowing no signature algorithm or a key
- * or value the library refuses, is one `LogicException` with the package's own
- * message and no previous exception, so neither the key, the `RelayState` nor
- * the message can reach a log through it. It holds nothing (SSO-11.2).
+ * Writes and optionally signs a connection's `AuthnRequest` for its binding.
+ * Failures carry no previous exception, so no key or `RelayState` can leak.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,12 +42,12 @@ final readonly class AuthnRequestWriter
     /** @var int The DEFLATE level of an HTTP-Redirect message. */
     private const int DEFLATE_LEVEL = 9;
 
-    /** @var string Why a request could not be written, whatever the library refused. */
+    /** @var string The one message for anything the library refused. */
     private const string UNWRITABLE = 'The SAML AuthnRequest could not be written: check the connection\'s settings and its current service provider signing key.';
 
     /**
-     * Write the request for the connection's binding, signed with the key when
-     * one is given.
+     * Write the request for the connection's binding, signed when a key is
+     * given.
      *
      * @param  string  $id
      * @param  \Carbon\CarbonImmutable  $issuedAt
@@ -116,7 +86,8 @@ final readonly class AuthnRequestWriter
     }
 
     /**
-     * The request as the library writes it, with `ForceAuthn` added.
+     * The request, through a subclass that writes `ForceAuthn`, which saml2 v6
+     * omits.
      *
      * @param  string  $id
      * @param  \Carbon\CarbonImmutable  $issuedAt
@@ -149,12 +120,11 @@ final readonly class AuthnRequestWriter
         ];
 
         return new class (...$arguments) extends AuthnRequest {
-            /** @var string The element's local name, which the library otherwise reads from the class's name. */
+            /** @var string The local name; an anonymous class has no usable name. */
             public const string LOCALNAME = 'AuthnRequest';
 
             /**
-             * The element's namespace, `samlp`'s, named without reading the
-             * class's name, which an anonymous class does not have.
+             * The `samlp` namespace, given since the class has no usable name.
              *
              * @return string
              */
@@ -165,8 +135,7 @@ final readonly class AuthnRequestWriter
             }
 
             /**
-             * The element's namespace prefix, `samlp`, named without reading
-             * the class's name.
+             * The `samlp` prefix, given since the class has no usable name.
              *
              * @return string
              */
@@ -199,8 +168,7 @@ final readonly class AuthnRequestWriter
     }
 
     /**
-     * The `RequestedAuthnContext` listing the classes, compared exactly, or
-     * none when there are none.
+     * The `RequestedAuthnContext` with exact comparison, or none.
      *
      * @param  list<string>  $classes
      * @return ?\SimpleSAML\SAML2\XML\samlp\RequestedAuthnContext
@@ -218,8 +186,8 @@ final readonly class AuthnRequestWriter
     }
 
     /**
-     * The request for the HTTP-Redirect binding: deflated into `SAMLRequest`,
-     * then `RelayState`, then `SigAlg` and the `Signature` over the three.
+     * The HTTP-Redirect request: the XML carries no signature; the query is
+     * signed over `SAMLRequest`, `RelayState` and `SigAlg`.
      *
      * @param  string  $id
      * @param  \SimpleSAML\SAML2\XML\samlp\AuthnRequest  $request
@@ -249,9 +217,8 @@ final readonly class AuthnRequestWriter
     }
 
     /**
-     * The request for the HTTP-POST binding: signed with an enveloped signature
-     * when there is a signer, and base64 encoded into `SAMLRequest`, with
-     * `RelayState`.
+     * The HTTP-POST request, with an enveloped signature when there is a
+     * signer.
      *
      * @param  string  $id
      * @param  \SimpleSAML\SAML2\XML\samlp\AuthnRequest  $request
@@ -278,7 +245,7 @@ final readonly class AuthnRequestWriter
     }
 
     /**
-     * What signs with the key and the algorithm.
+     * The signer for the key and algorithm.
      *
      * @param  \SineMacula\Laravel\Sso\Secrets\Secret  $key
      * @param  string  $algorithm
@@ -292,8 +259,7 @@ final readonly class AuthnRequestWriter
     }
 
     /**
-     * The signature algorithm: the first the connection allows, which a
-     * complete connection always has.
+     * The first signature algorithm the connection allows.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options  $options
      * @return string
@@ -351,7 +317,7 @@ final readonly class AuthnRequestWriter
     }
 
     /**
-     * The XML deflated raw (RFC 1951), as the HTTP-Redirect binding sends it.
+     * The XML deflated raw (RFC 1951) for the HTTP-Redirect binding.
      *
      * @param  string  $xml
      * @return string

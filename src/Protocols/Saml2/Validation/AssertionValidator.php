@@ -29,59 +29,8 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 
 /**
- * Validates a posted SAML response (SSO-6.2 to SSO-6.11): the one core both the
- * solicited path (`ResponseValidator`, with the consumed request) and the
- * unsolicited profile (with none, SSO-5.8) share. Which profile's rules apply
- * depends only on whether a consumed request is given.
- *
- * In this order, the first refusal answering:
- *
- * 1. The posted `SAMLResponse` is read through the SAML adapter, with the
- *    connection's policy (`ResponsePolicies`): parsed hardened, its structure
- *    checked, every signature verified with a trusted certificate and its
- *    assertion decrypted. A refused read is refused with the adapter's
- *    reason; the rule that refused it is logged, in the package's own words.
- * 2. The profile: an unsuccessful response (a status other than success) is
- *    refused with `provider_error` once its `Issuer` and `Destination` hold and
- *    its `InResponseTo` is the consumed request's (any of which refuses it
- *    first), and its status codes and sanitised `StatusMessage` are logged,
- *    never shown or put in an event (SSO-6.9, SSO-5.7). A solicited response
- *    with no consumed request, and an unsolicited one with one, are
- *    `request_unknown`: an `InResponseTo` anywhere is never unsolicited.
- * 3. `ResponseRules`: issuers, destination, encryption and the assertion's own
- *    signature.
- * 4. `ConditionRules`: the conditions, audiences and `IssueInstant`s.
- * 5. `BearerConfirmations`: the request answered and the one bearer
- *    confirmation the assertion is accepted by.
- * 6. `SubjectRules`: the subject, encoded by `SubjectEncoding`.
- * 7. `AuthenticationRules`: the authentication context.
- *
- * A response that passes is verified with its claims (the identity provider's
- * entity id, the subject and its NameID format, the attributes of its
- * assertion's attribute statements by name, each a list of its string values in
- * order, the authentication context and the linking email) and the replay
- * record of its assertion (`ReplayWindow`), which the completion records under
- * the connection's lock; nothing is recorded here.
- *
- * The linking email (SSO-8.8) is built only while linking by a verified domain
- * is on, by its feature and its connection, with its acknowledgement, and only
- * from the one attribute the connection names by exact `Name` and `NameFormat`,
- * present once with exactly one non-empty string value: an attribute of that
- * `Name` in another `NameFormat`, a second one, a second value, an empty value
- * or a value that is not simple text gives none, an encrypted attribute leaves
- * "present once" unknowable and gives none, and nothing falls back to a
- * `FriendlyName` or an email-format `NameID`. An absent `NameFormat` is
- * `unspecified`, as SAML 2.0 Core 2.7.3.1 says. The organisation comes from the
- * attribute the connection names as its claim, under the same exactness, never
- * from the email's domain or the mapped attributes.
- *
- * Every time rule reads one instant, the clock's now once the response is read,
- * with the skew of `sso.clock.skew_seconds`. Nothing of the response is ever
- * logged, reported or kept: a log names the connection, the request's public
- * reference and the package's own words, with the status message sanitised. It
- * holds the adapter, the policies, the endpoint resolver, the clock, the limits
- * and the sanitising logger, none of which keeps anything between calls
- * (SSO-11.2).
+ * Validates a posted SAML response for both the solicited and unsolicited
+ * profiles; which applies depends only on whether a consumed request is given.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -93,7 +42,7 @@ final readonly class AssertionValidator
     /** @var string The posted field that carries the response. */
     public const string FIELD = 'SAMLResponse';
 
-    /** @var string What an attribute with no `NameFormat` is named under (SAML 2.0 Core 2.7.3.1). */
+    /** @var string The format an absent `NameFormat` means (SAML 2.0 Core 2.7.3.1). */
     private const string UNSPECIFIED_NAME_FORMAT = 'urn:oasis:names:tc:SAML:2.0:attrname-format:unspecified';
 
     /**
@@ -123,15 +72,13 @@ final readonly class AssertionValidator
         /** The `IssueInstant` maximum age. */
         private Saml2Limits $limits,
 
-        /** Logs a refused read and an unsuccessful status: the package's sanitising logger. */
+        /** The package's sanitising logger. */
         private LoggerInterface $logger,
     ) {}
 
     /**
-     * The linking email the assertion gives under the connection's linking
-     * settings, or `null`: with linking off or not acknowledged, with no
-     * attribute named, or when the named attribute is not exactly as it must
-     * be.
+     * The linking email, or `null`. An encrypted attribute makes "present once"
+     * unknowable, so it gives none.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  array<string, bool|int|string|null>  $linking
@@ -151,8 +98,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * Validate the posted response for the connection, against the consumed
-     * request, or by the unsolicited profile when none is given.
+     * Validate the posted response; with no consumed request, by the
+     * unsolicited profile.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options  $options
@@ -181,8 +128,7 @@ final readonly class AssertionValidator
     }
 
     /**
-     * Log which rule refused the read, in the package's own words, and refuse
-     * the response with its reason.
+     * Log which rule refused the read and refuse with its reason.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ReadResult  $read
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
@@ -230,8 +176,7 @@ final readonly class AssertionValidator
     }
 
     /**
-     * Judge the read response by its profile, then by every rule of a
-     * successful response.
+     * Judge the response by its profile, then by every success rule.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -254,8 +199,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * Why the response's profile refuses it, or `null` for a successful
-     * response of the profile the consumed request, or its absence, calls for.
+     * Why the profile refuses the response, or `null`. Any `InResponseTo` makes
+     * a response solicited.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -272,8 +217,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * Why an unsuccessful response is refused: its envelope's rule, or, once
-     * they hold, `provider_error`, with its status logged sanitised.
+     * Why an unsuccessful response is refused: an envelope rule, else
+     * `provider_error` with its status logged.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -297,8 +242,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * Log the unsuccessful response's status codes and its status message,
-     * which the logger sanitises as a diagnostic.
+     * Log the status codes and message; the logger sanitises the message, which
+     * never goes in an event.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -318,8 +263,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * Hold a successful response and its assertion to every rule, then answer
-     * its claims and the replay record of its assertion.
+     * Hold a successful response to every rule, then answer its claims and
+     * replay record.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
@@ -343,8 +288,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * The claims of the assertion's subject and authentication, and its replay
-     * record, or why its subject or authentication is refused.
+     * The claims and replay record, or why the subject or authentication is
+     * refused.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation  $confirmation
@@ -375,8 +320,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * The `Name` and `NameFormat` the connection names, while the feature and
-     * its linking are on and acknowledged; `null` otherwise.
+     * The linking attribute's `Name` and `NameFormat`, while linking is on and
+     * acknowledged.
      *
      * @param  array<string, bool|int|string|null>  $linking
      * @return ?array{0: string, 1: string}
@@ -394,8 +339,7 @@ final readonly class AssertionValidator
     }
 
     /**
-     * The linking email of the value and the organisation, or `null` when the
-     * value is no address.
+     * The linking email, or `null` when the value is no address.
      *
      * @param  string  $email
      * @param  ?string  $organization
@@ -411,8 +355,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * The organisation the claim names under the format, or `null` when none is
-     * named or it is not a string a result can hold.
+     * The organisation from the named claim attribute, never the email domain;
+     * `null` if absent or too long.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  mixed  $claim
@@ -427,10 +371,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * The one non-empty string value of the one attribute of the name, when it
-     * is in exactly the format; `null` otherwise. Only `Name` selects it, so a
-     * second attribute of the name in another format refuses it, and a
-     * `FriendlyName` is never read.
+     * The single non-empty value of the one attribute of the name in exactly
+     * the format. A same-named attribute in another format refuses it.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  string  $name
@@ -451,9 +393,8 @@ final readonly class AssertionValidator
     }
 
     /**
-     * The attributes of the assertion's attribute statements, by name, each the
-     * list of its string values in order; an attribute named twice holds both
-     * lists' values, and a value that is not simple text is left out.
+     * The string attribute values by name, in order; repeated names merge and
+     * non-text values are dropped.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @return array<string, list<string>>

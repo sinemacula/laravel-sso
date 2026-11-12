@@ -13,63 +13,15 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
 
 /**
- * The settings of a SAML 2.0 connection (SSO-2.3, SSO-5.3, SSO-5.8, SSO-6.7 to
- * SSO-6.9), named by `Enums\Saml2Setting`, which also classifies a change to
- * each.
- *
- * - `idp_entity_id`: the identity provider's entity id, an absolute `https:`,
- *   `http:` or `urn:` URI of at most 1024 bytes with no whitespace.
- * - `sso_url`: its single sign-on URL, an `https` URL with a host and no
- *   userinfo or fragment, of at most 2048 bytes; `sso_binding`: `http_redirect`
- *   (the default) or `http_post`.
- * - `subject_source`: `name_id` (the default) or `attribute`, which needs
- *   `subject_attribute`, the attribute holding a stable identifier (SSO-6.9);
- *   `name_id_format`: `persistent` (the default), `email` or `unspecified`,
- *   never `transient`.
- * - `sign_authn_requests`, `force_authn` (both off by default) and
- *   `want_assertions_signed` (on by default).
- * - `require_encrypted_assertions` (off by default), which may be on only while
- *   `sso.features.encrypted_assertions` is (SSO-6.8).
- * - `signature_algorithms`: RSA over SHA-256, SHA-384 or SHA-512, all by
- *   default and never SHA-1; `encryption_algorithms`: RSA-OAEP key transport
- *   and AES-128-GCM or AES-192-GCM by default, AES-CBC only when listed, never
- *   RSA 1.5, with at least one key transport and one data algorithm (SSO-6.7).
- *   These are what the SAML library verifies and decrypts on PHP 8.3 with
- *   `saml2` 6: SAML is RSA only, every other signature algorithm (ECDSA,
- *   RSA-PSS) and AES-256-GCM refused as `not_allowed`, as every SAML key use
- *   refuses an elliptic curve key; ECDSA and AES-256-GCM arrive when the PHP
- *   floor moves to 8.5 and `saml2` 7 is stable (`docs/design/saml-library.md`).
- * - `requested_authn_context`: up to ten authentication context classes (none
- *   by default), requested with `Comparison="exact"` and required of the
- *   response, which must assert one of them (SSO-6.10).
- * - `max_authentication_age_seconds`: how old the provider's `AuthnInstant` may
- *   be, 60 seconds to a week (none by default).
- * - `idp_initiated` (off by default), which may be on only while
- *   `sso.features.idp_initiated` is, and then needs `idp_initiated_start_url`,
- *   an `https` URL as `sso_url` (SSO-5.8).
- * - `metadata_url`: the `https` URL the provider's metadata is fetched from, as
- *   `sso_url`; `metadata_refresh`: left unset, the schedule refreshes a
- *   connection with a `metadata_url` exactly while it has a metadata signing
- *   anchor, so adding or removing the anchor needs no other change; `true`
- *   refreshes it without one, delegating trust to the URL and its TLS, and
- *   requires `metadata_url`; and `false` opts out (SSO-2.8,
- *   `Metadata\SamlRefreshRule`). The schedule runs while
- *   `sso.features.metadata_refresh` is on. An administrator's refresh stays
- *   available; a connection with neither an anchor nor `true` has no stale limit,
- *   and `false` on an anchored one leaves the limit in force.
- *
- * A missing setting is not a violation, so a connection may be saved before it
- * is complete; `isComplete()` says when it is. What is stored holds every
- * setting given or defaulted, defaults applied, `metadata_refresh` only when it
- * is given. It holds no secret: a SAML connection's key pairs and trusted
- * certificates are kept with its keys.
+ * The settings of a SAML 2.0 connection. A missing setting is not a violation,
+ * so a connection may be saved before it is complete.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class Saml2Settings implements ProtocolSettings
 {
-    /** @var list<string> The signature algorithms accepted (SSO-6.7), in the order they are preferred. */
+    /** @var list<string> The signature algorithms accepted, preferred first; RSA only on `saml2` 6. */
     public const array SIGNATURE_ALGORITHMS = [
         'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
         'http://www.w3.org/2001/04/xmldsig-more#rsa-sha384',
@@ -82,7 +34,7 @@ final readonly class Saml2Settings implements ProtocolSettings
         'http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p',
     ];
 
-    /** @var list<string> The data encryption algorithms accepted by default: AES-GCM, but AES-256-GCM. */
+    /** @var list<string> Default data encryption; AES-256-GCM is broken in `xml-security` 2.x. */
     public const array DATA_ENCRYPTION_ALGORITHMS = [
         'http://www.w3.org/2009/xmlenc11#aes128-gcm',
         'http://www.w3.org/2009/xmlenc11#aes192-gcm',
@@ -116,14 +68,14 @@ final readonly class Saml2Settings implements ProtocolSettings
     /** @var int The longest maximum authentication age, in seconds (a week). */
     public const int MAX_AUTHENTICATION_AGE_SECONDS = 604800;
 
-    /** @var array<string, list<string>> The values each setting of a fixed choice allows, by setting. */
+    /** @var array<string, list<string>> The values each fixed-choice setting allows. */
     private const array CHOICES = [
         'sso_binding'    => self::BINDINGS,
         'subject_source' => self::SUBJECT_SOURCES,
         'name_id_format' => self::NAME_ID_FORMATS,
     ];
 
-    /** @var array<string, \SineMacula\Laravel\Sso\Config\Enums\Feature> The feature each switch needs on before it may be, by setting. */
+    /** @var array<string, \SineMacula\Laravel\Sso\Config\Enums\Feature> The feature each switch needs on. */
     private const array GATES = [
         'require_encrypted_assertions' => Feature::ENCRYPTED_ASSERTIONS,
         'idp_initiated'                => Feature::IDP_INITIATED,
@@ -144,7 +96,7 @@ final readonly class Saml2Settings implements ProtocolSettings
         'idp_initiated'                => false,
     ];
 
-    /** @var string An entity id that is a URN: `urn:`, a namespace identifier, `:` and the rest. */
+    /** @var string An entity id that is a URN. */
     private const string URN = '/^urn:[A-Za-z0-9][A-Za-z0-9-]{0,31}:\S+$/iD';
 
     /** @var string An entity id that is an HTTP or HTTPS URL. */
@@ -162,8 +114,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     ) {}
 
     /**
-     * The settings the values give, whatever their shape; a `null` value is a
-     * setting not given.
+     * The settings the values give; a `null` value is a setting not given.
      *
      * @param  array<array-key, mixed>  $values
      * @return static
@@ -186,8 +137,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * None: a SAML connection's secrets are its private keys, kept with its
-     * keys.
+     * None: a SAML connection's secrets are its private keys, kept elsewhere.
      *
      * @return list<string>
      */
@@ -198,7 +148,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * The settings a change to which may alter what existing subjects mean.
+     * The settings that alter what existing subjects mean.
      *
      * @return list<string>
      */
@@ -220,8 +170,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * The operation whose freshness a change to the setting needs, as
-     * `Saml2Setting` classifies it; `null` for a name it does not have.
+     * The operation whose freshness a change needs; `null` for an unknown name.
      *
      * @param  string  $name
      * @return ?\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation
@@ -233,8 +182,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * Every setting given or with a default, defaults applied, in the order
-     * `Saml2Setting` names them.
+     * Every setting given or defaulted, in `Saml2Setting` order.
      *
      * @return array<string, mixed>
      */
@@ -258,8 +206,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * Every problem with the settings, in the order `Saml2Setting` names them,
-     * then each name it does not have, as `unknown`.
+     * Every problem, in `Saml2Setting` order, then each unknown name.
      *
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
      *
@@ -287,8 +234,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * Whether the settings are valid, and name the identity provider's entity
-     * id and single sign-on URL.
+     * Whether the settings are valid and give the entity id and SSO URL.
      *
      * @return bool
      *
@@ -303,8 +249,8 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * The problems with one setting: its value's, or, when it is not given, the
-     * requirement another setting puts on it.
+     * The problems with one setting, or with its absence when another setting
+     * requires it.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting  $setting
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
@@ -330,8 +276,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * The problem with the value of a setting that holds a single value, or
-     * `null` when it has none.
+     * The problem with a single-valued setting, if any.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting  $setting
      * @param  mixed  $value
@@ -353,10 +298,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * What another setting requires of one not given: the subject attribute
-     * when the subject comes from an attribute, the start URL when
-     * IdP-initiated sign-in is on, and the metadata URL when metadata
-     * refreshes.
+     * Whether another setting requires this one, which is not given.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting  $setting
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
@@ -374,8 +316,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * The subject attribute: a name of at most 1024 bytes, given only when the
-     * subject comes from an attribute.
+     * The subject attribute, allowed only for an attribute subject.
      *
      * @param  mixed  $value
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
@@ -394,8 +335,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * The identity provider's entity id: an `http:` or `https:` URL with a
-     * host, or a URN, of at most 1024 bytes with no whitespace.
+     * The entity id: an `http(s)` URL with a host, or a URN.
      *
      * @param  mixed  $value
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
@@ -418,7 +358,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * The maximum authentication age: an integer from 60 seconds to a week.
+     * The maximum authentication age, within its bounds.
      *
      * @param  mixed  $value
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
@@ -453,8 +393,8 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * The encryption algorithms: a non-empty list from the allow-list, with at
-     * least one key transport and one data encryption algorithm.
+     * The encryption algorithms, with at least one key transport and one data
+     * encryption algorithm.
      *
      * @param  string  $name
      * @param  mixed  $value
@@ -476,8 +416,7 @@ final readonly class Saml2Settings implements ProtocolSettings
     }
 
     /**
-     * The authentication context classes: a list of at most ten, each of at
-     * most 1024 bytes with no whitespace.
+     * The authentication context classes, capped in number and length.
      *
      * @param  string  $name
      * @param  mixed  $value

@@ -5,16 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Testing\Saml;
 
 /**
- * A connection's service provider as the fake SAML identity provider is told of
- * it (SSO-12.4): its entity id and its HTTP-POST assertion consumer service,
- * read from the service provider metadata the package describes, as an identity
- * provider is configured from that metadata.
- *
- * It is what an unsolicited response is made for, since such a response answers
- * no request a test could read them from:
- * `$idp->response($sp->entityId, $sp->assertionConsumerService, $now)`.
- * Metadata that is not one `EntityDescriptor` with an entity id and an
- * HTTP-POST assertion consumer service is a `LogicException` saying which.
+ * A connection's service provider read from its metadata, for building an
+ * unsolicited response, which has no request to read these from.
  *
  * @api
  *

@@ -7,13 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols\Saml2\Messages;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues;
 
 /**
- * A SAML `NameIDType` value as the SAML adapter read it from a verified element
- * (SAML 2.0 Core §2.2.2): a `NameID`, or an `Issuer`, with its text exactly as
- * received (read as the element's text content, so a comment or a processing
- * instruction inside it cannot truncate it, SSO-6.1), its `Format`,
- * `NameQualifier`, `SPNameQualifier` and `SPProvidedID`. An attribute the
- * element did not carry is `null`, never an empty string: an absent qualifier
- * and an empty one are different (SSO-6.9).
+ * A verified `NameID` or `Issuer`. An absent attribute is `null`, never `''`:
+ * an absent qualifier and an empty one differ.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

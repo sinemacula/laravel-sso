@@ -16,26 +16,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ResponsePolicy;
 
 /**
- * Decrypts the one `EncryptedAssertion` of a SAML response into the bytes of
- * its assertion, with the library's own key transport and block decryption,
- * held to the connection's policy (SSO-6.7, SSO-6.8).
- *
- * The `EncryptionMethod` of the data must be one the connection allows and the
- * library decrypts correctly: AES-128-GCM or AES-192-GCM (AES-256-GCM is out
- * until `xml-security` 3, `docs/design/saml-library.md`), or AES-CBC only when
- * the connection lists it, and then only when the enclosing response carries a
- * signature from a trusted certificate that was verified before anything is
- * decrypted, so the decryption is never an oracle. Exactly one `EncryptedKey`
- * must carry the session key, by RSA-OAEP only, never RSA 1.5, and it is tried
- * against each of the service provider's decryption keys (current, then
- * retiring within their overlap) until one yields a key of the data algorithm's
- * length. The ciphertext and the plaintext are each capped.
- *
- * Every refusal and every failure, whether of policy, key, padding, tag or
- * length, is the one `ReadFailure` (`decryption_failed`, `decryption`), so
- * nothing distinguishes one from another. The plaintext is returned for the
- * hardened parser; nothing here parses it. It holds nothing between calls
- * (SSO-11.2).
+ * Decrypts a response's one `EncryptedAssertion` under the connection's policy.
+ * Every failure is the same `ReadFailure`, so decryption is never an oracle.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,7 +29,7 @@ final readonly class AssertionDecryptor
     /** @var list<string> The key transport algorithms the package decrypts: RSA-OAEP only. */
     public const array KEY_TRANSPORT_ALGORITHMS = [C::KEY_TRANSPORT_OAEP, C::KEY_TRANSPORT_OAEP_MGF1P];
 
-    /** @var array<string, int> The data encryption algorithms the package decrypts, with the length of their key in bytes. */
+    /** @var array<string, int> Decryptable data algorithms and their key length in bytes; no AES-256-GCM before `xml-security` 3. */
     public const array DATA_ENCRYPTION_ALGORITHMS = [
         C::BLOCK_ENC_AES128_GCM => 16,
         C::BLOCK_ENC_AES192_GCM => 24,
@@ -56,15 +38,14 @@ final readonly class AssertionDecryptor
         C::BLOCK_ENC_AES256     => 32,
     ];
 
-    /** @var list<string> The data encryption algorithms decrypted only after a verified response signature: AES-CBC. */
+    /** @var list<string> AES-CBC, decrypted only after a verified response signature. */
     public const array CBC_ALGORITHMS = [C::BLOCK_ENC_AES128, C::BLOCK_ENC_AES192, C::BLOCK_ENC_AES256];
 
-    /** @var int The most a ciphertext may exceed the plaintext cap by, for its initialisation vector, tag and padding, in bytes. */
+    /** @var int Ciphertext allowance over the plaintext cap for IV, tag and padding, in bytes. */
     private const int OVERHEAD_BYTES = 64;
 
     /**
-     * The bytes of the assertion the element encrypts, once the policy admits
-     * it and one of the service provider's keys decrypts it.
+     * The assertion's bytes, unparsed.
      *
      * @param  \SimpleSAML\SAML2\XML\saml\EncryptedAssertion  $encrypted
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ResponsePolicy  $policy
@@ -86,8 +67,7 @@ final readonly class AssertionDecryptor
     }
 
     /**
-     * The plaintext, or `null` when the policy refuses the element or nothing
-     * decrypts it within the caps.
+     * The plaintext, or `null` when refused or not decryptable within the caps.
      *
      * @param  \SimpleSAML\SAML2\XML\saml\EncryptedAssertion  $encrypted
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ResponsePolicy  $policy
@@ -120,9 +100,8 @@ final readonly class AssertionDecryptor
     }
 
     /**
-     * Whether the data encryption algorithm is allowed by the connection and
-     * decrypted by the package, AES-CBC only after a verified response
-     * signature.
+     * Whether the data algorithm is known and allowed; AES-CBC only after a
+     * verified response signature.
      *
      * @param  string  $algorithm
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ResponsePolicy  $policy
@@ -139,9 +118,8 @@ final readonly class AssertionDecryptor
     }
 
     /**
-     * The session key the encrypted key carries, decrypted by RSA-OAEP with the
-     * first of the service provider's keys that yields one of the length, or
-     * `null`.
+     * The session key, from the first SP decryption key that unwraps one of the
+     * right length.
      *
      * @param  \SimpleSAML\XMLSecurity\XML\xenc\EncryptedKey  $key
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ResponsePolicy  $policy
@@ -169,7 +147,7 @@ final readonly class AssertionDecryptor
     }
 
     /**
-     * The session key the private key unwraps, or `null` when it does not.
+     * The session key the private key unwraps, if it does.
      *
      * @param  \SimpleSAML\XMLSecurity\XML\xenc\EncryptedKey  $key
      * @param  string  $transport
@@ -186,7 +164,7 @@ final readonly class AssertionDecryptor
     }
 
     /**
-     * Whether the bytes were decoded and are within the cap.
+     * Whether the bytes decoded, are non-empty and are within the cap.
      *
      * @param  false|string  $bytes
      * @param  int  $maxBytes

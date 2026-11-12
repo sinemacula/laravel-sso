@@ -11,15 +11,7 @@ use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
 
 /**
- * Validates a solicited SAML response against the request consumed for it
- * (SSO-6.2 to SSO-6.10): reads it through the SAML adapter, then holds it to
- * every rule of the solicited or unsuccessful profile, and answers its claims
- * and the replay record of its assertion, which the completion records under
- * the connection's lock (`docs/design/saml-responses.md`).
- *
- * The rules are `Validation\AssertionValidator`'s, given the consumed request;
- * the unsolicited profile is the same core given none. It holds the validator,
- * which keeps nothing between calls (SSO-11.2).
+ * Validates a solicited SAML response against the request consumed for it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

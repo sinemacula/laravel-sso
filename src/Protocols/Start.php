@@ -7,15 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How a driver started an authorisation request (SSO-5.1): with the navigation
- * that sends the browser to the identity provider and what the request must
- * keep to complete it, or refused with a reason.
- *
- * What the request keeps is typed, never a free-form map: the SAML
- * `AuthnRequest` id `InResponseTo` must equal (SSO-5.3, SSO-6.6), the issuer
- * the response must come from, and whether that issuer must return `iss`
- * (SSO-7.1). The authorisation request pipeline stores each, and hands them
- * back to the driver in the `ConsumedRequest`.
+ * How a driver started an authorisation request: the navigation and what the
+ * request must keep for completion, or a refusal.
  *
  * @api
  *
@@ -44,7 +37,7 @@ final readonly class Start
         /** The issuer the response must come from, for a started request. */
         public ?string $expectedIssuer,
 
-        /** Whether the response must carry `iss` (RFC 9207), for a started OIDC request. */
+        /** Whether the response must carry `iss` (RFC 9207). */
         public bool $issuerRequired,
 
         /** Why the request could not start, for a refused one. */
@@ -52,8 +45,7 @@ final readonly class Start
     ) {}
 
     /**
-     * The request started: the browser goes where the navigation leads, and the
-     * authorisation request keeps what is given.
+     * The request started; the authorisation request keeps what is given.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Navigation  $navigation
      * @param  ?string  $samlRequestId

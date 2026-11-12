@@ -8,10 +8,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Enums\IdentifierKind;
 
 /**
- * A verified assertion's `Subject` (SAML 2.0 Core §2.4), as the SAML adapter
- * read it: which kind of identifier it carries (a `NameID`, a `BaseID`, an
- * `EncryptedID`, or none), the `NameID` when it is one, and every
- * `SubjectConfirmation` in order.
+ * A verified assertion's `Subject`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

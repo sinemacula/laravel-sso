@@ -5,34 +5,21 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Saml2\Messages;
 
 /**
- * A SAML `AuthnRequest` as the SAML adapter wrote it for its binding (SSO-5.3,
- * SAML 2.0 Bindings §3.4 and §3.5): its `ID`, the binding it is sent by, and
- * the transport fields in the order the binding sends them, `SAMLRequest` and
- * `RelayState`, then `SigAlg` and `Signature` for a signed HTTP-Redirect.
- *
- * The fields carry the encoded message and the flow's `RelayState`, so they
- * live in one `\SensitiveParameterValue` and leave the value only through
- * `fields()` and `query()`, which the navigation is built from: a dump, by
- * PHP's own functions or by the VarDumper behind Laravel's helpers (which also
- * lists private properties), and `json_encode()` show the field names with
- * every value `[redacted]`, and the value refuses to be serialised or
- * unserialised, so it never reaches a queue, a cache, a log or an event.
+ * A written `AuthnRequest` and its transport fields. The fields carry the
+ * `RelayState`, so dumps and JSON redact them and serialising throws.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class OutgoingRequest implements \JsonSerializable
 {
-    /** @var string The HTTP-Redirect binding: the message deflated into the query string. */
+    /** @var string The HTTP-Redirect binding. */
     public const string HTTP_REDIRECT = 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect';
 
-    /** @var string The HTTP-POST binding: the message posted from a form. */
+    /** @var string The HTTP-POST binding. */
     public const string HTTP_POST = 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST';
 
-    /** @var string What a dump shows for each field's value. */
-    private const string REDACTED = '[redacted]';
-
-    /** @var \SensitiveParameterValue The transport fields, by name, in the order they are sent. */
+    /** @var \SensitiveParameterValue The transport fields, by name, in sending order. */
     private \SensitiveParameterValue $fields;
 
     /**
@@ -52,7 +39,7 @@ final readonly class OutgoingRequest implements \JsonSerializable
         /** The binding it is sent by: `HTTP_REDIRECT` or `HTTP_POST`. */
         public string $binding,
 
-        // The transport fields, by name, in sending order; held wrapped
+        // Held wrapped, so not promoted
         #[\SensitiveParameter]
         array $fields,
     ) {
@@ -64,8 +51,7 @@ final readonly class OutgoingRequest implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the id, the binding and the names of the fields, never
-     * their values.
+     * Show the id, the binding and the field names, never a value.
      *
      * @return array{id: string, binding: string, fields: array<string, string>}
      */
@@ -74,13 +60,12 @@ final readonly class OutgoingRequest implements \JsonSerializable
         return [
             'id'      => $this->id,
             'binding' => $this->binding,
-            'fields'  => array_fill_keys(array_keys($this->fields()), self::REDACTED),
+            'fields'  => array_fill_keys(array_keys($this->fields()), '[redacted]'),
         ];
     }
 
     /**
-     * Refuse to be serialised: the request lives only for the start that wrote
-     * it.
+     * Refuse to be serialised; the request lives only for its start.
      *
      * @return array<string, mixed>
      *
@@ -110,10 +95,8 @@ final readonly class OutgoingRequest implements \JsonSerializable
     }
 
     /**
-     * The query string of the fields: each name, `=` and its value
-     * percent-encoded (RFC 3986), joined by `&`, in the order given. An
-     * HTTP-Redirect signature is over exactly these bytes, for the fields
-     * before `Signature`.
+     * The fields as an RFC 3986 query string, in order; an HTTP-Redirect
+     * signature covers exactly these bytes.
      *
      * @param  array<string, string>  $fields
      * @return string
@@ -140,7 +123,7 @@ final readonly class OutgoingRequest implements \JsonSerializable
     }
 
     /**
-     * The transport fields, by name, whole, in the order they are sent.
+     * The transport fields, unredacted, in sending order.
      *
      * @return array<string, string>
      */
@@ -151,7 +134,7 @@ final readonly class OutgoingRequest implements \JsonSerializable
     }
 
     /**
-     * The fields as the HTTP-Redirect query string, whole.
+     * The fields as the HTTP-Redirect query string, unredacted.
      *
      * @return string
      */
@@ -161,7 +144,7 @@ final readonly class OutgoingRequest implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: never a field's value.
+     * Encode the same redacted view as a dump.
      *
      * @return array{id: string, binding: string, fields: array<string, string>}
      */

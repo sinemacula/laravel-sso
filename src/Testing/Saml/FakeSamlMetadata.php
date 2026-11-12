@@ -7,27 +7,9 @@ namespace SineMacula\Laravel\Sso\Testing\Saml;
 use Carbon\CarbonImmutable;
 
 /**
- * The fake SAML identity provider's metadata (SAML 2.0 Metadata, SSO-2.8,
- * SSO-12.4), built from options a test changes one at a time: by default one
- * unsigned `EntityDescriptor` with an `IDPSSODescriptor` naming its signing
- * certificate, an HTTP-Redirect single sign-on service and the persistent
- * NameID format.
- *
- * `with()` changes any option:
- *
- * - `entity_id`, `sso_url`, `sso_binding`, `post_sso_url` (an HTTP-POST service
- *   besides, or `null`);
- * - `signing_certificates`, `encryption_certificates` (PEM), and
- *   `name_id_formats`;
- * - `valid_until` and `cache_duration` of the entity, `null` for none;
- * - `aggregate`: the entity ids of other entities that share an
- *   `EntitiesDescriptor` with this one (none writes the entity alone), and
- *   `aggregate_valid_until`;
- * - `sign`: `entity` signs the `EntityDescriptor`, `aggregate` the
- *   `EntitiesDescriptor`, `null` neither; `algorithm` and `digest` as the
- *   signer takes them.
- *
- * `signedBy()` signs with another key, an anchor the connection does not trust.
+ * The fake identity provider's metadata, unsigned by default. In `with()`,
+ * `aggregate` lists sibling entity ids and `sign` is `entity`, `aggregate` or
+ * `null`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -69,7 +51,7 @@ final readonly class FakeSamlMetadata
     ) {}
 
     /**
-     * The options of the provider's unsigned metadata.
+     * The default options: one unsigned entity with an HTTP-Redirect service.
      *
      * @param  string  $entityId
      * @param  string  $ssoUrl
@@ -111,7 +93,7 @@ final readonly class FakeSamlMetadata
     }
 
     /**
-     * Metadata whose signature another key makes.
+     * Metadata signed by another key, such as an untrusted anchor.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\XmlSigner  $signer
      * @return self
@@ -138,7 +120,7 @@ final readonly class FakeSamlMetadata
     }
 
     /**
-     * What `toXml()` answers, a DOM failure let through.
+     * The XML `toXml()` returns, letting a DOM failure through.
      *
      * @return string
      *

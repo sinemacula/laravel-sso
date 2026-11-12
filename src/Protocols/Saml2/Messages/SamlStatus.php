@@ -7,11 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols\Saml2\Messages;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues;
 
 /**
- * A SAML response's `Status` (SAML 2.0 Core §3.2.2.1), as the SAML adapter read
- * it: the top-level `StatusCode`, its first second-level code, and the
- * `StatusMessage`. The message is the identity provider's own text: it may be
- * logged only through the sanitiser and is never shown or put in an event
- * (SSO-5.7, SSO-6.9).
+ * A SAML response's `Status`. The message is the provider's own text: log it
+ * only through the sanitiser, never show it or put it in an event.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

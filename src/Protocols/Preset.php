@@ -5,22 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols;
 
 /**
- * Settings for a well-known identity provider, as data (SSO-2.2): the protocol,
- * the settings and the attribute mapping it fills in, and, for an issuer shared
- * by many organisations, the claim or attribute naming the organisation a
- * result belongs to, which linking by a verified domain requires (SSO-8.8).
- *
- * A connection is recognised as such a provider's by its issuer: exactly the
- * one the preset's settings fill in, or one matching the preset's issuer
- * pattern for a provider whose issuer names a directory (`names()`). Whatever
- * an administrator gives, a connection with such an issuer cannot enable
- * linking without the claim and its expected value
- * (`Connections\LinkingPolicyService`).
- *
- * A preset is never a code path of its own: it fills in a connection's
- * settings, and what an administrator gives replaces what it fills in, setting
- * by setting, so every check of the protocol applies as it does to settings
- * entered by hand.
+ * Default settings for a well-known identity provider. Given settings override
+ * them one by one, so every protocol check still applies.
  *
  * @api
  *
@@ -29,7 +15,7 @@ namespace SineMacula\Laravel\Sso\Protocols;
  */
 final readonly class Preset
 {
-    /** @var string The pattern a preset's name matches: a lower-case letter, then lower-case letters, digits or underscores. */
+    /** @var string The pattern a preset's name and protocol match. */
     private const string NAME_PATTERN = '/^[a-z][a-z0-9_]{0,63}$/D';
 
     /**
@@ -58,10 +44,10 @@ final readonly class Preset
         /** The attribute mapping it fills in: each target attribute by its source. */
         public array $attributeMapping = [],
 
-        /** For an issuer shared by many organisations, the claim or attribute naming the organisation. */
+        /** The claim naming the organisation, for an issuer many share. */
         public ?string $organizationClaim = null,
 
-        /** For a provider whose issuer names a directory, the pattern each of its issuers matches. */
+        /** The pattern each issuer matches, for an issuer naming a directory. */
         public ?string $issuerPattern = null,
     ) {
         if (preg_match(self::NAME_PATTERN, $name) !== 1 || preg_match(self::NAME_PATTERN, $protocol) !== 1) {
@@ -74,8 +60,7 @@ final readonly class Preset
     }
 
     /**
-     * The settings given, with what the preset fills in where none is given.
-     * The settings may carry a secret, so a trace shows them redacted.
+     * The given settings over the preset's.
      *
      * @param  array<string, mixed>  $settings
      * @return array<string, mixed>
@@ -86,8 +71,7 @@ final readonly class Preset
     }
 
     /**
-     * The attribute mapping given, with what the preset fills in for each
-     * target none is given for.
+     * The given attribute mapping over the preset's.
      *
      * @param  array<string, mixed>  $mapping
      * @return array<string, mixed>
@@ -98,8 +82,7 @@ final readonly class Preset
     }
 
     /**
-     * Whether the preset is for an issuer many organisations share, whose
-     * results are told apart by its organisation claim.
+     * Whether many organisations share the issuer.
      *
      * @return bool
      */
@@ -109,8 +92,7 @@ final readonly class Preset
     }
 
     /**
-     * Whether the issuer is this provider's: exactly the one the preset's
-     * settings fill in, or one matching its issuer pattern.
+     * Whether the issuer equals the preset's or matches its issuer pattern.
      *
      * @param  string  $issuer
      * @return bool

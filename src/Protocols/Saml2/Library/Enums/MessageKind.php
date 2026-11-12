@@ -5,10 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums;
 
 /**
- * The kind of SAML document the hardened parser reads, which names the SAML 2.0
- * schema it must be valid against (SSO-6.1, SSO-6.11): a protocol message (a
- * `Response`), an assertion decrypted from an `EncryptedAssertion`, and
- * identity provider metadata.
+ * The kind of SAML document the hardened parser reads, naming its schema.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,8 +24,7 @@ enum MessageKind: string
     case METADATA = 'metadata';
 
     /**
-     * The file name of the schema a document of the kind must be valid against,
-     * in the library's schema directory.
+     * The schema's file name in the library's schema directory.
      *
      * @return string
      */

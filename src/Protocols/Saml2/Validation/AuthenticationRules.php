@@ -11,28 +11,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 
 /**
- * The authentication a verified SAML assertion states (SSO-6.10, SSO-5.10), as
- * the result's authentication context, or why it is refused, in this order:
- *
- * 1. the assertion carries exactly one `AuthnStatement`, whose `SessionIndex`
- *    and `AuthnContextClassRef`, when present, are 1 to 1024 bytes, or
- *    `response_invalid`;
- * 2. its `AuthnInstant` is not after now plus the skew, or
- *    `assertion_expired`;
- * 3. with `max_authentication_age_seconds` set (none by default), now is no
- *    more than that plus the skew after the `AuthnInstant`, or
- *    `authentication_expired`;
- * 4. for a `reauthenticate` request, the `AuthnInstant` is no earlier than the
- *    request's start less the skew, or `authentication_expired`;
- * 5. with `requested_authn_context` set, the `AuthnContextClassRef` is one of
- *    those classes exactly (they were requested with `Comparison="exact"`), or
- *    `authentication_context_mismatch`;
- * 6. a `SessionNotOnOrAfter` that is not after now is `authentication_expired`;
- *    the skew never extends it.
- *
- * The context is the `AuthnInstant`, the `AuthnContextClassRef`, the
- * `SessionIndex` as the provider session id, and the `SessionNotOnOrAfter` as
- * the provider session deadline. Nothing here keeps anything.
+ * The authentication context a verified SAML assertion states, or why it is
+ * refused, with the first broken rule answering.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -87,8 +67,7 @@ final class AuthenticationRules
     }
 
     /**
-     * Whether the session index and the class, when present, are each 1 to 1024
-     * bytes, as the authentication context holds them.
+     * Whether the session index and class fit the authentication context.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\AuthnStatement  $statement
      * @return bool
@@ -99,7 +78,7 @@ final class AuthenticationRules
     }
 
     /**
-     * Whether the text is absent, or 1 to 1024 bytes.
+     * Whether the text is absent, or non-empty and within the cap.
      *
      * @param  ?string  $text
      * @return bool
@@ -110,8 +89,8 @@ final class AuthenticationRules
     }
 
     /**
-     * Whether the authentication is no older than the connection's maximum
-     * authentication age plus the skew, when it sets one.
+     * Whether the authentication is within the maximum age plus the skew, if
+     * one is set.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\AuthnStatement  $statement
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -125,8 +104,8 @@ final class AuthenticationRules
     }
 
     /**
-     * Whether, for a `reauthenticate` request, the authentication is no earlier
-     * than the request's start less the skew.
+     * Whether a reauthentication is no earlier than the request's start less
+     * the skew.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\AuthnStatement  $statement
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -140,7 +119,7 @@ final class AuthenticationRules
     }
 
     /**
-     * Whether the class is one the connection requires, when it requires any.
+     * Whether the class is exactly one the connection requires, if any.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\AuthnStatement  $statement
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -154,7 +133,7 @@ final class AuthenticationRules
     }
 
     /**
-     * Whether the provider session's deadline is not after now.
+     * Whether the provider session's deadline has passed; no skew applies.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\AuthnStatement  $statement
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context

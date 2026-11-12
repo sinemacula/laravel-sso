@@ -5,23 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols;
 
 /**
- * What lets one sign-in finish across the key rotation its own token triggered
- * (SSO-2.13, SSO-7.3, `docs/design/flows.md`): when a callback's unknown-`kid`
- * refetch commits a JWKS that removes a key, the trust version is raised and
- * everything in flight through the connection is voided, except the one
- * consumed request whose token asked. The refetch answers this receipt, naming
- * exactly that connection, that request, the trust version it left and the one
- * it made, and the JWKS version it wrote. The key the token then verified with
- * is added (`withKey()`), and a driver hands the receipt on only once every
- * check of the token has passed under those keys.
- *
- * `Metadata\TransitionReceipts::permits()` judges it at the final locks. It
- * never restores a request voided independently and never adopts a later trust
- * version: anything but this exact transition refuses the completion.
- *
- * It lives only for the completion that got it: it is never stored, so it
- * cannot carry into another request, and it refuses to be serialised or
- * unserialised. A dump shows the versions alone.
+ * Lets one sign-in finish across the key removal its own token's JWKS refetch
+ * made. It names that exact transition and is never stored.
  *
  * @api
  *
@@ -30,7 +15,7 @@ namespace SineMacula\Laravel\Sso\Protocols;
  */
 final readonly class TransitionReceipt
 {
-    /** @var ?\SensitiveParameterValue The RFC 7638 thumbprint of the key the token verified with, once known; held wrapped, since a `kid` may be one. */
+    /** @var ?\SensitiveParameterValue RFC 7638 thumbprint of the verifying key. */
     private ?\SensitiveParameterValue $keyThumbprint;
 
     /**
@@ -52,7 +37,7 @@ final readonly class TransitionReceipt
         /** The consumed request whose token triggered the refetch. */
         public string $requestId,
 
-        /** The trust version the request was started under, which the refetch left. */
+        /** The trust version the request started under. */
         public int $fromTrustVersion,
 
         /** The trust version the refetch made. */
@@ -61,7 +46,7 @@ final readonly class TransitionReceipt
         /** The JWKS version the refetch wrote. */
         public int $jwksVersion,
 
-        // Not promoted: held wrapped, so no dump, export or array cast shows it
+        // Not promoted: held wrapped, since a `kid` may be a thumbprint
         #[\SensitiveParameter]
         ?string $keyThumbprint = null,
 
@@ -72,7 +57,7 @@ final readonly class TransitionReceipt
     }
 
     /**
-     * What a dump shows: the ids and the versions, never the key.
+     * Show the ids and versions, never the key.
      *
      * @return array<string, mixed>
      */
@@ -88,7 +73,7 @@ final readonly class TransitionReceipt
     }
 
     /**
-     * Refuse to be serialised: the receipt lives only for its completion.
+     * Refuse to be serialised; the receipt lives only for its completion.
      *
      * @return array<string, mixed>
      *
@@ -118,7 +103,7 @@ final readonly class TransitionReceipt
     }
 
     /**
-     * The RFC 7638 thumbprint of the key the token verified with, once known.
+     * The RFC 7638 thumbprint of the verifying key, once known.
      *
      * @return ?string
      */

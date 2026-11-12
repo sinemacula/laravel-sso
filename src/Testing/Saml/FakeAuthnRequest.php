@@ -9,25 +9,8 @@ use SineMacula\Laravel\Sso\Protocols\Navigation;
 use SineMacula\Laravel\Sso\Testing\Navigations;
 
 /**
- * The SAML `AuthnRequest` a start sent the browser to the identity provider
- * with, read as the fake identity provider's single sign-on service reads it
- * (SSO-12.4), so a test answers the request the package really sent, never one
- * it guessed: its `ID`, which the response's `InResponseTo` names, its `Issuer`
- * (the service provider entity id, the response's audience), its assertion
- * consumer service URL (where the response is posted, its `Destination` and its
- * bearer `Recipient`), its `Destination`, whether it forces authentication, and
- * the `RelayState` the browser carries back.
- *
- * It reads either binding: the `SAMLRequest` of an HTTP-Redirect URL's query,
- * deflated and base64 encoded, or the `SAMLRequest` field of an HTTP-POST form,
- * base64 encoded, each with its `RelayState`. It is given the `StartResult`,
- * its `Navigation`, or the start's JSON body or its `navigation` member, as an
- * application's test holds it. A start that sent the browser nowhere, or a
- * message that is not an `AuthnRequest` with an `ID`, an `Issuer` and an
- * assertion consumer service URL, is a `LogicException` saying which.
- *
- * It checks no signature: what the identity provider would make of a signed
- * request is the package's own tests' to cover.
+ * The `AuthnRequest` a start actually sent, read from either binding so a test
+ * answers the real request. No signature is checked.
  *
  * @api
  *
@@ -64,7 +47,7 @@ final readonly class FakeAuthnRequest
         /** The service provider entity id the request names as its `Issuer`. */
         public string $issuer,
 
-        /** The URL the request asks the response to be posted to. */
+        /** Where the response is posted: its `Destination` and `Recipient`. */
         public string $assertionConsumerService,
 
         /** The single sign-on URL the request is addressed to, if it names one. */
@@ -81,7 +64,7 @@ final readonly class FakeAuthnRequest
     ) {}
 
     /**
-     * The request the navigation carries to the identity provider.
+     * The request a `StartResult`, `Navigation` or start JSON carries.
      *
      * @param  array<array-key, mixed>|\SineMacula\Laravel\Sso\Flows\StartResult|\SineMacula\Laravel\Sso\Protocols\Navigation  $navigation
      * @return self
@@ -105,8 +88,8 @@ final readonly class FakeAuthnRequest
     }
 
     /**
-     * The XML of an encoded `SAMLRequest`: base64, and deflated as well when it
-     * travelled in a URL.
+     * The XML of a base64 `SAMLRequest`, also deflated when it travelled in a
+     * URL.
      *
      * @param  string  $encoded
      * @param  bool  $deflated
@@ -129,8 +112,7 @@ final readonly class FakeAuthnRequest
     }
 
     /**
-     * The raw DEFLATE data inflated, or `false` when it is not DEFLATE data,
-     * with the warning that says so kept from the test.
+     * The raw DEFLATE data inflated, or `false`, with the warning suppressed.
      *
      * @param  string  $raw
      * @return false|string

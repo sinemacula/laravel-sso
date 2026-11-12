@@ -8,12 +8,7 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues;
 
 /**
- * One `SubjectConfirmation` of a verified assertion's subject (SAML 2.0 Core
- * §2.4.1.1), as the SAML adapter read it: its `Method`, and its
- * `SubjectConfirmationData`'s `NotBefore`, `NotOnOrAfter`, `Recipient`,
- * `InResponseTo` and `Address`, each `null` when absent. Whether one bearer
- * confirmation satisfies every rule on its own is the response validation's
- * judgement (SSO-6.4, SSO-6.5, SSO-6.6), never the adapter's.
+ * One `SubjectConfirmation` of a verified assertion, unjudged.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,7 +17,7 @@ final readonly class SubjectConfirmation implements \JsonSerializable
 {
     use HoldsProviderValues;
 
-    /** @var string The bearer confirmation method (SAML 2.0 Profiles §3.3). */
+    /** @var string The bearer confirmation method. */
     public const string BEARER = 'urn:oasis:names:tc:SAML:2.0:cm:bearer';
 
     /**

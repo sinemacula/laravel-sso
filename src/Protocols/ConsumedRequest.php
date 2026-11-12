@@ -12,24 +12,8 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * The authorisation request a response was correlated with, as the completion
- * pipeline consumed it (SSO-5.1, SSO-6.6, SSO-7.1), given to the protocol
- * driver to validate the response against: what the flow is for, the
- * application, the public reference, when it started, the issuer it expects and
- * whether that issuer must return `iss` (SSO-7.1), the SAML `AuthnRequest` id
- * `InResponseTo` must equal, the nonce's digest, and the PKCE verifier the
- * package uses with the identity provider (SSO-5.4).
- *
- * It is consumed before the driver sees it, so it is never consumed again,
- * whether the response passes or fails. It keeps the PKCE verifier as the
- * request stored it, encrypted, and decrypts it into a `Secrets\Secret` only
- * when the driver asks for it (`codeVerifier()`) to build the token request,
- * afresh on each call and keeping nothing, so a completion whose driver never
- * asks (a SAML one) never decrypts it, and the plaintext never lives in the
- * completion's state. The ciphertext and the encrypter are held in a
- * `\SensitiveParameterValue`, and the nonce only as a digest, compared in
- * constant time; a dump shows none of them, and it refuses to be serialised or
- * unserialised.
+ * The consumed authorisation request a driver validates a response against. The
+ * PKCE verifier stays encrypted until `codeVerifier()` is called.
  *
  * @api
  *
@@ -38,7 +22,7 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
  */
 final readonly class ConsumedRequest
 {
-    /** @var ?\SensitiveParameterValue What decrypts the PKCE verifier, a `\Closure(): string`, when the request keeps one. */
+    /** @var ?\SensitiveParameterValue A `\Closure(): string` decrypting the PKCE verifier. */
     private ?\SensitiveParameterValue $codeVerifier;
 
     /**
@@ -68,7 +52,7 @@ final readonly class ConsumedRequest
         /** The request's public reference. */
         public RequestReference $reference,
 
-        /** When the request started, by the package's clock (a `reauthenticate` result's authentication time must not be earlier). */
+        /** When the request started; a reauthentication must not predate it. */
         public CarbonImmutable $startedAt,
 
         /** The issuer the response must come from, as the request recorded it. */
@@ -83,18 +67,18 @@ final readonly class ConsumedRequest
         /** The lower-case hex SHA-256 digest of the OIDC nonce. */
         private ?string $nonceDigest = null,
 
-        // Not promoted: the PKCE verifier, encrypted, held wrapped
+        // Not promoted: the encrypted PKCE verifier, held wrapped
         #[\SensitiveParameter]
         ?string $codeVerifier = null,
 
-        // Not promoted: decrypts it only when the driver asks
+        // Not promoted: captured by the decrypting closure
         ?SecretEncrypter $encrypter = null,
     ) {
         $this->codeVerifier = $codeVerifier === null ? null : new \SensitiveParameterValue(self::decryption($codeVerifier, $encrypter));
     }
 
     /**
-     * What a dump shows: never the nonce's digest or the PKCE verifier.
+     * Show the request without the nonce digest or the PKCE verifier.
      *
      * @return array<string, mixed>
      */
@@ -113,8 +97,7 @@ final readonly class ConsumedRequest
     }
 
     /**
-     * Refuse to be serialised: the request is consumed for the completion that
-     * consumed it and lives no longer.
+     * Refuse to be serialised; it lives only for its completion.
      *
      * @return array<string, mixed>
      *
@@ -144,9 +127,8 @@ final readonly class ConsumedRequest
     }
 
     /**
-     * The PKCE verifier the package uses with the identity provider, decrypted
-     * now, for the token request and for nothing else; `null` when the request
-     * keeps none. A ciphertext no key decrypts propagates (SSO-11.4).
+     * The PKCE verifier, decrypted afresh on each call; `null` when there is
+     * none.
      *
      * @return ?\SineMacula\Laravel\Sso\Secrets\Secret
      */
@@ -159,8 +141,7 @@ final readonly class ConsumedRequest
     }
 
     /**
-     * Whether the nonce is the one the request stored, compared in constant
-     * time; never when the request stored none.
+     * Whether the nonce matches the stored digest, in constant time.
      *
      * @param  string  $nonce
      * @return bool
@@ -171,9 +152,7 @@ final readonly class ConsumedRequest
     }
 
     /**
-     * What decrypts the PKCE verifier's ciphertext through the encrypter, once
-     * it is asked to. A ciphertext with no encrypter is application code's
-     * mistake.
+     * A closure that decrypts the PKCE verifier when called.
      *
      * @param  string  $ciphertext
      * @param  ?\SineMacula\Laravel\Sso\Contracts\SecretEncrypter  $encrypter

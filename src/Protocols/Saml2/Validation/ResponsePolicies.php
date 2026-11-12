@@ -14,21 +14,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * Builds what the SAML adapter holds one connection's response to (SSO-2.6,
- * SSO-6.2, SSO-6.7, SSO-6.8), read afresh for each response:
- *
- * - the identity provider signing certificates the connection trusts now
- *   (`KeyRing::trustedCertificates()`, `idp_signing`), the only keys any
- *   signature is verified with;
- * - the signature algorithms its settings allow, and the key transport and
- *   data encryption algorithms, AES-CBC among them only when it lists one;
- * - what yields the service provider's decryption keys: a closure over
- *   `KeyRing::decryption()` that reads them and decrypts each private key only
- *   when the adapter asks, which it does only for an encrypted assertion, so a
- *   response carrying none never decrypts a stored key.
- *
- * It holds the key ring alone, which keeps nothing between calls (SSO-11.2). A
- * database error propagates (SSO-11.4).
+ * Builds a connection's `ResponsePolicy`, read afresh for each response.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -84,8 +70,8 @@ final readonly class ResponsePolicies
     }
 
     /**
-     * What reads the connection's decryption keys and decrypts their private
-     * halves, once it is called.
+     * A closure that reads and decrypts the private decryption keys when
+     * called, so a response without an encrypted assertion decrypts none.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\KeyRing  $keys
      * @param  string  $connectionId

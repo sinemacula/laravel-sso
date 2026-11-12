@@ -5,16 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Testing\Saml;
 
 /**
- * The signature wrapping attacks the fake SAML identity provider can mount on
- * its own signed responses (SSO-6.3, SSO-12.4), as the library spike's fixtures
- * built them: XSW1 to XSW8 (Somorovsky et al., "On Breaking SAML", USENIX
- * Security 2012), and an unsigned evil assertion that reuses the signed
- * assertion's `ID`, placed before or after it. Each moves a validly signed
- * element somewhere a careless validator still finds its signature, and puts an
- * evil, unsigned element where it reads its values.
- *
- * XSW1 and XSW2 wrap a signed response; every other variant wraps a response
- * whose assertion is signed. A test tool, with the DOM alone.
+ * Signature wrapping attacks on the fake identity provider's signed responses:
+ * XSW1 to XSW8 (Somorovsky et al., "On Breaking SAML", 2012) and same-`ID` evil
+ * assertions.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +24,8 @@ final readonly class SignatureWrapping
     private const string NS_DS = 'http://www.w3.org/2000/09/xmldsig#';
 
     /**
-     * The wrapped document: the signed document given, attacked with the evil
-     * response (XSW1, XSW2) or the evil assertion (every other variant).
+     * The signed document attacked with the evil response (XSW1, XSW2) or the
+     * evil assertion (every other variant).
      *
      * @param  string  $variant
      * @param  \DOMDocument  $signed
@@ -51,7 +44,7 @@ final readonly class SignatureWrapping
     }
 
     /**
-     * What `apply()` answers, a DOM failure let through.
+     * The document `apply()` returns, letting a DOM failure through.
      *
      * @param  string  $variant
      * @param  \DOMDocument  $signed
@@ -75,7 +68,7 @@ final readonly class SignatureWrapping
     }
 
     /**
-     * The variant, once it is one the provider has.
+     * The variant, if it is known.
      *
      * @param  string  $variant
      * @return string

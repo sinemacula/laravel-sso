@@ -5,14 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Testing\Saml;
 
 /**
- * Reads the XML the fake SAML helpers are given (SSO-12.4): an `AuthnRequest`
- * the package sent, or the service provider metadata it describes. The package
- * wrote both, so this reads them plainly, never as the package's hardened
- * parser reads what an identity provider sends: no network, no document type,
- * and every libxml warning kept from the test.
- *
- * Anything it cannot read is a `LogicException` naming what was expected, so a
- * test fails where the message went wrong.
+ * Reads XML the package wrote for the fake SAML helpers: plainly, with no
+ * network, no document type and libxml warnings kept from the test.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,8 +16,7 @@ namespace SineMacula\Laravel\Sso\Testing\Saml;
 final class XmlDocument
 {
     /**
-     * The root element of the document, named in a failure as what it was meant
-     * to be.
+     * The document's root element; a failure names what it was meant to be.
      *
      * @param  string  $xml
      * @param  string  $what
@@ -49,7 +42,7 @@ final class XmlDocument
     }
 
     /**
-     * The value of the element's attribute, which must not be empty.
+     * The element's non-empty attribute value.
      *
      * @param  \DOMElement  $element
      * @param  string  $name
@@ -65,8 +58,7 @@ final class XmlDocument
     }
 
     /**
-     * The trimmed text of the first element of the namespace and name inside
-     * the element, which must not be empty.
+     * The trimmed, non-empty text of the first descendant of the name.
      *
      * @param  \DOMElement  $element
      * @param  string  $namespace

@@ -7,15 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How a driver judged an unsolicited response (SSO-5.8, SSO-6.11): allowed,
- * with the connection's start URL naming the connection, which the browser is
- * sent to so the application starts an SP-initiated flow, and the record that
- * keeps the response from being used again; or refused with a reason.
- *
- * An allowed one never signs anyone in: the completion records it against
- * replay, under the connection's lock and with the connection checked again,
- * and answers `reinitiated`; the unsolicited identity never carries into the
- * new flow.
+ * A driver's verdict on an unsolicited response: send the browser to start a
+ * fresh flow, or refuse. An allowed one never signs anyone in.
  *
  * @api
  *
@@ -33,7 +26,7 @@ final readonly class Reinitiation
      */
     private function __construct(
 
-        /** The connection's start URL, naming the connection, for an allowed one. */
+        /** The connection's start URL, for an allowed one. */
         public ?string $startUrl,
 
         /** What keeps the response from being used again, for an allowed one. */
@@ -44,8 +37,8 @@ final readonly class Reinitiation
     ) {}
 
     /**
-     * The response passed the unsolicited profile: send the browser to the
-     * start URL, once the record is made.
+     * The response passed the unsolicited profile; send the browser to the
+     * start URL once the replay record is made.
      *
      * @param  string  $startUrl
      * @param  \SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay

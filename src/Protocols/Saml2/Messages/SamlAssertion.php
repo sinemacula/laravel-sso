@@ -8,17 +8,8 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues;
 
 /**
- * The one assertion of a SAML response, read only from its verified element or
- * its verified decrypted form (SSO-6.3): its `ID`, `Issuer` and `IssueInstant`,
- * its subject, conditions, authentication statements and attributes, how many
- * encrypted attributes and other statements it carries, whether it carries
- * `Advice`, and its provenance: whether its own signature was verified (the
- * adapter verifies every signature present, so a signed assertion is a verified
- * one), and whether it arrived encrypted.
- *
- * Whether the assertion is covered by a trusted signature at all is the
- * adapter's rule: an assertion it answers is covered by its own verified
- * signature or by the enclosing response's (`SamlResponse::isSigned()`).
+ * A response's one assertion, read only from verified content. The adapter
+ * answers only an assertion that its own or the response's signature covers.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,9 +47,7 @@ final readonly class SamlAssertion implements \JsonSerializable
         array $authnStatements = [],
         // Every attribute of every attribute statement, in order
         array $attributes = [],
-        // How many encrypted attributes and other statements it carries,
-        // whether it carries advice, whether its own signature was verified and
-        // whether it arrived encrypted
+        // Counts of unread parts, and whether it was signed or encrypted
         array $facts = [],
     ) {
         $this->hold([
@@ -155,8 +144,7 @@ final readonly class SamlAssertion implements \JsonSerializable
     }
 
     /**
-     * How many `EncryptedAttribute`s it carries; the package never decrypts
-     * one.
+     * How many `EncryptedAttribute`s it carries; none is ever decrypted.
      *
      * @return int
      */
@@ -167,8 +155,7 @@ final readonly class SamlAssertion implements \JsonSerializable
     }
 
     /**
-     * The qualified name of every statement other than an authentication or
-     * attribute statement, in order.
+     * The qualified name of every other kind of statement, in order.
      *
      * @return list<string>
      */
