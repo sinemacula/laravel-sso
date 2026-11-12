@@ -16,11 +16,7 @@ use Tests\Concerns\DumpsValues;
 use Tests\TestCase;
 
 /**
- * Unit tests for what a reservation is made under (SSO-8.8): it holds the email
- * only to digest it, so a dump shows ids and never the email or the
- * organisation, and it refuses to be serialised; the candidate it reserves for
- * holds references and a time; and the digest salts the email with the
- * reservation's own identity.
+ * Unit tests for reservation terms and candidates.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,9 +59,7 @@ final class ReservationTermsTest extends TestCase
     }
 
     /**
-     * A dump shows the request, the domain claim and the version, exactly,
-     * `json_encode()` writes the email and the organisation redacted, and no
-     * form of a dump shows either.
+     * No dump or encoding shows the email or the organisation.
      *
      * @return void
      */
@@ -127,9 +121,7 @@ final class ReservationTermsTest extends TestCase
     }
 
     /**
-     * The digest is the tagged SHA-256 of the reservation's identity and the
-     * email exactly as asserted, so another reservation of the email, or
-     * another spelling of it, digests differently.
+     * The digest salts the exact email with the reservation's identity.
      *
      * @return void
      */

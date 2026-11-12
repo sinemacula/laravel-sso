@@ -12,11 +12,7 @@ use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
 use Tests\Fixtures\FixedClock;
 
 /**
- * Unit tests for the arguments the default single-use store refuses: a
- * malformed namespace, an empty key and an expiry that is not after now are
- * each an `InvalidArgumentException`, thrown before any statement (there is no
- * application here, so a statement would fail otherwise), and no message names
- * the key.
+ * Unit tests for arguments the database single-use store refuses up front.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,8 +50,7 @@ final class DatabaseSingleUseStoreArgumentsTest extends TestCase
     }
 
     /**
-     * A malformed namespace is refused before anything else, and its message
-     * names neither the namespace nor the key.
+     * A malformed namespace is refused first, naming neither it nor the key.
      *
      * @param  string  $namespace
      * @return void
@@ -96,8 +91,7 @@ final class DatabaseSingleUseStoreArgumentsTest extends TestCase
     }
 
     /**
-     * An expiry equal to now, or before it, is refused, and the message does
-     * not name the key.
+     * An expiry not after now is refused without naming the key.
      *
      * @param  int  $seconds
      * @return void
@@ -112,8 +106,7 @@ final class DatabaseSingleUseStoreArgumentsTest extends TestCase
     }
 
     /**
-     * An expiry a microsecond before now, in another timezone, is still before
-     * now: instants are compared, not wall clocks.
+     * Expiries are compared as instants, not wall clocks.
      *
      * @return void
      */

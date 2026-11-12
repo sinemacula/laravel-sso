@@ -10,8 +10,7 @@ use SineMacula\Laravel\Sso\Flows\S256Challenge;
 use SineMacula\Laravel\Sso\Flows\Verifier;
 
 /**
- * Unit tests for the S256 challenge of a verifier: `BASE64URL(SHA-256)` with no
- * padding, 43 characters, satisfied only by the verifier it was made from.
+ * Unit tests for a verifier's S256 challenge.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,8 +36,7 @@ final class S256ChallengeTest extends TestCase
     }
 
     /**
-     * A challenge is satisfied by the verifier it was made from, and by no
-     * other.
+     * A challenge is satisfied only by its own verifier.
      *
      * @return void
      *

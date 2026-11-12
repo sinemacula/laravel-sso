@@ -16,10 +16,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use Tests\Fixtures\Protocols\ExampleConnection;
 
 /**
- * The package keeps no sessions (SSO-5.10): the default contract answers
- * `not_signed_in` to every question, so no `reauthenticate` flow starts and no
- * code is redeemed, and being asked to renew a session is the package's own
- * mistake. Only `signed_in` counts as signed in, and the values are stable.
+ * Unit tests for the default reauthentication sessions, which find none.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -70,8 +67,7 @@ final class NoReauthenticationSessionsTest extends TestCase
     }
 
     /**
-     * Being asked to renew is the package's own mistake, with or without
-     * evidence, since no session is ever found.
+     * A renewal is the package's own mistake, since no session is ever found.
      *
      * @return void
      */

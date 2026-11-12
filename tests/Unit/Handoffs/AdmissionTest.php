@@ -15,10 +15,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 
 /**
- * Pins the frozen shape of what a redemption's checks and writes came to:
- * exactly these six parts, in this order; a refusal carries its outcome and
- * nothing else, even judged under an enforcement version, and only `passed`
- * counts as passed.
+ * Unit tests for the shape of a redemption's admission.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -67,8 +64,7 @@ final class AdmissionTest extends TestCase
     }
 
     /**
-     * A passed admission judged under an enforcement version keeps every part
-     * and takes that version in place of the one it had.
+     * A passed admission takes the version it was judged under.
      *
      * @return void
      */
@@ -137,8 +133,7 @@ final class AdmissionTest extends TestCase
     }
 
     /**
-     * An outcome that refuses is not passed even carrying an identity and a
-     * link, so a redeemer can never read one as established.
+     * A refusing outcome is never passed, whatever it carries.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome  $outcome
      * @return void

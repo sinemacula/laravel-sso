@@ -10,8 +10,7 @@ use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 
 /**
- * Unit tests for one refused setting: its name and its code, serialised without
- * the value.
+ * Unit tests for a setting violation.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

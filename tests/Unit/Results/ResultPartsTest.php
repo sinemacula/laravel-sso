@@ -17,10 +17,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Unit tests for the parts of a verified result: the authentication context and
- * its bounds, the linking email and its form, the claims a driver verified,
- * kept out of dumps and serialisation, each part's JSON showing no provider
- * value, the default deadline answer, and the stable values of their enums.
+ * Unit tests for the parts of a verified result.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,8 +34,7 @@ use Tests\Fixtures\Results\ExampleResults;
 final class ResultPartsTest extends TestCase
 {
     /**
-     * An empty context states nothing; a full one keeps every part and stores
-     * its instants in UTC to the microsecond.
+     * A full context keeps every part, with instants in UTC to the microsecond.
      *
      * @return void
      */
@@ -70,8 +66,7 @@ final class ResultPartsTest extends TestCase
     }
 
     /**
-     * The context keeps at most 32 methods, each 1 to 255 bytes, in a list, and
-     * a class and session id of 1 to 1024 bytes.
+     * The context's methods, class and session id are bounded.
      *
      * @return void
      */
@@ -115,9 +110,7 @@ final class ResultPartsTest extends TestCase
     }
 
     /**
-     * A linking email keeps its email, source and organisation exactly, gives
-     * its domain after the last `@`, and refuses anything without one `@`
-     * between two non-empty parts.
+     * A linking email keeps its parts exactly and needs exactly one `@`.
      *
      * @return void
      */
@@ -158,8 +151,7 @@ final class ResultPartsTest extends TestCase
     }
 
     /**
-     * Claims keep what the driver verified exactly; a dump shows the issuer,
-     * the format and the attributes' names, never the subject or a value.
+     * Claims keep what was verified; a dump never shows the subject or a value.
      *
      * @return void
      */
@@ -184,8 +176,7 @@ final class ResultPartsTest extends TestCase
     }
 
     /**
-     * A context's JSON shows which parts were stated, each `[redacted]`, and
-     * how many methods, never a value: an empty one states nothing.
+     * A context's JSON shows which parts were stated, never a value.
      *
      * @return void
      */
@@ -205,8 +196,7 @@ final class ResultPartsTest extends TestCase
     }
 
     /**
-     * A linking email's JSON shows its source, and its email and organisation
-     * as `[redacted]`, the organisation `null` when none was given.
+     * A linking email's JSON shows its source and redacts the rest.
      *
      * @return void
      */
@@ -222,9 +212,7 @@ final class ResultPartsTest extends TestCase
     }
 
     /**
-     * Claims' JSON shows the issuer, the format, each attribute's name with the
-     * kind of its value, and the redacted context and linking email, never the
-     * subject or a value the provider asserted.
+     * Claims' JSON never shows the subject or an asserted value.
      *
      * @return void
      */
@@ -310,8 +298,7 @@ final class ResultPartsTest extends TestCase
     }
 
     /**
-     * The default deadline contract says the deadline limits the session; the
-     * enums' values are stable.
+     * The default deadline limits the session; the enum values are fixed.
      *
      * @return void
      */
@@ -325,8 +312,7 @@ final class ResultPartsTest extends TestCase
     }
 
     /**
-     * Stored values are read strictly: a string is a string, an optional one
-     * may be absent, and an instant is exactly the stored form.
+     * Stored values are read strictly.
      *
      * @return void
      *

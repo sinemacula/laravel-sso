@@ -18,9 +18,7 @@ use SineMacula\Laravel\Sso\Protocols\DriverScope;
 use SineMacula\Laravel\Sso\Support\PackageDefaults;
 
 /**
- * Unit tests for `PackageDefaults`: the private key of each default, the
- * abstracts the package scopes, and that every default implements its contract,
- * once.
+ * Unit tests for `PackageDefaults`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,8 +39,7 @@ final class PackageDefaultsTest extends TestCase
     }
 
     /**
-     * The scoped abstracts are each scoped default's key, then the driver
-     * scope.
+     * The scoped abstracts are the scoped keys, then the driver scope.
      *
      * @return void
      */
@@ -65,8 +62,7 @@ final class PackageDefaultsTest extends TestCase
     }
 
     /**
-     * Every default implements its contract, and no contract is both a
-     * singleton and scoped.
+     * Every default implements its contract; none is singleton and scoped.
      *
      * @return void
      */

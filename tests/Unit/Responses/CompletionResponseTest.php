@@ -24,12 +24,7 @@ use Symfony\Component\VarDumper\Cloner\VarCloner;
 use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /**
- * Unit tests for the responses a completion answers with: a `303` after a POST
- * and a `302` after a GET, never a `307` or a `308`; the code or the failure
- * code, then the reference, in the fragment or the query of the redirect URI,
- * otherwise unchanged; a `400` or a `429` with no redirect; the same headers on
- * every one; the body a message; the code never in a dump and never serialised;
- * and nothing caught.
+ * Unit tests for completion responses.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -92,9 +87,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * Each outcome answers with its status for each method: a redirect is a
-     * `303` after a POST, a `302` after a GET, in any case, and a `303` after
-     * any other method; a refusal is a `400` or a `429` whatever the method.
+     * A redirect is a `303`, or `302` after a GET; a refusal a `400` or `429`.
      *
      * @param  string  $outcome
      * @param  string  $method
@@ -108,8 +101,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * No outcome after any method answers with a `307` or a `308`, which would
-     * forward the posted body.
+     * No response is a `307` or `308`, which would forward the posted body.
      *
      * @return void
      */
@@ -148,8 +140,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * A completed one redirects to the redirect URI, otherwise unchanged, with
-     * the code and then the reference in the fragment or the query.
+     * A completed one adds the code then the reference to the redirect URI.
      *
      * @param  string  $redirectUri
      * @param  \SineMacula\Laravel\Sso\Applications\Enums\HandoffDelivery  $delivery
@@ -181,8 +172,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * A failed one redirects to the same URI, otherwise unchanged, with the
-     * failure code and then the reference in the fragment or the query.
+     * A failed one adds the failure code then the reference to the URI.
      *
      * @param  string  $redirectUri
      * @param  \SineMacula\Laravel\Sso\Applications\Enums\HandoffDelivery  $delivery
@@ -199,9 +189,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * Every failure reason is carried as its code, which needs no
-     * percent-encoding, and nothing else: no reason in prose, no description
-     * and no assertion.
+     * Every failure reason is carried as its code alone.
      *
      * @return void
      */
@@ -234,8 +222,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * A rejected one is a `400` with no redirect and the same body whatever the
-     * reason or the method.
+     * A rejected one is a `400` with no redirect and the same body.
      *
      * @return void
      */
@@ -367,8 +354,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * A dump and `json_encode()` show the location with the code redacted,
-     * wherever the code is, while `location()` still reveals it.
+     * A dump and JSON redact the code; `location()` still reveals it.
      *
      * @param  string  $redirectUri
      * @param  \SineMacula\Laravel\Sso\Applications\Enums\HandoffDelivery  $delivery
@@ -395,8 +381,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * A failed one, a re-initiated one and a refusal show what they carry, with
-     * nothing to redact.
+     * A response without a code shows what it carries.
      *
      * @return void
      */
@@ -449,8 +434,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * The builder catches nothing: an error reading a message propagates as it
-     * was thrown, whatever the outcome, and never becomes a failure redirect.
+     * An error reading a message propagates, never a failure redirect.
      *
      * @return void
      */
@@ -490,9 +474,7 @@ final class CompletionResponseTest extends TestCase
     }
 
     /**
-     * Rows of `name => [redirect URI, location before a fragment's parameters,
-     * location before a query's parameters]`: an https URI with and without a
-     * path, a trailing slash or a query, and a private-use scheme.
+     * Rows of `name => [redirect URI, fragment location, query location]`.
      *
      * @return array<string, array{string, string, string}>
      */

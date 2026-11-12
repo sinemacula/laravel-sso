@@ -10,8 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptLimit;
 
 /**
- * Unit tests for one attempt limit: its bounds and its windows, aligned to the
- * clock.
+ * Unit tests for an attempt limit.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,8 +42,7 @@ final class AttemptLimitTest extends TestCase
     }
 
     /**
-     * A limit allows 1 to a million attempts in a window of one second to a
-     * day, and refuses anything else with a message giving both.
+     * A limit allows 1 to 1000000 attempts in a window of 1 to 86400 seconds.
      *
      * @param  int  $max
      * @param  int  $decay
@@ -82,8 +80,7 @@ final class AttemptLimitTest extends TestCase
     }
 
     /**
-     * Windows are aligned to the clock: the end is the first multiple of the
-     * window's length after now, whenever the first attempt came.
+     * A window ends at the next multiple of its length after now.
      *
      * @param  int  $decay
      * @param  int  $now

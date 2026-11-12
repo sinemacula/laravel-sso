@@ -20,10 +20,7 @@ use Symfony\Component\VarDumper\Dumper\CliDumper;
 use Tests\TestCase;
 
 /**
- * Unit tests for how consuming an authorisation request ended: each status with
- * exactly what it carries, its predicates, whether the completion has a
- * redirect target, a dump that shows no column or secret, and a refusal to be
- * serialised.
+ * Unit tests for authorisation request consumption results.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -51,8 +48,7 @@ final class ConsumptionResultTest extends TestCase
     }
 
     /**
-     * A consumed request carries the request, what the driver is given of it
-     * and the application, and no reason.
+     * A consumed request carries the request, the driver's view and the app.
      *
      * @return void
      */
@@ -73,8 +69,7 @@ final class ConsumptionResultTest extends TestCase
     }
 
     /**
-     * A refused request carries the request, the reason and the application
-     * when it is still registered, and nothing for the driver.
+     * A refused request carries the reason and any still-registered app.
      *
      * @return void
      */
@@ -120,8 +115,7 @@ final class ConsumptionResultTest extends TestCase
     }
 
     /**
-     * A replayed request carries the request and `request_unknown`, and no
-     * redirect target.
+     * A replayed request carries `request_unknown` and no redirect target.
      *
      * @return void
      */
@@ -140,10 +134,7 @@ final class ConsumptionResultTest extends TestCase
     }
 
     /**
-     * A dump shows the status, the reference, the application and the reason,
-     * and never a column, a digest or the PKCE verifier. A dumper that shows
-     * every property, as `dump()` does, shows the request's columns, and still
-     * never the PKCE verifier.
+     * No dump shows a column, a digest or the PKCE verifier.
      *
      * @return void
      */
@@ -194,8 +185,7 @@ final class ConsumptionResultTest extends TestCase
     }
 
     /**
-     * The result's predicates, in order: consumed, refused, unknown, replayed,
-     * and whether it has a redirect target.
+     * The predicates in order, then whether there is a redirect target.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\ConsumptionResult  $result
      * @return list<bool>
@@ -206,8 +196,7 @@ final class ConsumptionResultTest extends TestCase
     }
 
     /**
-     * An authorisation request held in memory, with its digests and an
-     * encrypted verifier.
+     * An in-memory request with digests and an encrypted verifier.
      *
      * @return \SineMacula\Laravel\Sso\Models\AuthorizationRequest
      */

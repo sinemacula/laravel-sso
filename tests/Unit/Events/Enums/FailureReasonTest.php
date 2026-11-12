@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * Unit tests for the failure reasons: every code SSO-10.2 names is one, each
- * value is a snake_case code, and the values are stable.
+ * Unit tests for the failure reasons.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -21,7 +20,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 final class FailureReasonTest extends TestCase
 {
     /**
-     * Every code SSO-10.2 names is a reason.
+     * Every code the requirements name is a reason.
      *
      * @return void
      */
@@ -39,8 +38,7 @@ final class FailureReasonTest extends TestCase
     }
 
     /**
-     * The reasons are these, in this order: a code is never renamed or reused,
-     * so a change here is a deliberate one.
+     * The reasons are fixed: a code is never renamed or reused.
      *
      * @return void
      */
@@ -66,8 +64,7 @@ final class FailureReasonTest extends TestCase
     }
 
     /**
-     * Each value is a lower-case snake_case code, and each case's name is its
-     * value in upper case.
+     * Each value is snake_case and each case name is its value upper-cased.
      *
      * @return void
      */

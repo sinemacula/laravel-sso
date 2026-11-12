@@ -21,10 +21,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Unit tests for the flows' fail-closed defaults: no session is found for
- * reauthentication, nothing is linked, an identity holds one link per
- * connection, and the two seams of the completion pass every result on
- * unchanged; and for the stable values of the links' enums.
+ * Unit tests for the flows' fail-closed defaults and the link enums' values.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,8 +38,7 @@ use Tests\Fixtures\Results\ExampleResults;
 final class FlowDefaultsTest extends TestCase
 {
     /**
-     * No identity is ever signed in on a session, so no `reauthenticate` flow
-     * starts by default.
+     * No session is ever found, so no `reauthenticate` flow starts by default.
      *
      * @return void
      */
@@ -71,8 +67,7 @@ final class FlowDefaultsTest extends TestCase
     }
 
     /**
-     * The provisioning step passes on a state that is not a genuinely unlinked
-     * `sign_in`.
+     * Provisioning passes on any state but a genuinely unlinked `sign_in`.
      *
      * @return void
      */

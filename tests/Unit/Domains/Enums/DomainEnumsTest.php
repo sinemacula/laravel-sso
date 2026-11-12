@@ -12,8 +12,7 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainStatus;
 use SineMacula\Laravel\Sso\Domains\Enums\RecheckFailure;
 
 /**
- * Unit tests for the domain enums: each value is stable once released, and the
- * predicates say which values succeed or prove a record gone.
+ * Unit tests for the domain enums.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,8 +51,7 @@ final class DomainEnumsTest extends TestCase
     }
 
     /**
-     * A missing or changed record proves the record gone; a failed lookup
-     * proves nothing.
+     * A missing or changed record proves it gone; a failed lookup does not.
      *
      * @return void
      */

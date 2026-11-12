@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffBinding;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * Pins the frozen shape of what a handoff code was bound to, which a redeemer
- * builds from its own store and hands to `Handoffs\HandoffRecheck`: exactly
- * these six parts, in this order, each optional and `null` by default.
+ * Unit tests for the shape of a handoff binding.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,8 +43,7 @@ final class HandoffBindingTest extends TestCase
     }
 
     /**
-     * A binding of nothing is an unlinked `sign_in`'s: every part is `null`,
-     * its trust version included, which the recheck refuses.
+     * An empty binding is an unlinked `sign_in`'s, every part `null`.
      *
      * @return void
      */
@@ -64,8 +61,7 @@ final class HandoffBindingTest extends TestCase
     }
 
     /**
-     * Each part may be given by name alone, leaving the others `null`, as an
-     * adapter binding a `link` does.
+     * Each part may be given by name, leaving the others `null`.
      *
      * @return void
      */

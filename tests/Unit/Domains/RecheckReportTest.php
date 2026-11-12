@@ -12,10 +12,7 @@ use SineMacula\Laravel\Sso\Domains\RecheckEntry;
 use SineMacula\Laravel\Sso\Domains\RecheckReport;
 
 /**
- * Unit tests for the report of a recheck run and its entries: the entries in
- * the order they were checked, the count of each outcome, whether a lookup
- * failed and whether the resolver threw, each apart from the other, and the
- * encoding, with snake_case keys and times in UTC.
+ * Unit tests for recheck reports and their entries.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,8 +24,7 @@ use SineMacula\Laravel\Sso\Domains\RecheckReport;
 final class RecheckReportTest extends TestCase
 {
     /**
-     * The entries are kept in the order given, and each outcome is counted,
-     * none as zero.
+     * Entries keep their order and every outcome is counted.
      *
      * @return void
      */
@@ -53,8 +49,7 @@ final class RecheckReportTest extends TestCase
     }
 
     /**
-     * One failed lookup is enough for the report to have lookup failures; an
-     * empty report has none.
+     * One failed lookup gives the report lookup failures.
      *
      * @return void
      */
@@ -73,8 +68,7 @@ final class RecheckReportTest extends TestCase
     }
 
     /**
-     * One resolver that threw is enough for the report to have resolver throws,
-     * and it is not a failed lookup; an empty report has none.
+     * One resolver throw gives the report resolver throws, apart from lookups.
      *
      * @return void
      */
@@ -93,8 +87,7 @@ final class RecheckReportTest extends TestCase
     }
 
     /**
-     * An entry encodes with snake_case keys and its lapse time in UTC, whatever
-     * the timezone it was given in, or `null`.
+     * An entry encodes with snake_case keys and its lapse time in UTC.
      *
      * @return void
      */

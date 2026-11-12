@@ -12,8 +12,7 @@ use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptScope;
 
 /**
- * Unit tests for an attempt at a limited flow: each flow's constructor, the
- * scopes each flow is counted in, and what each attempt is counted against.
+ * Unit tests for an attempt at a rate-limited flow.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +25,7 @@ use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptScope;
 final class AttemptSubjectTest extends TestCase
 {
     /**
-     * Each flow is counted in the scopes SSO-11.8 gives it, under its key in
-     * `sso.rate_limits`.
+     * Each flow is counted in its scopes, under its key in `sso.rate_limits`.
      *
      * @return void
      */

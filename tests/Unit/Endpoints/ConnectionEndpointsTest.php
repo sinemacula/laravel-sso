@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Endpoints\ConnectionEndpoints;
 use SineMacula\Laravel\Sso\Endpoints\Enums\Endpoint;
 
 /**
- * Unit tests for a connection's endpoints: each kept exactly as built, read by
- * endpoint, and refused, naming the endpoint, unless it is an absolute https
- * URL or http on a loopback address with no user information, fragment or
- * wildcard.
+ * Unit tests for a connection's endpoints.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,8 +57,7 @@ final class ConnectionEndpointsTest extends TestCase
     }
 
     /**
-     * Rows of `[position, url, key]`: a malformed URL in each position, and the
-     * key it is refused under.
+     * Rows of `[position, url, key]`: a malformed URL and its refusal key.
      *
      * @return iterable<string, array{0: int, 1: string, 2: string}>
      */

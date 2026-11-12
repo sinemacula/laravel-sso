@@ -15,9 +15,7 @@ use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * Unit tests for the default freshness contract: it answers `stale` for every
- * operation and every maximum age, however often it is asked, so no operation
- * SSO-2.12 lists writes until the application binds its own.
+ * Unit tests for the default freshness contract, which answers `stale`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,7 +25,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 #[CoversClass(RefusingFreshness::class)]
 final class RefusingFreshnessTest extends TestCase
 {
-    /** @var list<int> Maximum ages the default is asked with: the bounds, the default, and ages past either bound. */
+    /** @var list<int> Maximum ages at, between and past the bounds. */
     private const array AGES = [1, 300, 3600, 0, -1, 86400, PHP_INT_MAX, PHP_INT_MIN];
 
     /**
@@ -41,7 +39,7 @@ final class RefusingFreshnessTest extends TestCase
     }
 
     /**
-     * Rows of `[operation]`: every operation SSO-2.12 lists.
+     * Rows of `[operation]`: every freshness operation.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation}>
      */
@@ -53,9 +51,7 @@ final class RefusingFreshnessTest extends TestCase
     }
 
     /**
-     * Each operation is refused at every maximum age, the most generous
-     * included, for no caller and for a caller on a session alike, and again
-     * when asked a second time.
+     * Each operation is refused at every maximum age, for any caller.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @return void

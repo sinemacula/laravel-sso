@@ -10,11 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Domains\DomainName;
 
 /**
- * Unit tests for the normalisation of a claimed domain (SSO-3.1): trimmed, no
- * trailing dot, IDNA ASCII in lower case by UTS #46 non-transitional processing
- * with the contextual checks, at most 253 characters from at most 1024 bytes
- * given, and nothing for what is not a host name that could be registered; and
- * the refused-list match, which covers a listed domain and its subdomains only.
+ * Unit tests for claimed domain normalisation and refused-list matching.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -123,8 +119,7 @@ final class DomainNameTest extends TestCase
     }
 
     /**
-     * A domain is listed when it is a listed domain or under one, and not when
-     * a listed domain is under it or merely ends with its characters.
+     * A listed domain covers its subdomains, not a parent or a suffix.
      *
      * @return void
      */
@@ -142,8 +137,7 @@ final class DomainNameTest extends TestCase
     }
 
     /**
-     * A valid host name of exactly the length given, of three labels of 63
-     * characters and a shorter one under `com`.
+     * A valid host name of exactly the given length.
      *
      * @param  int  $length
      * @return string

@@ -15,10 +15,7 @@ use SineMacula\Laravel\Sso\Enforcement\Enums\EnforcementStatus;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * Unit tests for the result of a change to a tenant's enforcement (outcomes
- * convention): one named constructor per outcome, the predicates, the only
- * reasons a refusal may carry, at least one violation for an invalid change,
- * and the snake_case encoding.
+ * Unit tests for enforcement change results.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -70,8 +67,7 @@ final class EnforcementResultTest extends TestCase
     }
 
     /**
-     * Rows of `[reason]`: each reason a change to an enforcement is refused
-     * for.
+     * Rows of `[reason]`: each reason an enforcement change is refused for.
      *
      * @return iterable<string, array{\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */

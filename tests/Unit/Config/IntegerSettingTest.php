@@ -11,9 +11,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * Unit tests for the numeric setting reader every settings class shares: the
- * default, the forms and range it accepts, the message it fails with, and the
- * parse the readers with a message of their own share.
+ * Unit tests for the shared integer setting reader.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,8 +25,7 @@ final class IntegerSettingTest extends TestCase
     private const string KEY = 'sso.example.ttl_seconds';
 
     /**
-     * A setting that is not configured takes the default, which the caller
-     * chooses.
+     * An unset setting takes the caller's default.
      *
      * @return void
      */
@@ -38,8 +35,7 @@ final class IntegerSettingTest extends TestCase
     }
 
     /**
-     * Rows of `[value, least, greatest, what the reader returns]`: integers and
-     * the digit strings `env()` returns, at each end of the range and between.
+     * Rows of `[value, least, greatest, expected]`: values within range.
      *
      * @return iterable<string, array{0: int|string, 1: int, 2: int, 3: int}>
      */
@@ -125,8 +121,7 @@ final class IntegerSettingTest extends TestCase
     }
 
     /**
-     * A value already read is judged as a configured one is: within its range
-     * it is returned, and one past either end fails naming the key.
+     * `from()` returns a value in range and fails naming the key otherwise.
      *
      * @return void
      */
@@ -147,8 +142,7 @@ final class IntegerSettingTest extends TestCase
     }
 
     /**
-     * Rows of `[value, the integer it names or null]`: the one form every
-     * numeric setting accepts.
+     * Rows of `[value, expected]`: the integer a value names, or null.
      *
      * @return iterable<string, array{0: mixed, 1: ?int}>
      */
@@ -196,9 +190,7 @@ final class IntegerSettingTest extends TestCase
     }
 
     /**
-     * An integer, or the exact decimal form of one, names that integer; any
-     * other value, including a string past the integer range that a cast would
-     * saturate, names none.
+     * Only an integer or its exact decimal form parses; overflows do not.
      *
      * @param  mixed  $value
      * @param  ?int  $expected
@@ -211,9 +203,7 @@ final class IntegerSettingTest extends TestCase
     }
 
     /**
-     * `IntegerSetting` is a utility container, not to be instantiated: its
-     * constructor is private. Reflection invokes it so the line is covered
-     * while still documenting the access modifier.
+     * The constructor is private; reflection invokes it to cover the line.
      *
      * @return void
      *

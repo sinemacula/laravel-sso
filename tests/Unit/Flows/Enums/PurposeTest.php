@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 
 /**
- * Unit tests for the purposes a flow is started for: the three SSO-5.1 names,
- * stable, which forces fresh authentication, and which binds a session.
+ * Unit tests for the flow purposes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -21,7 +20,7 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 final class PurposeTest extends TestCase
 {
     /**
-     * The purposes are the three SSO-5.1 names, in this order.
+     * The purposes are fixed, in this order.
      *
      * @return void
      */
@@ -31,8 +30,7 @@ final class PurposeTest extends TestCase
     }
 
     /**
-     * Only `reauthenticate` forces fresh authentication at the identity
-     * provider.
+     * Only `reauthenticate` forces fresh authentication at the provider.
      *
      * @return void
      */

@@ -15,10 +15,7 @@ use SineMacula\Laravel\Sso\Logging\Redactor;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * Unit tests for context redaction (SSO-9.8, SSO-11.9): values under a redacted
- * key, in any case or separator and at any depth, redacted whole; other strings
- * sanitised; scalars and enums kept; exceptions reduced; objects never dumped;
- * and the depth capped.
+ * Unit tests for log context redaction.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -95,9 +92,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * A key is compared normalised, so any case or separator is redacted, and a
-     * key whose last words, or any run of its words, name a redacted key is
-     * too.
+     * Keys are compared normalised, and any run of their words can match.
      *
      * @param  string  $key
      * @return void
@@ -109,9 +104,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * The sanitiser matches a key exactly as the redactor does, so a key the
-     * redactor redacts in a context is redacted in a pair and a JSON member
-     * too, whatever its value holds.
+     * The sanitiser matches keys exactly as the redactor does.
      *
      * @param  string  $key
      * @return void
@@ -127,9 +120,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * Only a key a run of whose words (between anything but a letter, a digit
-     * and `_`) normalises to a redacted key is redacted: one whose one word
-     * merely contains one is kept, its value sanitised.
+     * A key whose single word merely contains a redacted key is kept.
      *
      * @return void
      */
@@ -141,8 +132,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * A key added in `sso.logging.redacted_keys` is redacted too, in any form,
-     * and the built-in keys still are.
+     * A key in `sso.logging.redacted_keys` is redacted beside the built-ins.
      *
      * @return void
      */
@@ -157,8 +147,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * Strings under other keys are sanitised as diagnostics, so a secret under
-     * an innocent key is caught by its shape, and a list is followed.
+     * Strings under other keys are sanitised, lists included.
      *
      * @return void
      */
@@ -178,8 +167,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * Integers, floats, booleans and `null` are kept as they are, and a backed
-     * enum is its value.
+     * Scalars are kept and a backed enum becomes its value.
      *
      * @return void
      */
@@ -194,8 +182,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * An exception is reduced to its class, its sanitised message and its code:
-     * no trace, no file, no previous exception.
+     * An exception is reduced to its class, sanitised message and code.
      *
      * @return void
      */
@@ -242,8 +229,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * Any other object is named by its class and never dumped, cast or
-     * serialised, whatever it holds or can turn into.
+     * Any other object is named by its class and never dumped.
      *
      * @return void
      */
@@ -297,9 +283,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * Arrays are followed to a depth of eight, the context itself the first; an
-     * array deeper than that is `[truncated]`, while a redacted key at the
-     * deepest level is still redacted.
+     * Arrays deeper than eight levels are truncated; redaction still applies.
      *
      * @return void
      */
@@ -333,8 +317,7 @@ final class RedactorTest extends TestCase
     }
 
     /**
-     * Every built-in key normalises to a distinct, non-empty key among the
-     * settings' redacted keys.
+     * Every built-in key normalises to a distinct key among the settings' keys.
      *
      * @return void
      */

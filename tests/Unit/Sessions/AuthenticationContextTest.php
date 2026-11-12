@@ -13,14 +13,7 @@ use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
 
 /**
- * Unit tests for the package's contribution to the authentication context
- * (SSO-9.7): every `sso.*` key with its exact name, value and type; no key at
- * all for a session with no provenance, and every key, `null` where unstated,
- * for one with it; every value plain, with the instants as the stored form's
- * UTC strings to the microsecond and the link's provenance as its enum value,
- * so a provenance and its stored form project identically; nothing about the
- * person; and a stored form this version did not write refused rather than read
- * as none.
+ * Unit tests for the package's `sso.*` authentication context keys.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,10 +65,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * The namespace is a lower-case letter and then up to 31 lower-case
-     * letters, digits or underscores, and every key, once its namespace and the
-     * dot are removed, a lower-case letter and then up to 63 of them: the form
-     * an authentication context holds a contributor's keys in.
+     * Every key fits the form an authentication context holds keys in.
      *
      * @return void
      */
@@ -90,8 +80,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * A session with no provenance from the package contributes nothing: no
-     * `sso.*` key at all, whether given as none or as nothing stored.
+     * A session without provenance contributes no `sso.*` key.
      *
      * @return void
      */
@@ -127,8 +116,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * Each instant is the stored form's string, in UTC from any zone and to the
-     * microsecond exactly, whatever the zone or precision it was given in.
+     * Each instant is a UTC string to the microsecond.
      *
      * @return void
      */
@@ -150,8 +138,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * A SAML sign-in's raw context is projected under its own key, never as
-     * `sso.provider_acr`.
+     * A SAML raw context has its own key, never `sso.provider_acr`.
      *
      * @return void
      */
@@ -163,9 +150,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * A provenance with only what every one has contributes every key, `null`
-     * for each fact not stated and no methods: a key present with `null` is a
-     * session established through the package without that fact.
+     * An unstated fact is present as `null`.
      *
      * @return void
      */
@@ -214,8 +199,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * A provenance with every optional part, and one with every optional part
-     * `null`.
+     * A provenance with every optional part, and one with none.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Sessions\Provenance}>
      */
@@ -226,9 +210,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * Every value of both projections is plain: `null`, a scalar, or a list of
-     * scalars. No object crosses the seam, neither an instant nor a type of the
-     * package.
+     * Every value is `null`, a scalar or a list of scalars.
      *
      * @param  \SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
      * @return void
@@ -249,8 +231,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * A provenance and its stored form project to byte-identical arrays, with
-     * every optional part and with none.
+     * A provenance and its stored form project identically.
      *
      * @param  \SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
      * @return void
@@ -262,8 +243,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * What a session stored is projected exactly as the provenance it was,
-     * including through JSON with its keys in another order.
+     * A stored form projects as its provenance, even with reordered JSON keys.
      *
      * @return void
      */
@@ -276,8 +256,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * A stored form this version did not write is refused, never projected as
-     * no contribution.
+     * Stored forms this version did not write.
      *
      * @return iterable<string, array{0: array<string, mixed>}>
      */
@@ -303,8 +282,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * Nothing about the person or their provider session is projected: no key
-     * names one, and the projection is exactly the twelve keys.
+     * Nothing about the person is projected; there are exactly twelve keys.
      *
      * @return void
      */
@@ -320,8 +298,7 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
-     * The projection is pure: the same provenance projects the same keys and
-     * values each time, and the provenance is unchanged by it.
+     * The projection is pure.
      *
      * @return void
      */

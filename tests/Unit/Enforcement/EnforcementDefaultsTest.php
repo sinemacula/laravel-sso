@@ -15,9 +15,7 @@ use SineMacula\Laravel\Sso\Revocation\NoSessionRevocation;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * Unit tests for the enforcement contracts' defaults (SSO-4.2, SSO-4.4,
- * SSO-4.5): each tenant's own setting applies to it alone, nobody is exempt,
- * and the session revocation revokes nothing and succeeds.
+ * Unit tests for the enforcement contracts' defaults.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

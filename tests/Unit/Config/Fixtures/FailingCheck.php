@@ -7,8 +7,7 @@ namespace Tests\Unit\Config\Fixtures;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * A check that applies and finds two problems among three checks, of two
- * exception types.
+ * A check that finds two problems of two exception types among three checks.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

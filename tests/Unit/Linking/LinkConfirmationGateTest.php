@@ -14,10 +14,7 @@ use Tests\Fixtures\Linking\ScriptedLinkConfirmation;
 use Tests\TestCase;
 
 /**
- * Unit tests for whether the link confirmation gate lets a `link` go on: an
- * identity that holds and has held no verified domain link is let through
- * unasked, and any other is let through only when the contract, given the
- * caller as it came, with its session, answers `independent`.
+ * Unit tests for the link confirmation gate.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,8 +25,7 @@ use Tests\TestCase;
 final class LinkConfirmationGateTest extends TestCase
 {
     /**
-     * An identity holding no such link, that has never held one, is let through
-     * and the contract is never asked.
+     * An identity that never held a domain link passes unasked.
      *
      * @return void
      */
@@ -42,9 +38,7 @@ final class LinkConfirmationGateTest extends TestCase
     }
 
     /**
-     * An identity holding such a link, or that held one, is let through only on
-     * an `independent` answer, and the contract is given the caller as it came,
-     * its session included, the connection and the links held.
+     * An identity that holds or held a domain link needs `independent`.
      *
      * @return void
      */

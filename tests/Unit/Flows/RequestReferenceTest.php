@@ -9,9 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 
 /**
- * Unit tests for a request's public reference: 32 random base64url characters,
- * under the 40 the log sanitiser redacts, read back only in that form, compared
- * exactly.
+ * Unit tests for a request's public reference.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,8 +20,7 @@ use SineMacula\Laravel\Sso\Flows\RequestReference;
 final class RequestReferenceTest extends TestCase
 {
     /**
-     * A generated reference is 32 base64url characters, under 40, and new each
-     * time.
+     * A reference is 32 random base64url characters, under the 40 redacted.
      *
      * @return void
      *

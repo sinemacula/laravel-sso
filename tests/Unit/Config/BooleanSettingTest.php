@@ -11,8 +11,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Config\BooleanSetting;
 
 /**
- * Unit tests for the switch reader every settings class shares: the default,
- * the forms it accepts, and the message it fails closed with.
+ * Unit tests for the shared boolean setting reader.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +25,7 @@ final class BooleanSettingTest extends TestCase
     private const string KEY = 'sso.features.example';
 
     /**
-     * A switch that is not configured takes the default, which the caller
-     * chooses.
+     * An unset switch takes the caller's default.
      *
      * @return void
      */
@@ -38,8 +36,7 @@ final class BooleanSettingTest extends TestCase
     }
 
     /**
-     * Rows of `[value, what it reads as]`: booleans, and the integers and
-     * strings `env()` and a deploy pipeline give for one.
+     * Rows of `[value, expected]`: booleans and their `env()` forms.
      *
      * @return iterable<string, array{0: mixed, 1: bool}>
      */
@@ -97,8 +94,7 @@ final class BooleanSettingTest extends TestCase
     }
 
     /**
-     * A value that names no boolean fails closed, naming the key, rather than
-     * guessing whether the feature was meant to be on.
+     * A value that names no boolean fails closed, naming the key.
      *
      * @param  mixed  $value
      * @return void

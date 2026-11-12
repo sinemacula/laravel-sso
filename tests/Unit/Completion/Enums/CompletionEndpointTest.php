@@ -11,8 +11,7 @@ use SineMacula\Laravel\Sso\Endpoints\Enums\Endpoint;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 
 /**
- * Unit tests for the endpoint a completion arrived at: its two cases, the flow
- * each reports a refusal under and the method each takes.
+ * Unit tests for the completion endpoint enum.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -23,8 +22,7 @@ use SineMacula\Laravel\Sso\Events\Enums\Flow;
 final class CompletionEndpointTest extends TestCase
 {
     /**
-     * There are exactly two endpoints, each with the value of the published
-     * endpoint whose path the resolver builds for it.
+     * There are exactly two endpoints, each valued as its published endpoint.
      *
      * @return void
      */

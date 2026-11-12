@@ -20,10 +20,7 @@ use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 
 /**
- * Unit tests for what a key operation returns: one named constructor per
- * outcome, each setting only its own payload, the refusals a key operation may
- * give and no other, an invalid result that names at least one violation, the
- * predicates, the stable statuses, and the JSON form.
+ * Unit tests for key operation results.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,8 +32,7 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 final class KeyResultTest extends TestCase
 {
     /**
-     * The statuses are these, in this order: a status is never renamed or
-     * reused.
+     * The statuses are fixed: a status is never renamed or reused.
      *
      * @return void
      */
@@ -49,8 +45,7 @@ final class KeyResultTest extends TestCase
     }
 
     /**
-     * Rows of `[result, status]`: each success, built through its named
-     * constructor.
+     * Rows of `[result, status]`: each success from its named constructor.
      *
      * @return iterable<string, array{
      *     0: \Closure(\SineMacula\Laravel\Sso\Keys\KeySummary): \SineMacula\Laravel\Sso\Keys\KeyResult,
@@ -68,8 +63,7 @@ final class KeyResultTest extends TestCase
     }
 
     /**
-     * Each success carries the key it acted on, and no previous key, reason or
-     * violation.
+     * Each success carries its key and no previous key, reason or violation.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Keys\KeySummary): \SineMacula\Laravel\Sso\Keys\KeyResult  $make
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyStatus  $status
@@ -208,8 +202,7 @@ final class KeyResultTest extends TestCase
     }
 
     /**
-     * The JSON form names the status, the key and previous key as their
-     * summaries, the reason and the violations.
+     * The JSON holds the status, key summaries, reason and violations.
      *
      * @return void
      */

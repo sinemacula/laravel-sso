@@ -12,9 +12,7 @@ use Symfony\Component\VarDumper\Cloner\VarCloner;
 use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /**
- * Unit tests for a plaintext secret: revealed only on request, compared in
- * constant time, never empty, and never shown by a dump, `json_encode()`, an
- * exception's trace or serialisation.
+ * Unit tests for a plaintext secret.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,9 +69,7 @@ final class SecretTest extends TestCase
     }
 
     /**
-     * Neither a dump (PHP's own, or the one behind Laravel's `dump()` and error
-     * pages, which also lists private properties), an array cast nor
-     * `json_encode()` shows the secret.
+     * No dump, array cast or JSON shows the secret.
      *
      * @return void
      */
@@ -94,14 +90,7 @@ final class SecretTest extends TestCase
     }
 
     /**
-     * An exception thrown where the secret is passed shows it in neither its
-     * trace nor its string form, and the constructor's argument is marked
-     * sensitive, so a failure while building one shows it neither.
-     *
-     * Traces are made to carry arguments for the test, as they do wherever
-     * `zend.exception_ignore_args` is off, and a marker passed as an ordinary
-     * argument is shown to reach the trace first, so the assertions cannot pass
-     * merely because no argument was recorded.
+     * No trace shows the secret; a marker proves traces carry arguments.
      *
      * @return void
      */
@@ -130,8 +119,7 @@ final class SecretTest extends TestCase
     }
 
     /**
-     * There is no string form, so a cast or an interpolation fails loudly
-     * rather than writing the secret out.
+     * A string cast fails rather than writing the secret out.
      *
      * @return void
      */
@@ -170,8 +158,7 @@ final class SecretTest extends TestCase
     }
 
     /**
-     * An exception built in a call that is passed an ordinary argument, so the
-     * argument is in its trace wherever traces carry arguments.
+     * An exception whose trace holds an ordinary argument.
      *
      * @param  string  $marker
      * @return \RuntimeException
@@ -182,8 +169,7 @@ final class SecretTest extends TestCase
     }
 
     /**
-     * An exception built in a call that is passed the secret and, as a
-     * sensitive argument, its plaintext, so the call is in its trace.
+     * An exception whose trace holds the secret and its sensitive plaintext.
      *
      * @param  \SineMacula\Laravel\Sso\Secrets\Secret  $secret
      * @param  string  $plaintext

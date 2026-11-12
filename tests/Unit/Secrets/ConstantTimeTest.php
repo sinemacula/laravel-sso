@@ -10,9 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * Unit tests for constant-time comparison: of two values, of a value with a
- * digest under each algorithm, and the refusal of an algorithm that is not a
- * cryptographic hash.
+ * Unit tests for constant-time comparison.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +24,7 @@ final class ConstantTimeTest extends TestCase
     private const string VALUE = 'the-verifier-value';
 
     /**
-     * Equal values are equal; a value differing in content, case or length is
-     * not.
+     * Values differing in content, case or length are not equal.
      *
      * @return void
      */
@@ -55,8 +52,7 @@ final class ConstantTimeTest extends TestCase
     }
 
     /**
-     * A value matches its own digest under the algorithm, and no other value's
-     * or algorithm's.
+     * A value matches only its own digest under the algorithm.
      *
      * @param  string  $algorithm
      * @return void
@@ -85,8 +81,7 @@ final class ConstantTimeTest extends TestCase
     }
 
     /**
-     * Rows of `[algorithm]`: algorithms that are not cryptographic hashes PHP
-     * supports.
+     * Rows of `[algorithm]`: names that are not cryptographic hashes.
      *
      * @return iterable<string, array{0: string}>
      */

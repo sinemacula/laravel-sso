@@ -16,13 +16,7 @@ use SineMacula\Laravel\Sso\Events\MetadataRefreshFailed;
 use SineMacula\Laravel\Sso\Events\UnsolicitedResponseReinitiated;
 
 /**
- * Unit tests for the events the SAML driver adds (SSO-10.1, SSO-10.3,
- * SSO-10.4): metadata refreshed (with the names of the settings that changed)
- * and failed to refresh (with the reason, the failures in a row and the next
- * attempt), and an unsolicited response re-initiated. Each is a final,
- * read-only package event returning its context, survives a queue unchanged,
- * and holds exactly its declared public properties, none of them metadata, a
- * URL, a certificate, a value or a response.
+ * Unit tests for the SAML driver's own events.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,7 +28,7 @@ use SineMacula\Laravel\Sso\Events\UnsolicitedResponseReinitiated;
 #[CoversClass(UnsolicitedResponseReinitiated::class)]
 final class SamlEventClassesTest extends TestCase
 {
-    /** @var list<string> Names no event here may give a property, compared without case or underscores. */
+    /** @var list<string> Forbidden property names, ignoring case and underscores. */
     private const array FORBIDDEN = ['metadata', 'url', 'certificate', 'value', 'values', 'response', 'assertion', 'relaystate', 'subject'];
 
     /**
@@ -62,8 +56,7 @@ final class SamlEventClassesTest extends TestCase
     }
 
     /**
-     * Each event is a package event, final and read-only, and returns the
-     * context it was given.
+     * Each event is a final, read-only package event returning its context.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties
@@ -83,8 +76,7 @@ final class SamlEventClassesTest extends TestCase
     }
 
     /**
-     * A serialise and unserialise round trip, as a queue makes, gives an equal
-     * event.
+     * A serialise round trip, as a queue makes, gives an equal event.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties
@@ -105,8 +97,7 @@ final class SamlEventClassesTest extends TestCase
     }
 
     /**
-     * Each event holds exactly the public, read-only properties it declares,
-     * none named after what it must never carry.
+     * Each event holds exactly its declared properties, none sensitive.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties

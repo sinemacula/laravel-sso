@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * Unit tests for an identity reference: a type and an id, each 1 to 255 bytes,
- * the same identity only when both are equal byte for byte.
+ * Unit tests for an identity reference.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -11,8 +11,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Keys\ExpiryThresholds;
 
 /**
- * Unit tests for the thresholds' validation and which one a key has reached
- * (SSO-2.6, SSO-11.12).
+ * Unit tests for key expiry thresholds.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,8 +45,7 @@ final class ExpiryThresholdsTest extends TestCase
     }
 
     /**
-     * Anything but a list of distinct integers from 0 to 365 with 0 among them
-     * fails closed, naming the key.
+     * Anything but distinct integers from 0 to 365 including 0 fails closed.
      *
      * @param  mixed  $value
      * @return void
@@ -62,8 +60,7 @@ final class ExpiryThresholdsTest extends TestCase
     }
 
     /**
-     * The edges of the range and any order are accepted, strings as `env()`
-     * gives them too, and the largest is found whatever the order.
+     * Any order, the range edges and `env()` strings are accepted.
      *
      * @return void
      */

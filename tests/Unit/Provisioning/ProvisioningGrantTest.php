@@ -19,13 +19,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Unit tests pinning the provisioning grant's lifecycle (SSO-8.6): it starts
- * usable; the one claim of the exact result answers the request's id; any other
- * claim answers nothing and spends it for good; only the rollback of the
- * outermost transaction a claim is bound to releases it, once its manager no
- * longer holds it; closing voids it; and it can be neither copied nor read.
- * Transactions are driven through Laravel's managers directly, as a connection
- * drives them.
+ * Unit tests for the provisioning grant, against Laravel's managers.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -97,8 +91,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * The first claim of the exact result answers the request's id, and spends
-     * the grant; every later claim answers nothing.
+     * Only the first claim of the exact result answers the request's id.
      *
      * @return void
      *
@@ -116,8 +109,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A claim of another object with the same fields answers nothing, and
-     * spends the grant: the exact result gets nothing after it.
+     * A claim of a copy answers nothing and spends the grant.
      *
      * @return void
      *
@@ -135,8 +127,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * Whether it is bound to a result claims nothing, and is exact: a copy with
-     * the same fields is another result.
+     * Being bound to a result claims nothing, and a copy is another result.
      *
      * @return void
      *
@@ -153,8 +144,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A claim bound to a transaction that rolls back is released once the
-     * manager has let it go, and the exact result claims the grant again.
+     * A claim whose transaction rolls back can be claimed again.
      *
      * @return void
      *
@@ -181,9 +171,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A claim bound to a transaction that commits stays used, even from a
-     * commit callback of that same commit, which runs once the manager has let
-     * the transaction go.
+     * A committed claim stays used, even from that commit's callbacks.
      *
      * @return void
      *
@@ -211,9 +199,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A claim made again after a rollback is bound afresh, to its own
-     * transaction: its rollback releases it again, and its commit leaves it
-     * used.
+     * A renewed claim is bound to its own transaction.
      *
      * @return void
      *
@@ -243,8 +229,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * The rollback callback of a transaction an earlier claim was bound to
-     * marks nothing of a later claim.
+     * An earlier transaction's rollback releases no later claim.
      *
      * @return void
      *
@@ -275,8 +260,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A refusal spends the grant for good: neither a refused claim nor an
-     * attempt the helper refused is released by its transaction's rollback.
+     * A refusal spends the grant for good; no rollback releases it.
      *
      * @return void
      *
@@ -309,8 +293,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A refused claim of a copy spends a grant nothing claimed: no rollback
-     * releases it.
+     * A refused claim of a copy is never released.
      *
      * @return void
      *
@@ -333,9 +316,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A claim is bound to the outermost transaction, not the savepoint it was
-     * made in: rolling the savepoint back leaves it used, and the outermost
-     * transaction's rollback releases it.
+     * A claim binds to the outermost transaction, not a savepoint.
      *
      * @return void
      *
@@ -362,9 +343,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A claim made with no transaction open is bound to the first one begun:
-     * until then it is used, and a second claim is refused; once bound, that
-     * transaction's rollback releases it.
+     * A claim made outside a transaction binds to the next one begun.
      *
      * @return void
      *
@@ -399,8 +378,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A claim stays bound to the first transaction it was bound to: binding it
-     * again changes nothing.
+     * A claim stays bound to the first transaction it was bound to.
      *
      * @return void
      *
@@ -427,10 +405,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A record a commit the manager was never told failed leaves behind, still
-     * current, is no transaction of a claim made in the next: the claim is
-     * bound to that one alone, so once it commits, a later rollback that runs
-     * the stale record's callbacks releases nothing.
+     * A stale record left by a failed commit is not the claim's transaction.
      *
      * @return void
      *
@@ -466,9 +441,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * Under the testing traits' manager, the transaction wrapping the test is
-     * not one a claim is bound to: with only it open, the claim is bound to the
-     * next transaction, and otherwise to the outermost inside it.
+     * The testing traits' wrapping transaction is never the claim's.
      *
      * @return void
      *
@@ -497,8 +470,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * A claim bound under the testing traits' manager is used once its
-     * transaction commits inside the wrapper.
+     * A commit inside the testing wrapper leaves the claim used.
      *
      * @return void
      *
@@ -544,8 +516,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * Closing voids it: the exact result gets nothing, used or not, and closing
-     * again changes nothing.
+     * Closing voids the grant, and closing again changes nothing.
      *
      * @return void
      *
@@ -609,8 +580,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * No dump, export or array cast shows the result, the request's id or the
-     * receipt, whether or not it is used.
+     * No dump, export or array cast shows what the grant holds.
      *
      * @return void
      *
@@ -680,9 +650,7 @@ final class ProvisioningGrantTest extends TestCase
     }
 
     /**
-     * Roll the manager's transactions on the connection back to the level, and
-     * answer whether the grant was usable while the rollback ran its callbacks,
-     * `null` if they never ran.
+     * Roll back to the level; whether the grant was usable meanwhile, if known.
      *
      * @param  \SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant  $grant
      * @param  \Illuminate\Database\DatabaseTransactionsManager  $manager

@@ -18,9 +18,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Unit tests for what a handoff code is issued for and what an issuer answers:
- * every part of the grant kept, its identity and session fitting its purpose,
- * its ids bounded; the issued code never shown or serialised.
+ * Unit tests for handoff grants and issued handoffs.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -67,8 +65,7 @@ final class HandoffGrantTest extends TestCase
     }
 
     /**
-     * Rows of `[purpose, identity, session, message]`: bindings that do not fit
-     * their purpose.
+     * Rows of `[purpose, identity, session, message]`: unfit bindings.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: bool, 2: ?string, 3: string}>
      */
@@ -159,8 +156,7 @@ final class HandoffGrantTest extends TestCase
     }
 
     /**
-     * A reservation binds a `sign_in` grant that resolved to no identity, and
-     * is kept.
+     * A reservation binds an unlinked `sign_in` grant and is kept.
      *
      * @return void
      */
@@ -174,8 +170,7 @@ final class HandoffGrantTest extends TestCase
     }
 
     /**
-     * Rows of `[purpose, the identity it resolved to, the identity it names,
-     * the session it names]`: what a reservation has no place on.
+     * Rows of `[purpose, resolved, identity, session]`: no reservation fits.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: bool, 2: bool, 3: ?string}>
      */
@@ -216,8 +211,7 @@ final class HandoffGrantTest extends TestCase
     }
 
     /**
-     * An issued handoff keeps its code and expiry, and never shows or
-     * serialises the code.
+     * An issued handoff keeps its code and expiry and never reveals the code.
      *
      * @return void
      */

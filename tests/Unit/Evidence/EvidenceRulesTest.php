@@ -12,12 +12,7 @@ use SineMacula\Laravel\Sso\Evidence\EvidenceRules;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 
 /**
- * Pins what a connection's evidence policy may hold and how it is judged
- * (SSO-8.7): every name by protocol, every bound at, one under and one over,
- * each violation exactly, in order and never echoing a value; a stored policy
- * read by the same rules, malformed being no rules at all; and each combination
- * one value short and exact, with only accepted methods entering what is
- * answered.
+ * Unit tests for judging and reading a connection's evidence policy.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -174,9 +169,7 @@ final class EvidenceRulesTest extends TestCase
     }
 
     /**
-     * A policy is judged exactly, the same whichever way it is met: a policy
-     * with no violation reads as rules when it holds anything, and one with any
-     * reads as none.
+     * A policy is judged exactly, and reads as rules only without violations.
      *
      * @param  string  $protocol
      * @param  array<array-key, mixed>  $policy
@@ -242,8 +235,7 @@ final class EvidenceRulesTest extends TestCase
     }
 
     /**
-     * A stored policy reads by the protocol it is read for: one protocol's
-     * names are malformed on another.
+     * A stored policy is read for its protocol; another's names are malformed.
      *
      * @return void
      */
@@ -259,9 +251,7 @@ final class EvidenceRulesTest extends TestCase
     }
 
     /**
-     * Rows of `[accepted, combinations, the methods and class stated, what is
-     * answered]`: each combination rule, one value short and exact; only
-     * accepted methods entering, in their asserted order and each once.
+     * Rows of `[accepted, combinations, stated, answered]`.
      *
      * @return iterable<string, array{0: list<string>, 1: list<array<string, list<string>|string>>, 2: list<string>, 3: ?string, 4: ?list<string>}>
      */

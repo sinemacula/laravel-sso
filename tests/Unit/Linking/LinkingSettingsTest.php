@@ -16,11 +16,7 @@ use SineMacula\Laravel\Sso\Protocols\Preset;
 use SineMacula\Laravel\Sso\Protocols\Presets;
 
 /**
- * Unit tests for `sso.linking` (SSO-8.6, SSO-8.7, SSO-8.8): each maximum age's
- * default and bounds, at one under, at and one over; the shared issuers, which
- * configuration adds to and never downgrades; the boot check; and the presets,
- * whose shared issuers agree with the settings, and which know their issuers
- * exactly.
+ * Unit tests for the `sso.linking` settings and presets.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,8 +44,7 @@ final class LinkingSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds, whether it is accepted]`: the verified response's
-     * validity, 5 to 300 seconds.
+     * Rows of `[seconds, accepted]`: the verified response's validity.
      *
      * @return iterable<string, array{0: int, 1: bool}>
      */
@@ -84,8 +79,7 @@ final class LinkingSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds, whether it is accepted]`: the evidence's maximum age,
-     * 60 to 3600 seconds.
+     * Rows of `[seconds, accepted]`: the evidence's maximum age, 60 to 3600.
      *
      * @return iterable<string, array{0: int, 1: bool}>
      */
@@ -120,8 +114,7 @@ final class LinkingSettingsTest extends TestCase
     }
 
     /**
-     * Configuration adds a shared issuer; an entry for a built-in one changes
-     * nothing, so none can be downgraded.
+     * Configuration adds shared issuers but cannot downgrade a built-in one.
      *
      * @return void
      */
@@ -188,10 +181,7 @@ final class LinkingSettingsTest extends TestCase
     }
 
     /**
-     * Slack is a shared issuer, told apart by its signed team claim. Microsoft
-     * Entra's `common` and `organizations` are authorities and never issuers,
-     * so nothing here names them, and explicit classification applies to the
-     * real issuer of each tenant.
+     * Slack is a shared issuer; Entra's `common` is an authority, not one.
      *
      * @return void
      */
@@ -224,8 +214,7 @@ final class LinkingSettingsTest extends TestCase
     }
 
     /**
-     * Every shipped preset with an organisation claim, and only those, is for a
-     * shared issuer.
+     * Exactly the presets with an organisation claim are for shared issuers.
      *
      * @return void
      */
@@ -243,8 +232,7 @@ final class LinkingSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[preset, issuer, whether it is the preset's]`: an issuer filled
-     * in is matched exactly, and a pattern of a directory's issuer to the end.
+     * Rows of `[preset, issuer, matches]`: exact issuers and patterns.
      *
      * @return iterable<string, array{0: string, 1: string, 2: bool}>
      */

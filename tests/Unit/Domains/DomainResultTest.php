@@ -17,10 +17,7 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainStatus;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * Unit tests for the result of a domain operation (outcomes convention): one
- * named constructor per outcome, the predicates, the reasons a refusal may
- * carry, throttling as an outcome with the seconds to wait, and an encoding
- * that never carries the token.
+ * Unit tests for domain operation results.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -113,8 +110,7 @@ final class DomainResultTest extends TestCase
     }
 
     /**
-     * Throttling is a refusal with `rate_limited` and the seconds to wait, at
-     * least one.
+     * Throttling is a `rate_limited` refusal with at least one second to wait.
      *
      * @return void
      */
@@ -133,8 +129,7 @@ final class DomainResultTest extends TestCase
     }
 
     /**
-     * An invalid result carries its violations and `settings_invalid`, and
-     * needs at least one.
+     * An invalid result carries `settings_invalid` and at least one violation.
      *
      * @return void
      */

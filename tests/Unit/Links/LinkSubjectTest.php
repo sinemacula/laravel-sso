@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Unit tests for what a link is keyed by (SSO-8.2, SSO-6.9): the key pinned by
- * vectors computed independently of the package, a missing and a set format,
- * case and a trailing space each giving another key, the byte bounds of each
- * part, the subject a verified result names, and comparison byte for byte.
+ * Unit tests for the key a link is stored under.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,10 +28,7 @@ final class LinkSubjectTest extends TestCase
     private const string FORMAT = 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent';
 
     /**
-     * Rows of `[issuer, subject, format, key]`: keys computed outside the
-     * package, as the SHA-256 of `sso-link-v1`, a NUL byte, the issuer, `N` or
-     * `F` and the format, and the subject, each part prefixed with its length
-     * as four big-endian bytes.
+     * Rows of `[issuer, subject, format, key]`: keys computed independently.
      *
      * @return iterable<string, array{string, string, ?string, string}>
      */
@@ -65,8 +59,7 @@ final class LinkSubjectTest extends TestCase
     }
 
     /**
-     * Every vector's key differs from every other's: no format and a set one,
-     * case, a trailing space and where the bytes fall each give another key.
+     * Every vector yields a distinct key.
      *
      * @return void
      */
@@ -78,8 +71,7 @@ final class LinkSubjectTest extends TestCase
     }
 
     /**
-     * The subject a verified result names is its issuer, subject and format,
-     * kept exactly, a trailing space included.
+     * `of()` takes the result's issuer, subject and format exactly.
      *
      * @return void
      */
@@ -122,8 +114,7 @@ final class LinkSubjectTest extends TestCase
     }
 
     /**
-     * Rows of `[issuer, subject, format, message]`: each part empty, and one
-     * byte too long.
+     * Rows of `[issuer, subject, format, message]`: each part out of bounds.
      *
      * @return iterable<string, array{string, string, ?string, string}>
      */
@@ -138,8 +129,7 @@ final class LinkSubjectTest extends TestCase
     }
 
     /**
-     * An empty part, or one a byte too long, is refused with a message that
-     * names the part and its bounds, never the value.
+     * A part out of bounds is refused, naming the part and never the value.
      *
      * @param  string  $issuer
      * @param  string  $subject

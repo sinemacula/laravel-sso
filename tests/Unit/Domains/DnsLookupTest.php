@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Domains\DnsLookup;
 use SineMacula\Laravel\Sso\Domains\Enums\DnsLookupStatus;
 
 /**
- * Unit tests for a TXT lookup's answer (SSO-3.2, decision D3): its three
- * outcomes, each told apart; the records, attacker-supplied, held out of every
- * dump, encoding and serialisation; and the exact, whole-record match.
+ * Unit tests for a TXT lookup's answer.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,8 +58,7 @@ final class DnsLookupTest extends TestCase
     }
 
     /**
-     * `contains()` matches a whole record exactly, byte for byte, and never an
-     * empty value or a lookup that found nothing.
+     * `contains()` matches a whole record byte for byte, never an empty value.
      *
      * @return void
      */

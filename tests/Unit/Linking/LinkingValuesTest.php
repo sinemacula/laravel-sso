@@ -18,11 +18,7 @@ use SineMacula\Laravel\Sso\Linking\RefusingPrincipalScope;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Unit tests for the values and defaults of linking by a verified domain
- * (SSO-8.8): the query that holds the email and shows it to nobody but the
- * matcher; none, exactly one or ambiguous, the last naming nobody; a membership
- * accepted strictly before an instant; the scope verdicts, of which only one
- * allows anything; and the defaults, each of which refuses.
+ * Unit tests for the values and defaults of verified-domain linking.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,8 +40,7 @@ final class LinkingValuesTest extends TestCase
     private const string EMAIL = 'Person+tag@Example.COM';
 
     /**
-     * The query holds the email exactly as asserted, and what the matcher
-     * compares its domain with.
+     * The query holds the email exactly as asserted, and its domain.
      *
      * @return void
      */
@@ -59,8 +54,7 @@ final class LinkingValuesTest extends TestCase
     }
 
     /**
-     * A dump shows the tenant and the domain alone, `json_encode()` writes the
-     * email redacted, and no form of a dump shows it.
+     * No dump or encoding shows the email.
      *
      * @return void
      */
@@ -148,8 +142,7 @@ final class LinkingValuesTest extends TestCase
     }
 
     /**
-     * A membership accepted counts strictly before the instant: one second
-     * before it does, at it and after it do not.
+     * A membership counts only if accepted strictly before the instant.
      *
      * @return void
      */
@@ -190,8 +183,7 @@ final class LinkingValuesTest extends TestCase
     }
 
     /**
-     * The matcher finds none by default, the membership answers none, and the
-     * scope is unknown.
+     * Every default refuses.
      *
      * @return void
      */

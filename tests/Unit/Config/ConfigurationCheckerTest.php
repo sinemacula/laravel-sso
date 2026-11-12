@@ -15,10 +15,7 @@ use Tests\Unit\Config\Fixtures\InapplicableCheck;
 use Tests\Unit\Config\Fixtures\PassingCheck;
 
 /**
- * Unit tests for the configuration checker: what it reports for each check, by
- * subject, that a check that does not apply is not run, that one that cannot be
- * resolved or is not a check is a problem, and that `assertValid()` fails with
- * every problem.
+ * Unit tests for the configuration checker.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,9 +26,7 @@ use Tests\Unit\Config\Fixtures\PassingCheck;
 final class ConfigurationCheckerTest extends TestCase
 {
     /**
-     * Each subject reports `null` when its check does not apply, `[]` when it
-     * found nothing, and every problem it found otherwise, in the order the
-     * checks are registered.
+     * Each subject reports `null` if inapplicable, else its problems in order.
      *
      * @return void
      */
@@ -56,8 +51,7 @@ final class ConfigurationCheckerTest extends TestCase
     }
 
     /**
-     * A check the container cannot build, and one it builds as something that
-     * is not a check, are problems of their subject, never checks skipped.
+     * A check that cannot be built, or is not a check, is a problem.
      *
      * @return void
      */
@@ -79,9 +73,7 @@ final class ConfigurationCheckerTest extends TestCase
     }
 
     /**
-     * `assertValid()` passes when nothing is found, a check that does not apply
-     * included, and fails with every problem, each under its subject, when
-     * something is.
+     * `assertValid()` fails with every problem under its subject.
      *
      * @return void
      */

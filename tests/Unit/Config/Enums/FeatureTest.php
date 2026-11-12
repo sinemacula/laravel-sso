@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Config\Enums\Feature;
 
 /**
- * Unit tests for the feature switches: their keys, which are protocols, and
- * which protocols every other feature needs.
+ * Unit tests for the feature switches.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -21,8 +20,7 @@ use SineMacula\Laravel\Sso\Config\Enums\Feature;
 final class FeatureTest extends TestCase
 {
     /**
-     * Every feature of FEATURES' "Every feature is opt-in" has a switch, under
-     * `sso.features`.
+     * Every opt-in feature has a switch under `sso.features`.
      *
      * @return void
      */
@@ -37,9 +35,7 @@ final class FeatureTest extends TestCase
     }
 
     /**
-     * The protocols and the scheduled refresh, which is on by default and idle
-     * without a protocol, need nothing; the SAML-only features need `saml2`;
-     * every other feature needs either protocol.
+     * SAML-only features need `saml2`; the rest need either protocol.
      *
      * @return void
      */

@@ -33,8 +33,7 @@ final class ViolationCodeTest extends TestCase
     }
 
     /**
-     * Each value is a lower-case snake_case code, and each case's name is its
-     * value in upper case.
+     * Each value is snake_case and each case name is its value upper-cased.
      *
      * @return void
      */

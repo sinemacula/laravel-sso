@@ -11,10 +11,7 @@ use Symfony\Component\VarDumper\Cloner\VarCloner;
 use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /**
- * Unit tests for the protocol state of one authorisation request: three
- * independent values of 43 base64url characters from 256 random bits, their
- * digests and the PKCE challenge exactly as RFC 7636 and the request store
- * them, and none of them ever in a dump, a JSON form or a serialised string.
+ * Unit tests for an authorisation request's protocol state.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -107,8 +104,7 @@ final class ProtocolStateTest extends TestCase
     }
 
     /**
-     * The challenge is the S256 challenge of the PKCE verifier, unpadded
-     * base64url, as RFC 7636 Appendix B computes it.
+     * The challenge is the verifier's S256 challenge, per RFC 7636 Appendix B.
      *
      * @return void
      *

@@ -13,10 +13,7 @@ use SineMacula\Laravel\Sso\Connections\MappingLimits;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 
 /**
- * Unit tests for a connection's attribute mapping (SSO-2.10): its defaults per
- * protocol, the targets and sources it refuses, the custom targets it accepts
- * only when the application declares them, and the profile data it builds,
- * capped and never interpreted.
+ * Unit tests for a connection's attribute mapping.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -30,8 +27,7 @@ final class AttributeMappingTest extends TestCase
     private const array DECLARED = ['department', 'cost_center_2', 'roles', 'notes'];
 
     /**
-     * The OIDC standard claims and the common SAML attributes by their OIDs,
-     * and nothing for another protocol.
+     * OIDC and SAML have default mappings; other protocols have none.
      *
      * @return void
      */
@@ -73,8 +69,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * Rows of `[protocol, mapping, violations]`: a mapping, and each violation
-     * it reports as `[setting, code]`, in order.
+     * Rows of `[protocol, mapping, violations]`, each `[setting, code]`.
      *
      * @return iterable<string, array{0: string, 1: array<array-key, mixed>, 2: list<array{0: string, 1: string}>}>
      */
@@ -110,8 +105,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * Each refused target or source is reported at its target, never echoing
-     * the source.
+     * Each refused target or source is reported at its target, unechoed.
      *
      * @param  string  $protocol
      * @param  array<array-key, mixed>  $mapping
@@ -137,8 +131,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * A mapping never targets one of the result's own fields, over either
-     * protocol (SSO-2.10).
+     * A mapping never targets one of the result's own fields.
      *
      * @param  string  $target
      * @return void
@@ -183,8 +176,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * Over OIDC, no target, standard or custom, reads a protocol value or a
-     * token; over SAML the same names are ordinary attributes.
+     * Over OIDC no target reads a protocol value or token; over SAML it may.
      *
      * @param  string  $source
      * @return void
@@ -202,10 +194,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * A custom target the application does not declare is `not_allowed` at its
-     * target, before its source is judged; the standard targets need no
-     * declaration, and with none declared (the default) a mapping names them
-     * alone.
+     * An undeclared custom target is `not_allowed` before its source is judged.
      *
      * @return void
      */
@@ -241,8 +230,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * A malformed declaration of custom keys fails closed, naming its key, when
-     * a mapping is judged and when one maps.
+     * A malformed custom key declaration fails closed, naming its key.
      *
      * @return void
      */
@@ -261,8 +249,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * The standard single-valued targets take the value, or the first string of
-     * a list; a source absent or holding no string is left out.
+     * Single-valued targets take the value or the first string of a list.
      *
      * @return void
      */
@@ -284,8 +271,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * Groups are always a list, kept in order, of at most the cap, with
-     * anything not a string dropped and nothing interpreted.
+     * Groups map to a capped list of strings, in order.
      *
      * @return void
      */
@@ -335,8 +321,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * A stored custom target the application no longer declares maps nothing;
-     * the standard targets and the declared ones still map.
+     * A stored custom target the application no longer declares maps nothing.
      *
      * @return void
      */
@@ -356,8 +341,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * A target that could never be stored is never mapped, whatever reaches the
-     * mapping.
+     * A target that could never be stored is never mapped.
      *
      * @return void
      */
@@ -369,8 +353,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * A target refused, a source the values lack, or a value that maps to
-     * nothing is skipped, quietly, and the targets after it still map.
+     * An unmappable target is skipped and the rest still map.
      *
      * @return void
      */
@@ -392,8 +375,7 @@ final class AttributeMappingTest extends TestCase
     }
 
     /**
-     * The caps and the declared custom keys, from a configuration of their own:
-     * `DECLARED` unless the settings given declare others.
+     * Mapping limits declaring `DECLARED` unless the settings declare others.
      *
      * @param  array<string, mixed>  $mapping
      * @return \SineMacula\Laravel\Sso\Connections\MappingLimits
