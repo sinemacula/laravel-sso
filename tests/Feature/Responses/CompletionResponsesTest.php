@@ -21,11 +21,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
 /**
- * Feature tests for the responses a completion answers with, built by the
- * container with the application's translator: an application's translation of
- * a message applies and an untranslated locale reads English (SSO-12.6); and
- * the HTTP response carries exactly the status, the headers, the `Location` and
- * the body, as a controller returns it (SSO-5.6, SSO-5.7, SSO-12.1).
+ * Feature tests for the responses a completion answers with.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +58,8 @@ final class CompletionResponsesTest extends TestCase
     }
 
     /**
-     * An application's translation of `sso::messages.completion.invalid`
-     * applies in its locale, and a line it does not translate is English.
+     * An application's translation applies, and an untranslated line is
+     * English.
      *
      * @return void
      */
@@ -94,8 +90,7 @@ final class CompletionResponsesTest extends TestCase
     }
 
     /**
-     * A redirect's HTTP response carries exactly its status, the headers, the
-     * `Location` and the body.
+     * A redirect carries exactly its status, headers, `Location` and body.
      *
      * @return void
      */
@@ -115,8 +110,7 @@ final class CompletionResponsesTest extends TestCase
     }
 
     /**
-     * A `400` and a `429` carry exactly their status, the headers and the body,
-     * and no `Location`.
+     * A `400` and a `429` carry exactly their status, headers and body.
      *
      * @return void
      */
@@ -134,9 +128,8 @@ final class CompletionResponsesTest extends TestCase
     }
 
     /**
-     * A controller returns the response as it is, and Laravel sends it with its
-     * status and headers: a `303` after the POST to an assertion consumer
-     * service and a `302` after the GET to a callback.
+     * A controller returns the response as it is, `303` after a POST and `302`
+     * after a GET.
      *
      * @return void
      */
@@ -181,8 +174,8 @@ final class CompletionResponsesTest extends TestCase
     }
 
     /**
-     * The headers every completion response is sent with, as Symfony holds them
-     * (`no-store` written as `no-store, private`), with those given, by name.
+     * Every completion response's headers as Symfony holds them, plus those
+     * given.
      *
      * @param  array<string, list<string>>  $more
      * @return array<string, list<string>>

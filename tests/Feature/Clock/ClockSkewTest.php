@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Clock\ClockSkew;
 use Tests\TestCase;
 
 /**
- * Feature tests for the clock skew: 60 seconds unless configured, an integer
- * from 0 to 300 (or the digit string `env()` gives for one), read on each call,
- * and anything else refused with a message naming the key (SSO-6.5).
+ * Feature tests for the configured clock skew.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +34,7 @@ final class ClockSkewTest extends TestCase
     }
 
     /**
-     * A skew that is not configured at all, as in a configuration published
-     * before the setting existed, is 60 seconds.
+     * An unset skew is 60 seconds.
      *
      * @return void
      */
@@ -53,8 +50,7 @@ final class ClockSkewTest extends TestCase
     }
 
     /**
-     * Rows of `[value, seconds]`: the integers and digit strings accepted, the
-     * bounds among them.
+     * Rows of `[value, seconds]`: the integers and digit strings accepted.
      *
      * @return iterable<string, array{0: int|string, 1: int}>
      */
@@ -116,9 +112,8 @@ final class ClockSkewTest extends TestCase
     }
 
     /**
-     * A value that is not an integer from 0 to 300 fails closed, naming the key
-     * and the range but never the value, rather than widening or narrowing the
-     * window every time check allows.
+     * A value outside 0 to 300 fails closed, naming the key and never the
+     * value.
      *
      * @param  mixed  $value
      * @return void
@@ -135,8 +130,7 @@ final class ClockSkewTest extends TestCase
     }
 
     /**
-     * The skew is read on each call, so a change to the configuration is seen
-     * by the next time check and nothing is kept across requests.
+     * The skew is read on each call.
      *
      * @return void
      */

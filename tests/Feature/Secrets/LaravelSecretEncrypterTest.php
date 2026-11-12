@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use Tests\TestCase;
 
 /**
- * Feature tests for the default secret encrypter: a secret round-trips through
- * Laravel's encrypter under `app.key`, its ciphertext shows nothing of it, and
- * a tampered ciphertext is a server error that shows nothing of it either.
+ * Feature tests for the default secret encrypter.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,8 +36,7 @@ final class LaravelSecretEncrypterTest extends TestCase
     }
 
     /**
-     * The ciphertext shows nothing of the secret, and two encryptions of one
-     * secret differ.
+     * The ciphertext shows nothing of the secret, and two encryptions differ.
      *
      * @return void
      */
@@ -56,8 +53,7 @@ final class LaravelSecretEncrypterTest extends TestCase
     }
 
     /**
-     * It is Laravel's encrypter under `app.key`: Laravel's own decrypts what it
-     * encrypts.
+     * Laravel's own encrypter under `app.key` decrypts what it encrypts.
      *
      * @return void
      */
@@ -71,8 +67,8 @@ final class LaravelSecretEncrypterTest extends TestCase
     }
 
     /**
-     * A tampered ciphertext throws a `RuntimeException` whose message and trace
-     * show nothing of the secret.
+     * A tampered ciphertext throws a `RuntimeException` that shows nothing of
+     * the secret.
      *
      * @return void
      */

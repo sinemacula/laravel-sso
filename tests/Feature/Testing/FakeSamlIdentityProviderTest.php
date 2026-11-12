@@ -19,12 +19,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\XmlSigner;
 use Tests\TestCase;
 
 /**
- * Feature tests for the fake SAML identity provider (SSO-12.4): its keys, the
- * options of its responses and how each change answers a new response, what the
- * browser posts, its metadata (alone, in an aggregate, signed by itself or by
- * another key), every signature algorithm its signer writes, and a wrapping
- * variant it does not have. That its responses and metadata are valid SAML, and
- * every hostile knob refused, the adapter's tests show.
+ * Feature tests for the fake SAML identity provider.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,8 +39,7 @@ final class FakeSamlIdentityProviderTest extends TestCase
     private static ?FakeSamlIdentityProvider $idp = null;
 
     /**
-     * A key pair is a private key and a self-signed certificate of its public
-     * key; a provider given one uses it, and one given none makes its own.
+     * A provider uses the key pair it is given, or makes its own.
      *
      * @return void
      */
@@ -64,10 +58,8 @@ final class FakeSamlIdentityProviderTest extends TestCase
     }
 
     /**
-     * A key pair is a 2048-bit RSA key and a certificate signed with
-     * RSA-SHA256, valid for exactly 365 days, whose common name is the one
-     * given with every character outside letters, digits, dots and hyphens
-     * replaced and cut to 64 characters.
+     * A key pair is 2048-bit RSA with a 365-day RSA-SHA256 certificate and a
+     * sanitised common name.
      *
      * @return void
      */
@@ -86,9 +78,7 @@ final class FakeSamlIdentityProviderTest extends TestCase
     }
 
     /**
-     * A provider given a key without its certificate, or a certificate without
-     * its key, makes its own pair, named for its entity id, rather than half of
-     * one.
+     * A provider given half a key pair makes its own whole pair.
      *
      * @return void
      */
@@ -105,8 +95,7 @@ final class FakeSamlIdentityProviderTest extends TestCase
     }
 
     /**
-     * A response holds its defaults, and each change answers a new response,
-     * the old one kept.
+     * A response holds its defaults, and each change answers a new response.
      *
      * @return void
      */
@@ -131,8 +120,8 @@ final class FakeSamlIdentityProviderTest extends TestCase
     }
 
     /**
-     * The browser posts the response base64 encoded, with a `RelayState` only
-     * when there is one, and the completion request carries the same.
+     * The browser posts the base64 response, with a `RelayState` only when
+     * there is one.
      *
      * @return void
      */
@@ -152,8 +141,7 @@ final class FakeSamlIdentityProviderTest extends TestCase
     }
 
     /**
-     * The metadata is a valid `EntityDescriptor` for the provider, with its
-     * signing certificate, its single sign-on service and its NameID format.
+     * The metadata is a valid `EntityDescriptor` for the provider.
      *
      * @return void
      */
@@ -182,8 +170,8 @@ final class FakeSamlIdentityProviderTest extends TestCase
     }
 
     /**
-     * Rows of `[changes, root, signed]`: metadata, the element at its root, and
-     * which element the signature is a child of.
+     * Rows of `[changes, root, signed]`: the root element and the signature's
+     * parent.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: string, 2: ?string}>
      */
@@ -198,8 +186,7 @@ final class FakeSamlIdentityProviderTest extends TestCase
     }
 
     /**
-     * Metadata in an aggregate, signed in the entity or the aggregate, is
-     * written as asked and stays valid.
+     * Metadata in an aggregate is signed where asked and stays valid.
      *
      * @param  array<string, mixed>  $changes
      * @param  string  $root
@@ -231,8 +218,8 @@ final class FakeSamlIdentityProviderTest extends TestCase
     }
 
     /**
-     * Rows of `[algorithm, hash]`: each signature algorithm the signer writes,
-     * and the hash OpenSSL verifies it with.
+     * Rows of `[algorithm, hash]`: each signature algorithm and the hash
+     * OpenSSL verifies it with.
      *
      * @return iterable<string, array{0: string, 1: int}>
      */

@@ -11,8 +11,7 @@ use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\TestCase;
 
 /**
- * Integration tests for publishing the package's configuration through
- * `vendor:publish`, as an application installing the package does.
+ * Integration tests for publishing the package configuration.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -23,12 +22,8 @@ use Tests\TestCase;
 final class PublishedConfigurationTest extends TestCase
 {
     /**
-     * Publishing the `sso-config` tag writes the package's configuration to the
-     * application's `config/sso.php`, unchanged.
-     *
-     * The application's config directory is moved to a directory of the test's
-     * own before the provider boots again, since the test application's shared
-     * config directory is read by every parallel worker as it boots.
+     * Publishing `sso-config` writes `config/sso.php` unchanged. The config
+     * directory is moved to the test's own, since parallel workers share it.
      *
      * @return void
      */

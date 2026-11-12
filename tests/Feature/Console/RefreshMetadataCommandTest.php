@@ -29,16 +29,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for `sso:metadata:refresh` (SSO-2.8, SSO-11.12): by default it
- * queues one `RefreshConnectionMetadata` job per due connection, on the queue
- * connection and queue configured, with the configured timeout and tries,
- * fetches nothing itself and prints how many it queued; each job refreshes its
- * connection while it is still due. With `--sync` it refreshes every due
- * connection itself and prints the count of each outcome. It prints no URL,
- * entity id or value of a connection, exits 0 whatever the outcomes, goes on
- * past a connection whose metadata is malformed, a second run changes and
- * refreshes nothing, and a run that stopped on an exception exits 1 naming the
- * exception's class alone.
+ * Feature tests for `sso:metadata:refresh`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -67,8 +58,8 @@ final class RefreshMetadataCommandTest extends TestCase
     private FakeFetcher $fetcher;
 
     /**
-     * Bind a fixed clock and a fake fetcher, switch SAML and the refresh on,
-     * and create the tables.
+     * Bind a fixed clock and a fake fetcher, enable SAML and the refresh, and
+     * create the tables.
      *
      * @return void
      */
@@ -89,8 +80,7 @@ final class RefreshMetadataCommandTest extends TestCase
     }
 
     /**
-     * With nothing due, the run queues nothing and passes; with `--sync` it
-     * prints the summary alone.
+     * With nothing due, the run queues nothing and passes.
      *
      * @return void
      */
@@ -105,10 +95,8 @@ final class RefreshMetadataCommandTest extends TestCase
     }
 
     /**
-     * Each due connection's refresh is queued as one job, with its id alone, on
-     * the configured queue connection and queue, with the configured timeout
-     * and tries, failing on a timeout; the command fetches nothing and prints
-     * no value.
+     * Each due connection is queued as one job with the configured queue and
+     * options.
      *
      * @return void
      */
@@ -144,9 +132,8 @@ final class RefreshMetadataCommandTest extends TestCase
     }
 
     /**
-     * A job queued with no queue configured goes to the application's default
-     * connection and queue, with the default timeout and one try, and carries
-     * the connection's id alone when it is serialised.
+     * A job with no queue configured takes the defaults and serialises only the
+     * id.
      *
      * @return void
      */
@@ -164,8 +151,7 @@ final class RefreshMetadataCommandTest extends TestCase
     }
 
     /**
-     * A queued job refreshes its connection while it is due; run again once the
-     * connection was refreshed, or for a connection gone, it does nothing.
+     * A queued job refreshes its connection only while it is due.
      *
      * @return void
      */
@@ -189,9 +175,8 @@ final class RefreshMetadataCommandTest extends TestCase
     }
 
     /**
-     * With `--sync`, a run counts each outcome, prints nothing of any
-     * connection, and passes though a refresh failed; a second run refreshes
-     * nothing. Nothing is queued.
+     * `--sync` counts each outcome, prints no connection values and queues
+     * nothing.
      *
      * @return void
      */
@@ -220,10 +205,7 @@ final class RefreshMetadataCommandTest extends TestCase
     }
 
     /**
-     * With `--sync`, a connection whose aggregate names an expiry that is no
-     * real instant fails, with its failure and backoff recorded and its claim
-     * released, and the run goes on to refresh the next connection due and
-     * passes.
+     * `--sync` records a malformed aggregate's failure and goes on.
      *
      * @return void
      */
@@ -262,8 +244,7 @@ final class RefreshMetadataCommandTest extends TestCase
     }
 
     /**
-     * A run that stopped on an exception exits 1 and names its class alone,
-     * queued or inline.
+     * A run that stopped exits 1 naming the exception's class alone.
      *
      * @param  bool  $sync
      * @return void
@@ -285,7 +266,7 @@ final class RefreshMetadataCommandTest extends TestCase
 
     /**
      * Run the command, with `--sync` when asked, and answer its exit code and
-     * its non-empty lines.
+     * non-empty lines.
      *
      * @param  bool  $sync
      * @return array{0: int, 1: list<string>}
@@ -299,8 +280,8 @@ final class RefreshMetadataCommandTest extends TestCase
     }
 
     /**
-     * A refreshing SAML connection fetching from the URL, trusting the
-     * provider's certificate, with the id given, if any.
+     * A refreshing SAML connection fetching from the URL and trusting the
+     * provider.
      *
      * @param  string  $url
      * @param  ?string  $id

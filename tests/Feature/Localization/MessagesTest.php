@@ -13,10 +13,7 @@ use SineMacula\Laravel\Sso\Localization\Messages;
 use Tests\TestCase;
 
 /**
- * Feature tests for the messages put in front of a consumer: read through
- * Laravel's translator under the `sso` namespace, so an application's
- * translation applies, and in English for a locale without one, whatever the
- * application's fallback locale (SSO-12.6).
+ * Feature tests for the package's translated messages.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,8 +42,7 @@ final class MessagesTest extends TestCase
     }
 
     /**
-     * An application's translation applies in its locale, read in the locale
-     * current at each call, and a message it does not translate is English.
+     * An application's translation applies in the locale current at each call.
      *
      * @return void
      */
@@ -78,8 +74,7 @@ final class MessagesTest extends TestCase
     }
 
     /**
-     * English answers even when the application's fallback locale is another
-     * one, without a line either: the package's fallback is its own.
+     * English answers whatever the application's fallback locale.
      *
      * @return void
      */
@@ -93,8 +88,7 @@ final class MessagesTest extends TestCase
     }
 
     /**
-     * The application's fallback locale is read before English, as Laravel
-     * reads any line: English is only the last resort.
+     * The application's fallback locale is read before English.
      *
      * @return void
      */
@@ -131,8 +125,8 @@ final class MessagesTest extends TestCase
     }
 
     /**
-     * Replacements are Laravel's `:placeholder` replacements, its upper-case
-     * and capitalised forms included.
+     * Laravel's `:placeholder` replacements apply, upper-case and capitalised
+     * forms included.
      *
      * @return void
      */
@@ -146,8 +140,7 @@ final class MessagesTest extends TestCase
     }
 
     /**
-     * A replacement that would rewrite the message's key cannot pass the key
-     * off as a line: a locale without one still falls back to English.
+     * A replacement cannot pass a missing line off as translated.
      *
      * @return void
      */
@@ -161,8 +154,7 @@ final class MessagesTest extends TestCase
     }
 
     /**
-     * A message without an English line is a bug in the package, and throws
-     * naming the key rather than showing it.
+     * A message without an English line throws naming the key.
      *
      * @return void
      */

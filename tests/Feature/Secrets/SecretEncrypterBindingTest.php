@@ -11,9 +11,7 @@ use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\TestCase;
 
 /**
- * Feature tests for the secret encrypter's binding: Laravel's encrypter by
- * default, scoped so nothing of one request or job outlives it, and an
- * application's own binding kept.
+ * Feature tests for the secret encrypter's binding.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,8 +33,7 @@ final class SecretEncrypterBindingTest extends TestCase
     }
 
     /**
-     * The default is shared within a scope and built afresh after it, as a new
-     * request or job under Octane or a queue worker sees it.
+     * The default is shared within a scope and built afresh after it.
      *
      * @return void
      */
@@ -55,10 +52,7 @@ final class SecretEncrypterBindingTest extends TestCase
     }
 
     /**
-     * A binding made before the provider registers is kept, never replaced by
-     * the default. The test application has registered the provider already, so
-     * the default is removed, the application's own bound, and the provider
-     * registered again.
+     * A binding made before the provider registers is kept.
      *
      * @return void
      */
@@ -96,6 +90,7 @@ final class SecretEncrypterBindingTest extends TestCase
         $app->offsetUnset(SecretEncrypter::class);
         $app->singleton(SecretEncrypter::class, static fn (): SecretEncrypter => $own);
 
+        // Testbench registered the provider already; register it again.
         (new SsoServiceProvider($app))->register();
 
         self::assertSame($own, $app->make(SecretEncrypter::class));

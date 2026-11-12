@@ -33,13 +33,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests, on SQLite, of when the administration events reach their
- * listeners (SSO-10.5), with the storage connection moved to a connection of
- * its own beside the suite's database: a management helper run inside an outer
- * transaction on the storage connection that rolls back writes nothing and
- * reports nothing; one that commits reports only once the outer transaction
- * commits; a transaction on another connection defers nothing; and a queued
- * listener receives a connection update with its names and context intact.
+ * Integration tests of when administration events reach their listeners.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,9 +70,8 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     private string $connection;
 
     /**
-     * Bind a fixed clock and a freshness contract that answers `fresh`, turn
-     * OIDC on, create the tables on the storage connection and an OIDC
-     * connection, and record events.
+     * Bind a fixed clock and a fresh caller, enable OIDC, and create the tables
+     * and a connection on the storage connection.
      *
      * @return void
      */
@@ -102,8 +95,8 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * Helpers run inside an outer transaction on the storage connection that
-     * rolls back write nothing and report nothing, though each succeeded.
+     * Helpers run in an outer transaction that rolls back write and report
+     * nothing.
      *
      * @return void
      *
@@ -142,8 +135,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * Helpers run inside an outer transaction on the storage connection that
-     * commits report nothing until it commits, then each change in order.
+     * Helpers run in an outer transaction report only once it commits.
      *
      * @return void
      *
@@ -173,9 +165,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * A transaction open on the suite's own database, which the package does
-     * not write to, neither defers the event nor withdraws it when it rolls
-     * back.
+     * A transaction on another connection defers and withdraws nothing.
      *
      * @return void
      *
@@ -197,9 +187,7 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * A queued listener, on the `sync` queue, which serialises the event as any
-     * queue does, receives the connection update once the outer transaction
-     * commits, with the names of what changed and its context intact.
+     * A queued listener receives the connection update intact.
      *
      * @return void
      *

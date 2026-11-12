@@ -31,10 +31,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporter of administration changes (SSO-10.3): each
- * change becomes its event, with the connection, its tenant and protocol and
- * the acting identity in its context, once the change commits and never when it
- * rolls back.
+ * Feature tests for the administration change reporter.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,9 +60,8 @@ final class AdministrationEventsTest extends TestCase
     }
 
     /**
-     * Each connection change becomes its event, in order, each naming the
-     * connection, its tenant and protocol and the acting identity, and nothing
-     * else.
+     * Each connection change becomes its event with the connection and the
+     * acting identity.
      *
      * @return void
      */
@@ -114,8 +110,7 @@ final class AdministrationEventsTest extends TestCase
     }
 
     /**
-     * Each key change becomes its event, carrying the key's id, use, state,
-     * fingerprint and end of validity, and never its private key.
+     * Each key change becomes its event, never carrying the private key.
      *
      * @return void
      */
@@ -169,8 +164,8 @@ final class AdministrationEventsTest extends TestCase
     }
 
     /**
-     * An event reported inside the storage connection's transaction reaches
-     * listeners when it commits, and never when it rolls back.
+     * An event reaches listeners once the transaction commits, never on
+     * rollback.
      *
      * @return void
      *

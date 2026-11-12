@@ -13,9 +13,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the single-use key model: its configured table and
- * connection, its shape, and pruning keys whose expiry has passed by the
- * package's clock.
+ * Feature tests for the single-use key model.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,8 +42,8 @@ final class SingleUseKeyTest extends TestCase
     }
 
     /**
-     * The model takes its table from `sso.single_use.table` and its connection
-     * from the storage connection, each time it is built.
+     * The model reads its table and connection from the settings each time it
+     * is built.
      *
      * @return void
      */
@@ -66,8 +64,7 @@ final class SingleUseKeyTest extends TestCase
     }
 
     /**
-     * A key has no timestamps, reads its expiry as a date, and accepts no mass
-     * assignment.
+     * A key has no timestamps, casts its expiry and accepts no mass assignment.
      *
      * @return void
      */
@@ -87,8 +84,7 @@ final class SingleUseKeyTest extends TestCase
     }
 
     /**
-     * Only keys whose expiry has passed by the bound clock, from the second it
-     * names, are prunable.
+     * Only keys expired by the bound clock are prunable.
      *
      * @return void
      */
@@ -145,8 +141,8 @@ final class SingleUseKeyTest extends TestCase
     }
 
     /**
-     * Insert a key that expired a second before the fixed clock's now, one that
-     * expires at it, and one that expires a second after it.
+     * Insert keys expiring a second before, at, and a second after the fixed
+     * now.
      *
      * @return void
      */

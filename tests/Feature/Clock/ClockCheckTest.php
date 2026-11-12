@@ -11,9 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[clock]`: checked while the package is in use, the skew an
- * integer from 0 to 300 seconds, and a malformed one reported with the message
- * the time checks would fail closed with.
+ * Feature tests for the `[clock]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,8 +27,7 @@ final class ClockCheckTest extends TestCase
     private const string PROBLEM = 'sso.clock.skew_seconds must be an integer from 0 to 300.';
 
     /**
-     * Not checked while the package is not in use, however malformed; the
-     * shipped default passes once it is.
+     * The skew is checked only while the package is in use.
      *
      * @return void
      */
@@ -47,8 +44,7 @@ final class ClockCheckTest extends TestCase
     }
 
     /**
-     * A malformed protocol switch counts as the package in use, so the skew it
-     * would need is checked rather than skipped.
+     * A malformed protocol switch counts as in use, so the skew is checked.
      *
      * @return void
      */

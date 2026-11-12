@@ -16,12 +16,7 @@ use Tests\Concerns\UsesUnreliableCache;
 use Tests\TestCase;
 
 /**
- * Feature tests for the operations schedule (SSO-11.11, SSO-11.12): the four
- * commands on their default cadences, each cadence configurable or left to the
- * application, nothing while the package is not in use, no cache asked by
- * default, and mutexes only on opting in, with their expiry. Also the settings'
- * validation and the boot check. `CacheOutageTest` runs them through
- * `schedule:run` with the cache down, lying and stuck.
+ * Feature tests for the operations schedule and its settings.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,8 +44,8 @@ final class OperationsScheduleTest extends TestCase
     }
 
     /**
-     * The four commands are registered on their default cadences, each on every
-     * server, with no mutex.
+     * The four commands run on their default cadences on every server, with no
+     * mutex.
      *
      * @return void
      */
@@ -72,7 +67,7 @@ final class OperationsScheduleTest extends TestCase
     }
 
     /**
-     * Each cadence is the setting's, and a task with none is left to the
+     * Each cadence is configurable, and a task with none is left to the
      * application.
      *
      * @return void
@@ -90,8 +85,7 @@ final class OperationsScheduleTest extends TestCase
     }
 
     /**
-     * While the package is not in use nothing is registered, since the tables
-     * the commands read may not exist.
+     * Nothing is registered while the package is not in use.
      *
      * @return void
      */
@@ -120,8 +114,7 @@ final class OperationsScheduleTest extends TestCase
     }
 
     /**
-     * Opting in with no expiry set takes an hour, far short of Laravel's own
-     * day, so that a dead process stops a task for no longer.
+     * An opted-in mutex expires after an hour by default.
      *
      * @return void
      */
@@ -135,10 +128,7 @@ final class OperationsScheduleTest extends TestCase
     }
 
     /**
-     * By default nothing the helper registers touches the cache: with the cache
-     * down, asking each task whether it overlaps does not call it.
-     * `schedule:run` itself, which the framework's polling sends to the cache,
-     * has its tests in `CacheOutageTest`.
+     * By default no task asks the cache whether it overlaps.
      *
      * @return void
      */
@@ -172,8 +162,8 @@ final class OperationsScheduleTest extends TestCase
     }
 
     /**
-     * A malformed setting fails closed, naming it, in the schedule and in the
-     * boot check alike.
+     * A malformed setting fails closed in the schedule and the boot check
+     * alike.
      *
      * @param  string  $setting
      * @param  mixed  $value
@@ -206,8 +196,7 @@ final class OperationsScheduleTest extends TestCase
     }
 
     /**
-     * The defaults apply when nothing is set; a task the package does not have
-     * is a caller's mistake.
+     * The defaults apply when nothing is set, and an unknown task is refused.
      *
      * @return void
      */
@@ -247,8 +236,7 @@ final class OperationsScheduleTest extends TestCase
     }
 
     /**
-     * The events a fresh schedule holds once the helper has registered them, by
-     * the command each runs.
+     * The events a fresh schedule holds once registered, by command.
      *
      * @return array<string, \Illuminate\Console\Scheduling\Event>
      */

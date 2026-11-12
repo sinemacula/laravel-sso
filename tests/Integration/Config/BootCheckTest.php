@@ -18,12 +18,7 @@ use Tests\Concerns\ChecksTheFoundations;
 use Tests\TestCase;
 
 /**
- * Integration tests of the boot check on a whole application: booted to serve a
- * request, the configuration of what is enabled is checked once the application
- * has booted, a problem stops the boot with every problem listed, and a
- * well-configured or unused package boots; run from Artisan, a worker or
- * scheduler command is checked the same way as it starts, while every other
- * command runs (SSO-12.3).
+ * Integration tests of the configuration boot check on a whole application.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -55,12 +50,11 @@ final class BootCheckTest extends TestCase
     /** @var array<string, mixed> The settings the next application boots with. */
     private static array $settings = [];
 
-    /** @var bool Whether the next application runs every registered check, as a real one does, rather than the foundations' alone. */
+    /** @var bool Whether the next application runs every registered check, not just the foundations'. */
     private static bool $everyCheck = false;
 
     /**
-     * A misconfigured application fails to boot outside the console, with every
-     * problem of what is enabled, and nothing of what is not.
+     * A misconfigured application fails to boot with every enabled problem.
      *
      * @return void
      */
@@ -82,8 +76,7 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * An application with every feature off, and one whose enabled features are
-     * well configured, boot outside the console.
+     * An unused or well-configured application boots.
      *
      * @return void
      */
@@ -103,9 +96,7 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * Through the checker the provider binds, with every registered check, a
-     * package in use whose settings are all well configured (the shipped
-     * defaults for everything but the foundations) boots outside the console.
+     * A package in use with the shipped defaults boots through every check.
      *
      * @return void
      */
@@ -121,9 +112,7 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * Through the checker the provider binds, every registered check runs at
-     * boot: a problem in each subject after the foundations is listed under its
-     * subject, in the order the checks are registered.
+     * Every registered check runs at boot, in registration order.
      *
      * @return void
      */
@@ -150,9 +139,7 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * Run from Artisan in a misconfigured application, a queue worker and the
-     * scheduler each fail as they start, with every problem of what is enabled,
-     * before they take a job or run a task.
+     * A worker and the scheduler fail to start in a misconfigured application.
      *
      * @return void
      */
@@ -174,8 +161,8 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * Run as `php artisan` runs it, a worker command named by an abbreviation
-     * is checked as the command it resolves to.
+     * A worker command named by an abbreviation is checked as the command it
+     * resolves to.
      *
      * @return void
      */
@@ -193,8 +180,7 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * Run from Artisan in a misconfigured application, the commands that
-     * inspect or repair it still run: `sso:check` lists the problems.
+     * A recovery command runs in a misconfigured application.
      *
      * @return void
      */
@@ -209,8 +195,7 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * Run from Artisan in a well-configured application, a queue worker and the
-     * scheduler start and do their work.
+     * A worker and the scheduler start in a well-configured application.
      *
      * @return void
      */
@@ -223,9 +208,8 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * Bind the foundations' checks, unless the test runs every check, and apply
-     * the settings the test boots with, before the package's provider registers
-     * and boots.
+     * Bind the foundations' checks unless every check runs, and apply the
+     * test's settings.
      *
      * @param  mixed  $app
      * @return void
@@ -245,9 +229,8 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * Boot a fresh application with the settings, as it boots to serve a
-     * request rather than a console command, leaving a console application with
-     * the defaults behind for the next test.
+     * Boot a fresh application with the settings as it boots to serve a
+     * request.
      *
      * @param  array<string, mixed>  $settings
      * @param  bool  $everyCheck
@@ -271,8 +254,8 @@ final class BootCheckTest extends TestCase
     }
 
     /**
-     * Boot a fresh application with the settings, in the console, with Artisan
-     * announcing each command as it starts, as it does outside the tests.
+     * Boot a fresh console application with the settings, announcing each
+     * command.
      *
      * @param  array<string, mixed>  $settings
      * @return void

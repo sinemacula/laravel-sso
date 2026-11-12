@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Models\Link;
 use Tests\TestCase;
 
 /**
- * Feature tests for the binary column cast: bytes read as they are, a stream
- * read from its start to its end, bytes bound as a string except on PostgreSQL,
- * where they are bound as a stream, and anything else refused.
+ * Feature tests for the binary column cast.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -51,9 +49,8 @@ final class BinaryStringTest extends TestCase
     }
 
     /**
-     * Bytes are bound as a string on every engine but PostgreSQL, where they
-     * are bound as a stream holding them, rewound, without connecting; `null`
-     * stays `null`.
+     * Bytes bind as a string, except on PostgreSQL where they bind as a rewound
+     * stream.
      *
      * @return void
      */

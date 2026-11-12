@@ -25,10 +25,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for `sso:keys:expiring` (SSO-2.6, SSO-11.12): a line for each
- * key whatever was notified before, the counts, the window, exit 0 however many
- * keys it finds, and exit 1 when a dispatch threw or the run stopped, by class
- * alone.
+ * Feature tests for `sso:keys:expiring`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -86,8 +83,8 @@ final class ExpiringKeysCommandTest extends TestCase
     }
 
     /**
-     * A line per key, expired first, and the counts; an expired key exits 0,
-     * its expiry being reported and never enforced. No key material is printed.
+     * A line per key, expired first, then the counts, with no key material and
+     * exit 0.
      *
      * @return void
      */
@@ -109,8 +106,7 @@ final class ExpiringKeysCommandTest extends TestCase
     }
 
     /**
-     * A second run lists exactly the same keys, sending nothing: what is
-     * expiring stays visible whatever was already notified.
+     * A second run lists the same keys and sends nothing.
      *
      * @return void
      */
@@ -131,8 +127,7 @@ final class ExpiringKeysCommandTest extends TestCase
     }
 
     /**
-     * `--days` lists further ahead, a key that has reached no threshold as
-     * such.
+     * `--days` lists further ahead.
      *
      * @return void
      */
@@ -168,8 +163,7 @@ final class ExpiringKeysCommandTest extends TestCase
     }
 
     /**
-     * A dispatch that threw goes on to the next key and exits non-zero; a later
-     * run sends it again and passes.
+     * A dispatch that threw exits non-zero and is sent again next run.
      *
      * @return void
      */

@@ -14,9 +14,8 @@ use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\TestCase;
 
 /**
- * Integration tests for publishing the package's translations through
- * `vendor:publish`, and for an application overriding the published lines, as
- * an application translating the package does (SSO-12.6).
+ * Integration tests for publishing the translations and overriding the
+ * published lines.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,14 +27,8 @@ use Tests\TestCase;
 final class PublishedTranslationsTest extends TestCase
 {
     /**
-     * Publishing the `sso-lang` tag writes the package's translations to the
-     * application's `lang/vendor/sso`, unchanged, and a line the application
-     * then changes there, in English or in a locale of its own, replaces the
-     * package's, while the lines it leaves out stay the package's.
-     *
-     * The application's lang directory is moved to a directory of the test's
-     * own before the provider boots again, since the test application's shared
-     * lang directory is read by every parallel worker as it boots.
+     * Lines the application changes replace the package's. The lang directory
+     * is moved since parallel workers share it.
      *
      * @return void
      */
@@ -86,9 +79,8 @@ final class PublishedTranslationsTest extends TestCase
     }
 
     /**
-     * Forget the translator and its loader, so the next to resolve them reads
-     * the application's lang directory as it now is, as a worker booting after
-     * the lines were published does.
+     * Forget the translator and its loader so the next resolution reads the
+     * lang directory afresh.
      *
      * @return void
      */

@@ -26,11 +26,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests of the after-commit dispatch with the storage connection
- * moved to a second connection, beside the suite's own database: an event
- * reporting a write made there is delivered when that write commits and dropped
- * when it rolls back or its commit fails, whatever the suite's database does,
- * and a queued listener receives the failure event with its context intact.
+ * Integration tests of after-commit dispatch on a separate storage connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -51,12 +47,12 @@ final class AfterCommitDispatchTest extends TestCase
     /** @var string The table the tests write to on the storage connection. */
     private const string TABLE = 'sso_event_writes';
 
-    /** @var \ArrayObject<int, \SineMacula\Laravel\Sso\Contracts\SsoEvent> The package events delivered synchronously, in order. */
+    /** @var \ArrayObject<int, \SineMacula\Laravel\Sso\Contracts\SsoEvent> The package events delivered synchronously. */
     private \ArrayObject $delivered;
 
     /**
-     * Bind the fixed clock, create the table on the storage connection, and
-     * record every package event delivered.
+     * Bind the fixed clock, create the table on the storage connection and
+     * record events.
      *
      * @return void
      */
@@ -95,9 +91,7 @@ final class AfterCommitDispatchTest extends TestCase
     }
 
     /**
-     * An event dispatched in a transaction on the storage connection is
-     * delivered once that transaction commits its write, and not before, even
-     * though a transaction on the suite's database rolls back meanwhile.
+     * An event is delivered when its write commits on the storage connection.
      *
      * @return void
      *
@@ -126,8 +120,7 @@ final class AfterCommitDispatchTest extends TestCase
     }
 
     /**
-     * An event dispatched in a transaction on the storage connection that rolls
-     * back is never delivered, and its write is gone.
+     * An event is dropped when its write rolls back.
      *
      * @return void
      *
@@ -149,10 +142,7 @@ final class AfterCommitDispatchTest extends TestCase
     }
 
     /**
-     * A change whose commit fails reports nothing, then or later: the next
-     * change to commit on the storage connection delivers its own event alone,
-     * whichever Laravel runs, though Laravel 12 leaves the failed commit's
-     * callback pending until then.
+     * A change whose commit fails is never reported, then or later.
      *
      * @return void
      *
@@ -186,10 +176,8 @@ final class AfterCommitDispatchTest extends TestCase
     }
 
     /**
-     * An event dispatched in the package's savepoint, inside the application's
-     * own outermost transaction on the storage connection, goes with that
-     * transaction when its commit fails, though the savepoint committed; the
-     * next transaction to commit delivers its own event alone.
+     * The application's failed commit takes the package's savepoint events with
+     * it.
      *
      * @return void
      *
@@ -223,9 +211,8 @@ final class AfterCommitDispatchTest extends TestCase
     }
 
     /**
-     * A change is reported once when an earlier commit callback of its
-     * transaction writes in a transaction of its own, which reports its change
-     * once too.
+     * A change is reported once when an earlier callback writes in its own
+     * transaction.
      *
      * @return void
      *
@@ -256,9 +243,7 @@ final class AfterCommitDispatchTest extends TestCase
     }
 
     /**
-     * A queued listener, on the `sync` queue, which serialises the event as any
-     * queue does, receives the failure event after its write commits, with its
-     * flow, its reason and its context intact.
+     * A queued listener receives the failure event intact.
      *
      * @return void
      *
@@ -369,8 +354,8 @@ final class AfterCommitDispatchTest extends TestCase
     }
 
     /**
-     * Run the work in an outermost transaction on the storage connection, and
-     * assert its commit fails with the injected failure, which fired once.
+     * Run the work in an outermost transaction and assert its commit fails
+     * once.
      *
      * @param  \Closure(): void  $work
      * @return void

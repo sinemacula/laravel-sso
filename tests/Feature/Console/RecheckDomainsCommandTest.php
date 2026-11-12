@@ -18,12 +18,7 @@ use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Feature\Domains\DomainServiceTestCase;
 
 /**
- * Feature tests for `sso:domains:recheck` (SSO-3.3, SSO-11.12): a line for each
- * domain whose check did more than confirm it, the count of each outcome, a
- * non-zero exit when a lookup failed, when the resolver threw (contained, the
- * run going on, logged by class alone) or when the run stopped on a database
- * error (named by its class alone), and a second run that changes and reports
- * nothing new.
+ * Feature tests for `sso:domains:recheck`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -55,9 +50,7 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
     }
 
     /**
-     * Each domain restored, suspended or lapsed is printed with its connection,
-     * in the order it was checked; a confirmed one is not; the summary counts
-     * each outcome, and the run passes.
+     * Each change is printed in check order, then the summary of outcomes.
      *
      * @return void
      */
@@ -110,10 +103,7 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
     }
 
     /**
-     * A second run with the same DNS leaves every claim as the first left it
-     * and reports nothing new: at the same instant it has nothing to check, and
-     * later a confirmed domain is still not printed while a suspended one is
-     * printed as still failing.
+     * A second run with the same DNS reports nothing new.
      *
      * @return void
      */
@@ -148,11 +138,8 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
     }
 
     /**
-     * A resolver that throws on one of three claims, the least recently
-     * confirmed, is contained: the other two are checked, the thrower's row is
-     * as it was, its lease released, the run fails and prints it as
-     * `resolver_threw`, and one warning names the exception's class and nothing
-     * it carried.
+     * A throwing resolver is contained, logged by class, and the run goes on
+     * and fails.
      *
      * @return void
      */
@@ -220,9 +207,7 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
     }
 
     /**
-     * A run stopped by a database error fails, naming the exception's class and
-     * nothing it carried; the claim it was checking keeps its lease only until
-     * the lease expires.
+     * A database error stops the run, naming its class alone.
      *
      * @return void
      */
@@ -249,10 +234,7 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
     }
 
     /**
-     * A run that died mid-claim, as a server's death does, leaves the lease: an
-     * overlapping or later run skips the claim, to the very second the lease
-     * runs out, and then takes it over. Nothing is written until then, and two
-     * runs over one claim confirm it once.
+     * A claim held by a dead run is taken over once its lease runs out.
      *
      * @return void
      */
@@ -289,8 +271,7 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
     }
 
     /**
-     * Make the tenant's connection's verified claim of the domain, last checked
-     * at the time given, with any other attributes as times.
+     * Make a verified claim of the domain, last checked at the time given.
      *
      * @param  string  $domain
      * @param  string  $checkedAt
@@ -319,8 +300,8 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
     }
 
     /**
-     * Run `sso:domains:recheck`, and answer its exit code and the lines it
-     * printed, trimmed, without blank ones.
+     * Run `sso:domains:recheck` and answer its exit code and non-empty trimmed
+     * lines.
      *
      * @return array{int, list<string>}
      */

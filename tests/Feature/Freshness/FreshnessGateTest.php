@@ -16,11 +16,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\TestCase;
 
 /**
- * Feature tests for the freshness gate: it asks the bound contract with the
- * operation, its configured maximum age and the caller, resolves the contract
- * and reads the age on each call, fails closed on a malformed age before the
- * contract is asked, and asks about several operations once each, in order,
- * stopping at the first `stale`.
+ * Feature tests for the freshness gate.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,9 +27,7 @@ use Tests\TestCase;
 final class FreshnessGateTest extends TestCase
 {
     /**
-     * The bound contract is asked with the operation, the age configured for it
-     * and the caller as given, with its session, or none; and its answer is the
-     * gate's.
+     * The bound contract is asked with the operation, its age and the caller.
      *
      * @return void
      */
@@ -76,9 +70,7 @@ final class FreshnessGateTest extends TestCase
     }
 
     /**
-     * The contract is resolved on each call, never held: a gate resolved under
-     * the default refuses, and the same gate asks each contract bound later in
-     * place of the one before.
+     * The contract is resolved on each call, never held.
      *
      * @return void
      */
@@ -101,8 +93,7 @@ final class FreshnessGateTest extends TestCase
     }
 
     /**
-     * The age is read on each call, so a change between calls is the age the
-     * next question is asked with.
+     * The age is read on each call.
      *
      * @return void
      */
@@ -123,8 +114,7 @@ final class FreshnessGateTest extends TestCase
     }
 
     /**
-     * A malformed age throws, naming its key, before the contract is asked, so
-     * a misconfigured requirement is never loosened to the contract's answer.
+     * A malformed age throws before the contract is asked.
      *
      * @return void
      */
@@ -145,8 +135,7 @@ final class FreshnessGateTest extends TestCase
     }
 
     /**
-     * `checkAll()` asks about each operation in the order given, and answers
-     * `fresh` when every one is.
+     * `checkAll()` asks in the order given and is `fresh` when every one is.
      *
      * @return void
      */
@@ -179,8 +168,7 @@ final class FreshnessGateTest extends TestCase
     }
 
     /**
-     * `checkAll()` asks about an operation given more than once only the first
-     * time.
+     * `checkAll()` asks about a repeated operation once.
      *
      * @return void
      */
@@ -216,8 +204,7 @@ final class FreshnessGateTest extends TestCase
     }
 
     /**
-     * `checkAll()` answers `stale` at the first operation that is, and asks
-     * about none after it.
+     * `checkAll()` stops at the first `stale`.
      *
      * @return void
      */
@@ -252,8 +239,7 @@ final class FreshnessGateTest extends TestCase
     }
 
     /**
-     * `checkAll()` with no operation answers `fresh` and asks nothing, even of
-     * the default, which would refuse anything it was asked.
+     * `checkAll()` of no operation is `fresh` and asks nothing.
      *
      * @return void
      */
@@ -270,8 +256,8 @@ final class FreshnessGateTest extends TestCase
     }
 
     /**
-     * `checkAll()` throws at an operation whose age is malformed, having asked
-     * about those before it and none from it on.
+     * `checkAll()` throws at a malformed age, having asked only those before
+     * it.
      *
      * @return void
      */

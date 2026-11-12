@@ -20,10 +20,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporter of enforcement (SSO-4.4, SSO-4.5, SSO-10.3,
- * SSO-10.4): a change of a tenant's rule and an exemption used, each dispatched
- * once with what it concerns and the IP address and user agent of the client
- * the helper was given, never those of the request being served.
+ * Feature tests for the enforcement event reporter.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +33,8 @@ final class EnforcementEventsTest extends TestCase
     use RecordsEventSequences, UsesEnforcement;
 
     /**
-     * Bind a fixed clock and a request being served from another client, create
-     * the tables and record events.
+     * Bind a fixed clock and a request from another client, create the tables
+     * and record events.
      *
      * @return void
      */
@@ -54,8 +51,8 @@ final class EnforcementEventsTest extends TestCase
     }
 
     /**
-     * A change of the rule is reported once, with the rule's connections in id
-     * order, the version it replaced, the acting identity and the client.
+     * A rule change is reported once with its connections in id order and the
+     * client.
      *
      * @return void
      */
@@ -84,8 +81,8 @@ final class EnforcementEventsTest extends TestCase
     }
 
     /**
-     * An exemption used is reported once, with the tenants, the application,
-     * the identity, the session and the client; with no session given, none.
+     * An exemption used is reported once with the tenants, the session and the
+     * client.
      *
      * @return void
      */

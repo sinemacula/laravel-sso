@@ -22,11 +22,7 @@ use Tests\Fixtures\Logging\UnwritableLogHandler;
 use Tests\TestCase;
 
 /**
- * Feature tests for `sso:prune` (SSO-11.11): the counts and how the run ended
- * on one line, exit 0 on complete and incomplete with the way on said,
- * `--drain`, and exit 1 on a failure, printing what committed and naming the
- * kind and the exception by class alone, and on a summary that could not be
- * logged, printing the counts all the same.
+ * Feature tests for `sso:prune`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -92,8 +88,7 @@ final class PruneCommandTest extends TestCase
     }
 
     /**
-     * A run stopped by the work cap passes, says it is incomplete, and says how
-     * to go on; `--drain` finishes.
+     * A capped run passes and says how to go on, and `--drain` finishes.
      *
      * @return void
      */
@@ -123,8 +118,8 @@ final class PruneCommandTest extends TestCase
     }
 
     /**
-     * A failure exits non-zero, printing what committed and naming the kind and
-     * the exception by class alone: no SQL, no value, no message.
+     * A failure exits non-zero, printing what committed and naming classes
+     * alone.
      *
      * @return void
      */
@@ -150,9 +145,7 @@ final class PruneCommandTest extends TestCase
     }
 
     /**
-     * A summary the logger refuses after a run that deleted everything exits
-     * non-zero, printing the counts and naming the logger's exception by class
-     * alone; what was deleted stays deleted.
+     * A summary the logger refuses still prints the counts and exits non-zero.
      *
      * @return void
      */
@@ -178,9 +171,8 @@ final class PruneCommandTest extends TestCase
     }
 
     /**
-     * A summary the logger refuses after a kind failed exits non-zero, printing
-     * what committed, the kind's failure, and the logger's, each by class
-     * alone.
+     * A summary the logger refuses after a failure names both failures by
+     * class.
      *
      * @return void
      */

@@ -21,10 +21,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the link, authorisation request and handoff code models
- * (SSO-8.4, SSO-5.1, SSO-9.2, SSO-11.10): their tables and casts, their keys
- * and clock stamps, what is hidden from serialisation, a link's subject kept
- * byte for byte and its fixed parts, and the uniqueness each table enforces.
+ * Feature tests for the link, authorisation request and handoff code models.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -74,8 +71,7 @@ final class FlowModelsTest extends TestCase
             self::assertSame('idp_requests', (new AuthorizationRequest)->getTable());
             self::assertSame('idp_codes', (new HandoffCode)->getTable());
         } finally {
-            // Put the names back, so tearDown drops the tables setUp created
-            // rather than leaving them for the next test on a real database.
+            // Put the names back so tearDown drops the tables setUp created.
             config()->set('sso.links.table', 'sso_links');
             config()->set('sso.authorization_requests.table', 'sso_authorization_requests');
             config()->set('sso.handoff_codes.table', 'sso_handoff_codes');
@@ -83,7 +79,7 @@ final class FlowModelsTest extends TestCase
     }
 
     /**
-     * A request is keyed, stamped and cast; its digests and verifier are
+     * A request is keyed, stamped and cast, with its digests and verifier
      * hidden.
      *
      * @return void
@@ -145,8 +141,7 @@ final class FlowModelsTest extends TestCase
     }
 
     /**
-     * A link keeps its subject byte for byte, invalid UTF-8, trailing spaces
-     * and backslashes included, and is active with no provenance by default.
+     * A link keeps its subject byte for byte and is active with no provenance.
      *
      * @return void
      */
@@ -202,8 +197,7 @@ final class FlowModelsTest extends TestCase
     }
 
     /**
-     * One subject is linked once per connection, however it is written; the
-     * same subject may be linked through another connection.
+     * A subject is linked once per connection.
      *
      * @return void
      */
@@ -233,9 +227,8 @@ final class FlowModelsTest extends TestCase
     }
 
     /**
-     * A reference, a state's digest, and a SAML request id within a connection
-     * are each held once; a SAML request id may repeat in another connection,
-     * and requests with none are many.
+     * A reference, a state digest and a per-connection SAML request id are
+     * unique.
      *
      * @param  string  $column
      * @return void

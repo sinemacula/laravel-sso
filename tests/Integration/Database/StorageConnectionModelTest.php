@@ -16,10 +16,8 @@ use Tests\Fixtures\Models\ExampleKey;
 use Tests\TestCase;
 
 /**
- * Integration tests, on a real database, of the rule that a model and the
- * migration of its table cannot disagree: with the storage connection moved to
- * a second connection and the table renamed, the migration creates the table
- * there and the model reads and writes it there, never on the default.
+ * Integration tests that a model and its table's migration agree on connection
+ * and name.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,8 +33,7 @@ final class StorageConnectionModelTest extends TestCase
     private const string STORE = 'package_store';
 
     /**
-     * Drop the tables an earlier test kept, so each test starts from an empty
-     * database.
+     * Drop the tables an earlier test kept.
      *
      * @return void
      */
@@ -49,8 +46,7 @@ final class StorageConnectionModelTest extends TestCase
     }
 
     /**
-     * The migration and the model meet on the configured connection and table,
-     * and the default connection holds nothing.
+     * The migration and the model meet on the configured connection and table.
      *
      * @return void
      */
@@ -80,8 +76,8 @@ final class StorageConnectionModelTest extends TestCase
     }
 
     /**
-     * Running the migration again finds its table and stops before changing
-     * anything, naming the setting that renames it.
+     * Running the migration again stops before changing anything, naming the
+     * setting.
      *
      * @return void
      */

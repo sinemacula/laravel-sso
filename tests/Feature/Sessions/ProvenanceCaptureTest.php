@@ -50,17 +50,7 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * The session provenance a redemption captures (SSO-9.7, SSO-9.10), through the
- * public flow from start to `admit()` over the package's link store: an
- * admitted `sign_in` captures the connection, its tenant, the protocol, the
- * provider's time, only the evidence accepted at redemption, the exact link and
- * its provenance as the locked admission found it (an activated reservation's
- * `verified_domain`, or an existing link's own), both deadlines and the version
- * of the enforcement judged under the redemption's locks; an unlinked sign-in
- * captures no link; a refusal, a `link` and a `reauthenticate` capture nothing,
- * so a later confirming link or a re-authentication never rewrites what was
- * captured; and the stored form survives a database's JSON column and projects
- * to the same `sso.*` keys.
+ * Feature tests for the session provenance a redemption captures.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -89,8 +79,8 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     private const string AUTHENTICATED = '2026-11-01T09:30:00.000000Z';
 
     /**
-     * Bind a fresh caller and an eligibility that lets every identity link,
-     * which a `link` flow needs, and create the sessions table.
+     * Bind a fresh caller and an eligibility that lets every identity link, and
+     * create the sessions table.
      *
      * @return void
      */
@@ -122,9 +112,8 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * A sign-in whose verified domain reservation is activated at redemption
-     * captures that link, as `verified_domain`, with every other fact, and
-     * projects it under the `sso.*` keys.
+     * A domain reservation activated at sign-in is captured as
+     * `verified_domain`.
      *
      * @return void
      */
@@ -173,8 +162,8 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * A sign-in through an existing link captures that exact link with the
-     * provenance it held under the redemption's locks.
+     * A sign-in through an existing link captures that link with its
+     * provenance.
      *
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      * @return void
@@ -191,10 +180,8 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * A later confirming `link` turns the link's provenance to `link_purpose`
-     * and answers no provenance, so there is nothing for the application to
-     * write over what the earlier sign-in captured as `verified_domain`. Only a
-     * new sign-in captures the link as it now is.
+     * A later confirming `link` answers no provenance to overwrite the captured
+     * one.
      *
      * @return void
      */
@@ -221,9 +208,7 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * A re-authentication renews the session's time through its contract once
-     * and answers no provenance, so there is nothing for the application to
-     * write over how the session began, as the sign-in captured it.
+     * A re-authentication renews the session's time and answers no provenance.
      *
      * @return void
      */
@@ -255,8 +240,7 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * The evidence accepted at redemption is what is captured: its methods, and
-     * its raw context as `acr`, as for every driver but `saml2`.
+     * The evidence accepted at redemption is what is captured.
      *
      * @return void
      */
@@ -274,11 +258,8 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * With no evidence accepted, what the provider asserted about how is not
-     * captured: no methods and no raw context, though the assertion stated
-     * both, and never the provider session's id; its time is. Its deadline,
-     * which limits the session by default, is captured both raw and as the
-     * effective cap.
+     * With no evidence accepted, only the provider's time and deadline are
+     * captured.
      *
      * @return void
      */
@@ -300,8 +281,7 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * A deadline the deadline contract ignores sets no cap, and its raw value
-     * is still captured.
+     * A deadline the deadline contract ignores sets no cap but is captured raw.
      *
      * @return void
      */
@@ -368,9 +348,8 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * A rule that changed between the completion and the redemption: the
-     * session keeps the version the redemption judged under its locks, never
-     * the one the completion checked, which the code does not carry.
+     * The session keeps the enforcement version read under the redemption's
+     * locks.
      *
      * @return void
      */
@@ -454,8 +433,7 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * The stored form survives a database's JSON column, which may give its
-     * keys back in another order, and projects as the provenance captured.
+     * The stored form survives a JSON column that reorders its keys.
      *
      * @return void
      */
@@ -549,10 +527,7 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * What the driver verifies: the subject with the linking email, and the
-     * authentication context given, or by default one asserting every part (the
-     * time now, methods, a context class, a provider session and a deadline at
-     * 17:30).
+     * The verified claims, with the context given or one asserting every part.
      *
      * @param  ?\SineMacula\Laravel\Sso\Results\AuthenticationContext  $context
      * @return \SineMacula\Laravel\Sso\Results\VerifiedClaims
@@ -573,8 +548,8 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
-     * Keep the redemption's captured provenance for the session, as an adapter
-     * writes it once with the session, in a JSON column.
+     * Keep the redemption's provenance for the session in a JSON column, as an
+     * adapter does.
      *
      * @param  string  $session
      * @param  \SineMacula\Laravel\Sso\Handoffs\RedemptionResult  $answer

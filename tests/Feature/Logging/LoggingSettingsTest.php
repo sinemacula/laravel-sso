@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Logging\Redactor;
 use Tests\TestCase;
 
 /**
- * Feature tests for the logging settings (SSO-5.7, SSO-9.8, SSO-11.9): the
- * shipped defaults, the channel, the diagnostic length's range, the redacted
- * keys only ever added to, every malformed value refused with a message naming
- * its key, an unknown channel named, and every value read on each call.
+ * Feature tests for the logging settings.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,8 +31,8 @@ final class LoggingSettingsTest extends TestCase
     private const string KEYS = '`sso.logging.redacted_keys` must be a list of key names, each holding a letter or a digit.';
 
     /**
-     * The shipped configuration logs to the default channel, keeps 512
-     * characters of a diagnostic and redacts the built-in keys only.
+     * The shipped configuration uses the default channel, 512 characters and
+     * the built-in keys.
      *
      * @return void
      */
@@ -52,8 +49,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * Settings that are not configured at all, as in a configuration published
-     * before they existed, take the defaults.
+     * Unset settings take the defaults.
      *
      * @return void
      */
@@ -69,8 +65,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * The built-in keys normalise to distinct keys: lower case, letters and
-     * digits only, with the snake case and run-together spellings merged.
+     * The built-in keys normalise to distinct keys.
      *
      * @return void
      */
@@ -108,8 +103,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * A key is normalised to lower case with everything but `a` to `z` and `0`
-     * to `9` removed.
+     * A key normalises to lower case with only `a-z` and `0-9` kept.
      *
      * @param  string  $key
      * @param  string  $normalized
@@ -122,8 +116,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * A configured channel is named; an empty one, as an unset
-     * `SSO_LOG_CHANNEL=` gives, is the default channel.
+     * A configured channel is named; an empty one is the default channel.
      *
      * @return void
      */
@@ -171,9 +164,8 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * A channel `logging.channels` does not configure is refused by
-     * `assertChannelConfigured()` and `validate()`, naming the key and the
-     * channel; one it configures, and the default channel, pass.
+     * A channel `logging.channels` does not configure is refused, naming the
+     * key and channel.
      *
      * @return void
      */
@@ -202,8 +194,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * A channel is unknown when `logging.channels` is missing or malformed, or
-     * names it with something that is not a channel's configuration.
+     * A channel is unknown when `logging.channels` is missing or malformed.
      *
      * @return void
      */
@@ -220,8 +211,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[value, length]`: diagnostic lengths accepted, the bounds among
-     * them.
+     * Rows of `[value, length]`: the diagnostic lengths accepted.
      *
      * @return iterable<string, array{0: int|string, 1: int}>
      */
@@ -276,8 +266,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * A length that is not an integer from 64 to 4096 fails closed, naming the
-     * key and the range, rather than logging more or less than meant.
+     * A length outside 64 to 4096 fails closed, naming the key and the range.
      *
      * @param  mixed  $value
      * @return void
@@ -294,9 +283,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * Configured keys are added to the built-in ones, normalised and each
-     * once; a configured key that is already built in adds nothing, so none
-     * can be removed.
+     * Configured keys are added to the built-in ones, so none can be removed.
      *
      * @return void
      */
@@ -329,8 +316,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * Keys that are not a list of names, each holding a letter or a digit, fail
-     * closed, naming the key, rather than redacting less than meant.
+     * Keys that are not a list of names fail closed, naming the key.
      *
      * @param  mixed  $value
      * @return void
@@ -380,8 +366,7 @@ final class LoggingSettingsTest extends TestCase
     }
 
     /**
-     * Every setting is read on each call, so a change is seen by the next one
-     * and nothing is kept across requests.
+     * Every setting is read on each call.
      *
      * @return void
      */

@@ -15,10 +15,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the default endpoint resolver: each endpoint built from the
- * configured base URL, its path pattern and the connection's id, the entity id
- * being the metadata URL, never anything of the request, and a malformed
- * setting failing closed.
+ * Feature tests for the default endpoint resolver.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,8 +43,7 @@ final class ConfiguredEndpointResolverTest extends TestCase
     }
 
     /**
-     * The default resolver is the one bound, and builds every endpoint with the
-     * default patterns.
+     * The bound resolver builds every endpoint with the default patterns.
      *
      * @return void
      */
@@ -66,8 +62,7 @@ final class ConfiguredEndpointResolverTest extends TestCase
     }
 
     /**
-     * A base URL's path prefix is kept, and its trailing slashes dropped, so no
-     * endpoint holds `//`; a loopback base URL is allowed for development.
+     * A base URL's path prefix is kept and its trailing slashes dropped.
      *
      * @return void
      */
@@ -124,8 +119,7 @@ final class ConfiguredEndpointResolverTest extends TestCase
     }
 
     /**
-     * The request being served changes nothing: neither its host nor a
-     * forwarded host or scheme moves an endpoint.
+     * Nothing of the request being served moves an endpoint.
      *
      * @return void
      */
@@ -143,8 +137,8 @@ final class ConfiguredEndpointResolverTest extends TestCase
     }
 
     /**
-     * A malformed base URL or pattern, or a connection with no id, fails closed
-     * naming the key.
+     * A malformed base URL, pattern or connection id fails closed naming the
+     * key.
      *
      * @return void
      */

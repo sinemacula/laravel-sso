@@ -13,13 +13,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races the default single-use store against itself across processes, each with
- * its own database connection, on PostgreSQL and MySQL: however the records of
- * one key interleave, exactly one is `recorded`, the rest are `seen`, none
- * fails, and the table holds the key once.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Races the default single-use store across processes on PostgreSQL and MySQL.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,9 +42,8 @@ final class ConcurrentSingleUseStoreTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind the fixed clock so
-     * every process compares with the same now, give the test the package's
-     * tables, and make the directory the processes report in.
+     * Skip where processes cannot share the database, bind the fixed clock,
+     * create the tables and the report directory.
      *
      * @return void
      *
@@ -110,8 +103,7 @@ final class ConcurrentSingleUseStoreTest extends TestCase
     }
 
     /**
-     * Processes racing to record a key whose row has expired: exactly one
-     * releases it and records the key again.
+     * Exactly one of the racing records of an expired key records it again.
      *
      * @return void
      */
@@ -131,8 +123,8 @@ final class ConcurrentSingleUseStoreTest extends TestCase
     }
 
     /**
-     * Fork the processes, have each record the key at the same moment on a
-     * connection of its own, and collect what each reported.
+     * Fork the processes, record the key at the same moment on their own
+     * connections, and collect the outcomes.
      *
      * @return list<string>
      */
@@ -168,14 +160,8 @@ final class ConcurrentSingleUseStoreTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own and build the store, so
-     * only the record's own statements run after the start, wait for the start,
-     * record the key, report the outcome, and end without running the parent's
-     * shutdown.
-     *
-     * A process that reaches the start late, on a loaded machine, records at
-     * once rather than failing: the race is then less close, but every
-     * assertion still holds.
+     * Connect, wait for the start, record and report. A late process records at
+     * once; the assertions still hold.
      *
      * @param  int  $process
      * @param  float  $start

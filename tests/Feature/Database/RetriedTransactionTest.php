@@ -16,13 +16,8 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the transaction tried again on a concurrency failure, on
- * every database the suite runs on: a serialisation failure (SQLSTATE `40001`)
- * in a savepoint, which Laravel throws as a `DeadlockException` it does not
- * recognise, is unwrapped and retried; a deadlock is retried by its message as
- * before; every other exception, a `DeadlockException` that does not end in a
- * serialisation failure included, propagates as it is; and an exception after
- * the commit never runs the work again.
+ * Feature tests for the transaction retried on a deadlock or serialisation
+ * failure.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -87,9 +82,8 @@ final class RetriedTransactionTest extends TestCase
     }
 
     /**
-     * A serialisation failure in a savepoint inside the work is retried, and
-     * the attempt that goes through answers; what the failed attempt wrote
-     * rolled back with it.
+     * A serialisation failure in a savepoint is retried and the failed attempt
+     * rolled back.
      *
      * @param  int|string  $code
      * @return void
@@ -119,9 +113,8 @@ final class RetriedTransactionTest extends TestCase
     }
 
     /**
-     * A serialisation failure at the end of a chain of `DeadlockException`s, as
-     * savepoints nested in savepoints throw it, is retried up to the attempts
-     * given, and the failure itself propagates from the last.
+     * The last attempt propagates the serialisation failure from a nested
+     * chain.
      *
      * @return void
      */
@@ -136,8 +129,7 @@ final class RetriedTransactionTest extends TestCase
     }
 
     /**
-     * A deadlock in a savepoint is retried by its message, as Laravel retries
-     * it unaided.
+     * A deadlock in a savepoint is retried by its message.
      *
      * @return void
      *
@@ -160,8 +152,8 @@ final class RetriedTransactionTest extends TestCase
     }
 
     /**
-     * Rows of `[what the work throws]`: each the transaction propagates as it
-     * is, on its first attempt.
+     * Rows of `[what the work throws]`: exceptions propagated on the first
+     * attempt.
      *
      * @return iterable<string, array{0: \Throwable}>
      */
@@ -191,9 +183,8 @@ final class RetriedTransactionTest extends TestCase
     }
 
     /**
-     * Inside the caller's transaction a serialisation failure is never retried
-     * in part: it propagates at once, Laravel's `DeadlockException` carrying
-     * the failure, and the caller's transaction stays open.
+     * Inside the caller's transaction a serialisation failure propagates at
+     * once.
      *
      * @return void
      *
@@ -220,8 +211,7 @@ final class RetriedTransactionTest extends TestCase
     }
 
     /**
-     * An exception after the commit, an after-commit callback's, propagates and
-     * never runs the work again, however it was caused.
+     * An exception after the commit never runs the work again.
      *
      * @return void
      */
@@ -242,8 +232,7 @@ final class RetriedTransactionTest extends TestCase
     }
 
     /**
-     * What running the work in a retried transaction of three attempts threw,
-     * each run counted; `null` when it answered.
+     * What a three-attempt retried transaction of the work threw, or `null`.
      *
      * @param  \Closure(\Illuminate\Database\Connection): mixed  $work
      * @return ?\Throwable

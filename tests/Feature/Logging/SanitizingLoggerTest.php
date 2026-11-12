@@ -15,9 +15,7 @@ use Tests\Concerns\CapturesLogs;
 use Tests\TestCase;
 
 /**
- * Feature tests for the package's logger (SSO-5.7, SSO-9.8, SSO-11.9): every
- * level written to the configured channel, or the default one, the channel
- * resolved on each call, the message sanitised and the context redacted.
+ * Feature tests for the package's sanitising logger.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,8 +50,8 @@ final class SanitizingLoggerTest extends TestCase
     }
 
     /**
-     * Each level, through its own method and through `log()`, is written to the
-     * configured channel at that level.
+     * Each level is written to the configured channel by its method and by
+     * `log()`.
      *
      * @param  string  $level
      * @return void
@@ -75,8 +73,8 @@ final class SanitizingLoggerTest extends TestCase
     }
 
     /**
-     * A level PSR-3 does not define is refused with PSR-3's exception, and
-     * nothing is written.
+     * A level PSR-3 does not define throws PSR-3's exception and writes
+     * nothing.
      *
      * @return void
      */
@@ -97,8 +95,7 @@ final class SanitizingLoggerTest extends TestCase
     }
 
     /**
-     * The message is sanitised as a diagnostic: controls removed, secrets
-     * redacted and the length capped. A `Stringable` message is cast first.
+     * The message is sanitised as a diagnostic, a `Stringable` cast first.
      *
      * @return void
      */
@@ -164,9 +161,7 @@ final class SanitizingLoggerTest extends TestCase
     }
 
     /**
-     * The message and the context redact the same keys, decoded, and the whole
-     * value under each, whatever it holds: punctuation, an encoded name or a
-     * JSON array.
+     * The message and context redact the whole value under each decoded key.
      *
      * @return void
      */
@@ -208,8 +203,7 @@ final class SanitizingLoggerTest extends TestCase
     }
 
     /**
-     * The channel is resolved on each call, so a change of
-     * `sso.logging.channel` between two calls is honoured by one logger.
+     * The channel is resolved on each call.
      *
      * @return void
      */
@@ -231,8 +225,7 @@ final class SanitizingLoggerTest extends TestCase
     }
 
     /**
-     * A malformed setting fails closed: nothing is written rather than a
-     * message logged unsanitised or to an unintended place.
+     * A malformed setting fails closed and writes nothing.
      *
      * @return void
      */

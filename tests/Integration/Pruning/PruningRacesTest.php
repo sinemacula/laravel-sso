@@ -40,40 +40,8 @@ use Tests\Feature\Linking\LinkingTestCase;
 use Tests\Fixtures\Clients;
 
 /**
- * Races `Pruning\Pruner` against what renews or activates a row it has
- * selected, across processes, each with its own database connection, on
- * PostgreSQL and MySQL (SSO-8.8, SSO-11.11): a reservation's activation, a
- * pending claim's verification and renewal, a counter's new window, and a
- * single-use key's replacement. Pruning safety comes from locked rechecks and
- * conditional writes, never from the retention, and that is what each race
- * shows.
- *
- * Each order is forced by the racer going first, which holds the lock and goes
- * on only once the database shows the other waiting on it: a holder that
- * accepts a caller's transaction holds one, and the `Pruner`, which refuses one
- * (a refusal `PrunerTest` pins, so a run here is never inside one), is paused
- * inside its own, just before the commit that follows its delete. So the pruner
- * has selected a row another transaction holds, and has to find it no longer
- * eligible; or the other has read a row the pruner has deleted, and has to find
- * it gone.
- *
- * The side that accepts a caller's transaction runs plainly, and inside its own
- * `REPEATABLE READ` transaction that read first. A PostgreSQL serialisation
- * failure (SQLSTATE `40001`) of that side is a safe outcome there alone:
- * nothing of it stands.
- *
- * A session that holds a connection's row lock alone, and touches nothing else,
- * shows the pruner takes that lock before it deletes a reservation: a race with
- * an activation cannot, since the delete and the version's update lock what the
- * activation waits on whether or not the connection was locked first.
- *
- * An eligible row must be eligible on the pruner's clock and live on the
- * other's, or the other would refuse it for itself. Where that matters the
- * pruner's clock moves on past the expiry in its own process, as a server's
- * does when a process read its clock before an expiry and another reads it
- * after.
- *
- * Skipped on SQLite and without `pcntl`.
+ * Races the pruner against what renews or activates a selected row. The first
+ * racer holds the lock until the other is seen waiting.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -118,9 +86,8 @@ final class PruningRacesTest extends LinkingTestCase
     private const string RELEASING = 'releasing';
 
     /**
-     * Skip where processes cannot share the database; bind a fresh caller, a
-     * limiter that allows every attempt, and a resolver that publishes the
-     * pending claim's token.
+     * Skip where processes cannot share the database; bind a fresh caller, an
+     * open limiter and a publishing resolver.
      *
      * @return void
      *
@@ -153,8 +120,8 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[whether the side that accepts a caller's transaction runs inside
-     * its own, which read first]`.
+     * Rows of `[whether the caller-transaction side runs inside its own, which
+     * read first]`.
      *
      * @return iterable<string, array{0: bool}>
      */
@@ -165,10 +132,8 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * An activation holding the connection's lock makes the row active; the
-     * pruner, which selected it reserved and expired, waits on that lock, finds
-     * it no longer reserved, and deletes nothing. Only the activation raises
-     * the links version.
+     * An activation holding the connection's lock stands, and the pruner
+     * deletes nothing.
      *
      * @param  bool  $reads
      * @return void
@@ -206,10 +171,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The pruner holding the connection's lock deletes the reservation, and
-     * raises the links version. The activation, waiting on that lock, finds no
-     * reservation and is refused `reservation_invalid`, and no link is half
-     * made.
+     * A prune holding the connection's lock refuses the activation.
      *
      * @param  bool  $reads
      * @return void
@@ -251,11 +213,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The pruner locks the connection before it deletes a reservation: another
-     * session holding the connection's row lock alone, before anything touches
-     * the reservation, holds the pruner back until it lets go, and the delete
-     * is sent only then. Neither the delete's own locks nor the version's
-     * update, which a later lock could hide behind, orders it.
+     * The pruner locks the connection before it deletes a reservation.
      *
      * @return void
      */
@@ -298,9 +256,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * A row expired on both clocks: whichever goes first, the activation is
-     * refused as its code's expiry says, and the row goes once, raising the
-     * links version once, whoever deleted it.
+     * An activation past its expiry is refused whichever goes first.
      *
      * @param  bool  $reads
      * @return void
@@ -340,8 +296,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * A renewal holding the expired claim stands: the pruner selected it, waits
-     * on its row, finds it no longer expired and deletes nothing.
+     * A renewal holding the claim stands.
      *
      * @param  bool  $reads
      * @return void
@@ -373,8 +328,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The pruner holding the expired claim's row deletes it. A renewal waiting
-     * on that row finds none, and claims afresh with a new row, which stands.
+     * A prune holding the claim leaves a renewal to claim afresh.
      *
      * @param  bool  $reads
      * @return void
@@ -416,9 +370,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * A verification holding the claim stands, verified: the pruner, past its
-     * expiry on its own clock, selected it pending, waits on its row, finds it
-     * no longer pending and deletes nothing.
+     * A verification holding the claim stands.
      *
      * @param  bool  $reads
      * @return void
@@ -452,9 +404,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The pruner holding the claim's row deletes it. A verification waiting on
-     * that row, which read it pending and live on its own clock, finds it gone
-     * and is refused, with nothing verified.
+     * A prune holding the claim refuses the verification.
      *
      * @param  bool  $reads
      * @return void
@@ -490,10 +440,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * A counter's new window holding its row stands, with the count exactly
-     * one: the pruner selected it ended, waits on its row and deletes nothing.
-     * A give back for the window that ended changes nothing; one for the new
-     * window gives its slot back.
+     * A counter's new window holding its row stands with a count of one.
      *
      * @param  bool  $reads
      * @return void
@@ -530,9 +477,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The pruner holding the counter's row deletes it. An attempt waiting on that
-     * row finds none and starts the window itself, its count exactly one; a give
-     * back for the window that ended then changes nothing.
+     * A prune holding the counter leaves the next attempt a new window.
      *
      * @param  bool  $reads
      * @return void
@@ -589,8 +534,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * A give back for a window that ended never brings the counter back:
-     * whichever holds its row first, the pruner deletes it, and no row is left.
+     * A give back against a prune never brings the counter back.
      *
      * @param  bool  $giveBackFirst
      * @param  bool  $reads
@@ -635,10 +579,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * A replacement holding the expired key's row, deleted and recorded anew in
-     * its transaction, stands: the pruner selected the row that expired, waits
-     * on it, finds it gone and deletes nothing, and the key has exactly one
-     * holder.
+     * A key replaced while held stands with exactly one holder.
      *
      * @param  bool  $reads
      * @return void
@@ -667,8 +608,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The pruner holding the expired key's row deletes it. A record waiting on
-     * the unique index then goes in, and the key has exactly one holder.
+     * A prune holding the key leaves it recorded once.
      *
      * @param  bool  $reads
      * @return void
@@ -707,10 +647,8 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The pruner deleting the expired row between the record's refused insert
-     * and its own delete of that row takes nothing the key still needs: the
-     * record goes in, and the key has exactly one holder. An answer of `seen`
-     * with no row left would name a holder there is not.
+     * A prune between a refused insert and its delete still leaves the key
+     * recorded once.
      *
      * @return void
      */
@@ -746,8 +684,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * A key still held is never released: whichever goes first, a second record
-     * of it is `seen`, and the pruner leaves its row.
+     * A key still held is never released.
      *
      * @return void
      */
@@ -768,8 +705,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Assert the claim is pending under a new token and a later expiry, the
-     * whole of what a claim's renewal writes.
+     * Assert the claim is pending under a new token and a later expiry.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $stored
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $was
@@ -801,8 +737,8 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Assert the key is held once, by another row than the one that expired,
-     * until a moment still to come.
+     * Assert the key is held once, by a row other than the expired one, until a
+     * later moment.
      *
      * @param  int  $expired
      * @return void
@@ -816,8 +752,7 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Complete an eligible flow in this process, and answer its code and
-     * verifier.
+     * Complete an eligible flow and answer its code and verifier.
      *
      * @return array{0: string, 1: string}
      */
@@ -832,9 +767,8 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Run the pruner, its clock moved on as given, paused before the commit
-     * that follows its delete of the table named, if any, and answer what it
-     * deleted.
+     * Run the pruner, its clock moved on, paused before the commit after its
+     * delete of the table named.
      *
      * @param  ?string  $holding
      * @param  int  $advance
@@ -856,9 +790,8 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Raise `DELETING` as the pruner sends its first delete of a reservation,
-     * and answer a closure saying whether it was sent while the connection's
-     * holder still held it: `null` when none was sent.
+     * Raise `DELETING` on the first reservation delete, answering whether the
+     * holder still held it, or `null`.
      *
      * @return \Closure(): ?bool
      */
@@ -956,8 +889,8 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Hold a record, once its insert was refused, just before it deletes the
-     * row in the way, until the pruner has run.
+     * Hold a record whose insert was refused just before it deletes the row in
+     * the way.
      *
      * @return void
      */
@@ -1001,8 +934,8 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * A counter holding five attempts in a window that ended a minute ago, and
-     * that window as the table stores it.
+     * A counter of five attempts in a window that ended a minute ago, and that
+     * window as stored.
      *
      * @return array{0: string, 1: string}
      */

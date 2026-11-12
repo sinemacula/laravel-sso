@@ -30,12 +30,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Integration tests, on a real database, that no administration event carries a
- * secret (SSO-2.5, SSO-10.4): across creating an OIDC connection with its
- * client secret, rotating the secret, changing a setting, generating a key pair
- * and trusting a certificate, neither the serialised event nor its context's
- * record holds the client secret, the private key, any ciphertext stored for
- * either, or a setting's value.
+ * Integration tests that no administration event carries a secret or setting
+ * value.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,8 +71,8 @@ final class NoSecretInAdministrationEventsTest extends TestCase
     ];
 
     /**
-     * Bind a fixed clock and a freshness contract that answers `fresh`, turn
-     * both protocols on, create the tables, and record events.
+     * Bind a fixed clock and a fresh caller, enable both protocols, create the
+     * tables and record events.
      *
      * @return void
      */
@@ -96,9 +92,8 @@ final class NoSecretInAdministrationEventsTest extends TestCase
     }
 
     /**
-     * No event of the changes, serialised as a queue would or as its context's
-     * JSON record, holds a secret, a private key, a ciphertext or a setting
-     * value.
+     * No event, serialised or as a JSON record, holds a secret, ciphertext or
+     * setting value.
      *
      * @return void
      */
@@ -213,7 +208,7 @@ final class NoSecretInAdministrationEventsTest extends TestCase
     }
 
     /**
-     * Each private key stored, decrypted: the PEM, and each full line of its
+     * Each private key stored, decrypted: the PEM and each full line of its
      * body.
      *
      * @return list<string>

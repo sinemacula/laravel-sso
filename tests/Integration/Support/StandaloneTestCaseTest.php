@@ -18,10 +18,8 @@ use Tests\Fixtures\Links\FixedLinker;
 use Tests\StandaloneTestCase;
 
 /**
- * Shows the standalone base stands alone (FEATURES "No dependency on a
- * sibling"): no sibling and no session middleware in the kernel or the router,
- * every seam on its default, and a test that replaced one, added a session
- * middleware or found a sibling installed is told so.
+ * Tests that the standalone base runs with no sibling package or session
+ * middleware.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,8 +41,7 @@ final class StandaloneTestCaseTest extends StandaloneTestCase
     }
 
     /**
-     * A seam replaced fails the assertion, so a binding cannot replace a
-     * default by accident.
+     * A replaced seam fails the assertion.
      *
      * @return void
      */
@@ -64,8 +61,7 @@ final class StandaloneTestCaseTest extends StandaloneTestCase
     }
 
     /**
-     * Taking the groups away reaches the router too, whose copy of them the
-     * kernel's own setter leaves behind: no group anywhere names a session.
+     * No middleware group in the kernel or the router names a session.
      *
      * @return void
      */
@@ -78,9 +74,7 @@ final class StandaloneTestCaseTest extends StandaloneTestCase
     }
 
     /**
-     * Rows of `[how a session middleware crept in, its name]`: on the kernel's
-     * stack, in a group of the kernel, in a group of the router alone, and the
-     * forgery check that goes with a session.
+     * Rows of `[how a session middleware crept in, its name]`.
      *
      * @return iterable<string, array{0: \Closure(\Orchestra\Testbench\Http\Kernel, \Illuminate\Routing\Router): mixed, 1: class-string}>
      */

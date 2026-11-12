@@ -12,9 +12,7 @@ use SineMacula\Laravel\Sso\Testing\FrozenClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the clock's binding in a booted application: the system
- * clock by default, shared as a singleton, a clock the application bound before
- * the package registers kept, and one bound afterwards used instead.
+ * Feature tests for the clock's binding.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,12 +45,7 @@ final class ClockBindingTest extends TestCase
     }
 
     /**
-     * A clock the application bound before the package's provider registers is
-     * kept, never replaced by the default.
-     *
-     * Testbench registers the provider before a test can bind anything, so the
-     * test binds its clock and then runs the provider's registration again, as
-     * a fresh application would.
+     * A clock bound before the provider registers is kept.
      *
      * @return void
      */
@@ -64,6 +57,7 @@ final class ClockBindingTest extends TestCase
 
         $app->instance(Clock::class, $clock);
 
+        // Testbench registered the provider already; register it again.
         (new SsoServiceProvider($app))->register();
 
         self::assertSame($clock, $this->clock());
@@ -71,8 +65,8 @@ final class ClockBindingTest extends TestCase
     }
 
     /**
-     * A frozen clock bound once the package has registered, and after the
-     * default was resolved, replaces the default for every later caller.
+     * A frozen clock bound after the default resolved replaces it for later
+     * callers.
      *
      * @return void
      */

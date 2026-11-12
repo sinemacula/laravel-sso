@@ -16,9 +16,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `sso:check`: every registered subject reported as checked,
- * not enabled or with each of its problems, a non-zero exit on a problem, and
- * no database connection opened.
+ * Feature tests for `sso:check`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +29,7 @@ final class CheckConfigurationCommandTest extends TestCase
     use ChecksTheFoundations, RunsConfigurationChecks;
 
     /**
-     * With every feature off, only the switches are checked, the rest reported
-     * as not enabled, and the run passes without a query.
+     * With every feature off, only the switches are checked and no query runs.
      *
      * @return void
      */
@@ -58,8 +55,7 @@ final class CheckConfigurationCommandTest extends TestCase
     }
 
     /**
-     * With the package in use and well configured, every subject is checked and
-     * passes.
+     * A well-configured package in use passes every subject.
      *
      * @return void
      */
@@ -74,8 +70,7 @@ final class CheckConfigurationCommandTest extends TestCase
     }
 
     /**
-     * Every problem is listed under its subject, the others still reported, and
-     * the run fails.
+     * Every problem is listed under its subject and the run fails.
      *
      * @return void
      */
@@ -99,9 +94,8 @@ final class CheckConfigurationCommandTest extends TestCase
     }
 
     /**
-     * Through the checker the provider binds, every registered subject is
-     * checked, in order: a well-configured package in use passes each, and a
-     * problem in each subject after the foundations is listed under it.
+     * Every registered subject is checked in order through the provider's
+     * checker.
      *
      * @return void
      */
@@ -183,8 +177,7 @@ final class CheckConfigurationCommandTest extends TestCase
     }
 
     /**
-     * Forget the foundations' checker and register the provider again, so the
-     * checker is the one the provider binds, with every registered check.
+     * Register the provider again so its checker runs every registered check.
      *
      * @return void
      */

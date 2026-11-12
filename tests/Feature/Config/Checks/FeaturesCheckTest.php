@@ -11,9 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[features]`: always checked, every switch true or false,
- * no switch the package does not have, and each feature with the protocol it
- * runs over.
+ * Feature tests for the `[features]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +24,7 @@ final class FeaturesCheckTest extends TestCase
     use RunsConfigurationChecks;
 
     /**
-     * The published defaults pass, and the switches are checked even with every
-     * feature off.
+     * The defaults pass, and the switches are always checked.
      *
      * @return void
      */
@@ -37,8 +34,7 @@ final class FeaturesCheckTest extends TestCase
     }
 
     /**
-     * Rows of `[settings, problems]`: switch configurations and what each
-     * reports.
+     * Rows of `[settings, problems]`: switch configurations and their problems.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: list<string>}>
      */

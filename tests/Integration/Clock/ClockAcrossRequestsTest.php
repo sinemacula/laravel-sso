@@ -14,10 +14,7 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use Tests\TestCase;
 
 /**
- * Integration tests of the one clock across the requests and jobs a long-lived
- * worker serves: the shared clock is resolved once and kept, yet answers the
- * time each use runs at, so the singleton holds no instant (SSO-11.2,
- * SSO-11.13).
+ * Integration tests of one shared clock across a worker's requests and jobs.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,10 +44,8 @@ final class ClockAcrossRequestsTest extends TestCase
     }
 
     /**
-     * One resolved clock follows every change to Laravel's test clock between
-     * consecutive uses, and the container keeps answering that same clock when
-     * the scoped instances are flushed between requests or jobs, as Octane and
-     * a queue worker flush them.
+     * One resolved clock follows Laravel's test clock and survives scoped
+     * flushes.
      *
      * @return void
      */
@@ -79,8 +74,7 @@ final class ClockAcrossRequestsTest extends TestCase
     }
 
     /**
-     * Two requests through the HTTP kernel, at two instants, are served by the
-     * same clock, and each reads the instant it was served at.
+     * Two requests share the clock and each reads its own instant.
      *
      * @return void
      */

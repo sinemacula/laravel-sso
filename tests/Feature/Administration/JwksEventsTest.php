@@ -19,12 +19,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporter of a JWKS refetch on an unknown `kid`
- * (SSO-7.3, SSO-10.3, SSO-10.4, SSO-10.5): each event built through the one
- * projection with the connection, its tenant and protocol and no acting
- * identity, the version as the row holds it, the next refetch in UTC, nothing
- * of the keys, and each dispatched only once the storage connection's
- * transaction commits.
+ * Feature tests for the JWKS refetch event reporter.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,8 +48,8 @@ final class JwksEventsTest extends TestCase
     }
 
     /**
-     * A refetch and a failed one are reported with the connection, its tenant
-     * and protocol, no acting identity, and what each concerns.
+     * A refetch and a failed one are reported with the connection and no acting
+     * identity.
      *
      * @return void
      */
@@ -100,8 +95,7 @@ final class JwksEventsTest extends TestCase
     }
 
     /**
-     * Each is reported only once the storage connection's transaction commits,
-     * and never when it rolls back.
+     * Each is reported once the transaction commits, never on rollback.
      *
      * @return void
      */

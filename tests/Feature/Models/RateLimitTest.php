@@ -13,9 +13,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the attempt counter model: its configured table and
- * connection, its shape, and pruning counters whose window has ended by the
- * package's clock.
+ * Feature tests for the attempt counter model.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,9 +42,8 @@ final class RateLimitTest extends TestCase
     }
 
     /**
-     * The model takes its table from `sso.rate_limits.table` and its connection
-     * from `sso.rate_limits.connection`, or the storage connection when that
-     * names none, each time it is built.
+     * The model reads its table and connection from the settings each time it
+     * is built.
      *
      * @return void
      */
@@ -71,8 +68,7 @@ final class RateLimitTest extends TestCase
     }
 
     /**
-     * A counters connection that is not a name is refused, rather than counting
-     * on another connection.
+     * A counters connection that is not a name is refused.
      *
      * @return void
      */
@@ -87,9 +83,8 @@ final class RateLimitTest extends TestCase
     }
 
     /**
-     * A counter is keyed by its digest, has no timestamps, reads its count as
-     * an integer and its window's end as a date, and accepts no mass
-     * assignment.
+     * A counter is keyed by its digest, has no timestamps and casts its
+     * columns.
      *
      * @return void
      */
@@ -115,8 +110,7 @@ final class RateLimitTest extends TestCase
     }
 
     /**
-     * Only counters whose window has ended by the bound clock, from the second
-     * it names, are prunable.
+     * Only counters whose window ended by the bound clock are prunable.
      *
      * @return void
      */
@@ -150,8 +144,7 @@ final class RateLimitTest extends TestCase
     }
 
     /**
-     * `model:prune`, naming the model, deletes only the counters whose window
-     * has ended.
+     * `model:prune` deletes only the counters whose window has ended.
      *
      * @return void
      */
@@ -165,8 +158,8 @@ final class RateLimitTest extends TestCase
     }
 
     /**
-     * Insert a counter whose window ended a second before the fixed clock's
-     * now, one that ends at it, and one that ends a second after it.
+     * Insert counters ending a second before, at, and a second after the fixed
+     * now.
      *
      * @return void
      */

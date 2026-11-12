@@ -29,11 +29,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporter of a domain's lifecycle (SSO-3.2, SSO-3.3,
- * SSO-10.3, SSO-10.4): each event dispatched once, built through the one
- * projection with the connection, its tenant and protocol, the acting identity
- * where one acted, and the IP address and user agent of the client the helper
- * was given, never those of the request being served.
+ * Feature tests for the domain lifecycle event reporter.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,8 +48,8 @@ final class DomainEventsTest extends TestCase
     private const string USER_AGENT = 'Example/1.0';
 
     /**
-     * Bind a fixed clock and a request being served from another client, create
-     * the tables and record events.
+     * Bind a fixed clock and a request from another client, create the tables
+     * and record events.
      *
      * @return void
      */
@@ -70,8 +66,8 @@ final class DomainEventsTest extends TestCase
     }
 
     /**
-     * A claim, a verification and a removal are each reported once, with the
-     * acting identity and the client the helper was given.
+     * A claim, a verification and a removal are reported with the actor and the
+     * given client.
      *
      * @return void
      */
@@ -104,8 +100,8 @@ final class DomainEventsTest extends TestCase
     }
 
     /**
-     * The scheduled checks are reported once each, with no acting identity and
-     * the client the helper was given.
+     * The scheduled checks are reported with no acting identity and the given
+     * client.
      *
      * @return void
      */
@@ -136,8 +132,7 @@ final class DomainEventsTest extends TestCase
     }
 
     /**
-     * Work with no client, as the scheduled recheck passes, reports no IP
-     * address and no user agent.
+     * Work with no client reports no IP address and no user agent.
      *
      * @return void
      */
@@ -165,8 +160,8 @@ final class DomainEventsTest extends TestCase
     }
 
     /**
-     * Assert the event's context names the connection, its tenant and protocol,
-     * the acting identity's id and the client given.
+     * Assert the event's context names the connection, the actor and the given
+     * client.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection

@@ -11,9 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[endpoints]`: checked while the package is in use, a base
- * URL required and never with a query, and each path pattern absolute, holding
- * `{connection}` once and distinct from the others.
+ * Feature tests for the `[endpoints]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +24,7 @@ final class EndpointsCheckTest extends TestCase
     use RunsConfigurationChecks;
 
     /**
-     * Not checked while the package is not in use, though no base URL is set;
-     * the default patterns with a base URL pass once it is.
+     * Endpoints are checked only while the package is in use.
      *
      * @return void
      */
@@ -41,8 +38,8 @@ final class EndpointsCheckTest extends TestCase
     }
 
     /**
-     * Rows of `[settings, problems]`: endpoint configurations and what each
-     * reports.
+     * Rows of `[settings, problems]`: endpoint configurations and their
+     * problems.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: list<string>}>
      */

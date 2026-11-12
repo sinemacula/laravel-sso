@@ -18,16 +18,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests, on whichever engine the suite runs against, of why the
- * counters may live on a connection of their own: an attempt counted inside a
- * transaction on the storage connection that rolls back (a refused flow undoing
- * its work) survives when `sso.rate_limits.connection` names a separate
- * connection, and is rolled back with the transaction when the counters share
- * the storage connection.
- *
- * The separate connection is the storage connection's configuration under
- * another name: another session to the same database on a server engine, so the
- * counters' writes commit on their own.
+ * Integration tests of counters on their own connection surviving a storage
+ * rollback. The separate connection is a second session to the same database.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -51,8 +43,7 @@ final class CountersConnectionTest extends TestCase
     private const string IP = '203.0.113.7';
 
     /**
-     * Bind the fixed clock, and drop the tables an earlier test kept, so each
-     * test starts from an empty database.
+     * Bind the fixed clock and drop the tables an earlier test kept.
      *
      * @return void
      */
@@ -87,9 +78,7 @@ final class CountersConnectionTest extends TestCase
     }
 
     /**
-     * With the counters on a separate connection, an attempt counted inside a
-     * transaction on the storage connection that rolls back is kept: the next
-     * attempt finds the limit full.
+     * On a separate connection, a count survives a storage rollback.
      *
      * @return void
      */
@@ -112,9 +101,7 @@ final class CountersConnectionTest extends TestCase
     }
 
     /**
-     * With the counters on the storage connection, an attempt counted inside a
-     * transaction that rolls back is rolled back with it: the next attempt is
-     * allowed again.
+     * On the storage connection, a count rolls back with the transaction.
      *
      * @return void
      */
@@ -136,9 +123,7 @@ final class CountersConnectionTest extends TestCase
     }
 
     /**
-     * With the counters on the storage connection, a refusal inside a
-     * transaction leaves it usable: nothing the limiter runs aborts it, on
-     * PostgreSQL included, so the statements after it run and commit.
+     * On the storage connection, a refusal leaves the transaction usable.
      *
      * @return void
      */

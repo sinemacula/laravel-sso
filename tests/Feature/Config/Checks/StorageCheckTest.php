@@ -11,9 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[storage]`: checked while the package is in use, each
- * connection a configured name or none, each table's name a table name, and no
- * two tables of one connection sharing a name.
+ * Feature tests for the `[storage]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +24,7 @@ final class StorageCheckTest extends TestCase
     use RunsConfigurationChecks;
 
     /**
-     * Not checked while the package is not in use, however malformed; the
-     * defaults pass once it is.
+     * Storage is checked only while the package is in use.
      *
      * @return void
      */
@@ -44,8 +41,8 @@ final class StorageCheckTest extends TestCase
     }
 
     /**
-     * Rows of `[settings, problems]`: storage configurations and what each
-     * reports.
+     * Rows of `[settings, problems]`: storage configurations and their
+     * problems.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: list<string>}>
      */
