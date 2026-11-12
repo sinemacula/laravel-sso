@@ -52,26 +52,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races a key rotation found by a callback's own unknown-`kid` refetch across
- * processes, each on its own database connection, on MySQL and PostgreSQL
- * (SSO-2.13, SSO-7.3):
- *
- * - a change committing between the refetch and the final locks, plainly and
- *   inside a `REPEATABLE READ` transaction of the competitor's own that read
- *   first: a second trust change, a distrust, a disable or a delete refuses the
- *   trigger, whatever the receipt says. On PostgreSQL alone that transaction
- *   may fail to serialise (SQLSTATE `40001`), which changes nothing, so the
- *   trigger then completes;
- * - another sign-in consumed before the rotation and validated after it,
- *   finding the new key: it is voided by the rotation and refused at its locks,
- *   while the trigger completes;
- * - two sign-ins on one unknown `kid`: the one that claims the cooldown
- *   completes; the other, finding no key while the first still fetches, is
- *   refused for its signature, and the rotation spares only the first.
- *
- * The order is forced with signal files, generated keys made before any fork,
- * and a barrier that times out fails its racer loudly. The races are skipped on
- * SQLite and without `pcntl`.
+ * Integration tests racing a key rotation found by an unknown-`kid` refetch.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -119,12 +100,7 @@ final class OidcKeyRotationRaceTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip on SQLite or without `pcntl`; otherwise bind a fixed clock, fresh
-     * authentication, a limiter that allows every attempt and the fake fetcher,
-     * configure the endpoints and the application, create the tables, make the
-     * keys before any fork, and the directory the processes report in. The
-     * default handoff store is left in place, so every process counts its
-     * codes.
+     * Skip on SQLite or without `pcntl`, and make the keys before any fork.
      *
      * @return void
      *
@@ -198,7 +174,7 @@ final class OidcKeyRotationRaceTest extends TestCase
 
     /**
      * Rows of `[change, in a transaction]`: what commits between the refetch
-     * and the final locks, plainly and inside a transaction that read first.
+     * and the locks.
      *
      * @return iterable<string, array{0: string, 1: bool}>
      */
@@ -211,9 +187,7 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * A change committing between the refetch and the final locks refuses the
-     * trigger, with no code; the rotation's own void stands, and the trigger is
-     * voided by the change.
+     * A change between the refetch and the final locks refuses the trigger.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -273,9 +247,8 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * A sign-in consumed before the rotation, validated after it with the new
-     * key, is refused at its locks, voided by the rotation; the trigger
-     * completes.
+     * A sign-in consumed before the rotation is refused at its locks; the
+     * trigger completes.
      *
      * @return void
      *
@@ -316,9 +289,8 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * Two sign-ins on one unknown `kid`: the one holding the claim completes;
-     * the other finds no key while it fetches and is refused for its signature,
-     * and nothing fetches twice.
+     * Two sign-ins on one unknown `kid` fetch once, and only the claimant
+     * completes.
      *
      * @return void
      *
@@ -365,9 +337,8 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * What the token endpoint answers in this race: the other sign-in, once
-     * consumed, waits for the trigger to finish before it is answered; the
-     * trigger is answered at once. The grant is told apart by the code.
+     * Answer the trigger at once, and the other sign-in once the trigger
+     * finishes.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization  $other
@@ -390,9 +361,8 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: inside its own `REPEATABLE READ` transaction that
-     * read first, or plainly, signal it has read, wait for the UserInfo
-     * request, make the change, commit, and signal that it is done or failed.
+     * Make the change once the UserInfo request arrives, plainly or in a
+     * transaction that read first.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -505,8 +475,7 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * Start a sign-in through the connection; its request and what the provider
-     * granted it.
+     * Start a sign-in; its request and what the provider granted it.
      *
      * @return array{0: \SineMacula\Laravel\Sso\Models\AuthorizationRequest, 1: \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization}
      *
@@ -574,8 +543,7 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * Fork a process for each racer, each on a connection of its own, and
-     * collect what each reported, in the racers' order.
+     * Fork a process per racer and collect their reports in order.
      *
      * @param  list<\Closure(): string>  $racers
      * @return list<string>
@@ -611,8 +579,8 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, do its work, report
-     * the outcome, and end without running the parent's shutdown.
+     * Run the racer's work on its own connection and exit without the parent's
+     * shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work
@@ -638,8 +606,7 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * What a trigger refused by the change reports: its status, its reason and
-     * no code.
+     * What a trigger refused by the change reports.
      *
      * @return string
      */
@@ -649,8 +616,8 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error.
+     * Wait up to `SIGNAL_SECONDS` for the signal file, and fail when it never
+     * appears.
      *
      * @param  string  $signal
      * @return void
@@ -673,8 +640,8 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure (SQLSTATE 40001), accepted only there.
+     * Whether the error, or its cause, is a PostgreSQL serialisation failure
+     * (SQLSTATE 40001).
      *
      * @param  \Throwable  $exception
      * @return bool
@@ -691,8 +658,8 @@ final class OidcKeyRotationRaceTest extends TestCase
     }
 
     /**
-     * The statement that makes every later transaction of the session
-     * `REPEATABLE READ`.
+     * The statement that makes the session's later transactions `REPEATABLE
+     * READ`.
      *
      * @param  string  $driver
      * @return string

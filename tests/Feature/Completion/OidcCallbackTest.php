@@ -69,15 +69,7 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * The OpenID Connect callback through the public helper, with hostile input
- * (SSO-5.4, SSO-5.5, SSO-5.7, SSO-7.1, SSO-7.2, SSO-7.6, SSO-11.4), against the
- * fake provider on the fake fetcher and doubles of the ID token's validation
- * and the claims' assembly: every refused query is `request_unknown`, reported
- * once and consuming nothing; the caps at, under and over; `iss` and the mix-up
- * defence; errors; every token endpoint answer; each client authentication at
- * the provider's strict endpoint; the exact form; a request staying consumed
- * whatever happens; and no provider token or description in any event, log or
- * dump.
+ * Feature tests for the OpenID Connect callback with hostile input.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -130,10 +122,7 @@ final class OidcCallbackTest extends TestCase
     private array $started = [];
 
     /**
-     * Bind a fixed clock, the fake fetcher, the recording issuer, the doubles
-     * and a request from an IP address, configure the endpoints and the
-     * applications, create the tables and the connection, serve the provider,
-     * capture logs and record events.
+     * Bind a fixed clock, the fetcher and doubles; capture logs and events.
      *
      * @return void
      */
@@ -170,10 +159,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A sign-in completes: the code is exchanged at the provider's strict
-     * endpoint, its tokens reach the validation, and it reports
-     * `ResultVerified` then `HandoffIssued`, with the request consumed and
-     * completed.
+     * A sign-in completes through the provider's strict token endpoint.
      *
      * @return void
      *
@@ -199,8 +185,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[query]`: what a callback's query is refused for, built from the
-     * authorisation it answers.
+     * Rows of `[query]` the callback refuses.
      *
      * @return iterable<string, array{0: \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization): string}>
      */
@@ -246,9 +231,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A query the callback refuses is `request_unknown`, with exactly one
-     * `FlowFailed` that names no request, nothing consumed, no provider called
-     * and no redirect target.
+     * A refused query is `request_unknown` and consumes nothing.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization): string  $query
      * @return void
@@ -317,8 +300,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A state not of the package's shape is `request_unknown` before any
-     * lookup, even when a request stored its digest, which stays unconsumed.
+     * A malformed state is `request_unknown` before any lookup.
      *
      * @param  string  $state
      * @return void
@@ -348,8 +330,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[iss, required, reason]`: what arrives as `iss`, whether the
-     * request requires it, and the reason it is refused for, if any.
+     * Rows of `[iss, required, reason]`.
      *
      * @return iterable<string, array{0: ?string, 1: bool, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -371,9 +352,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * `iss` is held to the issuer the request pinned, and to the request saying
-     * it must be there: refused with `issuer_mismatch`, one `FlowFailed` with
-     * the request's reference, no token request and the request consumed.
+     * `iss` is held to the issuer the request pinned.
      *
      * @param  ?string  $iss
      * @param  bool  $required
@@ -400,9 +379,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Mix-up: provider A's code and state sent to provider B's callback find
-     * A's request through another connection, so `connection_mismatch`, sent to
-     * A's request's application; neither provider is asked for a token.
+     * A callback at another connection is a `connection_mismatch`.
      *
      * @return void
      *
@@ -427,8 +404,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Mix-up without `iss` is refused the same way: the response is accepted
-     * only at the callback of the request's own connection.
+     * A callback at another connection without `iss` is a mismatch too.
      *
      * @return void
      *
@@ -445,8 +421,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Mix-up: provider B's `iss` on a callback of A's connection is
-     * `issuer_mismatch`, with no token request to either provider.
+     * Another provider's `iss` is an `issuer_mismatch`.
      *
      * @return void
      *
@@ -478,8 +453,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Each is refused for its reason, with one `FlowFailed`, the request
-     * consumed, no token request and no description anywhere.
+     * An error or code response is refused for its reason.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization): string  $query
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -498,8 +472,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * An error alone is logged by its code, and the failure names only the
-     * reason.
+     * An error alone is logged by its code.
      *
      * @return void
      *
@@ -516,8 +489,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[answer, reason]`: what the token endpoint answers, and the
-     * completion's reason.
+     * Rows of `[answer, reason]` from the token endpoint.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Fetching\FetchResult, 1: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -543,10 +515,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Each answer refuses the completion for its exact reason after exactly one
-     * token request, never retried, with one `FlowFailed`, the request consumed
-     * and the validation never asked. Submitting the callback again finds the
-     * request consumed: `request_unknown`, with no second token request.
+     * Each token answer refuses once for its reason and is never retried.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $answer
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -573,8 +542,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A code the provider's strict endpoint refuses (its verifier does not
-     * match) is `provider_error`, logged by its code.
+     * A code the provider refuses is `provider_error`, logged by its code.
      *
      * @return void
      *
@@ -591,8 +559,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[method, kind]`: a client authentication by a client secret, and
-     * the credential that carries it.
+     * Rows of `[method, kind]` for client secret authentication.
      *
      * @return iterable<string, array{0: string, 1: \SineMacula\Laravel\Sso\Fetching\Enums\CredentialKind}>
      */
@@ -628,8 +595,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * The provider's strict endpoint accepts the package's client assertion,
-     * verifying it with the connection's public key.
+     * The provider accepts the package's client assertion.
      *
      * @return void
      *
@@ -652,8 +618,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A wrong client secret is `invalid_client`: `provider_error`, logged by
-     * its code, with neither secret logged.
+     * A wrong client secret is `provider_error`, with no secret logged.
      *
      * @return void
      *
@@ -671,10 +636,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * The token request carries exactly the form: the `redirect_uri` the
-     * authorisation request named, which is the configured callback and never
-     * the host of the request being served, and the PKCE verifier; and it is
-     * held to the token request's timeout and cap.
+     * The token request carries exactly the form, with the configured callback.
      *
      * @return void
      *
@@ -700,10 +662,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * No access, refresh or ID token, code, state, nonce, verifier, client
-     * secret or description reaches any event, log, dump of an event or dump of
-     * a result, across a sign-in, an error response and an error from the token
-     * endpoint; the request is named only by its reference.
+     * No provider value reaches an event, log or dump.
      *
      * @return void
      *
@@ -751,8 +710,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A request a trust change overtook is `connection_unavailable` at its
-     * consumption: no provider is called.
+     * A request of another trust version calls no provider.
      *
      * @return void
      *
@@ -767,9 +725,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A connection no longer usable (its secret removed since the start) is
-     * `connection_unavailable`, its request consumed, and no provider is
-     * called.
+     * A connection no longer usable calls no provider.
      *
      * @return void
      *
@@ -786,8 +742,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * The validation's refusal is the completion's, and the claims' assembly is
-     * never asked.
+     * An ID token the validation refuses is the completion's refusal.
      *
      * @return void
      *
@@ -828,9 +783,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A callback inside a transaction open on the storage connection is refused
-     * before anything is written or sent, so the token request is never inside
-     * one.
+     * A callback inside a transaction is refused before any token request.
      *
      * @return void
      *
@@ -857,8 +810,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A PKCE verifier no key decrypts is not read for a response refused before
-     * the token request.
+     * An undecryptable verifier is not read for a response refused first.
      *
      * @return void
      *
@@ -872,9 +824,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A PKCE verifier no key decrypts, once the token request needs it, is a
-     * server error and never a failed sign-in: it propagates, with the request
-     * consumed, no token request and no failure reported (SSO-11.4).
+     * An undecryptable verifier is a server error, never a failed sign-in.
      *
      * @return void
      *
@@ -895,9 +845,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Assert the callback was refused with no redirect target: exactly one
-     * `FlowFailed(callback, request_unknown)`, naming no request, with the
-     * request unconsumed and no provider called.
+     * Assert the callback was refused as `request_unknown`, consuming nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
@@ -913,9 +861,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Assert the callback failed for the reason, redirected to the `web`
-     * application: exactly one `FlowFailed(callback, reason)`, with the
-     * request's reference, and the request consumed and finished.
+     * Assert the callback failed for the reason, redirected to `web`.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -938,8 +884,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Assert no recorded event, as dumped any way or encoded as JSON, contains
-     * any of the needles.
+     * Assert no recorded event, dumped or JSON-encoded, contains a needle.
      *
      * @param  list<string>  $needles
      * @return void
@@ -999,9 +944,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Store the request a sign-in through the connection started, and have its
-     * provider grant it, as its authorisation endpoint would; the attributes
-     * given override what the request stored.
+     * Store a sign-in request and have its provider grant it.
      *
      * @param  array<string, mixed>  $attributes
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -1059,8 +1002,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * An enabled connection of the provider, with the settings and the client
-     * secret given.
+     * An enabled connection of the provider with the settings and secret.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider  $provider
      * @param  array<string, mixed>  $settings
@@ -1107,8 +1049,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * Bind doubles of the ID token's validation, which records the tokens it is
-     * given and validates them, and of the claims' assembly, which verifies.
+     * Bind recording doubles of the ID token validation and claims assembly.
      *
      * @return void
      */
@@ -1209,8 +1150,7 @@ final class OidcCallbackTest extends TestCase
     }
 
     /**
-     * A fresh 256-bit base64url value, as the package's state, nonce and PKCE
-     * verifier are.
+     * A fresh 256-bit base64url value.
      *
      * @return string
      *

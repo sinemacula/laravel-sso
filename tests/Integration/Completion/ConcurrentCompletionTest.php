@@ -30,27 +30,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Races completions across processes, each with its own database connection, on
- * PostgreSQL and MySQL (SSO-5.1, SSO-5.6, SSO-11.5, SSO-2.11):
- *
- * - completions of one response, however they interleave: exactly one
- *   completes, and every other is rejected with `request_unknown`;
- * - a completion racing a change that voids its connection's unfinished
- *   requests under the connection's lock (as disabling the connection does): a
- *   request voided while its response was validated is refused under the lock
- *   and no code is issued for it.
- *
- * A completion runs outside any transaction on the storage connection, so every
- * completer is plain. The change runs plain, and again inside a transaction of
- * its own that read the request before the race began, so its write must see
- * what the completion committed rather than its transaction's snapshot (MySQL's
- * `REPEATABLE READ`). The change waits for the completion to signal that it is
- * validating, and the completion waits for the change to signal that it voided,
- * so the order the test asserts is the order they run in, however loaded the
- * machine.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Integration tests racing completions across processes on PostgreSQL and
+ * MySQL.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -86,10 +67,8 @@ final class ConcurrentCompletionTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock, a
-     * limiter that allows every attempt and the recording issuer, register the
-     * application and the driver, create the tables, the connection and the
-     * request, and make the directory the processes report in.
+     * Skip where processes cannot share the database, and create the connection
+     * and request.
      *
      * @return void
      *
@@ -168,8 +147,8 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * Completions of one response: exactly one completes, and every other is
-     * rejected with `request_unknown`.
+     * Exactly one completion of a response completes; every other is
+     * `request_unknown`.
      *
      * @return void
      */
@@ -179,9 +158,8 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * A change that voids the request while its response is validated is waited
-     * for by nothing: the completion finds the request voided under the lock,
-     * fails with `connection_unavailable`, and issues no code.
+     * A request voided while its response is validated is refused under the
+     * lock.
      *
      * @return void
      */
@@ -191,8 +169,8 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * The same race, the change inside a transaction of its own that read the
-     * request before the race began.
+     * The same race, the change inside a transaction that read the request
+     * first.
      *
      * @return void
      */
@@ -202,11 +180,7 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * Race a completion against a change that voids its request once the
-     * completion signals it is validating; the completion validates until the
-     * change signals it voided. Assert the completion failed with
-     * `connection_unavailable` and issued no code, and the request is voided
-     * and finished.
+     * Race a completion against a void and assert it failed and issued no code.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -230,9 +204,8 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * Assert exactly one process completed with one code, every other was
-     * rejected with `request_unknown` and issued nothing, and the request is
-     * consumed and completed.
+     * Assert exactly one process completed and every other was
+     * `request_unknown`.
      *
      * @param  list<string>  $outcomes
      * @return void
@@ -249,8 +222,7 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * What a completing process does: complete at the callback with the state
-     * and report how it ended and how many codes it issued.
+     * Complete at the callback and report the outcome and codes issued.
      *
      * @return \Closure(): string
      */
@@ -274,10 +246,8 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * What a voiding process does, as disabling the connection does: once the
-     * completion signals it is validating, lock the connection's row, void its
-     * unfinished requests in the same transaction, signal that it voided, and
-     * report how many it voided.
+     * Once the completion is validating, void the connection's unfinished
+     * requests under its lock.
      *
      * @param  string  $validating
      * @param  string  $voided
@@ -310,8 +280,7 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * Wait for the other racer to signal, by creating the file, for at most
-     * `SIGNAL_SECONDS`; whether it did.
+     * Wait up to `SIGNAL_SECONDS` for the signal file; whether it appeared.
      *
      * @param  string  $signal
      * @return bool
@@ -334,9 +303,8 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * Fork a process for each racer, have each start its work at the same
-     * moment on a connection of its own, plain or inside a transaction of its
-     * own, and collect what each reported, in the racers' order.
+     * Fork a process per racer, start them together and collect their reports
+     * in order.
      *
      * @param  list<array{0: \Closure(): string, 1: bool}>  $racers
      * @return list<string>
@@ -373,13 +341,8 @@ final class ConcurrentCompletionTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, wait for its start, do
-     * its work, report the outcome, and end without running the parent's
-     * shutdown.
-     *
-     * Racing inside a transaction, the process opens one and reads the request
-     * before the start, so the transaction's snapshot predates every other
-     * process's work, and commits after its own.
+     * Run the racer on its own connection, reading first in a transaction so
+     * its snapshot predates the race.
      *
      * @param  int  $process
      * @param  float  $start

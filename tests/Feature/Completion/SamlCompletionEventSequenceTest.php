@@ -40,13 +40,7 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * The events a SAML completion reports (SSO-10.1, SSO-10.2, SSO-6.6, SSO-9.8):
- * `ResultVerified` then `HandoffIssued` for a sign-in; one `FlowFailed` alone
- * for a response refused before it was verified; `ResultVerified` then one
- * `FlowFailed` with `replayed` for an assertion recorded before; each naming
- * the request only by its public reference; and no event, event dump or log
- * ever carrying the assertion, the `SAMLResponse`, the `RelayState`, the
- * `NameID` or an attribute's value.
+ * Feature tests for the events a SAML completion reports.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -87,10 +81,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
     private AuthorizationRequest $request;
 
     /**
-     * Bind a fixed clock, the recording issuer and a request from an IP
-     * address, configure SAML, the endpoints and the application, create the
-     * tables, a connection that trusts the identity provider and its request,
-     * capture logs and record events.
+     * Configure SAML, a connection and a request; capture logs and events.
      *
      * @return void
      */
@@ -128,9 +119,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A sign-in reports `ResultVerified` then `HandoffIssued`, each for the
-     * connection, its tenant and protocol, the application, the purpose and the
-     * request's public reference, and no failure.
+     * A sign-in reports `ResultVerified` then `HandoffIssued`.
      *
      * @return void
      */
@@ -154,8 +143,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A response refused before it was verified reports exactly one
-     * `FlowFailed`, with nothing before it.
+     * A refusal before verification reports one failure alone.
      *
      * @return void
      */
@@ -168,9 +156,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * An assertion recorded before is verified, then refused when its record is
-     * made: `ResultVerified`, then one `FlowFailed` with `replayed`, and no
-     * code.
+     * A replayed assertion reports `ResultVerified`, then `replayed`.
      *
      * @return void
      */
@@ -190,10 +176,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * Across a sign-in, a replay, a refused read and an unsuccessful status, no
-     * event, no dump or encoding of one, and no log carries the assertion or
-     * its id, the posted `SAMLResponse`, the `RelayState`, the `NameID` or an
-     * attribute's value.
+     * No event or log carries what the response carried.
      *
      * @return void
      */
@@ -241,16 +224,14 @@ final class SamlCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * Assert no recorded event, as dumped any way or encoded as JSON, contains
-     * any of the needles.
+     * Assert no recorded event, dumped or JSON-encoded, contains a needle.
      *
      * @param  list<string>  $needles
      * @return void
      */
     private function assertNothingReportedContains(array $needles): void
     {
-        // The unlinked-result event alone carries the result (SSO-8.6), to its
-        // synchronous listeners
+        // ResultUnlinked alone carries the result, to synchronous listeners.
         $events = array_values(array_filter($this->recordedEvents(), static fn (SsoEvent $event): bool => !$event instanceof ResultUnlinked));
         $texts  = [...array_values(self::dumps($events)), (string) json_encode($events, JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR)];
 
@@ -262,8 +243,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * Complete at the connection's assertion consumer service with the
-     * response, posted with the request's `RelayState`.
+     * Complete at the assertion consumer service with the response.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
@@ -279,9 +259,7 @@ final class SamlCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A valid response from the trusted identity provider, made now, answering
-     * the request, with the subject, attribute and assertion id never to be
-     * reported.
+     * A valid response carrying values that must never be reported.
      *
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
      */

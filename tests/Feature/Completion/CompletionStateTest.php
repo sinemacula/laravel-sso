@@ -27,10 +27,7 @@ use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
 
 /**
- * Feature tests for what a completion has established: each part added by its
- * own `with…()` with every other kept, a redirect target only once the request,
- * its application and the connection are known, a dump showing only ids, no
- * serialisation; and what a stage decided.
+ * Feature tests for what a completion has established and what a stage decided.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,8 +39,7 @@ use Tests\TestCase;
 final class CompletionStateTest extends TestCase
 {
     /**
-     * A completion that has just arrived holds the connection id and what
-     * arrived, and nothing else.
+     * A completion that has just arrived holds only what arrived.
      *
      * @return void
      */
@@ -117,8 +113,7 @@ final class CompletionStateTest extends TestCase
     }
 
     /**
-     * A redirect target is known only once the request, its application and the
-     * connection all are.
+     * A redirect target needs the request, its application and the connection.
      *
      * @return void
      *

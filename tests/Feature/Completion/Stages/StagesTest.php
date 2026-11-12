@@ -64,9 +64,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for each completion stage alone (SSO-5.6, SSO-8.6, SSO-9.2,
- * SSO-4.6, SSO-6.10): what each goes on with, what each refuses and why, and
- * the `LogicException` of a stage run before the steps it needs.
+ * Feature tests for each completion stage alone.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -120,8 +118,7 @@ final class StagesTest extends TestCase
     private int $references = 0;
 
     /**
-     * Bind a fixed clock and the recording issuer, register the applications
-     * and the driver, and create the tables and a usable connection.
+     * Bind a fixed clock and the issuer, register the applications and driver.
      *
      * @return void
      */
@@ -158,8 +155,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Correlation goes on with a solicited correlation, the rest of the state
-     * kept.
+     * Correlation goes on with a solicited response.
      *
      * @return void
      */
@@ -186,9 +182,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Correlation refuses an unsolicited response at a driver that does not
-     * re-initiate, and an uncorrelated one, with `request_unknown`, from the
-     * state the response arrived in, with no trusted redirect target.
+     * Correlation refuses a response that names no request.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @return void
@@ -207,10 +201,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Correlation hands an unsolicited response at a driver that re-initiates
-     * to re-initiation, with the driver's correlation and the rest of the state
-     * kept: neither going on nor refused, with no reason and no trusted
-     * redirect target.
+     * Correlation hands an unsolicited response to re-initiation.
      *
      * @return void
      */
@@ -228,9 +219,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * At a driver that re-initiates, a solicited response still goes on and an
-     * uncorrelated one is still refused with `request_unknown`; neither is
-     * handed to re-initiation.
+     * A re-initiating driver re-initiates only an unsolicited response.
      *
      * @return void
      */
@@ -246,8 +235,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Each outcome is exactly one of going on, refused and handed to
-     * re-initiation.
+     * Each outcome is exactly one of its kinds.
      *
      * @return void
      */
@@ -264,8 +252,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Consumption goes on with the consumed request, what the driver is given
-     * of it and its application.
+     * Consumption goes on with the consumed request and its application.
      *
      * @return void
      */
@@ -285,9 +272,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * A consumed request refused with its application still registered keeps
-     * the request and the application, so the completion redirects, but never
-     * its nonce digest or PKCE verifier.
+     * A refused consumption keeps its redirect target but no secret.
      *
      * @return void
      */
@@ -316,8 +301,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * A consumed request whose application is no longer registered is refused
-     * with `application_not_allowed`, with no trusted redirect target.
+     * A consumption whose application is gone has no redirect target.
      *
      * @return void
      */
@@ -333,8 +317,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * A state no request has, and a replay, are refused with `request_unknown`,
-     * with no trusted redirect target.
+     * An unknown or replayed request is refused with no redirect target.
      *
      * @return void
      */
@@ -357,8 +340,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Validation goes on with the claims the driver verified and the result
-     * built from them.
+     * Validation goes on with the verified claims and the built result.
      *
      * @return void
      */
@@ -375,8 +357,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Validation goes on with the replay record the driver asked for, and with
-     * none when it asked for none.
+     * Validation keeps the replay record the driver asked for, if any.
      *
      * @return void
      */
@@ -392,9 +373,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * The replay recording goes on when there is nothing to record, records a
-     * record once and refuses it again with `replayed`, and refuses a record no
-     * longer acceptable with `assertion_expired`, recording nothing.
+     * A replay record is recorded once, then refused.
      *
      * @return void
      */
@@ -424,8 +403,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * A record is scoped by connection and issuer: the same assertion id from
-     * another issuer or through another connection is recorded on its own.
+     * A replay record is scoped by connection and issuer.
      *
      * @return void
      */
@@ -462,8 +440,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Validation refuses a connection that is no longer usable with
-     * `connection_unavailable`, without asking its driver.
+     * An unusable connection is refused without asking its driver.
      *
      * @return void
      */
@@ -480,8 +457,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Link resolution goes on with the identity the linker resolves, and with
-     * the state as it was when it resolves none.
+     * Link resolution goes on with the identity resolved, if any.
      *
      * @return void
      */
@@ -508,9 +484,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Enforcement refuses a required policy the connection does not satisfy,
-     * and goes on with the state unchanged under one it satisfies, or one that
-     * requires nothing; asked for the connection's tenant and the application.
+     * Enforcement refuses an unsatisfied policy and keeps the state otherwise.
      *
      * @return void
      */
@@ -539,8 +513,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * The purpose, the application, whether the result is linked, and the
-     * reason the decision refuses with, if any.
+     * The purpose, application, whether linked, and the reason refused, if any.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: string, 2: bool, 3: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -554,9 +527,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * An unlinked `sign_in` is refused with `unlinked` unless its application
-     * allows unlinked handoffs; a linked `sign_in`, and an unlinked `link` or
-     * `reauthenticate`, pass unchanged.
+     * An unlinked `sign_in` is refused unless its application allows it.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $application
@@ -577,8 +548,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Issuance goes on with the handoff issued for a grant of every part of the
-     * state.
+     * Issuance issues the handoff for a grant of the whole state.
      *
      * @return void
      */
@@ -605,8 +575,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Issuance refuses an application the policy no longer allows with
-     * `application_not_allowed`, and issues nothing.
+     * Issuance refuses an application no longer allowed and issues nothing.
      *
      * @return void
      */
@@ -623,8 +592,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * A deadline the contract ignores sets no latest end, and a result with no
-     * deadline never asks the contract.
+     * The deadline contract is asked only for a result with a deadline.
      *
      * @return void
      */
@@ -647,9 +615,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * A verified state with no resolved link: linking by a verified domain
-     * finds nothing to reserve, and provisioning nothing to stop, so each
-     * passes it on unchanged.
+     * A verified state with no resolved link passes through unchanged.
      *
      * @return void
      */
@@ -667,8 +633,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Rows of `[purpose, the link as it resolved, the reason it refuses]`: each
-     * purpose reaches its own rules, and a refusal keeps their exact reason.
+     * Rows of `[purpose, the link as it resolved, the reason it refuses]`.
      *
      * @return iterable<string, array{
      *     0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose,
@@ -696,8 +661,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * The stage asks the rules of the flow's purpose, and no other: it goes on
-     * with the state exactly as it was, or refuses for the reason they gave.
+     * Only the flow's purpose rules decide, and their reason is kept.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $resolution
@@ -756,8 +720,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * A stage that needs more than the connection says so too, when given only
-     * the connection.
+     * A stage given only the connection says what more it needs.
      *
      * @return void
      *
@@ -783,8 +746,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Link resolution and issuance given a consumed request but no verified
-     * result say they need one.
+     * Link resolution and issuance given no verified result say they need one.
      *
      * @return void
      */
@@ -831,9 +793,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * The state of a post that arrived at a connection whose driver
-     * re-initiates, and correlates the responses it is asked about as given, in
-     * order.
+     * A state at a connection whose driver re-initiates, correlating in order.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  ...$next
@@ -863,9 +823,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * The state once a request for the purpose and the application is consumed:
-     * a `link` for its identity, a `reauthenticate` for its identity on its
-     * session.
+     * The state once a request for the purpose and application is consumed.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $application
@@ -893,8 +851,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * The state once the response is verified, with the claims given or the
-     * driver's.
+     * The state once the response is verified.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $application
@@ -913,9 +870,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Store a `sign_in` request for `web` through the connection, started with
-     * the state, the nonce, the reference, the challenge and a PKCE verifier,
-     * unless the attributes say otherwise.
+     * Store a `sign_in` request for `web` unless the attributes say otherwise.
      *
      * @param  array<string, mixed>  $attributes
      * @return \SineMacula\Laravel\Sso\Models\AuthorizationRequest
@@ -933,8 +888,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Bind an enforcement contract that answers the policy, recording what it
-     * is asked.
+     * Bind an enforcement contract answering the policy and recording calls.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @return void
@@ -975,8 +929,7 @@ final class StagesTest extends TestCase
     }
 
     /**
-     * Bind a deadline contract that answers the effect, counting from zero how
-     * often it is asked.
+     * Bind a deadline contract answering the effect and counting calls.
      *
      * @param  \SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect  $effect
      * @return void

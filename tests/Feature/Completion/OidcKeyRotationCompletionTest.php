@@ -55,17 +55,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for a key rotation found by a callback's own unknown-`kid`
- * refetch (SSO-2.13, SSO-7.3): the refetch commits a JWKS that removes a key,
- * so everything in flight is voided and the trust version raised, except the
- * one sign-in whose token asked, which may finish across exactly that
- * transition once its token has passed every check under the new keys. Every
- * other request and every issued code stays voided; anything else that happens
- * between the refetch and the final locks refuses the sign-in; a request voided
- * by anything else is never restored, and a key only added voids nothing.
- *
- * The order is exact in this process: what happens between the refetch and the
- * locks runs at the UserInfo request, the last provider call before them.
+ * Feature tests for a key rotation found by a callback's own refetch.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -99,9 +89,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     private FakeOpenIdProvider $provider;
 
     /**
-     * Bind a fixed clock, fresh authentication, a limiter that allows every
-     * attempt and the fake fetcher, configure the endpoints and the
-     * application, and create the tables.
+     * Bind a fixed clock, fresh authentication, an open limiter and a fetcher.
      *
      * @return void
      */
@@ -141,9 +129,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * The sign-in whose token triggered the rotation finishes, with a code that
-     * stands, its request neither voided nor restored; everything else in
-     * flight is voided, the trust version raised once.
+     * The triggering sign-in finishes and everything else is voided.
      *
      * @return void
      *
@@ -187,8 +173,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * Another request's callback, its request voided by the rotation, is
-     * refused at its consumption with no provider call, whatever key signed it.
+     * Every other request stays voided.
      *
      * @return void
      *
@@ -215,8 +200,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * A key only added voids nothing and raises nothing: other requests go on
-     * as they were.
+     * A purely additive refetch voids nothing.
      *
      * @return void
      *
@@ -274,9 +258,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * Anything independent that happens between the refetch and the final locks
-     * refuses the trigger, voids it, and leaves no code: the receipt names one
-     * transition and never adopts a later trust version.
+     * An intervening change refuses the trigger.
      *
      * @param  \Closure(self, \SineMacula\Laravel\Sso\Models\Connection): void  $change
      * @return void
@@ -306,8 +288,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * The connection deleted between the refetch and the locks refuses the
-     * trigger, with no code left.
+     * A delete between the refetch and the locks refuses the trigger.
      *
      * @return void
      *
@@ -330,9 +311,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * Another write of the keys since, though it raises no trust version,
-     * leaves the JWKS version the receipt did not name, and refuses the
-     * trigger; it is not voided by that alone, and is finished.
+     * Another write of the keys refuses the trigger without voiding it.
      *
      * @return void
      *
@@ -357,8 +336,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * What was fetched passing its stale limit between the refetch and the
-     * locks refuses the trigger with `metadata_expired`, as anywhere.
+     * Metadata expiring between the refetch and the locks refuses the trigger.
      *
      * @return void
      *
@@ -381,8 +359,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * A request voided independently before the refetch is never restored and
-     * never spared, though its own token's refetch then rotates the keys.
+     * A request voided independently is not restored.
      *
      * @return void
      *
@@ -412,9 +389,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * A token the new keys do not verify, or that fails a claim under them, is
-     * refused for that, however the rotation went: the receipt is handed on
-     * only once the whole token has passed. The rotation's voiding stands.
+     * A token that fails under the new keys is refused.
      *
      * @return void
      *
@@ -438,8 +413,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * A sign-in whose token's `kid` is not in what the rotation brought stays
-     * refused for its signature.
+     * A `kid` the rotation did not bring is refused.
      *
      * @return void
      *
@@ -460,9 +434,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * UserInfo refused after the rotation refuses the sign-in: the receipt
-     * never reaches the locks, and the trigger is left finished, its code never
-     * issued.
+     * A UserInfo refusal after the rotation refuses the sign-in.
      *
      * @return void
      *
@@ -483,8 +455,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * The same callback again is a replay: a receipt lives only for the
-     * completion that got it.
+     * A receipt does not outlive its completion.
      *
      * @return void
      *
@@ -508,8 +479,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * A request started once the rotation has happened goes on under the new
-     * trust version with no receipt at all.
+     * A request started after the rotation needs no receipt.
      *
      * @return void
      *
@@ -573,8 +543,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * Run the closure when the UserInfo request arrives, the last provider call
-     * before the locks, then answer as the provider would.
+     * Run the closure at the UserInfo request, the last call before the locks.
      *
      * @param  \Closure(): void  $between
      * @return void
@@ -591,8 +560,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * Run the closure when the token request arrives, then answer it, so a
-     * change lands after the consumption and before the refetch.
+     * Run the closure at the token request, between consumption and refetch.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization  $grant
      * @param  \Closure(): void  $between
@@ -610,8 +578,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * Start a sign-in through the connection; its request and what the provider
-     * granted it.
+     * Start a sign-in; its request and what the provider granted it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return array{0: \SineMacula\Laravel\Sso\Models\AuthorizationRequest, 1: \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization}

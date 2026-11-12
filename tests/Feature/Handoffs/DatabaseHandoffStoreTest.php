@@ -27,12 +27,7 @@ use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
 
 /**
- * Feature tests for the package's own handoff store (SSO-9.2, SSO-9.10,
- * SSO-11.9): the row an issued code is stored as, every column pinned; only the
- * code's digest kept, never the code; the verified result encrypted and
- * restored exactly; the expiry kept to the second and answered as stored; a new
- * code for every issue, each raising its connection's flows version by one;
- * and nothing kept when the completion's transaction rolls back.
+ * Feature tests for the package's database handoff store.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,9 +71,7 @@ final class DatabaseHandoffStoreTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` grant is stored as one row holding what the code is
-     * bound to, the connection's trust version, the session's latest end and
-     * the expiry, stamped now and neither redeemed nor voided.
+     * A `reauthenticate` grant is stored as one row with every column pinned.
      *
      * @return void
      *
@@ -143,8 +136,7 @@ final class DatabaseHandoffStoreTest extends TestCase
     }
 
     /**
-     * A `sign_in` grant linked to nothing stores no identity, no session, no
-     * linked identity and no session end.
+     * A `sign_in` grant linked to nothing stores no identity or session.
      *
      * @return void
      *
@@ -169,8 +161,7 @@ final class DatabaseHandoffStoreTest extends TestCase
     }
 
     /**
-     * Only the code's digest is stored: the code is in no column, and the
-     * digest is its lower-case hex SHA-256, which it matches.
+     * Only the code's lower-case hex SHA-256 digest is stored.
      *
      * @return void
      *
@@ -192,9 +183,7 @@ final class DatabaseHandoffStoreTest extends TestCase
     }
 
     /**
-     * The verified result is stored encrypted: no column shows its subject or
-     * an attribute, and decrypted it is the JSON of its stored form, which
-     * restores the result exactly.
+     * The verified result is stored encrypted and restores exactly.
      *
      * @return void
      *
@@ -225,8 +214,7 @@ final class DatabaseHandoffStoreTest extends TestCase
     }
 
     /**
-     * The expiry is kept to the whole second, and the issued handoff answers it
-     * as stored.
+     * The expiry is kept to the whole second and answered as stored.
      *
      * @return void
      *
@@ -265,9 +253,7 @@ final class DatabaseHandoffStoreTest extends TestCase
     }
 
     /**
-     * Each code issued raises its connection's flows version by exactly one,
-     * and no other connection's; an issue that fails before its insert raises
-     * nothing.
+     * Each issue raises only its connection's flows version, by exactly one.
      *
      * @return void
      *
@@ -330,8 +316,7 @@ final class DatabaseHandoffStoreTest extends TestCase
     }
 
     /**
-     * Issued inside the completion's transaction, a code is kept only when it
-     * commits: a rollback keeps nothing.
+     * A code issued in a transaction that rolls back is not kept.
      *
      * @return void
      *
@@ -353,8 +338,7 @@ final class DatabaseHandoffStoreTest extends TestCase
     }
 
     /**
-     * Issue a code for the result, a `sign_in` through the example connection
-     * by default, expiring a minute from now unless given.
+     * Issue a `sign_in` code for the result, expiring in a minute by default.
      *
      * @param  ?\SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  ?\Carbon\CarbonImmutable  $expiresAt

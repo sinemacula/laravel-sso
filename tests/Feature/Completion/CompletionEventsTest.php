@@ -26,11 +26,7 @@ use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporter of a completion (SSO-10.1, SSO-10.2,
- * SSO-10.4): how a completion ended, a result verified at the provisioning
- * boundary and an unsolicited response re-initiated, each dispatched once,
- * every context carrying the IP address and user agent of the client the
- * completion's state holds, never those of the request being served.
+ * Feature tests for the events a completion dispatches.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,8 +45,7 @@ final class CompletionEventsTest extends TestCase
     private const string USER_AGENT = 'Example/1.0';
 
     /**
-     * Bind a fixed clock and a request being served from another client, create
-     * the tables and record events.
+     * Bind a fixed clock and another client's request, and record events.
      *
      * @return void
      */
@@ -67,8 +62,7 @@ final class CompletionEventsTest extends TestCase
     }
 
     /**
-     * A refusal is reported once under its flow and reason, with the connection
-     * the state holds and its client.
+     * A refusal is reported once with the state's connection and client.
      *
      * @return void
      */
@@ -84,9 +78,7 @@ final class CompletionEventsTest extends TestCase
     }
 
     /**
-     * A completion that goes on with no verified result reports its handoff
-     * alone; with one, the result verified first, unless it was reported
-     * already; each with the state's client.
+     * A completion reports its verified result once, then its handoff.
      *
      * @return void
      */
@@ -111,8 +103,7 @@ final class CompletionEventsTest extends TestCase
     }
 
     /**
-     * A result verified at the provisioning boundary is reported once, and a
-     * re-initiation once, each with the client of the completion.
+     * A verification and a re-initiation are each reported once.
      *
      * @return void
      */
@@ -132,8 +123,7 @@ final class CompletionEventsTest extends TestCase
     }
 
     /**
-     * The context the reporter builds for a state carries the state's client,
-     * and none for a state with no client.
+     * The context built for a state carries the state's client, if any.
      *
      * @return void
      */
@@ -150,8 +140,7 @@ final class CompletionEventsTest extends TestCase
     }
 
     /**
-     * The state of a completion through the connection, arrived from the
-     * client.
+     * The state of a completion through the connection, from the client.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return \SineMacula\Laravel\Sso\Completion\CompletionState
@@ -162,8 +151,7 @@ final class CompletionEventsTest extends TestCase
     }
 
     /**
-     * Assert the event's context carries the client and names the connection,
-     * its tenant and protocol.
+     * Assert the event carries the client and names the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection

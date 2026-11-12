@@ -51,16 +51,7 @@ use Tests\Fixtures\Secrets\CountingSecretEncrypter;
 use Tests\TestCase;
 
 /**
- * Feature tests for completing a flow at a connection's assertion consumer
- * service and callback (SSO-5.5, SSO-5.6, SSO-5.7, SSO-6.10, SSO-8.6, SSO-9.2,
- * SSO-4.6, SSO-11.8, SSO-12.1): every outcome and its exact `CompletionResult`,
- * the method and the protocol each endpoint takes, an unknown connection, a
- * connection disabled after the start, a request of another connection, the
- * expiry at its second and either side, a replay, an unlinked sign-in with
- * unlinked handoffs off and on, enforcement satisfied, unsatisfied and its
- * version, the policy turned off before issuance, the provider's deadline
- * limiting the session and ignored, every field of the grant, a full limit, and
- * a database error that propagates.
+ * Feature tests for completing a flow at the callback and assertion consumer.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -116,9 +107,7 @@ final class CompletionServiceTest extends TestCase
     private ClientContext $client;
 
     /**
-     * Bind a fixed clock, the recording issuer and a linker, take the client
-     * every completion arrives from, register the applications and the driver,
-     * create the tables and a usable connection.
+     * Bind a clock, the issuer, a linker and the client; add a connection.
      *
      * @return void
      */
@@ -160,11 +149,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A callback whose response the driver verifies completes: a code issued
-     * for the `web` application's redirect URI, in the fragment, with the
-     * request's reference; the request consumed and completed now, and the
-     * driver given the request it was started as, its PKCE verifier decrypted
-     * only once the driver asks for it, which this driver never does.
+     * A verified callback completes with a handoff at the redirect URI.
      *
      * @return void
      */
@@ -201,8 +186,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * An assertion posted to the assertion consumer service completes the same
-     * way.
+     * An assertion posted to the assertion consumer service completes.
      *
      * @return void
      */
@@ -217,9 +201,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * The callback takes `GET` only, compared exactly: any other method is
-     * rejected with `request_unknown`, before the connection is read or the
-     * response correlated, and consumes nothing.
+     * The callback takes `GET` only and rejects any other method first.
      *
      * @return void
      */
@@ -254,8 +236,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A connection no row has, an empty id, an id longer than a ULID and one
-     * that differs only in case are rejected with `connection_unavailable`.
+     * An unknown connection is rejected with `connection_unavailable`.
      *
      * @return void
      */
@@ -273,13 +254,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A `saml2` connection completes only at the assertion consumer service and
-     * an `oidc` one only at the callback; anywhere else they are rejected with
-     * `connection_unavailable` before their driver is asked. At its own
-     * endpoint each reaches its driver, which names no request: the SAML driver
-     * finds no response in an empty post, and the OIDC driver correlates
-     * nothing until it is built. A protocol no driver is registered under
-     * completes nowhere.
+     * Each protocol completes only at its own endpoint.
      *
      * @return void
      */
@@ -298,9 +273,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A connection disabled after the start still consumes the request its
-     * response names, then fails with `connection_unavailable`, redirected to
-     * the application, without its driver being asked to validate.
+     * A disabled connection consumes its request, then fails.
      *
      * @return void
      */
@@ -323,9 +296,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A response that names a request started through another connection fails
-     * with `connection_mismatch`, redirected to that request's application, as
-     * it delivers, and consumes the request.
+     * A request of another connection fails with `connection_mismatch`.
      *
      * @return void
      */
@@ -346,8 +317,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * Seconds after the start, against a ten-minute expiry, and whether the
-     * completion then completes.
+     * Seconds after the start against a ten-minute expiry, and if it completes.
      *
      * @return iterable<string, array{0: int, 1: bool}>
      */
@@ -359,8 +329,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * The request completes one second before its expiry, and fails with
-     * `request_expired` at it and after it.
+     * The request expires at its expiry.
      *
      * @param  int  $seconds
      * @param  bool  $completes
@@ -386,8 +355,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A response replayed once its request completed is rejected with
-     * `request_unknown`, and issues nothing more.
+     * A replay is rejected with `request_unknown`.
      *
      * @return void
      */
@@ -402,8 +370,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A state no request has, a response with no state, and an unsolicited
-     * response are rejected with `request_unknown`, consuming nothing.
+     * A response no request matches is rejected, consuming nothing.
      *
      * @return void
      */
@@ -422,9 +389,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A response whose request's application is no longer registered is
-     * rejected with `application_not_allowed`, with no target, its request
-     * consumed and completed, so it is terminal, and nothing validated.
+     * A request of an unregistered application is rejected and terminal.
      *
      * @return void
      */
@@ -444,8 +409,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A response the driver refuses fails with the driver's reason, redirected
-     * to the application, with its request consumed and completed.
+     * A refused response fails with the driver's reason.
      *
      * @return void
      */
@@ -461,8 +425,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A `sign_in` resolved to no identity fails with `unlinked` while its
-     * application does not allow unlinked handoffs.
+     * An unlinked `sign_in` fails unless the application allows it.
      *
      * @return void
      */
@@ -477,9 +440,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A `sign_in` resolved to no identity is handed off when its application
-     * allows unlinked handoffs, with no linked identity, at its redirect URI,
-     * in the query, and with its handoff lifetime.
+     * An unlinked `sign_in` is handed off when the application allows it.
      *
      * @return void
      */
@@ -496,9 +457,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A required enforcement the connection satisfies completes; the
-     * enforcement is asked for the connection's tenant and the request's
-     * application.
+     * A required enforcement the connection satisfies completes.
      *
      * @return void
      */
@@ -515,8 +474,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A required enforcement the connection does not satisfy fails with
-     * `enforcement_unsatisfied`, and issues nothing.
+     * A required enforcement the connection does not satisfy fails.
      *
      * @return void
      */
@@ -530,8 +488,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * An enforcement that requires nothing completes, whether it has a version
-     * or none.
+     * An enforcement that requires nothing completes.
      *
      * @return void
      */
@@ -552,9 +509,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * An application whose policy no longer allows external sign-in when the
-     * code would be issued fails with `application_not_allowed`, redirected to
-     * it, and issues nothing.
+     * An application no longer allowed fails at issuance.
      *
      * @return void
      */
@@ -569,8 +524,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * The provider's session deadline limits the application's session by
-     * default, so the grant carries it as the session's latest end.
+     * The provider's deadline limits the session by default.
      *
      * @return void
      */
@@ -583,8 +537,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A deadline the contract ignores limits nothing, and the contract is asked
-     * once; a result with no deadline never asks it.
+     * An ignored or absent deadline limits nothing.
      *
      * @return void
      */
@@ -610,10 +563,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * The grant of a `sign_in` is pinned field by field: the verified result,
-     * the request's challenge, an expiry of the application's lifetime from
-     * now, the linked identity, no identity or session, no enforcement version
-     * while enforcement is off, and the deadline.
+     * The grant of a `sign_in` is pinned field by field.
      *
      * @return void
      */
@@ -665,9 +615,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A `link` grant names the identity the request was started for, beside the
-     * identity the result's link resolved to, and no session; an unlinked
-     * `link` is handed off too.
+     * A `link` grant names the identity it was started for.
      *
      * @return void
      */
@@ -692,8 +640,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` grant names the identity and the session the request
-     * was started for.
+     * A `reauthenticate` grant names its identity and session.
      *
      * @return void
      */
@@ -714,10 +661,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A full limit per connection, and one per IP address, are `rate_limited`
-     * with the wait to the end of the window, before anything is read or
-     * consumed. The attempt a full connection limit refused gives the IP
-     * address's attempt back, so the address has made one.
+     * A full connection or address limit is `rate_limited` before any read.
      *
      * @return void
      */
@@ -740,11 +684,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * Both endpoints share one count, of the completion flow, the client's IP
-     * address and the connection, and it is taken before the method is looked
-     * at: a response with the wrong method at the callback still spends the
-     * address's one attempt, and the assertion consumer service then answers
-     * `rate_limited` for it.
+     * Both endpoints share one count, taken before the method is checked.
      *
      * @return void
      */
@@ -761,9 +701,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * Rows of `[endpoint, method, connection, reason]`: each refusal before the
-     * steps at each endpoint, `null` naming the usable connection and `oidc`
-     * another protocol's.
+     * Rows of `[endpoint, method, connection, reason]` before the steps.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint, 1: string, 2: ?string, 3: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -782,10 +720,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * Each refusal before the steps reports exactly one `FlowFailed`, under the
-     * endpoint's flow (`assertion` at the assertion consumer service,
-     * `callback` at the callback), carrying the IP address and user agent of
-     * the client the completion was given, never the request's being served.
+     * Each refusal before the steps reports the endpoint's flow and the client.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint  $endpoint
      * @param  string  $method
@@ -819,9 +754,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A client with no IP address, as a console caller passes, counts against
-     * the connection alone: no per-address limit refuses it, and its refusal
-     * carries no address or user agent.
+     * A client with no address counts against the connection alone.
      *
      * @return void
      */
@@ -843,8 +776,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * A database error propagates as a server error, never as a failure or a
-     * rejection.
+     * A database error propagates as a server error.
      *
      * @return void
      */
@@ -972,8 +904,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * Complete at the callback, with the state in the query unless none is
-     * given.
+     * Complete at the callback, with the state in the query if given.
      *
      * @param  ?string  $state
      * @param  ?string  $connectionId
@@ -1015,9 +946,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * Store a `sign_in` request for `web` through the connection, started with
-     * the state, the reference and the challenge, unless the attributes say
-     * otherwise.
+     * Store a `sign_in` request for `web` unless the attributes say otherwise.
      *
      * @param  array<string, mixed>  $attributes
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -1035,8 +964,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * Make a usable connection over the verifying driver, mapping the email,
-     * the given name and the groups.
+     * Make a usable connection over the verifying driver.
      *
      * @return \SineMacula\Laravel\Sso\Models\Connection
      */
@@ -1062,8 +990,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * Bind an enforcement contract that answers the policy, recording what it
-     * is asked.
+     * Bind an enforcement contract answering the policy and recording calls.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @return void
@@ -1104,8 +1031,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     /**
-     * Bind a deadline contract that answers the effect, counting from zero how
-     * often it is asked.
+     * Bind a deadline contract answering the effect and counting calls.
      *
      * @param  \SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect  $effect
      * @return void

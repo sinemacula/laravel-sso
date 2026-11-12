@@ -57,19 +57,8 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * The forced authentication path end to end (SSO-5.10, SSO-6.10, SSO-7.4,
- * SSO-9.5): a flow started through the public service, completed through the
- * public callback or assertion consumer service, and redeemed through
- * `admit()`, in each driver and in a driver registered by the application.
- *
- * A `reauthenticate` forces fresh authentication (`ForceAuthn`, `prompt=login`
- * with `max_age=0`, whatever the connection configures), and requires the
- * provider's authentication time, no earlier than the request's start less the
- * skew and no later than now plus it. A result with none is refused. What
- * reaches the session is the provider's time, exactly.
- *
- * The clock moves ten seconds between the start and the response, so the start
- * and the response's instant are told apart in every row.
+ * Feature tests for forced re-authentication in every driver; the clock moves
+ * ten seconds between start and response so the two differ in every row.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -126,9 +115,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[seconds, reason]`: when the provider says the person
-     * authenticated, from the request's start; what the start less the skew,
-     * and now plus it, allow.
+     * Rows of `[seconds, reason]`: the authentication time from the start.
      *
      * @return iterable<string, array{0: int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -146,9 +133,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * A driver registered by the application is held to the same window by the
-     * completion's rules, once its result is verified: refused with no code, or
-     * renewing with exactly the provider's time.
+     * A registered driver is held to the window once its result is verified.
      *
      * @param  int  $seconds
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -214,8 +199,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * A driver registered by the application that states no authentication time
-     * is refused at completion, with no code, not left to fail at redemption.
+     * A registered driver stating no authentication time is refused.
      *
      * @return void
      */
@@ -236,8 +220,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * A `sign_in` is held to no such window: it is not a reauthentication, and
-     * states what it states.
+     * A `sign_in` is not held to the window.
      *
      * @return void
      */
@@ -253,9 +236,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * A `link` is held to no such window either: the link rules judge the
-     * identity and the subject, and a caller's freshness stands for its own
-     * authentication, not the provider's.
+     * A `link` is not held to the window.
      *
      * @return void
      */
@@ -275,8 +256,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * The OpenID Connect driver holds `auth_time` to the window: the reason it
-     * refuses for, or the session renewed with exactly that time.
+     * The OpenID Connect driver holds `auth_time` to the window.
      *
      * @param  int  $seconds
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -341,8 +321,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * The request sent forces fresh authentication: `prompt=login` with
-     * `max_age=0`, whatever the connection configures, and each exactly once.
+     * The request sends `prompt=login` with `max_age=0`, each exactly once.
      *
      * @param  array<string, mixed>  $settings
      * @return void
@@ -376,8 +355,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * The SAML driver holds the `AuthnInstant` to the window: the reason it
-     * refuses for, or the session renewed with exactly that time.
+     * The SAML driver holds the `AuthnInstant` to the window.
      *
      * @param  int  $seconds
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -411,8 +389,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * An assertion without exactly one `AuthnStatement` states no single
-     * authentication time, and is refused.
+     * An assertion without exactly one `AuthnStatement` is refused.
      *
      * @param  int  $statements
      * @return void
@@ -432,8 +409,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * The request sent forces fresh authentication: `ForceAuthn="true"`, though
-     * the connection does not; a `sign_in` through it does not.
+     * A `reauthenticate` sends `ForceAuthn="true"`; a `sign_in` does not.
      *
      * @return void
      */
@@ -449,8 +425,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * Make a link of the subject for the person, through the store, on the
-     * connection, and bind the session to it.
+     * Link the subject to the person on the connection and bind the session.
      *
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
      * @return void
@@ -465,8 +440,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * The subject the fake identity provider's persistent `NameID` resolves to:
-     * the driver stores the `NameID` with its qualifiers, length-prefixed.
+     * The subject the fake provider's persistent `NameID` resolves to.
      *
      * @return \SineMacula\Laravel\Sso\Links\LinkSubject
      */
@@ -489,9 +463,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * Assert how the completion ended: refused for the reason, with no code and
-     * nothing renewed; or completed, redeemed, and the session renewed with
-     * exactly the provider's time.
+     * Assert the completion was refused for the reason, or renewed exactly.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $completion
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
@@ -606,8 +578,7 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
-     * Post the assertion consumer service the response to the flow's request,
-     * from the identity provider, with the statements.
+     * Post the response to the flow's request with the statements.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
      * @param  list<array<string, mixed>>  $statements

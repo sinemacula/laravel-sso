@@ -37,14 +37,7 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * The events an unsolicited SAML response reports (SSO-5.8, SSO-10.1,
- * SSO-10.2, SSO-10.4): `UnsolicitedResponseReinitiated` alone for a
- * re-initiation; exactly one `FlowFailed` for the assertion flow alone for a
- * refusal, before or under the connection's lock; each naming the connection,
- * its tenant and its protocol, and never a request, an application, a purpose
- * or an identity; and no event, event dump or log ever carrying the
- * assertion, the `SAMLResponse`, the `RelayState`, the `NameID` or an
- * attribute's value.
+ * Feature tests for the events an unsolicited SAML response reports.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -80,10 +73,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, the recording issuer and a request from an IP
-     * address, configure SAML, IdP-initiated sign-in, the endpoints and the
-     * application, create the tables and a connection that allows IdP-initiated
-     * sign-in and trusts the identity provider, capture logs and record events.
+     * Configure IdP-initiated SAML and a connection; capture logs and events.
      *
      * @return void
      */
@@ -125,9 +115,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     }
 
     /**
-     * A re-initiation reports `UnsolicitedResponseReinitiated` alone, its
-     * context the connection, its tenant and protocol and the client, and
-     * nothing of a request, an application or an identity.
+     * A re-initiation reports `UnsolicitedResponseReinitiated` alone.
      *
      * @return void
      */
@@ -141,8 +129,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     }
 
     /**
-     * A response refused before the lock reports exactly one `FlowFailed` for
-     * the assertion flow, with nothing before it, naming the connection only.
+     * A refusal before the lock reports one failure alone.
      *
      * @return void
      */
@@ -155,8 +142,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     }
 
     /**
-     * A connection that does not allow IdP-initiated sign-in reports exactly
-     * one `FlowFailed` with `unsolicited_not_allowed`.
+     * A connection that does not allow it reports `unsolicited_not_allowed`.
      *
      * @return void
      */
@@ -171,9 +157,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     }
 
     /**
-     * A second post of the same response, refused under the lock with
-     * `replayed`, reports exactly one `FlowFailed` after the first post's
-     * `UnsolicitedResponseReinitiated`, and no second re-initiation.
+     * A replay under the lock reports one failure after the re-initiation.
      *
      * @return void
      */
@@ -189,10 +173,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     }
 
     /**
-     * Across a re-initiation, a replay, a refused read, an unsuccessful status
-     * and a connection that does not allow it, no event, no dump or encoding of
-     * one, and no log carries the assertion or its id, the posted
-     * `SAMLResponse`, the `RelayState`, the `NameID` or an attribute's value.
+     * No event or log carries what the response carried.
      *
      * @return void
      */
@@ -236,8 +217,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     }
 
     /**
-     * Assert the context names the connection, its tenant and its protocol, and
-     * the client, and no request, application, purpose, identity or session.
+     * Assert the context names the connection and client only.
      *
      * @param  \SineMacula\Laravel\Sso\Events\EventContext  $context
      * @return void
@@ -255,8 +235,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     }
 
     /**
-     * Assert no recorded event, as dumped any way or encoded as JSON, contains
-     * any of the needles.
+     * Assert no recorded event, dumped or JSON-encoded, contains a needle.
      *
      * @param  list<string>  $needles
      * @return void
@@ -274,8 +253,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     }
 
     /**
-     * Complete at the connection's assertion consumer service with the
-     * response, posted with the identity provider's `RelayState`.
+     * Complete at the assertion consumer service with the response.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
@@ -291,8 +269,7 @@ final class SamlReinitiationEventSequenceTest extends TestCase
     }
 
     /**
-     * A valid unsolicited response from the trusted identity provider, made
-     * now, with the subject, attribute and assertion id never to be reported.
+     * A valid unsolicited response carrying values that must never be reported.
      *
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
      */

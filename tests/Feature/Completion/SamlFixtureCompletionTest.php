@@ -42,21 +42,8 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * The library spike's 40 adversarial fixtures (BL-0A), each posted through the
- * public completion helper at the assertion consumer service of a connection
- * set up as the fixtures were signed for: the identity provider's entity id and
- * certificate, the service provider's entity id, assertion consumer service and
- * encryption key, and a stored request with the fixtures' `AuthnRequest` id
- * (SSO-6.1 to SSO-6.11, `docs/design/saml-library.md`).
- *
- * The connection asks for no assertion signature of its own, the most
- * permissive policy, so a refusal is never the policy's. Each fixture has the
- * outcome the manifest records for the package: one that is read completes the
- * flow with the legitimate subject, or the whole signed value of a `NameID` a
- * comment splits; one that is refused fails with the manifest's reason, but a
- * document the hardened parse refuses names no request, so it is
- * `request_unknown`. A refusal reports exactly one `FlowFailed`, records no
- * assertion, makes no link or handoff, and never reads an external entity.
+ * Feature tests for the library spike's adversarial SAML fixtures; the
+ * connection wants no assertion signature, so no refusal is the policy's.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -94,10 +81,7 @@ final class SamlFixtureCompletionTest extends TestCase
     private Connection $connection;
 
     /**
-     * Freeze the clock half a minute after the fixtures were issued, bind the
-     * recording issuer and the fixtures' endpoints, create the tables, the
-     * connection with its trusted certificate and encryption key, and the
-     * request; capture logs and record events.
+     * Freeze the clock after the fixtures' issue and create their connection.
      *
      * @return void
      */
@@ -152,8 +136,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * The fixture completes the flow with its subject, or is refused cleanly
-     * with its reason, as the manifest records for the package.
+     * Each fixture has its manifest's outcome through the completion.
      *
      * @param  Fixture  $fixture
      * @return void
@@ -181,8 +164,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * With AES-CBC listed, the fixture encrypted with RSA-OAEP and AES-128-CBC
-     * in a signed response completes the flow.
+     * With AES-CBC listed, the AES-128-CBC fixture completes.
      *
      * @return void
      */
@@ -194,8 +176,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * RSA 1.5 key transport is refused even with AES-CBC listed, with the one
-     * decryption failure.
+     * RSA 1.5 key transport is refused even with AES-CBC listed.
      *
      * @return void
      */
@@ -208,8 +189,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * Under the default policy, which wants the assertion's own signature, a
-     * fixture signed only over the response is refused.
+     * The default policy refuses an assertion signed only by the response.
      *
      * @return void
      */
@@ -222,8 +202,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * Under the default policy, a fixture whose assertion carries its own
-     * signature completes the flow.
+     * The default policy completes an assertion signed by itself.
      *
      * @return void
      */
@@ -235,8 +214,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * Assert the completion signed the subject in: one assertion recorded and
-     * one handoff granted for the persistent `NameID` with the value.
+     * Assert one assertion recorded and one handoff granted for the value.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @param  string  $subject
@@ -252,9 +230,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * Assert the completion reported exactly one `FlowFailed` for the reason
-     * and the assertion flow and nothing else, recorded no assertion, and made
-     * no link or handoff.
+     * Assert one `FlowFailed` for the reason and nothing recorded or made.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @return void
@@ -270,8 +246,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * Post the fixture, with the request's `RelayState`, to the connection's
-     * assertion consumer service.
+     * Post the fixture with the request's `RelayState`.
      *
      * @param  string  $name
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
@@ -334,8 +309,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * An endpoint resolver answering the endpoints the fixtures were signed
-     * for, whatever the connection.
+     * An endpoint resolver answering the fixtures' endpoints.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\EndpointResolver
      */
@@ -376,8 +350,7 @@ final class SamlFixtureCompletionTest extends TestCase
     }
 
     /**
-     * The fixture's bytes, with the fixtures' directory in place of its
-     * placeholder, in the fixture's own encoding.
+     * The fixture's bytes with the fixtures' directory substituted.
      *
      * @param  string  $name
      * @return string

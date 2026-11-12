@@ -40,14 +40,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * How a completion meets transactions, on every database the suite runs on
- * (SSO-10.5, SSO-11.4, decision D5): an issuer that throws, and a database
- * error in the locked steps, roll the locked steps back, so nothing is
- * reported and `completed_at` stays unset, while the request stays consumed;
- * a database error before the steps propagates and reports nothing; and a
- * completion called inside the caller's transaction on the storage connection
- * is a `LogicException` before it writes anything, so no rollback of the
- * caller's can undo a consumption (SSO-5.1).
+ * Integration tests for how a completion meets database transactions.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,9 +69,8 @@ final class CompletionTransactionTest extends TestCase
     private AuthorizationRequest $request;
 
     /**
-     * Bind a fixed clock and the recording issuer, register the application and
-     * the driver, create the tables, a usable connection and a request, and
-     * record events.
+     * Bind a fixed clock and the recording issuer, and create a connection and
+     * a request.
      *
      * @return void
      */
@@ -114,9 +106,8 @@ final class CompletionTransactionTest extends TestCase
     }
 
     /**
-     * An issuer that throws propagates its exception, never a failure: the
-     * locked steps roll back, so nothing is reported and `completed_at` stays
-     * unset, while the request stays consumed and a replay is rejected.
+     * A throwing issuer rolls the locked steps back and leaves the request
+     * consumed.
      *
      * @return void
      */
@@ -148,8 +139,7 @@ final class CompletionTransactionTest extends TestCase
     }
 
     /**
-     * A database error in the locked steps (the link store reading a table that
-     * is gone) propagates, and rolls the locked steps back.
+     * A database error in the locked steps propagates and rolls them back.
      *
      * @return void
      */
@@ -173,8 +163,7 @@ final class CompletionTransactionTest extends TestCase
     }
 
     /**
-     * A database error before the steps (the requests table gone) propagates
-     * and reports nothing.
+     * A database error before the locked steps propagates and reports nothing.
      *
      * @return void
      */
@@ -204,10 +193,8 @@ final class CompletionTransactionTest extends TestCase
     }
 
     /**
-     * A completion called inside the caller's transaction on the storage
-     * connection is refused before it writes anything: no attempt counted, no
-     * request correlated, consumed or recorded, and nothing reported. Once the
-     * caller's transaction is over, the request completes.
+     * A completion inside the caller's storage transaction is refused before it
+     * writes.
      *
      * @param  string  $endpoint
      * @return void

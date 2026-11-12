@@ -22,11 +22,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporter of a redemption (SSO-9.2, SSO-10.1, SSO-10.2,
- * SSO-10.4): a code redeemed, a `reauthenticate` completed with it, and a
- * redemption refused before or after its code was found, each dispatched once
- * with what the redemption had established and the IP address and user agent of
- * the client it was made for, never those of the request being served.
+ * Feature tests for the events a redemption dispatches.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -39,8 +35,7 @@ final class HandoffEventsTest extends TestCase
     use RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /**
-     * Bind a fixed clock and a request being served from another client, create
-     * the tables and record events.
+     * Bind a fixed clock and another client's request, and record events.
      *
      * @return void
      */
@@ -57,9 +52,7 @@ final class HandoffEventsTest extends TestCase
     }
 
     /**
-     * A `sign_in` code redeemed is reported once, alone, with the identity it
-     * established, the code's connection, application and reference, and the
-     * client.
+     * A `sign_in` code redeemed is reported once with its identity and client.
      *
      * @return void
      */
@@ -91,9 +84,7 @@ final class HandoffEventsTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` code redeemed is reported as redeemed, then as the
-     * re-authentication completed, both with the flow's identity, its session
-     * and the client.
+     * A `reauthenticate` code redeemed is reported as redeemed, then completed.
      *
      * @return void
      */
@@ -122,8 +113,7 @@ final class HandoffEventsTest extends TestCase
     }
 
     /**
-     * A redemption refused before any code was found names the purpose asked
-     * for and the client alone.
+     * A refusal before any code was found names the purpose and client alone.
      *
      * @return void
      */
@@ -140,9 +130,7 @@ final class HandoffEventsTest extends TestCase
     }
 
     /**
-     * A redemption of a stored code refused is reported once with the code's
-     * connection, and its tenant and protocol once the connection was read; for
-     * no client, with no address or user agent.
+     * A refusal of a stored code names its connection, and tenant once read.
      *
      * @return void
      */

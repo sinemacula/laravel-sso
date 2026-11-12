@@ -45,27 +45,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Races a SAML completion against a change to the certificates its connection
- * trusts (SSO-2.13, SSO-6.2, SSO-6.6): the completion is held once its response
- * is validated, outside any transaction, while the change commits.
- *
- * - Distrusting the certificate that signed the response voids the request in
- *   flight under the connection's lock, so the completion, taking that lock, is
- *   refused with `connection_unavailable`: no code is issued and the assertion
- *   is never recorded.
- * - Trusting an additional certificate is additive and voids nothing, so the
- *   completion goes on.
- *
- * In this process the change runs at the hold, so the order is exact on every
- * database. Across processes, on PostgreSQL and MySQL, a change in a process of
- * its own waits for the completion to signal that it validated, and the
- * completion waits for the change to signal it committed; the change runs
- * plainly, and inside a `REPEATABLE READ` transaction of its own that read
- * first, and the completion starts only once that read is signalled, so the
- * change's snapshot is older than the consumed request. On PostgreSQL that
- * change therefore fails to serialise (SQLSTATE `40001`), which changes
- * nothing, so the completion then completes. The cross-process race is skipped
- * on SQLite and without `pcntl`.
+ * Integration tests racing a SAML completion against a certificate trust
+ * change.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -107,11 +88,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     private string $outcomes;
 
     /**
-     * Bind a fixed clock, fresh authentication, a limiter that allows every
-     * attempt and the recording issuer, configure SAML, the endpoints and the
-     * application, create the tables, a connection that trusts the identity
-     * provider and another certificate, its request and its response, and make
-     * the directory the processes report in.
+     * Configure SAML and create a connection that trusts the identity provider,
+     * with its request and response.
      *
      * @return void
      *
@@ -184,10 +162,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Distrusting the signing certificate while the completion is held after
-     * validation voids its request and raises the trust version: the completion
-     * is refused with `connection_unavailable` under the lock, issues nothing
-     * and records no assertion.
+     * Distrusting the signing certificate after validation refuses the
+     * completion.
      *
      * @return void
      */
@@ -205,9 +181,7 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Trusting an additional certificate while the completion is held after
-     * validation voids nothing: the completion completes and records its
-     * assertion.
+     * Trusting another certificate after validation voids nothing.
      *
      * @return void
      */
@@ -223,8 +197,7 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Across processes, a distrust committed by another process while the
-     * completion is held refuses it under the lock.
+     * A distrust in another process while the completion is held refuses it.
      *
      * @return void
      */
@@ -234,8 +207,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * The same race, the distrust inside a `REPEATABLE READ` transaction of its
-     * own that read the connection and the request before the race began.
+     * The same race, the distrust inside a `REPEATABLE READ` transaction that
+     * read first.
      *
      * @return void
      */
@@ -245,10 +218,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Race the completion against a distrust in another process, plain or in
-     * its own transaction, and assert the completion was refused under the
-     * lock, or, in a transaction on PostgreSQL, that the distrust failed to
-     * serialise and the completion completed.
+     * Race the completion against a distrust and assert it was refused, or the
+     * distrust failed to serialise.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -317,8 +288,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Bind the validation step to one that, once the response is validated,
-     * runs the change before the completion takes its locks.
+     * Run the change once the response is validated, before the completion
+     * locks.
      *
      * @param  \Closure(): bool  $change
      * @return void
@@ -362,8 +333,7 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Stop trusting the certificate that signs the responses; whether the key
-     * service removed it.
+     * Stop trusting the responses' signing certificate; whether it was removed.
      *
      * @return bool
      */
@@ -409,8 +379,7 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * What the browser posts: a valid response from the identity provider,
-     * answering the request, with its `RelayState`.
+     * A valid response to the request, with its `RelayState`.
      *
      * @return \SineMacula\Laravel\Sso\Protocols\CompletionRequest
      */
@@ -424,9 +393,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Fork a process for each racer, have each start its work at the same
-     * moment on a connection of its own, plain or inside a transaction of its
-     * own, and collect what each reported, in the racers' order.
+     * Fork a process per racer, start them together and collect their reports
+     * in order.
      *
      * @param  list<array{0: \Closure(): string, 1: bool}>  $racers
      * @return list<string>
@@ -463,11 +431,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, signal it has read,
-     * wait for its start, do its work, report the outcome, and end without
-     * running the parent's shutdown. Racing inside a transaction, the process
-     * opens one at `REPEATABLE READ` and reads the connection and the request
-     * before it signals, and commits after its work.
+     * Run the racer on its own connection, reading first in a transaction so
+     * its snapshot predates the race.
      *
      * @param  int  $process
      * @param  float  $start
@@ -516,8 +481,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * The statement that makes this session's transactions `REPEATABLE READ`,
-     * which on PostgreSQL pins the snapshot at the first read.
+     * The session's `REPEATABLE READ` statement; PostgreSQL pins the snapshot
+     * at the first read.
      *
      * @param  string  $driver
      * @return string
@@ -534,9 +499,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error, so a race whose
-     * racers ran one after the other never passes as one that overlapped.
+     * Wait up to `SIGNAL_SECONDS` for the signal file, and fail when it never
+     * appears.
      *
      * @param  string  $signal
      * @return void
@@ -551,8 +515,7 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`; whether it
-     * appeared.
+     * Wait up to `SIGNAL_SECONDS` for the signal file; whether it appeared.
      *
      * @param  string  $signal
      * @return bool
@@ -575,8 +538,8 @@ final class SamlTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure (SQLSTATE 40001), accepted only there.
+     * Whether the error, or its cause, is a PostgreSQL serialisation failure
+     * (SQLSTATE 40001).
      *
      * @param  \Throwable  $exception
      * @return bool

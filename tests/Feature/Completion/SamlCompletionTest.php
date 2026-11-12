@@ -40,15 +40,7 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * Feature tests for completing a SAML sign-in at the assertion consumer service
- * (SSO-5.3, SSO-6.2 to SSO-6.10, SSO-2.8), through the public completion helper
- * with the fake identity provider's responses: a signed response, a signed
- * assertion, an encrypted assertion with AES-GCM and with AES-CBC by opt-in,
- * and an attribute subject each complete, with the claims, the encoded subject,
- * the authentication context, the provider deadline and the replay record's
- * expiry exactly; a second post of the same response finds its request
- * consumed; and expired metadata refuses the completion, as does metadata that
- * lapses once the response is validated, under the lock.
+ * Feature tests for completing a SAML sign-in.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -94,9 +86,7 @@ final class SamlCompletionTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, the recording issuer and a request from an IP
-     * address, configure SAML, the endpoints and the application, and create
-     * the tables and a connection that trusts the identity provider.
+     * Configure SAML and create a connection that trusts the identity provider.
      *
      * @return void
      */
@@ -131,11 +121,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * A response whose assertion is signed completes: a code for the `web`
-     * application with the request's reference; the result's issuer, encoded
-     * subject, format, mapped email and authentication context exactly; the
-     * session limited by the provider's deadline; the assertion recorded until
-     * its last acceptance moment; and the request consumed and completed.
+     * A response with a signed assertion completes.
      *
      * @return void
      */
@@ -155,8 +141,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * A response signed in its envelope alone completes when the connection
-     * does not want the assertion signed.
+     * A response signed only in its envelope completes when allowed.
      *
      * @return void
      */
@@ -173,8 +158,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * An assertion encrypted with RSA-OAEP and AES-128-GCM completes when the
-     * connection requires encryption, decrypted with its current key.
+     * An assertion encrypted with RSA-OAEP and AES-128-GCM completes.
      *
      * @return void
      */
@@ -192,8 +176,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * An assertion encrypted with AES-128-CBC completes once the connection
-     * lists it, inside a response whose signature is verified first.
+     * An assertion encrypted with AES-128-CBC completes once listed.
      *
      * @return void
      */
@@ -210,8 +193,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * A subject taken from an attribute completes with the attribute's encoding
-     * and no NameID format, whatever the `NameID` is.
+     * A subject taken from an attribute completes with no `NameID` format.
      *
      * @return void
      */
@@ -230,8 +212,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * A second post of a completed response finds its request consumed: it is
-     * rejected with `request_unknown`, and nothing more is recorded or issued.
+     * A second post of the same response finds its request consumed.
      *
      * @return void
      */
@@ -251,8 +232,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * A connection whose refreshed metadata has expired refuses the completion
-     * with `metadata_expired` once its request is consumed, recording nothing.
+     * Expired metadata refuses the completion with `metadata_expired`.
      *
      * @return void
      */
@@ -270,10 +250,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds, reason]`: the seconds the clock moves on once the
-     * response is validated, with the connection's refreshed metadata valid for
-     * a minute, and the reason the completion is refused for under the lock, if
-     * any.
+     * Rows of `[seconds, reason]` for metadata valid a minute after validation.
      *
      * @return iterable<string, array{0: int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -285,9 +262,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * Refreshed metadata that lapses once the response is validated refuses the
-     * completion under the lock with `metadata_expired`, recording nothing and
-     * issuing no code; a second before it lapses, the completion completes.
+     * Metadata that lapses after validation is refused under the lock.
      *
      * @param  int  $seconds
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -354,9 +329,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * Assert one code was issued for a result of the identity provider with the
-     * subject and format, the mapped email, the default statement's
-     * authentication context, and the session limited by its deadline.
+     * Assert one code was issued for the provider's subject and statement.
      *
      * @param  string  $subject
      * @param  ?string  $format
@@ -382,8 +355,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * Assert the one assertion recorded is the one with the id, scoped by the
-     * connection and the identity provider, until the instant.
+     * Assert the one assertion recorded has the id, scope and expiry.
      *
      * @param  string  $assertionId
      * @param  string  $until
@@ -404,8 +376,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * Complete at the connection's assertion consumer service with the
-     * response, posted with the request's `RelayState`.
+     * Complete at the assertion consumer service with the response.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
@@ -421,8 +392,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * Store the request a sign-in through the connection started: its
-     * `AuthnRequest` id and its `RelayState`'s digest.
+     * Store a sign-in request with its `AuthnRequest` id and state digest.
      *
      * @return \SineMacula\Laravel\Sso\Models\AuthorizationRequest
      */
@@ -432,9 +402,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * A valid response from the trusted identity provider, made now, for the
-     * connection's service provider, answering the request, with a fixed
-     * authentication statement.
+     * A valid response from the trusted identity provider, made now.
      *
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
      */
@@ -453,8 +421,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * Have the connection follow its metadata URL, so that what was fetched
-     * holds a deadline.
+     * Have the connection follow its metadata URL, so its fetch has a deadline.
      *
      * @return void
      */
@@ -514,8 +481,7 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
-     * The service provider's encryption key and certificate, made once for the
-     * class.
+     * The service provider's encryption key and certificate, made once.
      *
      * @return array{0: string, 1: string}
      */

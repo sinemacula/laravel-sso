@@ -53,15 +53,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Pins what a redemption reports (SSO-10.1, SSO-10.2, SSO-10.4, SSO-9.8): a
- * redeemed code is `[HandoffRedeemed]`, and every refusal exactly one
- * `FlowFailed` for the redemption flow with its reason, each with its whole
- * context: before a code is found, the purpose asked; once found, the code's
- * connection, application, purpose, reference and identity (the flow's for a
- * `link` or `reauthenticate`, the linked one otherwise) and the session of a
- * `reauthenticate`; once the connection's row is read, its tenant and protocol.
- * No event carries the code, its digest, the verifier, the challenge, the
- * subject or an attribute.
+ * Feature tests for the events a redemption reports and the context they carry.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -102,9 +94,7 @@ final class RedemptionEventSequenceTest extends TestCase
     private ?IdentityReference $linked = null;
 
     /**
-     * Bind a fixed clock, a linker answering the linked identity and a request
-     * from a client, register the driver, create the tables and a usable
-     * connection, and start recording events.
+     * Bind a fixed clock, a linker and a request, and record events.
      *
      * @return void
      */
@@ -161,9 +151,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * A redeemed `sign_in` reports `HandoffRedeemed` alone, naming the
-     * connection, its tenant and protocol, the application, the purpose, the
-     * reference and the identity its link resolved to.
+     * A redeemed `sign_in` reports `HandoffRedeemed` alone.
      *
      * @return void
      *
@@ -180,8 +168,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * A redeemed `link` names the identity the flow was started for, and a
-     * redeemed `reauthenticate` that identity and its session.
+     * A redeemed `link` or `reauthenticate` names the flow's identity.
      *
      * @return void
      *
@@ -241,9 +228,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * Every refusal reports exactly one `FlowFailed` for the redemption, with
-     * its reason, and nothing else; the purpose reported once a code is found
-     * is the code's, whatever was asked.
+     * Every refusal reports exactly one `FlowFailed` with its reason.
      *
      * @param  string  $scenario
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -265,8 +250,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * A refusal before a code is found names only the purpose asked: a full
-     * limit and a code that names none.
+     * A refusal before a code is found names only the purpose asked.
      *
      * @return void
      *
@@ -292,8 +276,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * A code whose connection is gone names the code's connection, and no
-     * tenant or protocol.
+     * A code whose connection is gone names no tenant or protocol.
      *
      * @return void
      *
@@ -313,9 +296,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * A code whose row is gone once its connection is locked, though the
-     * connection is still there, is `handoff_unknown`, reported with the code's
-     * connection, its tenant and protocol; nothing is consumed or recorded.
+     * A code gone once its connection is locked is `handoff_unknown`.
      *
      * @return void
      *
@@ -352,9 +333,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * No event carries the code, its digest, the verifier, the challenge, the
-     * subject or an attribute, and each holds only its context, and a failure's
-     * flow and reason.
+     * No event carries a secret, the subject or an attribute.
      *
      * @return void
      *
@@ -475,8 +454,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * Issue a code through the package's store for the purpose, linked to the
-     * identity the test holds, expiring a minute from now unless given.
+     * Issue a code for the purpose, expiring in a minute by default.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\Carbon\CarbonImmutable  $expiresAt
@@ -519,8 +497,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * Redeem the code with what is presented: by default, a `sign_in` for `web`
-     * through the connection with the client's verifier.
+     * Redeem the code, by default as a `sign_in` for `web`.
      *
      * @param  string  $code
      * @param  string  $verifier
@@ -579,8 +556,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * The whole context an event carries: the time and the client, the fields
-     * given, and `null` for every other.
+     * The whole context an event carries, `null` for every field not given.
      *
      * @param  array<string, ?string>  $fields
      * @return array<string, ?string>
@@ -610,9 +586,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * Bind what a `link` or a `reauthenticate` code needs to be redeemed by the
-     * identity it was started for: the subject linked to that identity, a fresh
-     * caller, an eligible identity and a session bound to its link.
+     * Bind what a `link` or `reauthenticate` code needs to redeem.
      *
      * @return void
      */
@@ -632,8 +606,7 @@ final class RedemptionEventSequenceTest extends TestCase
     }
 
     /**
-     * The client every action of the test is taken for: the browser's IP
-     * address and user agent, which its events carry.
+     * The client the test acts for, which its events carry.
      *
      * @return \SineMacula\Laravel\Sso\Http\ClientContext
      */

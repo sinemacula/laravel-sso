@@ -53,28 +53,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races an OpenID Connect completion against a trust change (SSO-2.13, SSO-7.3,
- * SSO-5.1, SSO-11.5), with the real ID token validation: the connection
- * disabled, its issuer changed through the subject migration, or its client
- * secret rotated while the completion's token, JWKS or UserInfo request is in
- * flight, outside any transaction.
- *
- * With a token or UserInfo request in flight, the token verifies against what
- * was stored and the completion, taking its locks, is refused
- * `connection_unavailable`, with no handoff. With a JWKS request in flight, the
- * refetch finds the connection changed under its compare and set, writes
- * nothing and reports `metadata_conflict`, so the key it fetched is never used:
- * the selection is overtaken and the completion `connection_unavailable`,
- * before the locks, with no handoff. Either way the change voids the request
- * and raises the trust version once.
- *
- * In this process the change runs at the barrier, so the order is exact on
- * every database. Across processes, on MySQL and PostgreSQL, the change runs
- * plainly, and inside a `REPEATABLE READ` transaction of the competitor's own
- * that read before the completion began. On PostgreSQL alone that transaction
- * may fail to serialise (SQLSTATE `40001`), which changes nothing, so the
- * completion then completes. The cross-process races are skipped on SQLite and
- * without `pcntl`. A barrier that times out fails its racer loudly.
+ * Integration tests racing an OIDC completion against a trust change in flight.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -143,11 +122,7 @@ final class OidcTrustChangeRaceTest extends TestCase
     private string $outcomes;
 
     /**
-     * Bind a fixed clock, fresh authentication, a limiter that allows every
-     * attempt and the fake fetcher, configure the endpoints and the
-     * application, create the tables, and make the directory the processes
-     * report in. The default handoff store is left in place, so every process
-     * counts its codes.
+     * Bind a fixed clock and the fake fetcher, and create the tables.
      *
      * @return void
      *
@@ -227,9 +202,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * In this process: the change committing while the request is in flight, in
-     * no transaction, refuses the completion with no handoff, voids the request
-     * and raises the trust version once, reporting one `FlowFailed`.
+     * A change while a request is in flight refuses the completion and voids
+     * the request.
      *
      * @param  string  $stage
      * @param  string  $change
@@ -271,8 +245,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * A refetch that loses to the change reports `metadata_conflict`, and the
-     * key it fetched is never stored.
+     * A refetch that loses to the change reports `metadata_conflict` and stores
+     * no key.
      *
      * @param  string  $change
      * @return void
@@ -300,8 +274,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Across processes, the change committing while the request is in flight
-     * refuses the completion.
+     * A change in another process while a request is in flight refuses the
+     * completion.
      *
      * @param  string  $stage
      * @param  string  $change
@@ -316,9 +290,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * The same race, the change inside the competitor's own `REPEATABLE READ`
-     * transaction that read the connection and the request before the
-     * completion began.
+     * The same race, the change inside a `REPEATABLE READ` transaction that
+     * read first.
      *
      * @param  string  $stage
      * @param  string  $change
@@ -333,10 +306,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Race the completion against the change in another process, plain or in
-     * the competitor's own transaction, and assert it was refused with no
-     * handoff or, on PostgreSQL only, that the change failed to serialise and
-     * the completion completed.
+     * Race the completion against the change and assert it was refused, or the
+     * change failed to serialise.
      *
      * @param  string  $stage
      * @param  string  $change
@@ -380,9 +351,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: inside its own `REPEATABLE READ` transaction that
-     * read first, or plainly, signal it has read, wait for the request to be in
-     * flight, make the change, commit, and signal that it is done or failed.
+     * Make the change once the request is in flight, plainly or in a
+     * transaction that read first.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -430,10 +400,7 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Make the connection, its request and what the provider grants it: signed
-     * with a key the connection does not hold when the JWKS request is the one
-     * in flight, and with UserInfo fetched when that is. A migration has a link
-     * to remove, as a connection that signs people in has.
+     * Make the connection, its request and its grant for the stage in flight.
      *
      * @param  string  $stage
      * @param  string  $change
@@ -462,8 +429,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Have the endpoint of the stage run the closure when its request arrives,
-     * then answer as the provider would.
+     * Run the closure when the stage's request arrives, then answer as the
+     * provider would.
      *
      * @param  string  $stage
      * @param  \Closure(): void  $barrier
@@ -559,8 +526,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * An enabled connection of the provider storing its key, fetching UserInfo
-     * when that is the request in flight.
+     * An enabled connection storing its key, fetching UserInfo when that stage
+     * is in flight.
      *
      * @param  string  $stage
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -601,8 +568,7 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Fork a process for each racer, each on a connection of its own, and
-     * collect what each reported, in the racers' order.
+     * Fork a process per racer and collect their reports in order.
      *
      * @param  list<\Closure(): string>  $racers
      * @return list<string>
@@ -638,8 +604,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, do its work, report
-     * the outcome, and end without running the parent's shutdown.
+     * Run the racer's work on its own connection and exit without the parent's
+     * shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work
@@ -665,8 +631,7 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * What a completion refused with a request in flight reports: its status,
-     * its reason and no code.
+     * What a completion refused with a request in flight reports.
      *
      * @return string
      */
@@ -676,8 +641,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error.
+     * Wait up to `SIGNAL_SECONDS` for the signal file, and fail when it never
+     * appears.
      *
      * @param  string  $signal
      * @return void
@@ -700,8 +665,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure (SQLSTATE 40001), accepted only there.
+     * Whether the error, or its cause, is a PostgreSQL serialisation failure
+     * (SQLSTATE 40001).
      *
      * @param  \Throwable  $exception
      * @return bool
@@ -718,8 +683,8 @@ final class OidcTrustChangeRaceTest extends TestCase
     }
 
     /**
-     * The statement that makes every later transaction of the session
-     * `REPEATABLE READ`.
+     * The statement that makes the session's later transactions `REPEATABLE
+     * READ`.
      *
      * @param  string  $driver
      * @return string

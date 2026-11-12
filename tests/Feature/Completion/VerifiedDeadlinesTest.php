@@ -12,9 +12,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for when a verified response stops being valid: the configured
- * age from now, or its request's expiry when that comes first; and that the
- * deadline passes at its instant, not after it.
+ * Feature tests for when a verified response stops being valid.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,8 +41,7 @@ final class VerifiedDeadlinesTest extends TestCase
     }
 
     /**
-     * With no request's expiry the configured age decides; with one the earlier
-     * of the two does.
+     * The deadline is the earlier of the age and the request's expiry.
      *
      * @return void
      */
@@ -59,8 +56,7 @@ final class VerifiedDeadlinesTest extends TestCase
     }
 
     /**
-     * A deadline has passed at its instant and after it, and not before; a
-     * state with none has nothing to judge.
+     * A deadline passes at its instant; a state with none is never judged.
      *
      * @return void
      */

@@ -53,13 +53,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * A flow from end to end through the package's own parts (SSO-5.1, SSO-5.2,
- * SSO-5.6, SSO-9.2, SSO-9.9, SSO-4.3, SSO-10.1): a `sign_in` started with a
- * verifier the package generates, completed through the verifying driver with
- * the state the start sent, and its code redeemed by the package's redemption
- * with that verifier; with the linker bound to a fixture, and to the default
- * that links nothing with unlinked handoffs on. A replay, and a code redeemed
- * with another flow's verifier (an injected sign-in), are refused.
+ * Feature tests for a `sign_in` from start to redemption.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -86,9 +80,7 @@ final class FullFlowTest extends TestCase
     private array $linkerAsked = [];
 
     /**
-     * Bind a fixed clock and a request from an IP address, register the
-     * application and a driver that starts as the starting driver and completes
-     * as the verifying one, and create the tables and a usable connection.
+     * Bind a fixed clock, a request and the driver, and create the tables.
      *
      * @return void
      */
@@ -123,11 +115,7 @@ final class FullFlowTest extends TestCase
     }
 
     /**
-     * With the linker bound to a fixture, a `sign_in` is started, completed and
-     * redeemed: the result is the one the driver verified, linked to the
-     * fixture's identity, the provider's deadline limits the session, the
-     * connection has completed a sign-in, and the flow reported its four events
-     * under the start's reference. Redeemed again, the code is a replay.
+     * A linked `sign_in` is started, completed and redeemed, then replayed.
      *
      * @return void
      */
@@ -168,9 +156,7 @@ final class FullFlowTest extends TestCase
     }
 
     /**
-     * With the default linker, which links nothing, and unlinked handoffs on,
-     * the `sign_in` is handed off unlinked and redeemed with no linked
-     * identity, and no completed sign-in is recorded.
+     * With the default linker and unlinked handoffs, the code redeems unlinked.
      *
      * @return void
      */
@@ -196,9 +182,7 @@ final class FullFlowTest extends TestCase
     }
 
     /**
-     * A code redeemed with the verifier of another flow, as an attacker's
-     * completed sign-in injected into a victim's client would be, is
-     * `verifier_mismatch`, and the code is spent.
+     * A code redeemed with another flow's verifier is refused and spent.
      *
      * @return void
      */
@@ -218,8 +202,7 @@ final class FullFlowTest extends TestCase
     }
 
     /**
-     * Assert the redeemed result is the one the verifying driver verified for
-     * the flow under the reference.
+     * Assert the redeemed result is the one the driver verified for the flow.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  string  $reference
@@ -238,8 +221,7 @@ final class FullFlowTest extends TestCase
     }
 
     /**
-     * Bind a linker that links every result to one identity, recording each
-     * result it is asked about.
+     * Bind a linker that links every result to one identity and records each.
      *
      * @return void
      */
@@ -279,8 +261,7 @@ final class FullFlowTest extends TestCase
     }
 
     /**
-     * Start a `sign_in` for `web` through the connection, the package
-     * generating the verifier.
+     * Start a `sign_in` for `web`, the package generating the verifier.
      *
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      */
@@ -297,8 +278,7 @@ final class FullFlowTest extends TestCase
     }
 
     /**
-     * Complete the last flow started at the callback, with the state its start
-     * sent the provider.
+     * Complete the last flow started with the state its start sent.
      *
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
      */
@@ -317,8 +297,7 @@ final class FullFlowTest extends TestCase
     }
 
     /**
-     * Redeem the code as a `sign_in` for `web` through the connection, with the
-     * verifier.
+     * Redeem the code as a `sign_in` for `web` with the verifier.
      *
      * @param  string  $code
      * @param  string  $verifier
@@ -337,8 +316,7 @@ final class FullFlowTest extends TestCase
     }
 
     /**
-     * A driver that starts as the starting driver and validates as the
-     * verifying one.
+     * A driver that starts as the starter and validates as the verifier.
      *
      * @param  \Tests\Fixtures\Protocols\StartingDriver  $starting
      * @param  \Tests\Fixtures\Protocols\VerifyingDriver  $verifying

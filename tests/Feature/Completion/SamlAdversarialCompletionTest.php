@@ -48,21 +48,7 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * The hostile SAML responses of the response validation's review focus (SSO-6.2
- * to SSO-6.10, SSO-5.3, SSO-5.8), each posted through the public completion
- * helper as the fake identity provider builds it: every signature wrapping
- * variant, duplicate ids and two assertions, an unsigned assertion in a signed
- * response, an attacker's key and an untrusted embedded certificate, audience,
- * recipient and destination bypasses, every time rule, `InResponseTo`
- * disagreeing with itself or with `RelayState` or naming no request, every
- * refused encryption, required encryption, every subject rule, every
- * authentication rule, an unknown condition and an unsuccessful status.
- *
- * Each refused case reports exactly one `FlowFailed` with its reason and no
- * `ResultVerified`, records no assertion, and makes no link or handoff. A
- * comment inside a signed `NameID` yields the whole value; the four refused
- * encryptions are indistinguishable in their results, events and logs; and an
- * unsuccessful status's message is never logged unsanitised or put in an event.
+ * Feature tests for hostile SAML responses through the completion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -132,10 +118,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     private AuthorizationRequest $request;
 
     /**
-     * Bind a fixed clock, the recording issuer and a request from an IP
-     * address, configure SAML, the endpoints and the application, create the
-     * tables, a connection that trusts the identity provider and has an
-     * encryption key, and the request; capture logs and record events.
+     * Configure SAML and a trusting connection; capture logs and events.
      *
      * @return void
      */
@@ -175,9 +158,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * Rows of `[post, reason, settings]`: what the browser posts, built for the
-     * test, the reason it is refused with, and the connection's settings
-     * changed first.
+     * Rows of `[post, reason, settings]` for each hostile response.
      *
      * @return iterable<string, HostileRow>
      */
@@ -193,9 +174,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * Every hostile response is refused with its reason: exactly one
-     * `FlowFailed` for the assertion flow, no `ResultVerified`, no assertion
-     * recorded, and no link or handoff.
+     * Every hostile response is refused cleanly with its reason.
      *
      * @param  \Closure(self): \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $post
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -214,8 +193,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * A comment inside a `NameID` cannot truncate it: whether the response or
-     * the assertion is signed over it, the subject is the whole value.
+     * A comment inside a `NameID` never truncates the subject.
      *
      * @return void
      */
@@ -238,9 +216,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * With the assertion's own signature not wanted, an unsigned assertion
-     * passes only through the response's signature: signed, it completes;
-     * unsigned, it is refused.
+     * An unsigned assertion passes only through the response's signature.
      *
      * @return void
      */
@@ -257,10 +233,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * A response signed by an attacker over an unsigned assertion, at a
-     * connection that would take an assertion covered by the response's
-     * signature alone, is refused for the response's own signature, by the rule
-     * that verifies it and no other.
+     * A response signed by an attacker is refused for its own signature.
      *
      * @return void
      */
@@ -282,9 +255,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * A trusted certificate past its expiry still verifies what its key signs,
-     * so a tenant whose identity provider let its certificate lapse still signs
-     * in (SSO-2.6): the expiry is only reported.
+     * A trusted certificate past its expiry still signs in, only reported.
      *
      * @return void
      */
@@ -312,9 +283,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * RSA 1.5 key transport, AES-CBC without a response signature, AES-256-GCM
-     * and a tampered ciphertext are each `decryption_failed`, with the same
-     * result, event and log but for the request each answers.
+     * Every refused decryption is indistinguishable in result, event and log.
      *
      * @return void
      */
@@ -363,8 +332,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * A status other than success is `provider_error`: its status message is
-     * logged only sanitised, and appears in no event and no event's dump.
+     * An unsuccessful status is `provider_error`; its message never leaks.
      *
      * @return void
      */
@@ -449,8 +417,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * Issuer, audience, recipient and destination bypasses, and unknown
-     * conditions.
+     * Issuer, audience, recipient and destination bypasses; unknown conditions.
      *
      * @return iterable<string, HostileRow>
      */
@@ -528,8 +495,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * `InResponseTo` disagreeing with itself or with `RelayState`, or naming no
-     * request.
+     * `InResponseTo` disagreeing with itself or `RelayState`, or unmatched.
      *
      * @return iterable<string, HostileRow>
      */
@@ -657,9 +623,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * Assert the completion reported exactly one `FlowFailed` for the reason
-     * and the assertion flow and nothing else, recorded no assertion, and made
-     * no link or handoff.
+     * Assert one `FlowFailed` for the reason and nothing recorded or made.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @return void
@@ -675,8 +639,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * Complete at the connection's assertion consumer service with what was
-     * posted.
+     * Complete at the assertion consumer service with what was posted.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
@@ -687,8 +650,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * What the browser posts: the response, or an encoded one, with the
-     * `RelayState`, none for `null`.
+     * What the browser posts: the response with the `RelayState`, if any.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse|string  $response
      * @param  ?string  $relayState
@@ -702,8 +664,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * What the browser posts: a valid response with the changes given, and the
-     * request's `RelayState`.
+     * What the browser posts: a valid response with the changes given.
      *
      * @param  array<string, mixed>  $changes
      * @return \SineMacula\Laravel\Sso\Protocols\CompletionRequest
@@ -714,9 +675,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * A valid response from the trusted identity provider, made now, for the
-     * connection's service provider, answering the request, with a fixed
-     * authentication statement.
+     * A valid response from the trusted identity provider, made now.
      *
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
      */
@@ -749,9 +708,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * The default authentication statement with the changes given: a minute
-     * old, with a session index, an eight-hour deadline and the
-     * password-protected-transport class.
+     * The default authentication statement with the changes given.
      *
      * @param  array<string, mixed>  $changes
      * @return array<string, mixed>
@@ -790,8 +747,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * Store another request of the connection, with its own `AuthnRequest` id
-     * and `RelayState`.
+     * Store another request of the connection with its own ids.
      *
      * @return \SineMacula\Laravel\Sso\Models\AuthorizationRequest
      */
@@ -813,8 +769,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * Make the request a `reauthenticate` one for an identity's session,
-     * started now.
+     * Make the request a `reauthenticate` for an identity's session.
      *
      * @return self
      */
@@ -877,8 +832,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * The response with `alice@evil` as its `NameID`, a comment splitting it,
-     * signed over the comment in the response's envelope or in the assertion.
+     * The response with a comment splitting its `NameID`, signed over it.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
      * @param  string  $signed
@@ -902,8 +856,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * The response with a second signed assertion, of another id, after its
-     * own.
+     * The response with a second signed assertion after its own.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
      * @return string
@@ -916,9 +869,8 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * The response's XML, its assertion unsigned, with a `Condition` typed as
-     * an audience restriction, which the schema accepts and the package does
-     * not use as one.
+     * The response with a `Condition` typed as an audience restriction, which
+     * the schema accepts and the package does not treat as one.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
      * @return string
@@ -953,8 +905,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * The encrypted response's XML with one bit of its assertion's ciphertext
-     * flipped.
+     * The encrypted response with one ciphertext bit flipped.
      *
      * @param  string  $xml
      * @return string
@@ -997,8 +948,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * An attacker's identity provider, with its own key and certificate, made
-     * once for the class.
+     * An attacker's identity provider, made once for the class.
      *
      * @return \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider
      */
@@ -1008,8 +958,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * An attacker signing with the attacker's key while presenting the trusted
-     * identity provider's certificate.
+     * An attacker signing with its own key behind the trusted certificate.
      *
      * @return \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider
      */
@@ -1021,9 +970,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * A fresh RSA key pair of 2048 bits and a self-signed certificate whose
-     * validity ends the moment it is made: the private key, then the
-     * certificate, both PEM.
+     * A 2048-bit RSA key and a certificate expiring as it is made, both PEM.
      *
      * @return array{0: string, 1: string}
      */
@@ -1041,8 +988,7 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * The service provider's encryption key and certificate, made once for the
-     * class.
+     * The service provider's encryption key and certificate, made once.
      *
      * @return array{0: string, 1: string}
      */

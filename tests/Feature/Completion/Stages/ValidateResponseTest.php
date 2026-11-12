@@ -31,10 +31,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the validation step of a completion: it hands the driver
- * the client the completion arrived from, the very context its state carries,
- * with what arrived and the consumed request, and goes on with what the driver
- * verified.
+ * Feature tests for the validation stage of a completion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,9 +53,7 @@ final class ValidateResponseTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, switch a protocol on, register a driver that verifies
-     * as the verifying driver does and records each client it is given, and
-     * create the tables and a usable connection over it.
+     * Register a driver that records clients, and create a connection.
      *
      * @return void
      */
@@ -88,8 +83,7 @@ final class ValidateResponseTest extends TestCase
     }
 
     /**
-     * The driver is given the state's client, and the stage goes on with the
-     * result built from what it verified.
+     * The driver is given the state's client.
      *
      * @return void
      */
@@ -111,8 +105,7 @@ final class ValidateResponseTest extends TestCase
     }
 
     /**
-     * A driver that does what the verifying driver does and records each client
-     * its `complete()` is given.
+     * A verifying driver that records each client `complete()` is given.
      *
      * @param  \Tests\Fixtures\Protocols\VerifyingDriver  $verifying
      * @param  \ArrayObject<int, \SineMacula\Laravel\Sso\Http\ClientContext>  $clients

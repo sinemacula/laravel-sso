@@ -63,17 +63,7 @@ use Tests\Fixtures\Links\FixedLinker;
 use Tests\TestCase;
 
 /**
- * Hostile ID tokens through the public path (SSO-7.3, SSO-7.4, SSO-5.10,
- * SSO-12.4): a flow started through `AuthorizationRequestService::start()`,
- * granted by the fake provider's authorisation endpoint, and completed through
- * `CompletionService::callback()`.
- *
- * Every case of `HostileIdTokens` ends `failed` with its reason, redirected to
- * the application, with one `FlowFailed` naming the request by its reference,
- * no handoff and no link; only a case whose key is unknown fetches the JWKS,
- * once; a refused JWKS is reported. An ID token whose claims are wrong is
- * refused the same way, an honest one verifies, and key rotation is shown end
- * to end.
+ * Feature tests for hostile ID tokens through the public callback path.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -114,10 +104,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     private string $reference = '';
 
     /**
-     * Bind a fixed clock, the fake fetcher and a request from an IP address,
-     * switch OIDC on, register the application and the endpoints, create the
-     * tables and serve the provider. The default handoff store is left in
-     * place.
+     * Bind a fixed clock, the fake fetcher and a request; serve the provider.
      *
      * @return void
      */
@@ -157,11 +144,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * A hostile token ends `failed` with its case's reason, redirected to the
-     * application, with exactly one `FlowFailed` carrying the request's
-     * reference, no handoff and no link; it makes one token request and, only
-     * when its key is unknown or its JWKS refused, one JWKS request after it,
-     * reported, with nothing else fetched.
+     * Each hostile token is refused through the callback with its reason.
      *
      * @param  string  $name
      * @return void
@@ -204,8 +187,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * A JWKS refused whole is reported `jwks_invalid`, and the keys are left as
-     * they were: there were none.
+     * A JWKS refused whole is reported `jwks_invalid`, keys unchanged.
      *
      * @return void
      *
@@ -230,8 +212,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Unknown `kid`s within the cooldown fetch nothing more, a second under its
-     * end included; the first after it fetches again.
+     * Unknown `kid`s within the cooldown fetch nothing more.
      *
      * @return void
      *
@@ -253,8 +234,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * An unknown `kid` within the cooldown reports no refetch: its refusal is
-     * the only event.
+     * An unknown `kid` within the cooldown reports no refetch.
      *
      * @return void
      *
@@ -275,8 +255,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[settings, tailor, reason]`: an ID token the token endpoint
-     * answers whose claims are wrong.
+     * Rows of `[settings, tailor, reason]` for an ID token with wrong claims.
      *
      * @return iterable<string, array{
      *     0: array<string, mixed>,
@@ -320,8 +299,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * An ID token whose claims are wrong is refused with its reason, through
-     * the whole path, with one token request and nothing else fetched.
+     * An ID token with a wrong claim is refused through the callback.
      *
      * @param  array<string, mixed>  $settings
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken  $tailor
@@ -345,8 +323,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[claim, as a list]`: a string claim written as a number too
-     * large for an integer, or a list holding one.
+     * Rows of `[claim, as a list]`: a string claim written as a huge number.
      *
      * @return iterable<string, array{0: string, 1: bool}>
      */
@@ -368,9 +345,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * A number too large for an integer is never its digits: an ID token whose
-     * string claim is written as one is `id_token_invalid`, with nothing but
-     * the token request made.
+     * A number too large for an integer is never a string claim.
      *
      * @param  string  $claim
      * @param  bool  $list
@@ -412,9 +387,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[auth_time, reason]`: when a reauthentication's person
-     * authenticated, in seconds from now, with the request started 10 seconds
-     * ago, so its start less the 60 second skew is 70 seconds ago.
+     * Rows of `[auth_time, reason]`; the start less the skew is 70 seconds ago.
      *
      * @return iterable<string, array{0: ?int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -432,8 +405,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` is held to `auth_time`: required, no earlier than its
-     * request's start less the skew, and never in the future past the skew.
+     * A `reauthenticate` is held to `auth_time`.
      *
      * @param  ?int  $authenticatedAgo
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -448,9 +420,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[auth_time, reason]`: when the person authenticated, in seconds
-     * from now, with the clock moved back 30 seconds since the request started,
-     * so its start less the 60 second skew is 30 seconds ago.
+     * Rows of `[auth_time, reason]`; the start less the skew is 30 seconds ago.
      *
      * @return iterable<string, array{0: int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -463,8 +433,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * With the clock moved back since the start the rule is unchanged:
-     * `auth_time` is never earlier than the request's start less the skew.
+     * With the clock moved back since the start the rule is unchanged.
      *
      * @param  int  $authenticatedAgo
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -479,9 +448,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[auth_time, reason]`: a reauthentication whose callback arrives
-     * five minutes after its request started, in seconds from now, so its start
-     * less the 60 second skew is 360 seconds ago.
+     * Rows of `[auth_time, reason]`; the start less the skew is 360s ago.
      *
      * @return iterable<string, array{0: int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -496,9 +463,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * A fresh authentication with a slow callback passes: `max_age=0` is sent
-     * upstream, but it is the request's start that is enforced, never how long
-     * the callback took.
+     * A slow callback is never refused for its own delay.
      *
      * @param  int  $authenticatedAgo
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -513,10 +478,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Keys past their limit refuse a callback with the schedule off too,
-     * turning it off never meaning unlimited trust; the callback cannot recover
-     * the connection by fetching, with an unknown `kid` or not, and an
-     * administrator's refresh does.
+     * Expired keys refuse a callback until an administrator refreshes them.
      *
      * @return void
      *
@@ -559,10 +521,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Keys a refetch stamped on a connection whose refresh is on but has never
-     * succeeded age out: past the stale limit from their own fetch, a callback
-     * is `metadata_expired` with nothing fetched, and a refresh recovers the
-     * connection.
+     * Refetched keys past their stale limit refuse until a refresh succeeds.
      *
      * @return void
      *
@@ -595,8 +554,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * The honest control: the same path verifies a token of the provider, with
-     * nothing fetched, a handoff issued and no link.
+     * An honest token verifies, with nothing fetched.
      *
      * @return void
      *
@@ -637,8 +595,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * A token of each family on the allow-list verifies, its `at_hash` of its
-     * own size.
+     * A token of each allowed algorithm verifies.
      *
      * @param  string  $algorithm
      * @param  string  $key
@@ -663,9 +620,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Key rotation, adding: a token of the new `kid` verifies after one
-     * refetch, reported with its trust unchanged, so the refetch voids nothing,
-     * and the next token of that `kid` fetches nothing.
+     * An additive rotation verifies after one refetch and voids nothing.
      *
      * @return void
      *
@@ -701,10 +656,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Key rotation, removing: the token of the new `kid` verifies, and the
-     * refetch removed a key, which voided the flows in flight and raised the
-     * trust version once, but spared this one, which finishes across exactly
-     * that transition (`OidcKeyRotationCompletionTest` holds the rest).
+     * A removing rotation voids other flows but lets its own callback finish.
      *
      * @return void
      *
@@ -740,8 +692,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[flag]`: an `email_verified` that is not a JSON boolean,
-     * Cognito's strings among them.
+     * Rows of `[flag]`: an `email_verified` that is not a JSON boolean.
      *
      * @return iterable<string, array{0: mixed}>
      */
@@ -757,9 +708,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Through the whole path, an ID token's `email_verified` that is not a JSON
-     * boolean gives no evidence and does not refuse the sign-in: the email is
-     * asserted as unknown, and no linking email comes of it.
+     * A non-boolean `email_verified` does not refuse the sign-in.
      *
      * @param  mixed  $flag
      * @return void
@@ -780,9 +729,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Through the whole path, UserInfo's `email_verified` that is not a JSON
-     * boolean is treated alike: the request is made, the sign-in goes on, and
-     * the email it asserts is unknown, with no linking email.
+     * A non-boolean UserInfo `email_verified` does not refuse the sign-in.
      *
      * @param  mixed  $flag
      * @return void
@@ -805,8 +752,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * A true or false `email_verified` is the evidence it says through the
-     * whole path, whichever source gave the email, and only true links.
+     * A boolean `email_verified` is the evidence it says; only true links.
      *
      * @return void
      *
@@ -828,9 +774,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * A provider that replaces a key under its `kid` is never refetched by its
-     * token: the `kid` is known, so the stored key checks it, and the token is
-     * `signature_invalid` with nothing fetched.
+     * A key replaced under a known `kid` is not refetched.
      *
      * @return void
      *
@@ -848,9 +792,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Assert how a reauthentication ends when the clock moves by the seconds
-     * given after its start, and its person authenticated the seconds given
-     * from now, or never says.
+     * Assert how a reauthentication ends for the clock move and `auth_time`.
      *
      * @param  int  $moved
      * @param  ?int  $authenticatedAgo
@@ -940,8 +882,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Assert the flow through the connection with an unknown `kid` is refused,
-     * and how many JWKS requests have been made by then.
+     * Assert an unknown `kid` is refused, and count the JWKS requests.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $kid
@@ -960,10 +901,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Assert the completion was refused for the reason, redirected to the
-     * application, with exactly one `FlowFailed` of the callback carrying the
-     * request's reference, its request consumed and completed, the requests
-     * completed by then counted, and no handoff or link stored.
+     * Assert the completion was refused for the reason with one failure.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -1043,8 +981,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * The request started last, found by its reference: every request of a test
-     * has the same instant, so an id does not order them.
+     * The request started last, by reference, since ids share an instant.
      *
      * @return \SineMacula\Laravel\Sso\Models\AuthorizationRequest
      */
@@ -1074,8 +1011,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * The connection the case is judged by: its allow-list, its JWKS published
-     * by the provider and, unless the case's JWKS is refused whole, stored.
+     * The connection the case is judged by.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\HostileIdToken  $case
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -1109,8 +1045,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * A connection of the honest allow-list, with the settings given, storing
-     * the honest JWKS, which the provider publishes.
+     * A connection of the honest allow-list with the settings given.
      *
      * @param  array<string, mixed>  $settings
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -1176,8 +1111,7 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
-     * Each case's JWKS, allow-list, stage and reason, read once from tokens of
-     * placeholder claims, since none of them depends on a token's claims.
+     * Each case's JWKS, allow-list, stage and reason, read once.
      *
      * @return array<string, \SineMacula\Laravel\Sso\Testing\Oidc\HostileIdToken>
      */

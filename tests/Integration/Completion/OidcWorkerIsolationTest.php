@@ -36,12 +36,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Consecutive OIDC callbacks in one process, as a worker under Octane or a
- * queue serves them (SSO-11.2): two tenants, each a connection of its own
- * provider, with different issuers, client ids, allow-lists, trusted audiences
- * and keys under one `kid`. The services are resolved once and kept. Nothing of
- * one callback reaches the next: not a key, an allow-list, an audience, a
- * `max_age`, a clock skew or a result.
+ * Integration tests that consecutive OIDC callbacks in one worker share no
+ * state.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -103,9 +99,7 @@ final class OidcWorkerIsolationTest extends TestCase
     private AuthorizationRequestService $starts;
 
     /**
-     * Bind a fixed clock, the fake fetcher and a request from a client, switch
-     * OIDC on, create the tables and both connections and resolve the services
-     * once. The default handoff store is left in place.
+     * Create both tenants' connections and resolve the services once.
      *
      * @return void
      */
@@ -149,8 +143,7 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * Consecutive verified callbacks each answer their own result: the tenant,
-     * connection, issuer and subject of the handoff they stored, in turn.
+     * Consecutive callbacks each answer their own result.
      *
      * @return void
      *
@@ -187,9 +180,8 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * Both providers sign under one `kid`, and each connection holds its own
-     * key under it: a token of one, for the other, never verifies, whichever
-     * went first, with nothing fetched.
+     * A key held under a shared `kid` never verifies the other connection's
+     * token.
      *
      * @return void
      *
@@ -213,9 +205,7 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * Each connection's allow-list stands, read afresh on each callback: an
-     * algorithm the last callback verified is refused on the next, with nothing
-     * fetched.
+     * Each connection's algorithm allow-list is read afresh on each callback.
      *
      * @return void
      *
@@ -232,8 +222,8 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * Each connection's issuer and client id stand: a token naming the last
-     * callback's is refused on the next.
+     * A token naming the last callback's issuer or client is refused on the
+     * next.
      *
      * @return void
      *
@@ -249,8 +239,7 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * Each connection's trusted audiences stand: the other's is untrusted, on
-     * the very next callback.
+     * One connection's trusted audiences are untrusted on the next callback.
      *
      * @return void
      *
@@ -272,8 +261,7 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * One connection's `max_age` is the other's none: a long-past `auth_time`
-     * passes on the one with none, on either side of a refusal by the other.
+     * One connection's `max_age` never applies to the other.
      *
      * @return void
      *
@@ -289,8 +277,7 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * The clock skew is read on each callback: a change to it between two
-     * callbacks is seen by the second, and none is kept from the first.
+     * A clock skew change between two callbacks is seen by the second.
      *
      * @return void
      *
@@ -313,8 +300,7 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * A refused callback leaves nothing for the next: its subject and handoff
-     * are nowhere, and the next verified one answers its own.
+     * A refused callback leaves nothing for the next.
      *
      * @return void
      *
@@ -337,8 +323,7 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * A refetch for one connection fetches its own JWKS and writes its own row:
-     * the other's keys and cooldown stay as they were.
+     * A refetch for one connection leaves the other's keys and cooldown alone.
      *
      * @return void
      *
@@ -367,9 +352,7 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * Start a flow through the side's connection, have its provider grant it
-     * and complete at its callback, through the services kept. The reference
-     * given is set to the request's.
+     * Start, grant and complete a flow for the side through the services kept.
      *
      * @param  string  $side
      * @param  ?\Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken  $tailor
@@ -438,8 +421,7 @@ final class OidcWorkerIsolationTest extends TestCase
     }
 
     /**
-     * An enabled connection of the provider, of the tenant, the client and the
-     * secret, storing its key.
+     * An enabled connection for the tenant and client, storing its key.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider  $provider
      * @param  string  $tenant
