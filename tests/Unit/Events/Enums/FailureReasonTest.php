@@ -33,7 +33,7 @@ final class FailureReasonTest extends TestCase
         ];
 
         foreach ($codes as $code) {
-            self::assertInstanceOf(FailureReason::class, FailureReason::tryFrom($code), "SSO-10.2 code {$code} is not a reason.");
+            self::assertInstanceOf(FailureReason::class, FailureReason::tryFrom($code), "Code {$code} is not a reason.");
         }
     }
 
