@@ -8,41 +8,9 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 
 /**
- * One connection: a tenant's trust in one identity provider over one protocol
- * (SSO-2.1). It holds its tenant (an opaque string id) and its protocol, both
- * fixed at creation; its display name; its settings, by name, with no secret
- * among them; its secrets, a JSON object of each secret's name and its
- * ciphertext from `Contracts\SecretEncrypter`, so a read can say which are set
- * without decrypting one, never read back by a helper (SSO-2.5); its attribute
- * mapping (SSO-2.10); whether it is enabled; whether a `sign_in` through it has
- * ever been redeemed (SSO-4.3), which only the redemption sets; its links
- * version, which every link created through it raises under its lock
- * (`Links\LinkStore::create()`), so a link's insert also writes this row; and
- * its flows version, which every authorisation request stored and every handoff
- * code issued through it raises under its lock, so either insert also writes
- * this row (`Connections\InFlightVoider`); its trust version, which every
- * change that voids what is in flight through it, and enabling it, raises under
- * its lock; its metadata refresh state: the metadata version every refresh that
- * writes raises, the last validated fetch, the earliest `validUntil` it
- * applied, when the next refresh is due, how many failed in a row, and until
- * when a refresh in progress holds its claim and the random token that claim
- * was made with, which only its owner's write matches (SSO-2.8), whether of a
- * SAML connection's metadata or an OIDC connection's discovery document and
- * JWKS; and an OIDC connection's JWKS (SSO-7.3): the public keys the package
- * admitted, the version every write of them raises, their last validated fetch,
- * until when no unknown-`kid` refetch may start, and the random token of the
- * refetch in progress. It holds its settings for linking by a verified domain
- * (SSO-8.8) and their version, apart from its protocol settings, since a change
- * to them voids reservations and no flow (`docs/design/linking.md`).
+ * A tenant's trust in one identity provider over one protocol.
  *
- * Its key is a lower-case ULID, the `{connection}` of its endpoints, and its
- * timestamps come from the package's clock (see `SsoModel`). Changing its
- * tenant or protocol once it exists throws a `LogicException`: the management
- * helpers refuse such a change as a value before it reaches the model.
- *
- * The table comes from `sso.connections.table`, the connection from the storage
- * connection. Only the class name is public; its columns and behaviour belong
- * to the management helpers and the protocol drivers, which read it through
+ * Only the class name is public API; drivers read it through
  * `Contracts\SsoConnection`.
  *
  * @api
@@ -89,16 +57,16 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  */
 final class Connection extends SsoModel implements SsoConnection
 {
-    /** @var string The key, under `sso.`, of the setting that names the model's table. */
+    /** @var string The `sso.` setting that names the table. */
     protected const string TABLE = 'connections.table';
 
-    /** @var list<string> The columns fixed when the connection is created (SSO-2.1). */
+    /** @var list<string> The columns fixed when the connection is created. */
     private const array FIXED = ['tenant_id', 'protocol'];
 
     /** @var bool Indicates if the IDs are auto-incrementing. */
     public $incrementing = false;
 
-    /** @var bool Indicates if the model should be timestamped: the package stamps it from its clock instead. */
+    /** @var bool Stamped from the package's clock instead. */
     public $timestamps = false;
 
     /** @var string The "type" of the primary key ID. */
@@ -107,10 +75,10 @@ final class Connection extends SsoModel implements SsoConnection
     /** @var array<string> The attributes that aren't mass assignable. */
     protected $guarded = ['*'];
 
-    /** @var list<string> The attributes hidden from serialisation: the encrypted secrets, and the organisation a linking result must assert. */
+    /** @var list<string> The attributes hidden from serialisation. */
     protected $hidden = ['secrets', 'linking_organization_value'];
 
-    /** @var array<string, mixed> The model's default attribute values: disabled, no sign-in completed, no settings or mapping, trust version 0. */
+    /** @var array<string, mixed> The model's default attribute values. */
     protected $attributes = [
         'settings'              => '[]',
         'attribute_mapping'     => '[]',
@@ -122,7 +90,7 @@ final class Connection extends SsoModel implements SsoConnection
     ];
 
     /**
-     * The connection's id.
+     * The connection's ULID.
      *
      * @return string
      */
@@ -243,8 +211,7 @@ final class Connection extends SsoModel implements SsoConnection
     }
 
     /**
-     * Key and stamp each new connection, and refuse a change to its tenant or
-     * protocol once it exists.
+     * Key and stamp each new connection, and fix its tenant and protocol.
      *
      * @return void
      */

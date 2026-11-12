@@ -8,17 +8,8 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 
 /**
- * What the enforcement helper returns for a tenant's enforcement as it is
- * stored (SSO-4.1, SSO-4.6): the tenant, whether its rule is on, the ids of the
- * connections stored as satisfying it, each once and in id order, the version
- * that changes with every change, and when it last changed.
- *
- * A tenant that never had a rule stored is off, with no connection, no version
- * and no time, whether it has no row or only the unconfigured guard row a lock
- * inserted. The ids are those stored: one whose connection has since been
- * disabled or deleted is still listed here, while `Contracts\Enforcement`
- * answers only the enabled connections of the tenant. It holds ids, a flag and
- * times, never a secret.
+ * A tenant's enforcement as stored, including ids of connections since disabled
+ * or deleted.
  *
  * @api
  *
@@ -55,9 +46,7 @@ final readonly class EnforcementSummary implements \JsonSerializable
     ) {}
 
     /**
-     * The summary of the tenant's enforcement as the row holds it, or of a
-     * tenant with no rule stored when there is no row or only an unconfigured
-     * one (no version), which reads exactly as none.
+     * Summarise the row; an unconfigured row reads exactly as no row.
      *
      * @param  string  $tenantId
      * @param  ?\SineMacula\Laravel\Sso\Models\TenantEnforcement  $enforcement
@@ -73,7 +62,7 @@ final readonly class EnforcementSummary implements \JsonSerializable
     }
 
     /**
-     * The ids given, each string once, in id order.
+     * The string ids given, deduplicated and sorted.
      *
      * @param  array<array-key, mixed>  $ids
      * @return list<string>
@@ -88,7 +77,7 @@ final readonly class EnforcementSummary implements \JsonSerializable
     }
 
     /**
-     * The summary, with snake_case keys and the time as an ISO 8601 UTC string.
+     * Snake_case keys, with the time as an ISO 8601 UTC string.
      *
      * @return array{tenant_id: string, enabled: bool, connection_ids: list<string>, version: ?string, changed_at: ?string}
      */

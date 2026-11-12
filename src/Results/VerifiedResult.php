@@ -8,37 +8,11 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 
 /**
- * The output of a completed flow (SSO-8.1): the issuer, subject and connection,
- * under those names; the tenant, protocol, application and purpose; the
- * request's public reference; the mapped attributes, with whether the email's
- * domain is verified for the connection; the identity provider's authentication
- * context; where linking by a verified domain applies, the linking email, kept
- * apart from the mapped attributes; and, for OIDC, the email the provider
- * asserted with its `email_verified` and their one source (SSO-7.7), also kept
- * apart from the mapped attributes.
+ * The output of a completed flow, built only by the completion pipeline or
+ * restored from the package's own storage, never from client input.
  *
- * It exists only after every check of SSO-6 or SSO-7 has passed: only the
- * completion pipeline builds one, from a driver's `VerifiedClaims`, and the
- * handoff store reads one back from its own encrypted storage. It is never
- * built from, or deserialised out of, client input. It holds no assertion,
- * token or secret, and it is never handed to an event whole: an event's context
- * takes its fields one by one (SSO-10.4).
- *
- * It is serialisable, as SSO-8.1 requires, so a handoff store can keep it until
- * redemption: `toArray()` (also what `serialize()` writes) holds everything
- * above and nothing else, and `restore()` (also what `unserialize()` runs)
- * checks every part again, failing with an `UnexpectedValueException` on
- * anything the package did not write. `json_encode()` writes the same, but for
- * the asserted email, which it shows only as its source and `email_verified`,
- * so the JSON of a result with one is not a stored form. A result with no
- * asserted email stores no key for one. It holds personal data (the mapped
- * attributes, the linking email, the asserted email), so a store encrypts it at
- * rest.
- *
- * The issuer and subject are 1 to 1024 bytes and kept exactly as received
- * (SSO-6.9); a NameID format is 1 to 255 bytes; the connection, tenant,
- * protocol and application are 1 to 255 bytes; each mapped attribute is a
- * string or a list of strings under a non-empty name.
+ * It holds personal data, so stores encrypt it at rest; unserialising checks
+ * every part again.
  *
  * @api
  *
@@ -50,13 +24,13 @@ final readonly class VerifiedResult implements \JsonSerializable
     /** @var int The longest issuer, in bytes. */
     public const int MAX_ISSUER_LENGTH = 1024;
 
-    /** @var int The longest subject, in bytes (SSO-6.9). */
+    /** @var int The longest subject, in bytes. */
     public const int MAX_SUBJECT_LENGTH = 1024;
 
     /** @var int The longest NameID format, in bytes. */
     public const int MAX_NAME_ID_FORMAT_LENGTH = 255;
 
-    /** @var int The longest connection id, tenant id, protocol or application, in bytes. */
+    /** @var int The longest connection, tenant, protocol or application, in bytes. */
     public const int MAX_ID_LENGTH = 255;
 
     /**
@@ -89,7 +63,7 @@ final readonly class VerifiedResult implements \JsonSerializable
         /** The person's stable identifier at the provider, exactly as received. */
         public string $subject,
 
-        /** The SAML `NameID` format, part of the subject; `null` for OIDC or an attribute subject. */
+        /** The SAML `NameID` format; `null` for OIDC or an attribute subject. */
         public ?string $nameIdFormat,
 
         /** The connection the flow completed through. */
@@ -175,8 +149,7 @@ final readonly class VerifiedResult implements \JsonSerializable
     }
 
     /**
-     * The result as stored, with snake_case keys: everything it holds, and
-     * nothing else; the asserted email only when it has one.
+     * The stored form; the asserted email key only when there is one.
      *
      * @return array<string, mixed>
      */
@@ -202,8 +175,7 @@ final readonly class VerifiedResult implements \JsonSerializable
     }
 
     /**
-     * The result `toArray()` stored, read back from the package's own storage;
-     * never from client input.
+     * Restore `toArray()` output from package storage, never client input.
      *
      * @param  array<array-key, mixed>  $stored
      * @return self
@@ -240,8 +212,7 @@ final readonly class VerifiedResult implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: the stored form, but for the asserted email,
-     * shown only as its source and `email_verified`.
+     * The stored form with the asserted email redacted, so not a stored form.
      *
      * @return array<string, mixed>
      */
@@ -254,8 +225,7 @@ final readonly class VerifiedResult implements \JsonSerializable
     }
 
     /**
-     * Refuse attributes that are not strings or lists of strings, each under a
-     * non-empty name.
+     * Refuse attributes other than named strings or lists of strings.
      *
      * @param  array<array-key, mixed>  $attributes
      * @return void
@@ -272,7 +242,7 @@ final readonly class VerifiedResult implements \JsonSerializable
     }
 
     /**
-     * Whether the key names an attribute: a non-empty string.
+     * Whether the key is a non-empty string.
      *
      * @param  int|string  $name
      * @return bool
@@ -283,7 +253,7 @@ final readonly class VerifiedResult implements \JsonSerializable
     }
 
     /**
-     * Whether the value is an attribute's: a string, or a list of strings.
+     * Whether the value is a string or a list of strings.
      *
      * @param  mixed  $value
      * @return bool

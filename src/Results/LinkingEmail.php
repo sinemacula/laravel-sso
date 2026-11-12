@@ -7,21 +7,8 @@ namespace SineMacula\Laravel\Sso\Results;
 use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
 
 /**
- * The linking email of a verified result (SSO-8.1, SSO-8.8): the address the
- * protocol itself asserted, never one read through attribute mapping, with
- * where it came from and the organisation claim's value it was accepted under
- * for an issuer shared by many organisations (Google's `hd`, say). It is kept
- * apart from the mapped attributes, and only linking by a verified domain reads
- * it.
- *
- * The email is 3 to 320 bytes with one `@` between a non-empty local part and a
- * non-empty domain; it is kept exactly as asserted, and the application's
- * normaliser, never the package, decides how it compares. The organisation is 1
- * to 255 bytes when given.
- *
- * `toArray()` is the stored form, holding every value. `json_encode()`, and a
- * logger's normaliser that falls back to it, write only the source and whether
- * an organisation was given, never the email or the organisation.
+ * The email the protocol itself asserted, for linking by a verified domain;
+ * kept exactly as asserted and redacted from JSON.
  *
  * @api
  *
@@ -53,7 +40,7 @@ final readonly class LinkingEmail implements \JsonSerializable
         /** Where the email came from. */
         public LinkingEmailSource $source,
 
-        /** The organisation claim's value the email was accepted under, for a shared issuer. */
+        /** The organisation claim value (Google's `hd`) for a shared issuer. */
         public ?string $organization = null,
     ) {
         StoredValues::assertText('linking email', $email, self::MAX_EMAIL_LENGTH);
@@ -75,7 +62,7 @@ final readonly class LinkingEmail implements \JsonSerializable
     }
 
     /**
-     * The linking email as stored, with snake_case keys.
+     * The stored form, holding every value.
      *
      * @return array{email: string, source: string, organization: ?string}
      */
@@ -85,9 +72,7 @@ final readonly class LinkingEmail implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: the source, and the email and the
-     * organisation as `[redacted]` (the organisation `null` when none was
-     * given), never a value.
+     * The source, with the email and any organisation redacted.
      *
      * @return array{email: string, source: string, organization: ?string}
      */
@@ -98,8 +83,7 @@ final readonly class LinkingEmail implements \JsonSerializable
     }
 
     /**
-     * The linking email `toArray()` stored, read back from the package's own
-     * storage; never from client input.
+     * Restore `toArray()` output from package storage, never client input.
      *
      * @param  array<array-key, mixed>  $stored
      * @return self

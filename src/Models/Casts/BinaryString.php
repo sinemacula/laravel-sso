@@ -8,15 +8,7 @@ use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A binary column held byte for byte (SSO-6.9): a subject is stored and read
- * back exactly as received, never trimmed, normalised or re-encoded, on every
- * engine.
- *
- * MySQL and SQLite take and give the bytes as a string. PostgreSQL gives a
- * `bytea` as a stream, which is read to its end; and it reads a string bound to
- * a `bytea` as text, interpreting backslashes and refusing invalid UTF-8, so a
- * value written there is bound as a stream, which Laravel binds as a large
- * object (`PDO::PARAM_LOB`), byte for byte.
+ * A binary column stored and read back byte for byte on every engine.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,8 +20,7 @@ use Illuminate\Database\Eloquent\Model;
 final readonly class BinaryString implements CastsAttributes
 {
     /**
-     * The stored bytes, read to the end of a stream, or `null` when there are
-     * none.
+     * The stored bytes; PostgreSQL returns a `bytea` as a stream.
      *
      * @param  \Illuminate\Database\Eloquent\Model  $model
      * @param  string  $key
@@ -58,8 +49,7 @@ final readonly class BinaryString implements CastsAttributes
     }
 
     /**
-     * The bytes as the model's connection binds them: a stream on PostgreSQL, a
-     * string on every other engine.
+     * A stream on PostgreSQL, which reads a string bound to a `bytea` as text.
      *
      * @param  \Illuminate\Database\Eloquent\Model  $model
      * @param  string  $key

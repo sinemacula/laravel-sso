@@ -8,11 +8,8 @@ use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
 use SineMacula\Laravel\Sso\Results\Enums\DeadlineEffect;
 
 /**
- * The default provider session deadline contract (SSO-6.10): the identity
- * provider's session deadline always limits the application's session, as SAML
- * asks.
- *
- * It holds nothing between calls (SSO-11.2).
+ * Default provider session deadline contract: the deadline always limits the
+ * session, as SAML asks.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

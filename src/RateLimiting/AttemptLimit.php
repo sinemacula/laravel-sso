@@ -5,15 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\RateLimiting;
 
 /**
- * One limit (SSO-11.8): at most `max` attempts in each window of
- * `decaySeconds`.
- *
- * Windows are aligned to the Unix epoch: a 60-second window runs from 12:00:00
- * to 12:01:00, whoever makes the first attempt in it. Every counter of a limit
- * therefore ends its window at a time known without reading it back, so the
- * limiter knows which window it took a slot from without a query. A counter
- * whose window was started under another `decay_seconds` keeps that window
- * until it ends (see `RateLimitStore`).
+ * At most `max` attempts in each epoch-aligned window of `decaySeconds`, so a
+ * window's end is known without a query.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,8 +43,7 @@ final readonly class AttemptLimit
     }
 
     /**
-     * The end, as a Unix timestamp, of the window the given time falls in: the
-     * first window boundary after it.
+     * The Unix time the window holding `$now` ends.
      *
      * @param  int  $now
      * @return int

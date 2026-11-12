@@ -7,14 +7,8 @@ namespace SineMacula\Laravel\Sso\Results;
 use Carbon\CarbonImmutable;
 
 /**
- * The checks a verified result and its parts make of what they hold, and the
- * one form an instant is written in and read back from, so a result built at
- * completion and one restored from a handoff code's store are judged the same
- * way; and the one form a provider value takes in a part's redacted JSON.
- *
- * A malformed value at construction is the caller's mistake
- * (`InvalidArgumentException`); a malformed stored value is corrupt storage
- * (`UnexpectedValueException`). No message names the value.
+ * Shared checks and stored forms for a verified result, so built and restored
+ * results are judged the same way. No message names the value.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,7 +20,7 @@ final class StoredValues
     /** @var string The form an instant is stored in: UTC, to the microsecond. */
     public const string INSTANT_FORMAT = 'Y-m-d\TH:i:s.u\Z';
 
-    /** @var string What a part's redacted JSON shows in place of a provider value. */
+    /** @var string Shown in redacted JSON in place of a provider value. */
     public const string REDACTED = '[redacted]';
 
     /**
@@ -35,8 +29,7 @@ final class StoredValues
     private function __construct() {}
 
     /**
-     * What a part's redacted JSON shows of a provider value: `[redacted]` for
-     * one stated, `null` for none.
+     * `[redacted]` for a stated value, `null` for none.
      *
      * @param  mixed  $value
      * @return ?string
@@ -64,8 +57,7 @@ final class StoredValues
     }
 
     /**
-     * Refuse a string, when one is given, that is empty or longer than the
-     * bytes allowed.
+     * Refuse a given string that is empty or longer than the bytes allowed.
      *
      * @param  string  $name
      * @param  ?string  $value
@@ -95,7 +87,7 @@ final class StoredValues
     }
 
     /**
-     * The instant a stored value names, or `null` for `null`.
+     * The instant a stored value names.
      *
      * @param  mixed  $value
      * @return ?\Carbon\CarbonImmutable
@@ -176,8 +168,7 @@ final class StoredValues
     }
 
     /**
-     * Whether the stored boolean under the key is true; anything but a boolean
-     * is corrupt.
+     * The stored boolean under the key; anything else is corrupt.
      *
      * @param  array<array-key, mixed>  $stored
      * @param  string  $key

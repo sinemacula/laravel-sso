@@ -8,13 +8,8 @@ use SineMacula\Laravel\Sso\Evidence\EvidenceRules;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 
 /**
- * The domain each part of a session provenance keeps to, so its stored form
- * stays within `Provenance::MAX_STORED_JSON_BYTES` as JSON whatever it holds
- * (`docs/design/session-provenance.md`): printable ASCII identifiers and raw
- * context class, a tenant id of valid UTF-8, a driver's name, and RFC 8176's
- * registered methods, each once. It refuses a part outside its domain, and
- * gives `capture()` what it keeps of the evidence: the registered methods, and
- * a raw context class only within its domain.
+ * The value domains of a session provenance's parts, which bound its stored
+ * JSON to `Provenance::MAX_STORED_JSON_BYTES`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -23,7 +18,7 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  */
 final class ProvenanceDomain
 {
-    /** @var string The form of a printable ASCII value: one or more characters from space to tilde. */
+    /** @var string One or more printable ASCII characters. */
     private const string PRINTABLE = '/^[\x20-\x7E]+$/D';
 
     /**
@@ -32,8 +27,7 @@ final class ProvenanceDomain
     private function __construct() {}
 
     /**
-     * Refuse a string, or a `null` where one is required, that is not printable
-     * ASCII or is longer than the bytes allowed.
+     * Refuse a value that is not 1 to `$maxBytes` of printable ASCII.
      *
      * @param  string  $name
      * @param  ?string  $value
@@ -55,9 +49,7 @@ final class ProvenanceDomain
     }
 
     /**
-     * Refuse a tenant id that is empty, longer than `Provenance::MAX_ID_LENGTH`
-     * bytes or not valid UTF-8: the application's own opaque id, of any
-     * characters.
+     * Refuse a tenant id that is empty, too long or not valid UTF-8.
      *
      * @param  string  $tenantId
      * @return void
@@ -87,8 +79,7 @@ final class ProvenanceDomain
     }
 
     /**
-     * Refuse methods that are not a list of RFC 8176's registered values, each
-     * at most once.
+     * Refuse anything but a list of distinct RFC 8176 registered methods.
      *
      * @param  array<array-key, mixed>  $methods
      * @return void
@@ -103,8 +94,7 @@ final class ProvenanceDomain
     }
 
     /**
-     * The registered RFC 8176 methods among those given, in their order, each
-     * once.
+     * The distinct RFC 8176 registered methods among those given, in order.
      *
      * @param  array<array-key, mixed>  $methods
      * @return list<string>
@@ -117,8 +107,7 @@ final class ProvenanceDomain
     }
 
     /**
-     * The raw context class as kept: itself when it is printable ASCII of at
-     * most `Provenance::MAX_CONTEXT_LENGTH` bytes, `null` otherwise.
+     * The raw context class if within its domain, else `null`.
      *
      * @param  ?string  $raw
      * @return ?string

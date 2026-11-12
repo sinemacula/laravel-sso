@@ -5,29 +5,15 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Logging;
 
 /**
- * Redacts a log call's context before it reaches a channel (SSO-9.8, SSO-11.9).
- *
- * A value under a redacted key (`LoggingSettings::redactedKeys()`: the built-in
- * `REDACTED_KEYS` plus any configured, matched decoded and normalised, as the
- * sanitiser matches them; see `RedactedKeys`) is `[redacted]`, whatever it
- * holds, an array or an object included. Every other string is sanitised as a
- * diagnostic (`DiagnosticSanitizer`), so a secret under an innocent key is
- * still caught by its shape. Integers, floats, booleans and `null` are kept,
- * and a backed enum is its value.
- *
- * Objects are never dumped, cast or serialised, so nothing a value object keeps
- * private (a request's form, a result's body, a secret) can reach a log: a
- * `Throwable` is reduced to its class, its sanitised message and its code,
- * without its trace or previous exceptions; any other object is
- * `[object <class>]`. Arrays are followed to a depth of `MAX_DEPTH`, the
- * context itself the first; an array deeper than that is `[truncated]`.
+ * Redacts a log context: values under redacted keys are dropped, other strings
+ * sanitised, and objects never dumped, so nothing private reaches a log.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class Redactor
 {
-    /** @var list<string> The keys always redacted, compared normalised (see `LoggingSettings::normalizeKey()`): secrets, verifiers, codes, protocol state, assertions, provider tokens and transport credentials. */
+    /** @var list<string> The keys always redacted, compared normalised. */
     public const array REDACTED_KEYS = [
         'password',
         'secret',
@@ -81,7 +67,7 @@ final readonly class Redactor
     ) {}
 
     /**
-     * The context, redacted.
+     * Redact the context.
      *
      * @param  array<array-key, mixed>  $context
      * @return array<array-key, mixed>
@@ -94,7 +80,7 @@ final readonly class Redactor
     }
 
     /**
-     * The array, redacted, at the depth given.
+     * Redact the array at the depth given.
      *
      * @param  array<array-key, mixed>  $values
      * @param  \SineMacula\Laravel\Sso\Logging\RedactedKeys  $keys
@@ -117,7 +103,7 @@ final readonly class Redactor
     }
 
     /**
-     * The value, redacted, as found in an array at the depth given.
+     * Redact a value found in an array at the depth given.
      *
      * @param  mixed  $value
      * @param  \SineMacula\Laravel\Sso\Logging\RedactedKeys  $keys
@@ -140,8 +126,7 @@ final readonly class Redactor
     }
 
     /**
-     * The exception's class, sanitised message and code, without its trace or
-     * previous exceptions.
+     * The exception's class, sanitised message and code, without its trace.
      *
      * @param  \Throwable  $throwable
      * @return array{class: class-string<\Throwable>, message: string, code: int|string}

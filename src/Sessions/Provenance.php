@@ -12,57 +12,11 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * How a session established through this package began (SSO-9.7, SSO-9.10): an
- * immutable record captured once, inside the transaction of a successful
- * `sign_in` redemption, from what that redemption admitted, and never rebuilt
- * from today's connection, link or evidence policy.
+ * How a session began, captured once at a `sign_in` redemption and never
+ * rebuilt from current state.
  *
- * It holds the connection and the tenant it belonged to at sign-in; the
- * connection's protocol (the registered driver's name); when the provider
- * authenticated the person; the RFC 8176 `amr` values the evidence contract
- * accepted at redemption (none when it accepted nothing), and the raw context
- * class that accepted evidence carried, as SAML `AuthnContextClassRef` for the
- * package's `saml2` driver and as `acr` for every other driver, `oidc` and an
- * application's own alike, as the evidence policy reads them; the exact link
- * admitted and its provenance as it stood under the redemption's locks; the
- * provider's raw session deadline (`SessionNotOnOrAfter`), and the effective
- * cap it set on the application's session, which is `null` when the provider
- * session deadline contract ignored it; and the version of the enforcement the
- * redemption judged under its locks. Never the subject, the issuer, the
- * provider session's id, an email, groups, any mapped attribute or any token.
- *
- * `capture()` builds it from an admitted `sign_in` only: a `link` or a
- * `reauthenticate` redemption, a refused admission, and anything outside the
- * caller's transaction capture nothing, so a re-authentication or a later
- * confirming `link` never yields a value that could overwrite how a session
- * began. `Handoffs\HandoffRedemption` captures it and answers it on the
- * redemption result for the adapter to write with the session, once.
- *
- * Each part keeps to the domain a capture can produce, so the stored form stays
- * small whatever it holds: the connection id, the link id and the enforcement
- * version are printable ASCII, the tenant id valid UTF-8 (it is the
- * application's own opaque id), the protocol a registered driver's name, the
- * methods RFC 8176's registered values, each at most once, and the raw context
- * class printable ASCII of at most `MAX_CONTEXT_LENGTH` bytes. With every part
- * at its limit and every character one that JSON escapes, the stored form
- * encoded as JSON (`json_encode()` with its default escaping) takes 3,364
- * bytes, under `MAX_STORED_JSON_BYTES` (`ProvenanceDomain` holds the rules).
- * `capture()` keeps a raw context class outside that domain as `null`, and
- * keeps only the registered methods of the accepted evidence, so neither ever
- * fails a sign-in.
- *
- * `toArray()` is the stored form, versioned (`version` is `1`), with every key
- * present and `null` where a fact was not stated; instants are UTC strings to
- * the microsecond (`Y-m-d\TH:i:s.u\Z`) and the link's provenance is its enum
- * value. `restore()` reads exactly that form back, refusing any other version,
- * a missing or unknown key, or a malformed value with an
- * `UnexpectedValueException`. `json_encode()` and a dump show the methods only
- * as a count and the raw context only as `[redacted]`, so their output is not
- * the stored form; PHP serialisation is refused, since only the versioned array
- * is a stable form.
- *
- * These are historical facts. They never stand in for a current check of
- * revocation, enforcement or freshness.
+ * Historical facts only; they never replace a current revocation, enforcement
+ * or freshness check.
  *
  * @api
  *
@@ -74,13 +28,13 @@ final readonly class Provenance implements \JsonSerializable
     /** @var int The version of the stored form `toArray()` writes. */
     public const int VERSION = 1;
 
-    /** @var string The one driver whose raw context class is SAML `AuthnContextClassRef`; every other's is `acr`. */
+    /** @var string The driver whose raw context is `AuthnContextClassRef`, not `acr`. */
     public const string SAML2 = Saml2Driver::NAME;
 
     /** @var int The longest tenant id or link id, in bytes. */
     public const int MAX_ID_LENGTH = 255;
 
-    /** @var int The longest connection id, in bytes: the package's own are 26-character ULIDs. */
+    /** @var int The longest connection id, in bytes. */
     public const int MAX_CONNECTION_ID_LENGTH = 64;
 
     /** @var int The longest enforcement version, in bytes. */
@@ -89,7 +43,7 @@ final readonly class Provenance implements \JsonSerializable
     /** @var int The longest raw `acr` or `AuthnContextClassRef` kept, in bytes. */
     public const int MAX_CONTEXT_LENGTH = 255;
 
-    /** @var int The most bytes the stored form takes as JSON with the default escaping, whatever it holds. */
+    /** @var int Upper bound on the stored form as default-escaped JSON. */
     public const int MAX_STORED_JSON_BYTES = 4096;
 
     /** @var string The form an instant is stored in: UTC, to the microsecond. */
@@ -158,34 +112,34 @@ final readonly class Provenance implements \JsonSerializable
         /** The connection's protocol: the registered driver's name. */
         public string $protocol,
 
-        // When the provider authenticated the person; kept in UTC
+        // Converted to UTC
         ?CarbonImmutable $providerAuthenticatedAt = null,
 
-        // The accepted RFC 8176 `amr` values; held wrapped
+        // Held wrapped
         #[\SensitiveParameter]
         array $methods = [],
 
-        // The accepted raw `acr`, of any driver but `saml2`; held wrapped
+        // Held wrapped; any driver but `saml2`
         #[\SensitiveParameter]
         ?string $acr = null,
 
-        // The accepted raw SAML `AuthnContextClassRef`; held wrapped
+        // Held wrapped
         #[\SensitiveParameter]
         ?string $authnContextClassRef = null,
 
         /** The exact link admitted; `null` for an unlinked admission. */
         public ?string $linkId = null,
 
-        /** The admitted link's provenance as it stood under the redemption's locks. */
+        /** The admitted link's provenance under the redemption's locks. */
         public ?LinkOrigin $linkProvenance = null,
 
-        // The provider's raw session deadline; kept in UTC
+        // Converted to UTC
         ?CarbonImmutable $providerSessionDeadline = null,
 
-        // The effective cap on the application's session; kept in UTC
+        // Converted to UTC
         ?CarbonImmutable $sessionNotAfter = null,
 
-        /** The version of the enforcement the redemption judged under its locks. */
+        /** The enforcement version the redemption judged under its locks. */
         public ?string $enforcementVersion = null,
     ) {
         ProvenanceDomain::assertText('connection id', $connectionId, self::MAX_CONNECTION_ID_LENGTH, false);
@@ -206,7 +160,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: what `json_encode()` writes.
+     * A dump shows the redacted JSON form.
      *
      * @return array<string, mixed>
      */
@@ -246,15 +200,8 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * Capture the provenance of the admitted `sign_in`: from the verified
-     * result its code carried, what the admission established under the locks
-     * (the evidence accepted, the link and its provenance, the version of the
-     * enforcement judged), and the effective session cap the code was bound to.
-     * `null` for any other purpose, or an admission that did not pass. Only the
-     * registered RFC 8176 methods of the accepted evidence are kept, each once,
-     * and a raw context class that is not printable ASCII of at most
-     * `MAX_CONTEXT_LENGTH` bytes is kept as `null`: both are data, never a
-     * decision, so neither fails a sign-in.
+     * Capture a passed `sign_in` admission, else `null`; evidence outside the
+     * domain is dropped rather than failing the sign-in.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Handoffs\Redemption\Admission  $admission
@@ -290,8 +237,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * The provenance `toArray()` stored, read back from the adapter's storage;
-     * never from client input.
+     * Restore `toArray()` output from adapter storage, never client input.
      *
      * @param  array<array-key, mixed>  $stored
      * @return self
@@ -331,9 +277,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * The stored form: versioned, with every key, `null` where a fact was not
-     * stated, instants in UTC to the microsecond and the link's provenance as
-     * its enum value.
+     * The versioned stored form, with every key present.
      *
      * @return array<string, mixed>
      */
@@ -368,8 +312,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * The raw `acr` the accepted evidence carried, of any driver but `saml2`,
-     * as data and never an assurance level.
+     * The raw `acr` accepted, as data, never an assurance level.
      *
      * @return ?string
      */
@@ -382,8 +325,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * The raw SAML `AuthnContextClassRef` the accepted evidence carried, as
-     * data and never an assurance level.
+     * The raw `AuthnContextClassRef` accepted, as data, not an assurance level.
      *
      * @return ?string
      */
@@ -396,8 +338,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: the stored form with the methods as a count
-     * and each raw context as `[redacted]` when stated; not a stored form.
+     * The stored form with methods counted and raw contexts redacted.
      *
      * @return array<string, mixed>
      */
@@ -412,8 +353,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * Refuse both raw contexts stated at once, since a session has one
-     * protocol, and a link provenance with no link.
+     * Refuse both raw contexts at once, or a link provenance with no link.
      *
      * @param  ?string  $acr
      * @param  ?string  $authnContextClassRef
@@ -460,8 +400,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * The link provenance a stored value names by its enum value, or `null` for
-     * `null`.
+     * The link provenance a stored enum value names.
      *
      * @param  mixed  $value
      * @return ?\SineMacula\Laravel\Sso\Links\Enums\LinkOrigin
@@ -478,8 +417,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * The instant a stored value names, in its exact stored form, or `null` for
-     * `null`.
+     * The instant a stored value names in its exact stored form.
      *
      * @param  mixed  $value
      * @return ?\Carbon\CarbonImmutable
@@ -506,8 +444,7 @@ final readonly class Provenance implements \JsonSerializable
     }
 
     /**
-     * What the JSON shows of a raw context: `[redacted]` when stated, `null`
-     * when not.
+     * `[redacted]` for a stated value, `null` for none.
      *
      * @param  ?string  $value
      * @return ?string

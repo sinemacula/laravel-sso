@@ -7,62 +7,11 @@ namespace SineMacula\Laravel\Sso\Sessions;
 use Carbon\CarbonImmutable;
 
 /**
- * The package's contribution to the authentication context of a request
- * (SSO-9.7): a pure projection of a session's stored provenance
- * (`Sessions\Provenance`, SSO-9.10) into the keys of the `sso` namespace, so a
- * policy can require "signed in through SSO" without depending on this package.
- * It reads only the provenance it is given, never the current connection, link
- * or evidence policy, and keeps nothing between calls.
+ * Projects a session's provenance into plain `sso.*` values; an absent key
+ * means no SSO provenance, a `null` a fact not stated.
  *
- * A session with no provenance from this package contributes nothing: `[]`,
- * with no `sso.*` key at all. A session with provenance contributes every key,
- * `null` where the fact was not stated, so a key that is absent means "not
- * established through this package" and a `null` means "established through it,
- * without that fact". Every value is plain: a string, a list of strings or
- * `null`, never an object or a type of this package, so the projection can be
- * handed as it is to anything that holds only plain values:
- *
- * - `sso.connection`: the connection's opaque id, a string;
- * - `sso.tenant`: the connection's tenant at sign-in, a string, never the
- *   session's current active tenant;
- * - `sso.protocol`: the registered driver's name, a string (`saml2`, `oidc` or
- *   an application's own driver);
- * - `sso.provider_auth_time`: when the provider authenticated the person, a
- *   UTC instant to the microsecond as asserted, or `null`;
- * - `sso.provider_amr`: the RFC 8176 methods the evidence contract accepted at
- *   sign-in, a list of strings, `[]` when it accepted none;
- * - `sso.provider_acr`: the raw `acr` the accepted evidence carried, for any
- *   driver but `saml2` (OIDC and an application's own), a string or `null`;
- *   data, never an assurance level;
- * - `sso.provider_authn_context_class_ref`: the raw SAML `AuthnContextClassRef`
- *   the accepted evidence carried, for the `saml2` driver, a string or `null`;
- *   data, never an assurance level;
- * - `sso.link`: the exact link admitted, an opaque string, or `null` for an
- *   unlinked admission;
- * - `sso.link_provenance`: that link's provenance as admitted, the backed value
- *   of `Links\Enums\LinkOrigin` (`link_purpose`, `provisioning`,
- *   `verified_domain`, `migration`), or `null` with no link or when the linker
- *   did not state it;
- * - `sso.provider_session_deadline`: the provider's raw session deadline, a
- *   UTC instant to the microsecond or `null`;
- * - `sso.session_not_after`: the effective cap that deadline set on the
- *   application's session, a UTC instant to the second, or `null` when none
- *   was set (the deadline contract ignored it, or there was none);
- * - `sso.enforcement_version`: the version of the enforcement the sign-in's
- *   redemption judged under its locks, an opaque string, or `null`.
- *
- * Each instant is a string in `Provenance::INSTANT_FORMAT`
- * (`Y-m-d\TH:i:s.u\Z`), the form the stored provenance keeps it in: UTC, its
- * microseconds kept exactly, so `of()` of a provenance and `fromStored()` of
- * its `toArray()` answer identical arrays. `Provenance` itself keeps its times
- * as `CarbonImmutable` instants for a caller in PHP.
- *
- * It never contributes the subject, the issuer, the provider session's id, an
- * email, groups, a mapped attribute or a token. The keys, their meanings and
- * their types are stable from 1.0.0. They are historical: how the session
- * began. They never stand in for a current check of revocation, enforcement or
- * freshness, and a re-authentication or a later confirming `link` never changes
- * them.
+ * The keys are historical and stable from 1.0.0; they never replace a current
+ * revocation, enforcement or freshness check.
  *
  * @api
  *
@@ -77,7 +26,7 @@ final class AuthenticationContext
     /** @var string The connection's opaque id. */
     public const string CONNECTION = 'sso.connection';
 
-    /** @var string The connection's tenant at sign-in. */
+    /** @var string The connection's tenant at sign-in, not the active tenant. */
     public const string TENANT = 'sso.tenant';
 
     /** @var string The registered driver's name. */
@@ -107,7 +56,7 @@ final class AuthenticationContext
     /** @var string The effective cap on the application's session. */
     public const string SESSION_NOT_AFTER = 'sso.session_not_after';
 
-    /** @var string The version of the enforcement the sign-in's redemption judged under its locks. */
+    /** @var string The enforcement version the sign-in's redemption judged. */
     public const string ENFORCEMENT_VERSION = 'sso.enforcement_version';
 
     /** @var list<string> Every key a session with provenance contributes, in order. */
@@ -160,10 +109,7 @@ final class AuthenticationContext
     }
 
     /**
-     * The `sso.*` keys of the provenance a session stored in its
-     * `Provenance::toArray()` form; none for a session that stored none
-     * (`null`). A stored form this version did not write is an
-     * `UnexpectedValueException`, never an empty contribution.
+     * The `sso.*` keys of a stored `Provenance::toArray()`; none for `null`.
      *
      * @param  ?array<array-key, mixed>  $stored
      * @return array<string, list<string>|string|null>
@@ -176,8 +122,7 @@ final class AuthenticationContext
     }
 
     /**
-     * The instant, which the provenance holds in UTC, as its stored form keeps
-     * it: a string to the microsecond, or `null` for none.
+     * The UTC instant in the stored form, so `of()` and `fromStored()` agree.
      *
      * @param  ?\Carbon\CarbonImmutable  $instant
      * @return ?string

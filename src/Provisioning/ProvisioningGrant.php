@@ -11,38 +11,11 @@ use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * The single use of the provisioning helper an unlinked `sign_in` result is
- * offered (SSO-8.6), for the listeners of `Events\ResultUnlinked`.
+ * The single use of the provisioning helper offered to an unlinked `sign_in`
+ * result, bound to that exact result object for one dispatch.
  *
- * Only the completion issues one, and registers it to the active dispatch
- * (`Completion\ProvisioningOffer`), so a grant issued anywhere else opens
- * nothing. It is bound to the exact immutable result object, which names its
- * tenant, application and purpose, so it can never be reconstructed from public
- * constructor arguments nor used for another result. `claim()` marks it used
- * before the helper attempts anything, whatever it was presented with, so
- * reentrant calls or a second listener get no second use, and a refused claim
- * or attempt spends it for good, so it cannot be reused for another identity.
- * `close()` runs in the dispatch's `finally`, so it is void once the dispatch
- * returns, or throws.
- *
- * A claim is released, for the same dispatch to claim again, only on evidence
- * that the attempt which made it rolled back as a whole: the helper binds it
- * (`bind()`) to the outermost transaction open on the storage connection whose
- * callbacks apply, which is the helper's own when the listener has none (the
- * testing traits' wrapping transaction is not one), and that transaction's
- * rollback callback marks it. It is claimable again once marked and its
- * transaction is gone from the manager; a commit, a rolled-back savepoint
- * inside it, a commit Laravel 12 fails to report, or a claim never bound leaves
- * it used. So a listener can retry its whole transaction after a deadlock.
- *
- * It proves the authority to provision for this result, not when an application
- * identity was created: that the identity is new remains the adapter's
- * obligation (`docs/design/linking.md`).
- *
- * It holds the result, so it cannot be cloned or (un)serialised; a dump and
- * `json_encode()` show only whether it is still usable; and the result, the
- * request's id and the response's receipt are held wrapped, so `var_export()`
- * and an array cast, which no `__debugInfo()` governs, show none of them.
+ * A claim is released only when its whole outermost transaction rolled back, so
+ * a listener can retry that transaction after a deadlock.
  *
  * @api
  *
@@ -57,16 +30,16 @@ final class ProvisioningGrant implements \JsonSerializable
     /** @var bool Whether a claim holds the grant's one use. */
     private bool $used = false;
 
-    /** @var bool Whether a claim or an attempt was refused, which spends it for good. */
+    /** @var bool Whether a claim or attempt was refused, spending it for good. */
     private bool $refused = false;
 
-    /** @var ?\Illuminate\Database\DatabaseTransactionsManager The manager of the transaction the claim is bound to. */
+    /** @var ?\Illuminate\Database\DatabaseTransactionsManager The manager of the claim's transaction. */
     private ?DatabaseTransactionsManager $manager = null;
 
-    /** @var ?\Illuminate\Database\DatabaseTransactionRecord The outermost transaction the claim runs in, once bound. */
+    /** @var ?\Illuminate\Database\DatabaseTransactionRecord The outermost transaction the claim is bound to. */
     private ?DatabaseTransactionRecord $root = null;
 
-    /** @var bool Whether the transaction the claim is bound to was rolled back. */
+    /** @var bool Whether the claim's transaction was rolled back. */
     private bool $rolledBack = false;
 
     /**
@@ -79,16 +52,16 @@ final class ProvisioningGrant implements \JsonSerializable
      */
     private function __construct(
 
-        /** The exact result the grant is bound to, held wrapped. */
+        /** The exact result the grant is bound to. */
         private readonly \SensitiveParameterValue $result,
 
-        /** The consumed, unfinished request the result answers, held wrapped. */
+        /** The consumed, unfinished request the result answers. */
         private readonly \SensitiveParameterValue $requestId,
 
-        /** The end of the verified response's validity, which no continuation extends. */
+        /** The end of the verified response's validity; nothing extends it. */
         private readonly CarbonImmutable $verifiedUntil,
 
-        /** What lets the request finish across its response's own key rotation, held wrapped. */
+        /** Lets the request finish across its response's own key rotation. */
         private readonly \SensitiveParameterValue $receipt,
     ) {}
 
@@ -105,7 +78,7 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: whether it is still usable, never the result.
+     * A dump shows only whether it is usable.
      *
      * @return array<string, bool>
      */
@@ -145,8 +118,7 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * Issue the grant of a dispatch about to run. Only the completion calls it,
-     * and registers what it answers.
+     * Issue the grant of a dispatch about to run; only the completion calls it.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  string  $requestId
@@ -162,12 +134,8 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * Claim the grant's one use for the exact result, while its dispatch runs:
-     * any claim marks it used, before anything is attempted, and only the
-     * first, of the result it is bound to, answers the consumed, unfinished
-     * request the helper checks under its locks, as does a claim again once the
-     * first's transaction rolled back; every other answers `null`, and spends
-     * the grant for good.
+     * Claim the one use and return the request id; any refused claim returns
+     * `null` and spends the grant for good.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @return ?string
@@ -189,9 +157,8 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * Bind the claim to the outermost transaction open on the connection whose
-     * callbacks apply, so its rollback, and nothing else, releases the claim. A
-     * claim already bound, or with no such transaction open, is left as it is.
+     * Bind an unbound claim to the outermost callback-applicable transaction,
+     * whose rollback alone releases it.
      *
      * @param  \Illuminate\Database\DatabaseTransactionsManager  $manager
      * @param  string  $connection
@@ -237,8 +204,7 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * Whether the grant is bound to exactly this result object. It claims
-     * nothing.
+     * Whether the grant is bound to exactly this result object.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @return bool
@@ -249,7 +215,7 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * Void the grant, whatever its dispatch came to.
+     * Void the grant; called in the dispatch's `finally`.
      *
      * @return void
      */
@@ -259,8 +225,7 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * Whether its dispatch is running, nothing refused it, and its one use is
-     * unclaimed or released by the rollback of the claim's transaction.
+     * Whether the dispatch is open, nothing refused it, and its use is free.
      *
      * @return bool
      */
@@ -270,8 +235,7 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * The end of the verified response's validity, checked before the helper's
-     * write.
+     * The end of the verified response's validity.
      *
      * @return \Carbon\CarbonImmutable
      */
@@ -281,8 +245,7 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * The receipt of the key rotation the response's own validation made, if
-     * any, which the helper judges under its locks.
+     * The receipt of any key rotation the response's validation made.
      *
      * @return ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt
      */
@@ -293,7 +256,7 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: whether it is still usable.
+     * Only whether it is still usable.
      *
      * @return array<string, bool>
      */
@@ -304,9 +267,8 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * The outermost record, of those the manager holds open on the connection
-     * whose callbacks apply, that the innermost one is in, each a level below
-     * the one inside it.
+     * The outermost callback-applicable record enclosing the innermost one on
+     * the connection, stepping only to strictly lower levels.
      *
      * @param  \Illuminate\Database\DatabaseTransactionsManager  $manager
      * @param  string  $connection
@@ -328,9 +290,8 @@ final class ProvisioningGrant implements \JsonSerializable
     }
 
     /**
-     * Whether the claim's transaction was rolled back and its manager no longer
-     * holds it. Its disappearance alone proves nothing: a commit removes it
-     * before running its callbacks.
+     * Whether the claim's transaction rolled back and is gone from its manager;
+     * absence alone proves nothing, as a commit removes it before callbacks.
      *
      * @return bool
      */

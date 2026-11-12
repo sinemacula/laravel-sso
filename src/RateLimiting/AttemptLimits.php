@@ -9,16 +9,8 @@ use SineMacula\Laravel\Sso\Config\IntegerSetting;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
 
 /**
- * The limits on each flow (SSO-11.8), from `sso.rate_limits.<flow>.<scope>`,
- * one for each scope the flow is counted in.
- *
- * Every limit is always on. Each is exactly `['max' => int, 'decay_seconds' =>
- * int]`, each an integer or the canonical decimal string `env()` returns for
- * one, `max` from 1 to 1000000 and `decay_seconds` from 1 to 86400. A limit
- * that is missing, `null` or malformed fails closed with an
- * `InvalidArgumentException` naming its key: nothing falls back to a literal,
- * and nothing turns a limit off. The configuration is read on every call, so
- * nothing is kept from one request to the next (SSO-11.2).
+ * Reads each flow's limits from `sso.rate_limits.<flow>.<scope>`; a missing or
+ * malformed limit fails closed, never falls back.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,7 +19,7 @@ use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
  */
 final readonly class AttemptLimits
 {
-    /** @var string The key, in the configuration, of the limits. */
+    /** @var string The configuration key of the limits. */
     public const string KEY = 'sso.rate_limits';
 
     /**
@@ -42,8 +34,7 @@ final readonly class AttemptLimits
     ) {}
 
     /**
-     * The limits on the flow, keyed by scope, in the order of the flow's
-     * scopes.
+     * The flow's limits, keyed by scope in the flow's order.
      *
      * @param  \SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow  $flow
      * @return array<string, \SineMacula\Laravel\Sso\RateLimiting\AttemptLimit>
@@ -65,8 +56,7 @@ final readonly class AttemptLimits
     }
 
     /**
-     * Check the limits on every flow, failing on the first that is missing or
-     * malformed.
+     * Fail on the first missing or malformed limit of any flow.
      *
      * @return void
      *
@@ -80,8 +70,7 @@ final readonly class AttemptLimits
     }
 
     /**
-     * Build a limit from its configured value: exactly a `max` and a
-     * `decay_seconds`, each an integer within its range.
+     * Build a limit from exactly a `max` and a `decay_seconds` within range.
      *
      * @param  string  $key
      * @param  mixed  $value

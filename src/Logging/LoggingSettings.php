@@ -8,15 +8,8 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The package's logging settings under `sso.logging`: the channel it logs to,
- * how much of an identity provider's diagnostic text it keeps, and the key
- * names whose values are redacted (SSO-5.7, SSO-9.8, SSO-11.9).
- *
- * Every value is read on each call, so nothing is kept across requests
- * (SSO-11.2). A malformed value fails closed with an `InvalidArgumentException`
- * naming its key, never a value that would widen what is logged: the redacted
- * keys are always the built-in ones (`Redactor::REDACTED_KEYS`) plus those
- * configured, and a configured list can add a key but never remove one.
+ * The `sso.logging` settings, read on each call; a malformed value fails
+ * closed, and configured redacted keys can only add to the built-in ones.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,9 +46,7 @@ final readonly class LoggingSettings
     ) {}
 
     /**
-     * The key in the form every redacted key is compared in: lower case, with
-     * everything but `a` to `z` and `0` to `9` removed, so `Client-Secret`,
-     * `CLIENT_SECRET` and `clientSecret` are the same key.
+     * Lower-case alphanumerics, so `Client-Secret` and `clientSecret` match.
      *
      * @param  string  $key
      * @return string
@@ -66,10 +57,8 @@ final readonly class LoggingSettings
     }
 
     /**
-     * The channel the package logs to, or `null` for Laravel's default channel.
-     * An empty string is the default channel too, as an unset
-     * `SSO_LOG_CHANNEL=` gives one. Whether the channel is configured is
-     * `assertChannelConfigured()`'s answer.
+     * The channel, `null` for the default; empty counts as unset, as
+     * `SSO_LOG_CHANNEL=` gives.
      *
      * @return ?string
      *
@@ -87,9 +76,7 @@ final readonly class LoggingSettings
     }
 
     /**
-     * Fail unless the channel is the default one or a channel
-     * `logging.channels` configures. The message names the channel, which is a
-     * name, never a secret.
+     * Fail unless the channel is the default or in `logging.channels`.
      *
      * @return void
      *
@@ -106,8 +93,7 @@ final readonly class LoggingSettings
     }
 
     /**
-     * The most characters of an identity provider's diagnostic text kept, from
-     * 64 to 4096 (512 by default).
+     * The most characters of an identity provider's diagnostic text kept.
      *
      * @return int
      *
@@ -119,10 +105,8 @@ final readonly class LoggingSettings
     }
 
     /**
-     * Every redacted key, normalised: the built-in ones, then those configured
-     * in `sso.logging.redacted_keys`, each once. The configured value must be a
-     * list of strings, each holding a letter or a digit, so none normalises to
-     * an empty key.
+     * The built-in then configured redacted keys, normalised and deduplicated;
+     * a configured key that normalises to empty is refused.
      *
      * @return list<string>
      *
@@ -153,8 +137,7 @@ final readonly class LoggingSettings
     }
 
     /**
-     * Fail on the first setting that is malformed: the channel, which must also
-     * be configured, the diagnostic length and the redacted keys.
+     * Fail on the first malformed setting.
      *
      * @return void
      *
@@ -168,7 +151,7 @@ final readonly class LoggingSettings
     }
 
     /**
-     * The exception a malformed list of redacted keys fails with.
+     * The exception for a malformed list of redacted keys.
      *
      * @return \InvalidArgumentException
      */

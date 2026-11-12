@@ -5,10 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Results\Enums;
 
 /**
- * What the provider session deadline contract answered for a verified result
- * (SSO-6.10, SSO-9.10): whether the identity provider's session deadline
- * (`SessionNotOnOrAfter`) limits the application's session, so the handoff
- * carries it as the session's latest end, or is kept as provenance only.
+ * Whether the identity provider's session deadline limits the application's
+ * session or is kept as provenance only.
  *
  * @api
  *
