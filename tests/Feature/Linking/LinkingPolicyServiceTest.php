@@ -30,13 +30,8 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Feature tests for the helper that turns a connection's linking by a verified
- * domain on and off and changes its settings (SSO-8.8, SSO-2.12, SSO-2.13,
- * SSO-2.2): off by default; on only with an explicit classification; a known
- * shared issuer enforcing `shared` under its claim, which configuration may add
- * to and never downgrade; SAML's attribute and acknowledgement; every bound of
- * what is given; freshness first; and, in one transaction, the linking version
- * raised and reservations deleted, with no trust change and no flow voided.
+ * Feature tests for the helper that changes a connection's linking by a
+ * verified domain.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -201,9 +196,8 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     }
 
     /**
-     * Turning it on writes every setting, raises the linking version by one,
-     * leaves the trust version alone, names what changed, and reports it naming
-     * the actor and no value.
+     * Turning linking on writes every setting and raises only the linking
+     * version.
      *
      * @return void
      */
@@ -252,9 +246,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     }
 
     /**
-     * A change deletes the open reservations and raises both counters, with no
-     * trust change and nothing voided, so the code goes on to meet
-     * `reservation_invalid`, and no `ConnectionDisabled` is reported.
+     * A change deletes open reservations and voids no flow.
      *
      * @return void
      */
@@ -432,9 +424,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     }
 
     /**
-     * An acknowledgement stands for what it was given about: a classification
-     * changed without it clears it, and given with the change it is recorded
-     * anew; taking it away clears it.
+     * An acknowledgement is cleared when the classification changes without it.
      *
      * @return void
      */
@@ -698,10 +688,7 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
     }
 
     /**
-     * Configuration cannot change the claim of an issuer a preset names, in
-     * either protocol: the preset's claim still stands, and the claim the
-     * configuration named is refused. An issuer no preset of the protocol
-     * names, even one shaped like another protocol's, is the configuration's.
+     * Configuration cannot change a preset issuer's claim.
      *
      * @return void
      */

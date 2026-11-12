@@ -46,14 +46,8 @@ use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Pins how a `link` is admitted (`docs/design/linking.md`, SSO-9.9, decision
- * D5): `admit()` inside the caller's transaction, and the standalone
- * `redeem()`, which a `link` may take since it writes no session, answering
- * `isAdmitted()` false; a committed refusal spends the code and a rollback does
- * not; an exception rolls back and leaves the code to be tried again; and an
- * adapter that redeems its own codes reaches the same rules through
- * `HandoffRecheck` with a `HandoffBinding`, in the frozen order, failing closed
- * on a binding it cannot compare.
+ * Feature tests of how a `link` is admitted: through `admit()`, standalone, and
+ * through an adapter's recheck.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -82,9 +76,7 @@ final class LinkAdmissionTest extends LinkingTestCase
     }
 
     /**
-     * A `link` code may be redeemed standalone, since it writes no session: it
-     * creates the link and commits before it answers, and the result says it
-     * was not admitted, so it must never lead to a session.
+     * A `link` code redeems standalone, creates the link and is not admitted.
      *
      * @return void
      */
@@ -186,9 +178,7 @@ final class LinkAdmissionTest extends LinkingTestCase
     }
 
     /**
-     * The standalone path needs the caller just as `admit()` does: a code and
-     * its verifier alone are refused, the refusal commits, and the code is
-     * spent.
+     * The standalone path refuses a code without the caller, and spends it.
      *
      * @return void
      */
@@ -210,9 +200,7 @@ final class LinkAdmissionTest extends LinkingTestCase
     }
 
     /**
-     * A refusal that commits spends the code, inside the caller's transaction
-     * too: a retry with everything put right is `replayed`, so the client must
-     * start again.
+     * A committed refusal spends the code, so a corrected retry is `replayed`.
      *
      * @return void
      */
@@ -276,9 +264,8 @@ final class LinkAdmissionTest extends LinkingTestCase
     }
 
     /**
-     * An eligibility contract that throws is a server error: it propagates,
-     * rolls the redemption back with no refusal reported, and the code is not
-     * spent, through the standalone path as through `admit()`.
+     * A throwing eligibility contract rolls back and leaves the code unspent,
+     * on both paths.
      *
      * @return void
      *
@@ -325,10 +312,8 @@ final class LinkAdmissionTest extends LinkingTestCase
     }
 
     /**
-     * An adapter that redeems its own codes links through the recheck: its
-     * lock, then `admit()` with a binding of what it stored, answering the
-     * whole admission; the link commits with its transaction and reports the
-     * flow.
+     * An adapter links through the recheck, committing with its own
+     * transaction.
      *
      * @return void
      */
@@ -512,9 +497,8 @@ final class LinkAdmissionTest extends LinkingTestCase
     }
 
     /**
-     * A link as `judge()` read it, the link as `admit()` read it after, and
-     * what the admission comes to, with nothing written: a linker that does not
-     * hold the redemption's locks can never make it write what was not judged.
+     * Rows of `[link at judge(), link at admit(), outcome]`: a link moved
+     * between them writes nothing.
      *
      * @return iterable<string, array{
      *     0: \SineMacula\Laravel\Sso\Links\LinkResolution,

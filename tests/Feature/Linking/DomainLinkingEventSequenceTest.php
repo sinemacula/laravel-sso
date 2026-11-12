@@ -35,12 +35,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * The events each path of linking by a verified domain reports, in order and in
- * whole (SSO-8.8, SSO-10.3 to SSO-10.5): a reservation; an activation, whose
- * events name the identity, the link, the application and the request's public
- * reference and never the email; a refusal at redemption; a suspension; a
- * settings change, with nothing voided; a widening; and nothing at all of a
- * redemption the caller's transaction rolls back.
+ * Event sequence tests for each path of linking by a verified domain.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -77,10 +72,8 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * An activation reports the link created by a verified domain, its
-     * activation, then the redemption, each naming the identity, the
-     * application and the request's public reference, and the activation the
-     * link; none carries the email.
+     * An activation reports the link created, its activation and the
+     * redemption, none carrying the email.
      *
      * @return void
      */
@@ -169,9 +162,8 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * A settings change reports `ConnectionUpdated` alone: no
-     * `ConnectionDisabled` and nothing about any flow, whose request and code
-     * are not voided.
+     * A settings change reports `ConnectionUpdated` alone and voids no request
+     * or code.
      *
      * @return void
      */
@@ -229,9 +221,8 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * A redemption the caller's transaction rolls back reports nothing and
-     * undoes both the consumption and the activation, so the code can be
-     * redeemed.
+     * A redemption the caller rolls back reports nothing and can be redeemed
+     * again.
      *
      * @return void
      *

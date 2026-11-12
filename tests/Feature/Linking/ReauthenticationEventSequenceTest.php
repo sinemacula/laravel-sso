@@ -46,13 +46,8 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Pins what a `reauthenticate` flow reports, each sequence and every context
- * whole (SSO-5.10, SSO-9.5, SSO-10.1, SSO-10.2, SSO-10.4): started, verified,
- * issued, redeemed and completed; `ReauthenticationCompleted` only once the
- * transaction that wrote the renewal commits, and never when it rolls back
- * (SSO-10.5); a refusal at completion and at redemption; and that no context
- * carries a subject, an email, an authentication context, the code or the
- * verifier.
+ * Event sequence tests for a `reauthenticate` flow; `ReauthenticationCompleted`
+ * comes only once the renewal commits.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -374,9 +369,8 @@ final class ReauthenticationEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * A refusal at redemption reports exactly one failure of the redemption
-     * flow after what completion reported, naming the flow's identity and
-     * session, and no redemption or completion.
+     * A refusal at redemption reports exactly one failure, naming the identity
+     * and session.
      *
      * @param  string  $change
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -457,8 +451,7 @@ final class ReauthenticationEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * No event of a `reauthenticate` flow, serialised whole or read through its
-     * context, carries the subject, the email, the authentication context, the
+     * No event carries the subject, the email, the authentication context, the
      * code or the verifier.
      *
      * @return void

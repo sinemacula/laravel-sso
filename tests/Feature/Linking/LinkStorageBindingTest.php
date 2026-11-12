@@ -40,12 +40,7 @@ use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Links\FixedLinker;
 
 /**
- * Feature tests of the explicit link-storage capability (SSO-8.8,
- * `docs/design/linking.md`): whatever writes a link validates the configured
- * pairing and refuses before writing anything when the bound linker is not
- * backed by it, with a `LogicException` naming the problem; a boot check
- * reports it while linking by a verified domain is on; and a wrapper that
- * delegates to the store does everything the store does.
+ * Feature tests of the link-storage capability a linker needs to write links.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,9 +70,8 @@ final class LinkStorageBindingTest extends LinkingTestCase
     }
 
     /**
-     * The store and a wrapper are storage, and answered as bound; the default
-     * and a linker that only resolves are none, and the problem names the
-     * linker, the contract and the way out.
+     * The store and a wrapper count as storage; a linker that only resolves
+     * does not.
      *
      * @return void
      */
@@ -115,9 +109,7 @@ final class LinkStorageBindingTest extends LinkingTestCase
     }
 
     /**
-     * While the feature is on the boot check reports a linker with no storage,
-     * under the check's own subject; with storage, a wrapper or the feature off
-     * there is nothing to report.
+     * The boot check reports a linker with no storage while the feature is on.
      *
      * @return void
      */
@@ -202,9 +194,8 @@ final class LinkStorageBindingTest extends LinkingTestCase
     }
 
     /**
-     * A `link` redeemed over a linker with no storage is refused, with nothing
-     * written and the code unconsumed; the same code goes through once it is
-     * put right.
+     * A `link` over a linker with no storage is refused with the code
+     * unconsumed.
      *
      * @return void
      *
@@ -263,10 +254,8 @@ final class LinkStorageBindingTest extends LinkingTestCase
     }
 
     /**
-     * The provisioning helper refuses over a linker with no storage before it
-     * claims the grant or writes anything; the listener catches the exception,
-     * so the completion goes on, finds the subject still unlinked and ends
-     * `unlinked`, with nothing linked.
+     * The provisioning helper refuses a linker with no storage before claiming
+     * the grant.
      *
      * @return void
      */

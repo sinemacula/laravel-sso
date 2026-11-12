@@ -66,18 +66,9 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Attacks a `reauthenticate` through its public paths (SSO-5.10, SSO-9.5,
- * SSO-9.9, `docs/design/linking.md`): it accepts only the exact link that
- * established the session, compared by id; the identity, the session, the
- * application and the connection must all match, with the session's row locked
- * through the write; what is renewed is the authentication time and evidence
- * newly accepted, and nothing else; and it never acknowledges a sign-in,
- * activates a reservation or creates a link.
- *
- * Two session contracts stand in for the application's. `RecordingSessions`
- * records the renewal it is asked for; the second, built here over a table on
- * the storage connection, compares every value as an implementation must,
- * records every call, and lets a rollback undo the renewal.
+ * Adversarial tests of a `reauthenticate` through its public paths.
+ * `RecordingSessions` and a table-backed contract stand in for the
+ * application's sessions.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -155,9 +146,8 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * A reauthentication through the session's own link renews the session with
-     * the provider's time and no evidence, answers the identity, the session
-     * and the link, and is admitted; the code is spent.
+     * The session's own link renews it with the provider's time, and the code
+     * is spent.
      *
      * @return void
      */
@@ -187,10 +177,8 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * The start asks `standing()` alone, outside any transaction; redemption
-     * asks `lockedStanding()` with exactly the identity, the session, the
-     * application, the connection and the link, then renews, each inside the
-     * caller's transaction and the redemption's savepoint.
+     * The contract is asked with exactly the identity, session, application,
+     * connection and link.
      *
      * @return void
      */
@@ -220,9 +208,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * Only the authentication time changes: the lifetime, the refresh token,
-     * the sign-in provenance, the binding and earlier evidence are as they
-     * were.
+     * Only the authentication time changes.
      *
      * @return void
      */
@@ -246,9 +232,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * Evidence newly accepted is asked of the policy at redemption, for the
-     * result and the locked connection at the clock's now, and handed to the
-     * renewal and on the answer; earlier evidence is not asked about.
+     * Evidence accepted at redemption is passed to the renewal.
      *
      * @return void
      */
@@ -405,9 +389,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * A second subject linked to the same identity, where the limit allows two,
-     * completes as the identity's; redemption refuses it as not the session's
-     * bound link, and the session's own subject then renews it.
+     * A second link of the identity is refused as not the session's bound link.
      *
      * @return void
      */
@@ -467,9 +449,8 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * A link deleted and made again for the same identity between completion
-     * and redemption is another link: `identity_mismatch`, compared by id, even
-     * when the session has since been bound to the new link.
+     * A link deleted and made again for the same identity is
+     * `identity_mismatch`, by id.
      *
      * @param  bool  $rebound
      * @return void
@@ -537,8 +518,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
 
     /**
      * A link suspended between completion and redemption is `link_suspended`,
-     * by a resolution finding the scope widened or by the principal change
-     * itself, with no renewal and the session never asked about.
+     * with no renewal.
      *
      * @param  bool  $byWidening
      * @return void
@@ -567,9 +547,8 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * A result resolving to another identity, or to nothing, is refused at
-     * completion, `identity_mismatch`, with no code, whatever the application
-     * allows of an unlinked handoff.
+     * A result of another identity, or of none, is `identity_mismatch` at
+     * completion.
      *
      * @return void
      */
@@ -651,9 +630,8 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * A session that is no longer active, of the application and the
-     * connection, and bound to exactly the link is `session_ineligible`: the
-     * code stays spent, and nothing is renewed.
+     * An ineligible session is `session_ineligible`, the code spent and nothing
+     * renewed.
      *
      * @param  ?array<string, mixed>  $change
      * @return void
@@ -684,9 +662,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * A code renews the session it was started on and no other, and names it,
-     * so the redeemer can tell it from its own; a code for a session gone never
-     * falls back on another of the identity's.
+     * A code renews only the session it was started on.
      *
      * @return void
      */
@@ -1024,9 +1000,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * A link removed since completion and reserved by another flow is refused
-     * at redemption, the reservation left as it was: a `reauthenticate` code
-     * holds none to discard, and no link is activated for it.
+     * A reservation found at redemption is neither activated nor removed.
      *
      * @return void
      */
@@ -1056,9 +1030,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * A stored code whose result states no authentication time, which the
-     * completion would never have issued, is a refusal and not an error: the
-     * code stays spent, and the contract is not asked.
+     * A stored result with no authentication time is a refusal, not an error.
      *
      * @return void
      *
@@ -1095,11 +1067,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * An adapter redeeming its own code through the recheck is held to the same
-     * rules: a result with no time is `authentication_expired` before the
-     * session is asked about; a binding naming no identity, or no link, is
-     * `identity_mismatch`; and a binding naming no session is that adapter's
-     * mistake.
+     * An adapter redeeming through the recheck is held to the same rules.
      *
      * @return void
      *
@@ -1225,9 +1193,7 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * The completion's rules fail closed: a state with nothing resolved is
-     * `identity_mismatch`, and a link of the identity with no result to judge
-     * is `authentication_expired`.
+     * The rules fail closed on a state with no resolution or no result.
      *
      * @return void
      *
@@ -1508,9 +1474,8 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     }
 
     /**
-     * A session contract over the table, comparing every value as an
-     * implementation must, with a locking read, and recording each call with
-     * the transaction level it ran at.
+     * A session contract over the table that locks, compares every value and
+     * records each call's transaction level.
      *
      * @return object{calls: list<array<int, mixed>>, failing: ?string, failure: ?\Throwable}&\SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions
      */

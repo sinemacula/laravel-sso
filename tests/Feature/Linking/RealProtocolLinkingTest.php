@@ -40,14 +40,8 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use Tests\Fixtures\Clients;
 
 /**
- * Linking by a verified domain through the real drivers (SSO-8.8, SSO-7.7): a
- * signed ID token and a signed assertion, through the public callback and the
- * assertion consumer service, to a reservation, and through `admit()` to an
- * active link of verified domain provenance. The other tests of the machine
- * verify through a driver that answers what the test sets, and the protocols'
- * own tests stop at the claims; this is what joins them: the result's issuer,
- * its email's source and its organisation are what the protocol's rules accept,
- * at completion and again as they are restored at redemption.
+ * Linking by a verified domain through the real OIDC and SAML drivers, from
+ * completion to `admit()`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -95,9 +89,8 @@ final class RealProtocolLinkingTest extends LinkingTestCase
     }
 
     /**
-     * A shared issuer's ID token whose `hd` is exactly the organisation's
-     * reserves, with what it asserted as the binding, and activates at
-     * redemption from the result the code restores.
+     * A shared issuer's ID token with the organisation's `hd` reserves and
+     * activates.
      *
      * @return void
      *
@@ -174,9 +167,8 @@ final class RealProtocolLinkingTest extends LinkingTestCase
     }
 
     /**
-     * An assertion's named attribute, with the administrator's acknowledgement,
-     * reserves and activates; a shared issuer's organisation comes from the
-     * attribute the connection names.
+     * A SAML attribute with the administrator's acknowledgement reserves and
+     * activates.
      *
      * @param  array<string, mixed>  $policy
      * @param  array<string, list<string>>  $attributes
@@ -248,9 +240,8 @@ final class RealProtocolLinkingTest extends LinkingTestCase
     }
 
     /**
-     * Assert the redemption activates the reservation: the same row, active, of
-     * verified domain provenance, with its binding cleared, resolved to the
-     * person.
+     * Assert the redemption activated the reservation as a verified domain link
+     * to the person.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $completion
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
@@ -328,9 +319,8 @@ final class RealProtocolLinkingTest extends LinkingTestCase
     }
 
     /**
-     * A SAML connection trusting the identity provider's certificate, reading
-     * the email from its named attribute, acknowledged unless the policy says
-     * otherwise, and holding the verified claim.
+     * A SAML connection reading the email from its named attribute,
+     * acknowledged unless the policy says otherwise.
      *
      * @param  array<string, mixed>  $policy
      * @return \SineMacula\Laravel\Sso\Models\Connection

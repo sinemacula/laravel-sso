@@ -40,12 +40,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Feature tests of the helper that sets a connection's evidence policy
- * (SSO-8.7, SSO-2.12): freshness first; what is written, by name alone; no
- * trust, linking or link change and nothing in flight touched; a change of
- * nothing, whatever a map's key order; each refusal, with no event; the shape
- * of what is given, per protocol; and the one lock it takes, on the row a
- * redemption reads the policy from under that same lock.
+ * Feature tests of the helper that sets a connection's evidence policy.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -112,9 +107,8 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     }
 
     /**
-     * A change writes the policy, with freshness asked by its name, names what
-     * changed in sorted order, leaves every version alone, and reports
-     * `ConnectionUpdated` once, naming the actor and no value.
+     * A change writes the policy, names what changed in sorted order and
+     * reports `ConnectionUpdated` once.
      *
      * @return void
      */
@@ -270,9 +264,8 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     }
 
     /**
-     * Nothing in flight is touched: a request and a code stay unvoided, a
-     * reservation stands, and the code goes on to be judged by what was
-     * written.
+     * A change voids no request, code or reservation, and the code is judged by
+     * the new policy.
      *
      * @return void
      */
@@ -661,10 +654,8 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     }
 
     /**
-     * The one lock taken is the connection's row, whichever way the call ends,
-     * and it is the row a redemption locks first and reads the policy from: so
-     * the two serialise there, and the service can never invert the frozen lock
-     * order, since it holds no other.
+     * The only lock taken is the connection's row, the first a redemption
+     * locks.
      *
      * @return void
      */

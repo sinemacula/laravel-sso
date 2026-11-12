@@ -58,18 +58,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * What every test of the linking state machine stands on
- * (`docs/design/linking.md`): the public flow from start, through completion,
- * to redemption, over a driver that verifies what the test sets; the package's
- * link store bound as the linker; a connection with linking by a verified
- * domain on and classified single organisation; its verified claim of
- * `example.com`, last checked now; and scripted contracts that accept the
- * person: a sole email match, a scope within the tenant, a membership accepted
- * a day before the domain's verification, and a caller authenticated apart from
- * any verified domain link. A test withdraws one condition at a time.
- *
- * It is the test infrastructure BL-60 to BL-64 build their adversarial tests
- * on.
+ * Base case for the linking state machine: every condition holds, and a test
+ * withdraws one.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -242,9 +232,8 @@ abstract class LinkingTestCase extends TestCase
     }
 
     /**
-     * Redeem the completion's code with the start's verifier, inside the
-     * caller's transaction, as a session-admitting redeemer does, for the
-     * caller given; an identity alone is a caller with no session.
+     * Redeem the code inside the caller's transaction; an identity alone is a
+     * caller with no session.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $completion
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start

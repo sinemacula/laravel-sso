@@ -43,12 +43,8 @@ use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Pins what a `link` flow reports, each sequence and every context whole
- * (SSO-5.11, SSO-8.8, SSO-10.1, SSO-10.2, SSO-10.4): creating a link,
- * confirming one, the idempotent case, a refusal at completion and at
- * redemption; and that nothing is reported when the caller's transaction rolls
- * back (SSO-10.5). No event carries the subject, the email, the code or the
- * verifier, and a refusal never names the identity that holds the subject.
+ * Event sequence tests for a `link` flow, whose events carry no subject, email,
+ * code or verifier.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -144,9 +140,8 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * A subject whose scope has widened: completion latches the suspension and
-     * reports it, naming only the connection and the holder; the redemption
-     * reports no second one, and confirms it.
+     * Completion latches and reports a widened scope's suspension, and the
+     * redemption confirms it.
      *
      * @return void
      */
@@ -279,9 +274,8 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * A refusal at redemption reports exactly one failure of the redemption
-     * flow, after what completion reported, and names the bound identity rather
-     * than the caller.
+     * A refusal at redemption reports one failure naming the bound identity,
+     * not the caller.
      *
      * @return void
      */
@@ -309,9 +303,8 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * The link of another identity, found outside the tenant at redemption, is
-     * suspended and reported as that identity's own; the refusal still names
-     * only the bound identity, and the suspension stands.
+     * Another identity's link suspended at redemption is reported as its own,
+     * and the refusal names the bound identity.
      *
      * @return void
      */
@@ -334,9 +327,7 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * Nothing a redemption reports survives the caller's rollback, a created
-     * link's event included; the link and the consumption roll back with it,
-     * and a retry of the whole transaction reports it once.
+     * Nothing a redemption reports survives the caller's rollback.
      *
      * @return void
      */
@@ -464,9 +455,8 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * Assert the flow was verified and refused at completion for the reason:
-     * started, verified, one failure of the callback flow, each with the whole
-     * context of the flow.
+     * Assert the flow was started, verified and refused at completion for the
+     * reason.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start

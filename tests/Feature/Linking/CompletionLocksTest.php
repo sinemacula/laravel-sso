@@ -23,10 +23,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Feature tests for what a completion's transaction locks (`flows.md`): what a
- * consumed completion must hold to lock anything, and exactly when the claim of
- * the linking email's domain is among the locks: a `sign_in` going on, with
- * linking on and an email to look up.
+ * Feature tests for what a completion's transaction locks.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

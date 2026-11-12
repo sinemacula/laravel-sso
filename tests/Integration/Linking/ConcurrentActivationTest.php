@@ -36,21 +36,9 @@ use Tests\Feature\Linking\LinkingTestCase;
 use Tests\Fixtures\Clients;
 
 /**
- * Races an activation across processes, each with its own database connection,
- * on PostgreSQL and MySQL (SSO-8.8, SSO-9.2, SSO-11.5), with signal files that
- * fail loudly on a timeout, never timing: against a domain's lapse, a linking
- * settings change and a principal widening, in both orders; and two redemptions
- * of one code.
- *
- * Each racer runs plainly, and inside a `REPEATABLE READ` transaction of its
- * own that read the connection and its links before the race began. However
- * they interleave, no reservation survives a committed withdrawal, an
- * activation that loses leaves no link, and a widening after an activation
- * leaves it suspended. A racer whose snapshot predates the other's commit fails
- * to serialise on PostgreSQL (SQLSTATE `40001`), which raising `links_version`
- * guarantees, is accepted only there, and changed nothing.
- *
- * Skipped on SQLite and without `pcntl`.
+ * Races an activation across processes; skipped on SQLite and without `pcntl`.
+ * A stale snapshot may fail to serialise (`40001`), accepted on PostgreSQL
+ * only.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -93,9 +81,8 @@ final class ConcurrentActivationTest extends LinkingTestCase
     private array $reported = [];
 
     /**
-     * Bind fresh authentication, a resolver and a limiter that allows every
-     * attempt, whose counters a racer's transaction would otherwise hold
-     * locked, and make the directory the processes report in.
+     * Bind fresh authentication, a resolver and an allow-all limiter, whose
+     * counters a racer would otherwise hold locked.
      *
      * @return void
      *
@@ -325,9 +312,8 @@ final class ConcurrentActivationTest extends LinkingTestCase
     }
 
     /**
-     * Make the reservation, run the activation, then the change, and assert the
-     * link stands as given, or that a change whose snapshot predates it failed
-     * to serialise and left it active.
+     * Reserve, activate, then run the change, and assert the link ends as
+     * given.
      *
      * @param  \Closure(): string  $change
      * @param  bool  $activationInTransaction
@@ -367,9 +353,8 @@ final class ConcurrentActivationTest extends LinkingTestCase
     }
 
     /**
-     * Assert the linking version moved by exactly one when the change committed
-     * and not at all when it failed to serialise, so a change of nothing can
-     * never pass as a change.
+     * Assert the linking version moved by one if the change committed, and not
+     * if it failed to serialise.
      *
      * @return void
      */
@@ -486,9 +471,7 @@ final class ConcurrentActivationTest extends LinkingTestCase
     }
 
     /**
-     * Fork a process for each racer, on a connection of its own, plain or
-     * inside a transaction of its own, and collect what each reported, in
-     * order.
+     * Fork a process per racer and collect what each reported, in order.
      *
      * @param  list<array{0: \Closure(): string, 1: bool}>  $racers
      * @return list<string>
@@ -526,11 +509,8 @@ final class ConcurrentActivationTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: open a connection of its own; inside a transaction,
-     * open one at `REPEATABLE READ` and read the connection and its links;
-     * signal it has read; do its work; commit; report; signal it is done, once
-     * its work is committed or refused; and end without running the parent's
-     * shutdown.
+     * Run the work in a forked process on its own connection, optionally in a
+     * `REPEATABLE READ` transaction that read first.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work

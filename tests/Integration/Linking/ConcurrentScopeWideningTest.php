@@ -36,43 +36,9 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Races a principal widening across processes, each with its own database
- * connection, on PostgreSQL and MySQL (SSO-8.8, `docs/design/linking.md`),
- * against a reservation and against an activation, in both orders, each
- * overlapping: whichever takes the identity's guard first, the other waits on
- * it, so a racing reservation or activation can never slip past the change.
- *
- * The order is fixed by signal files, never by time, and a barrier that times
- * out fails its racer loudly. A racer that must be waiting on the guard signals
- * just before it sends the guard's statement (a `beforeExecuting` callback), so
- * the other goes on only once the two overlap on the guard; a racer that never
- * takes the guard never signals, and the other's barrier fails the test.
- *
- * The principal is a file the racers' `PrincipalScope` answers `outside_tenant`
- * from once it exists. A widening holding the guard writes it only once the
- * other racer is about to take the guard, and then commits, so a reservation or
- * an activation that judged the scope before taking the guard, or took none,
- * would judge it `within_tenant` and slip past. That contract is also where a
- * reservation or an activation holding the guard stops, with its locks held,
- * until the widening is about to take the guard.
- *
- * The widening runs plainly, and inside a `REPEATABLE READ` transaction of its
- * own that read the connection and its links before the race began, and each
- * row pins its exact outcome. Whose snapshot predates the other's commit
- * either:
- *
- * - fails to serialise on the guard on PostgreSQL (SQLSTATE `40001`, walked
- *   through `getPrevious()`), expected only there and only in a transaction; or
- * - on MySQL, where a plain read answers from that snapshot, finds under the
- *   lock a row in a connection it did not lock, and is `LinkCandidatesChanged`,
- *   expected only there and only in a transaction, when the snapshot missed the
- *   row's connection altogether.
- *
- * Either changed nothing, and a retry of the whole transaction reaches the row.
- *
- * A completion is not run inside a caller's transaction: its consumption
- * commits before validation, by design. An activation runs plainly, and inside
- * such a transaction of its own. Skipped on SQLite and without `pcntl`.
+ * Races a principal widening against a reservation and an activation; skipped
+ * on SQLite and without `pcntl`. Whichever takes the identity's guard first,
+ * the other waits on it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -113,9 +79,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     private string $outcomes;
 
     /**
-     * Bind fresh authentication, a limiter that allows every attempt, and the
-     * principal scope that reads the file, and make the directory the processes
-     * report in.
+     * Bind fresh authentication, an allow-all limiter and a principal scope
+     * that reads the file.
      *
      * @return void
      *
@@ -166,11 +131,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[whether the widening runs inside its own transaction that read
-     * first, how it ends on PostgreSQL, how it ends on MySQL]`, a reservation
-     * holding the guard: in a transaction, its snapshot misses the reservation
-     * and its connection, so on PostgreSQL its guard fails to serialise, and on
-     * MySQL its locking read finds a row in a connection it did not lock.
+     * Rows of `[in a transaction, PostgreSQL outcome, MySQL outcome]` of a
+     * widening after a reservation.
      *
      * @return iterable<string, array{0: bool, 1: string, 2: string}>
      */
@@ -181,10 +143,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A reservation holding the guard: the widening waits for it, then finds
-     * the row and deletes it, so no reservation survives; or, exactly where the
-     * row expects it, it failed to serialise or was refused for a retry, which
-     * reaches it.
+     * A widening after a reservation holding the guard deletes it, or fails for
+     * a retry.
      *
      * @param  bool  $inTransaction
      * @param  string  $onPostgres
@@ -226,11 +186,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A widening holding the guard: the reservation reaches the guard while the
-     * widening holds it, and only then is the principal written and the
-     * widening committed, so the reservation judges the principal under the
-     * guard and reserves nothing. A reservation that judged before the guard,
-     * or took none, would reserve, or never signal and time the widening out.
+     * A reservation waiting on a widening's guard judges the new principal and
+     * reserves nothing.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -259,12 +216,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[whether the activation runs in its own transaction that read
-     * first, whether the widening does, how the widening ends on PostgreSQL,
-     * how on MySQL]`, an activation holding the guard: in a transaction, the
-     * widening's snapshot holds the reservation, so on PostgreSQL its guard,
-     * written since, fails to serialise, and on MySQL it locks the
-     * reservation's connection and finds the link active.
+     * Rows of `[activation in a transaction, widening in a transaction,
+     * PostgreSQL outcome, MySQL outcome]`.
      *
      * @return iterable<string, array{0: bool, 1: bool, 2: string, 3: string}>
      */
@@ -276,9 +229,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * An activation holding the guard: the widening waits for it, then finds
-     * the link it made and suspends it; or, exactly where the row expects it,
-     * it failed to serialise, and a retry reaches it.
+     * A widening after an activation holding the guard suspends the link, or
+     * fails for a retry.
      *
      * @param  bool  $activationInTransaction
      * @param  bool  $wideningInTransaction
@@ -324,11 +276,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A widening holding the guard: the activation reaches the guard while the
-     * widening holds it, and only then is the principal written and the
-     * widening committed, so the activation finds no reservation and activates
-     * nothing, or it failed to serialise on the guard. One that took no guard
-     * never signals, and times the widening out.
+     * An activation waiting on a widening's guard activates nothing.
      *
      * @param  bool  $activationInTransaction
      * @param  bool  $wideningInTransaction
@@ -362,12 +310,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A widening of two identities against a reservation of one of them that
-     * holds its guard and has yet to lock the connection: the widening takes
-     * every guard before it locks a connection, so it waits on the guard while
-     * the reservation locks the connection the other identity's link is in, and
-     * the two never deadlock. Guarding one identity at a time would lock that
-     * connection first, and the database would abort one of them.
+     * A two-identity widening takes every guard before any connection, so it
+     * never deadlocks.
      *
      * @return void
      */
@@ -455,10 +399,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Report the principal as a principal mutation does, once the racer holding
-     * the guard has stopped in its scope contract: signal just before sending
-     * the guard's statement, so that racer goes on only once this one is about
-     * to wait on the guard.
+     * Report the principal, signalling just before taking the guard the stopped
+     * racer holds.
      *
      * @return string
      */
@@ -472,9 +414,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Report the principal as a principal mutation does, holding the guard:
-     * signal that it holds it, wait until the other is about to take it, and
-     * only then write the principal and commit.
+     * Report the principal holding the guard, writing it only once the other is
+     * about to wait.
      *
      * @param  string  $signal
      * @return string
@@ -491,9 +432,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Touch the signal just before this process sends the statement that takes
-     * an identity's guard, the given identity's when one is, on its own
-     * connection.
+     * Touch the signal just before this process takes an identity's guard.
      *
      * @param  string  $signal
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -710,9 +649,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Fork a process for each racer, on a connection of its own, plain or
-     * inside a transaction of its own, and collect what each reported, in
-     * order.
+     * Fork a process per racer and collect what each reported, in order.
      *
      * @param  list<array{0: \Closure(): string, 1: bool}>  $racers
      * @return list<string>
@@ -748,10 +685,8 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: open a connection of its own; inside a transaction,
-     * open one at `REPEATABLE READ` and read the connection and its links;
-     * signal it has read; do its work; commit; report; and end without running
-     * the parent's shutdown, which rolls back anything refused for a retry.
+     * Run the work in a forked process on its own connection, optionally in a
+     * `REPEATABLE READ` transaction that read first.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work

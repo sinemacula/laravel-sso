@@ -79,14 +79,8 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Feature tests of the frozen state machine (`docs/design/linking.md`), through
- * the public completion and redemption paths: the reserved finish and its
- * activation; the provisioning boundary, with what it commits, the grant it
- * offers and the final continuation; a suspended link and another flow's
- * reservation, neither of which is an unlinked subject; a confirming `link`;
- * the exact-link `reauthenticate`; a refusal that cleans its reservation up; a
- * withdrawal; and the standalone path that refuses what must commit with a
- * session. The adversarial and race tests of each are BL-60 to BL-64's.
+ * Feature tests of the linking state machine through the public completion and
+ * redemption.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -117,11 +111,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 final class StateMachineCompletionPipelineTest extends LinkingTestCase
 {
     /**
-     * An eligible unlinked `sign_in` reserves in T2 and is not offered for
-     * provisioning: the reservation and its handoff expire together, it
-     * resolves nothing, and it names no resolved identity. Its redemption
-     * activates it, with verified domain provenance and every reservation field
-     * cleared, establishes the identity, and reports the frozen sequence.
+     * An eligible unlinked `sign_in` reserves in T2, and its redemption
+     * activates the reservation.
      *
      * @return void
      */
@@ -222,11 +213,8 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A genuinely unlinked `sign_in` stops at the boundary: T2 commits its
-     * bookkeeping with `completed_at` unset and no transaction is open at
-     * dispatch; the grant is usable once, for the exact result, and void
-     * afterwards; the link the helper's caller makes resolves in T3; replay is
-     * not recorded again, and the result is reported verified once.
+     * An unlinked `sign_in` crosses the provisioning boundary with no
+     * transaction open.
      *
      * @return void
      */
@@ -355,11 +343,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A link found outside the tenant is suspended for good: it is
-     * `link_suspended`, reported, never provisioned, and a later narrowing does
-     * not restore it. The sessions established through it are revoked in that
-     * same transaction, once. A confirming `link` by the same identity clears
-     * the suspension and the provenance.
+     * A suspended link stays suspended until a confirming `link`.
      *
      * @return void
      */
@@ -417,10 +401,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A verdict of `unknown` refuses that attempt with a reason of its own: the
-     * link is no more suspended than it was, nothing is reported, no version
-     * rises, no session is revoked and no provisioning is offered; once the
-     * verdict is known the link resolves again.
+     * An `unknown` scope verdict refuses that attempt only.
      *
      * @return void
      */
@@ -488,9 +469,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A revocation that fails while a link latches rolls the completion back:
-     * the link is as it was, no suspension is reported, and the next resolution
-     * tries again.
+     * A revocation failing while a link latches rolls the suspension back.
      *
      * @return void
      */
@@ -518,9 +497,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * Another flow's live reservation is not an unlinked subject: a second
-     * `sign_in` of the subject is `link_reserved`, offered nothing; a `link` is
-     * refused as busy.
+     * Another flow's live reservation holds the subject.
      *
      * @return void
      */
@@ -543,12 +520,8 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * An expired reservation is logically absent: the next eligible completion
-     * replaces it with another identity. The old handoff, expired with it, is
-     * refused for its own expiry, before any reservation is looked at, and
-     * leaves the replacement exactly as it was. That the binding refuses a
-     * handoff outliving its reservation is
-     * `DomainLinkEligibilityTest::testAnExpiredReservationIsReplacedAndTheOldHandoffNeverActivatesTheNewRow`.
+     * An expired reservation is replaced, and its expired handoff is refused
+     * for its own expiry.
      *
      * @return void
      */
@@ -577,11 +550,9 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A claim that lapsed and was verified again through the service is at a
-     * new generation, so a reservation made under the old one activates
-     * nothing. The lapse is forced here: through the rechecker its withdrawal
-     * deletes the reservation first, and the generation is the second line of
-     * defence behind it.
+     * A reverified claim's new generation activates no older reservation. The
+     * lapse is forced, since the rechecker's withdrawal would delete the
+     * reservation first.
      *
      * @return void
      */
@@ -611,11 +582,8 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A change of the organisation's value, on a connection classified one
-     * organisation's, is a real change of the policy, which needs no new
-     * acknowledgement and leaves eligibility alone: it raises the linking
-     * version and deletes the open reservation. It is what the race tests
-     * change the settings with.
+     * A change of the organisation's value raises the linking version and
+     * deletes the reservation.
      *
      * @return void
      */
@@ -643,12 +611,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A completion that refuses after it reserved leaves no reservation, and no
-     * code: the application refused at issuance, the last step. The
-     * reservation's creation and its discard each raise the connection's links
-     * version; the request is finished; and one failure is reported. The
-     * application is turned off once the flow has started, since its gate asks
-     * too, and before the completion, which takes it at consumption.
+     * A completion refusing after it reserved discards the reservation.
      *
      * @return void
      */
@@ -717,11 +680,8 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A row of the same key whose subject is not this result's, held by another
-     * identity, cannot be replaced: resolution compares it byte for byte and
-     * finds the subject absent, the unique index refuses the insert, and the
-     * completion goes on with no reservation, to `unlinked`, leaving that row
-     * and the links version as they were.
+     * A reservation the unique index refuses goes on to `unlinked`, leaving the
+     * other row alone.
      *
      * @return void
      */
@@ -753,9 +713,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A `link` by a caller who is not the code's identity is refused, and links
-     * nothing; a `link` by the bound identity creates the link, and makes no
-     * session.
+     * A `link` needs the bound caller, and makes no session.
      *
      * @return void
      */
@@ -781,9 +739,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * A `reauthenticate` accepts only the exact link that established the
-     * session, renews its authentication time inside the transaction, and is
-     * refused through the standalone path with its code unconsumed.
+     * A `reauthenticate` needs the exact link, and is refused standalone.
      *
      * @return void
      *
@@ -861,8 +817,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
 
     /**
      * A domain's withdrawal deletes its reservations and raises the links
-     * version; a reservation's creation raises it too, so a change whose
-     * snapshot predates it fails to serialise.
+     * version.
      *
      * @return void
      */
@@ -882,9 +837,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
     }
 
     /**
-     * The evidence the response was validated under must be the locked
-     * connection's policy: a linking version changed after validation reserves
-     * nothing.
+     * A linking version changed after validation reserves nothing.
      *
      * @return void
      */

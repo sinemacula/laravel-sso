@@ -30,16 +30,8 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * The events of an unlinked `sign_in`, in order (SSO-8.6, SSO-10.5): the one
- * event that is synchronous, with no package transaction open, then what the
- * listener made, then how the completion ended; `ResultVerified` once on every
- * path, and the whole context each carries.
- *
- * Its listeners listen on `Contracts\SsoEvent` and filter, so they run after
- * the recording listener, which then sees the offer before what the listener
- * makes of it, and sees it though a listener throws. A listener on the event's
- * own class runs before a listener on its interface, and would record the other
- * way round.
+ * Event sequence tests for an unlinked `sign_in`. Its listeners listen on
+ * `Contracts\SsoEvent` so they run after the recording listener.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -223,9 +215,8 @@ final class ProvisioningEventSequenceTest extends LinkingTestCase
     }
 
     /**
-     * The event is dispatched with no package transaction open, the result
-     * reported verified and committed, the request unfinished, and no handoff
-     * issued; the grant closes when the dispatch ends.
+     * The event is dispatched with no package transaction open and the result
+     * committed.
      *
      * @return void
      */

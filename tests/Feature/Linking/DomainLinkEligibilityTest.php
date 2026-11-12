@@ -81,20 +81,8 @@ use Tests\Fixtures\Links\FixedLinker;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Adversarial tests of linking by a verified domain (SSO-8.8, SSO-3.3), whose
- * failure is an account takeover. Everything goes through public completion and
- * redemption with one condition withdrawn at a time, at every boundary: the
- * domain's standing, its check age, its generation and grace; the membership's
- * acceptance against the verification; the matcher's input and answers; the
- * identity's scope and what it holds; the issuer's classification and
- * organisation; a SAML source's acknowledgement; the linking version;
- * reservations live, expired and replaced; identical deadlines; adapter issuers
- * and linkers; a contract's outage, which is never a refusal; a stored row
- * tampered with; and that nothing leaks.
- *
- * Without a reservation the result goes on unlinked, so a refused completion
- * ends in `unlinked`; a condition that fails at redemption is
- * `reservation_invalid`, and either way no link is left.
+ * Adversarial tests of linking by a verified domain: a refusal at completion
+ * ends `unlinked`, and one at redemption is `reservation_invalid`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -234,9 +222,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * A domain lapsed, suspended, pending or never checked allows no linking at
-     * completion; each between the reservation and the redemption activates
-     * nothing, even with no withdrawal having run.
+     * A lapsed, suspended, pending or unchecked domain allows no linking at
+     * completion or at redemption.
      *
      * @param  array<string, mixed>  $change
      * @return void
@@ -400,9 +387,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the email, the domain the matcher receives, its claim's name]`:
-     * the package adds no folding, so the matcher receives the email exactly as
-     * asserted and the domain as SSO-3.1 compares one.
+     * Rows of `[email, domain the matcher receives, claim name]`: the email as
+     * asserted and the domain canonical.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -449,9 +435,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the email]`: a domain that is not the claim's, compared exactly
-     * once canonical. A confusable, a subdomain, a parent and padding are other
-     * domains, and the matcher is never asked.
+     * Rows of `[the email]`: a confusable, subdomain, parent or padded domain,
+     * none of them the claim's.
      *
      * @return iterable<string, array{0: string}>
      */
@@ -530,9 +515,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * At redemption, no match, many matches and a different sole match each
-     * refuse: a different match is never the new target, so nothing is linked
-     * to anybody.
+     * At redemption no match, many matches or a different match each refuse,
+     * linking nobody.
      *
      * @return void
      */
@@ -664,9 +648,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * The value only in the mapped attributes does not count: the organisation
-     * is the protocol's evidence, never a mapped attribute or the email's
-     * domain.
+     * The organisation counts only from the protocol's evidence, never a mapped
+     * attribute.
      *
      * @return void
      */
@@ -971,9 +954,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * An identity already holding a link or a live reservation of another
-     * subject reserves nothing, whatever the link limit allows; an expired one
-     * holds nothing.
+     * An identity holding a link or live reservation of another subject
+     * reserves nothing; an expired one holds nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkState  $state
      * @param  ?int  $expiresIn
@@ -1083,8 +1065,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
 
     /**
      * An expired reservation is replaced under a new identity, and the old
-     * handoff never activates the new row, even made to live longer than it: it
-     * names the old identity.
+     * handoff never activates the new row.
      *
      * @return void
      */
@@ -1117,9 +1098,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[seconds the request has left, the handoff lifetime, the
-     * expiry]`: the minimum of the request's expiry and the lifetime from now,
-     * at each boundary.
+     * Rows of `[seconds the request has left, handoff lifetime, expiry]`: the
+     * earlier of the two, at each boundary.
      *
      * @return iterable<string, array{0: int, 1: int, 2: int}>
      */
@@ -1252,10 +1232,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * A linker not backed by link storage cannot hold a reservation: a
-     * completion through it is a `LogicException` naming the problem, with
-     * nothing written, and swapped in by redemption it activates nothing and
-     * spends nothing.
+     * A linker not backed by link storage fails closed at completion and
+     * activates nothing at redemption.
      *
      * @return void
      *
@@ -1323,9 +1301,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
 
     /**
      * An identity matched under the locks whose guard was not taken is never
-     * reserved for: the email moved to another person in between, or matched
-     * nobody when it was first read. The completion refuses, its contracts of
-     * that identity unasked, and nothing is written.
+     * reserved for.
      *
      * @return void
      */
@@ -1345,9 +1321,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * A subject held when it was first read and absent under the lock is a link
-     * that changed, never an unlinked result: no provisioning is offered, and
-     * nothing is written. Its claim was not locked, and no guard was taken.
+     * A subject held when first read and absent under the lock is a changed
+     * link, never `unlinked`.
      *
      * @return void
      */
@@ -1517,10 +1492,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * A contract's outage at completion is a server error, never `unlinked` and
-     * never provisioning: the very exception propagates, T2 rolls back with no
-     * reservation and no code, and the request stays consumed and unfinished,
-     * with nothing offered.
+     * A contract's outage at completion propagates and T2 rolls back, leaving
+     * no reservation or code.
      *
      * @param  string  $contract
      * @return void
@@ -1551,10 +1524,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * A contract's outage at redemption rolls everything back rather than
-     * refuse: the very exception propagates, the code is unspent, the
-     * reservation stands exactly as it was, no failure is reported, and the
-     * redemption retried activates it.
+     * A contract's outage at redemption rolls back with the code unspent, and a
+     * retry activates.
      *
      * @param  string  $contract
      * @return void
@@ -1586,9 +1557,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * An outage of the principal scope contract never latches a suspension on
-     * an active domain link, at completion or at redemption: the link stays
-     * active, with no `LinkSuspended`, and resolves once the contract is back.
+     * A principal scope outage never suspends an active domain link.
      *
      * @return void
      */
@@ -1682,9 +1651,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * A row bound to another handoff is another handoff's: the redemption
-     * refuses, activates nothing, and leaves the row and the links version
-     * alone.
+     * A row bound to another handoff is refused and left alone.
      *
      * @return void
      */
@@ -1708,9 +1675,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[whether the connection, the handoff and the subject compared
-     * are the row's, the seconds its reservation has left]`, each one thing
-     * apart.
+     * Rows of `[whether the connection, handoff and subject match the row,
+     * seconds left]`.
      *
      * @return iterable<string, array{0: bool, 1: bool, 2: bool, 3: int}>
      */
@@ -1753,10 +1719,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * The judgement holds the claim locked to the claim the row is bound to, by
-     * its id as well as its generation: a row bound to another claim of the
-     * connection, at the same generation, is refused though the locked claim
-     * would allow it.
+     * A row bound to another claim of the connection at the same generation is
+     * refused.
      *
      * @return void
      */
@@ -1808,11 +1772,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * A refused code's reservation is removed only by exactly its identity and
-     * its handoff reference: a binding naming no reference, or another, removes
-     * nothing and raises nothing, and the one naming it removes the row and
-     * raises the links version by one. A reservation already gone raises
-     * nothing either.
+     * A refused code's reservation is deleted only by its identity and handoff
+     * reference.
      *
      * @return void
      */
@@ -2085,9 +2046,8 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * The whitespace that would be trimmed from what an administrator typed is
-     * no part of an address: the email matches nothing, and no contract is
-     * asked.
+     * An email domain with surrounding whitespace matches nothing, and no
+     * contract is asked.
      *
      * @return void
      */

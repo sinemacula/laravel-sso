@@ -34,12 +34,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Feature tests for everything that withdraws a link reservation (SSO-3.3,
- * SSO-2.13, SSO-8.8), through each change's public path: a domain removed, its
- * record gone or changed, at once and without the grace period, and its lapse;
- * a connection disabled or deleted; a trust change; and what each statement of
- * the withdrawal itself touches, counts and raises. A failed lookup withdraws
- * nothing, and a domain restored brings nothing back.
+ * Feature tests for everything that withdraws a link reservation.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -240,9 +235,8 @@ final class ReservationWithdrawalTest extends LinkingTestCase
     }
 
     /**
-     * Of a connection, every reservation goes, whatever its domain and however
-     * expired, and is counted; an active or suspended link and another
-     * connection's reservation stay; the links version rises once.
+     * Withdrawing a connection deletes its reservations alone and raises the
+     * links version once.
      *
      * @return void
      */
@@ -322,9 +316,7 @@ final class ReservationWithdrawalTest extends LinkingTestCase
     }
 
     /**
-     * Of the rows named, only those still reserved and expired by the cutoff
-     * go, and they are counted; a row of another connection, past the cutoff,
-     * of another state or not named stays; the links version rises once.
+     * Only the named rows still reserved and expired by the cutoff are deleted.
      *
      * @return void
      */
