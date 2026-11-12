@@ -11,9 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[keys]`: checked only while the package is in use, the
- * shipped defaults passing, and each malformed setting reported with the
- * message the key operations would fail closed with, naming its key (SSO-2.7).
+ * Feature tests for the `[keys]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +24,8 @@ final class KeysCheckTest extends TestCase
     use RunsConfigurationChecks;
 
     /**
-     * Not checked while the package is not in use, however malformed; the
-     * shipped defaults pass once it is.
+     * Not checked while the package is not in use; the shipped defaults pass
+     * once it is.
      *
      * @return void
      */

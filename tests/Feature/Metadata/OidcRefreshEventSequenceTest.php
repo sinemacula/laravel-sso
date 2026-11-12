@@ -45,14 +45,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Pins the events of an OIDC import, refresh and refetch with their full
- * context (SSO-2.8, SSO-7.3, SSO-10.3 to SSO-10.5): an import reports nothing;
- * a refresh adding keys `[MetadataRefreshed]`; one moving an endpoint and
- * removing a key `[ConnectionUpdated, MetadataRefreshed]`; a failure or a
- * conflict `[MetadataRefreshFailed]`; a refetch `[JwksRefreshed]`, or
- * `[JwksRefreshFailed]` when it failed or lost. Each is dispatched after commit
- * and none on a rollback, and no event, log or result holds a key, a URL, a
- * body or a token.
+ * Pins the events of an OIDC import, refresh and refetch, with their full
+ * context.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -101,9 +95,9 @@ final class OidcRefreshEventSequenceTest extends TestCase
     private Caller $actor;
 
     /**
-     * Bind a fixed clock, a fake fetcher serving the provider and a request,
-     * switch OIDC and the refresh on, create the tables and a refreshing
-     * connection storing the provider's key, and record events and logs.
+     * Bind a fixed clock, a fetcher serving the provider and a request, enable
+     * OIDC and refresh, create a refreshing connection, and record events and
+     * logs.
      *
      * @return void
      */
@@ -156,8 +150,8 @@ final class OidcRefreshEventSequenceTest extends TestCase
     }
 
     /**
-     * A scheduled refresh adding keys reports the refresh alone, with no acting
-     * identity and no trust change.
+     * A scheduled refresh adding keys reports the refresh alone, with no actor
+     * or trust change.
      *
      * @return void
      */
@@ -178,8 +172,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
 
     /**
      * An administrator's refresh moving an endpoint and removing a key reports
-     * the update then the refresh, each with the administrator, the trust
-     * changed.
+     * the update then the refresh.
      *
      * @return void
      */
@@ -204,8 +197,8 @@ final class OidcRefreshEventSequenceTest extends TestCase
     }
 
     /**
-     * A failed refresh reports one failure, with its reason, the failures in a
-     * row and the next attempt.
+     * A failed refresh reports one failure with its reason, failure count and
+     * next attempt.
      *
      * @return void
      */
@@ -227,8 +220,8 @@ final class OidcRefreshEventSequenceTest extends TestCase
     }
 
     /**
-     * A refresh that lost reports one failure, a conflict, with the winner's
-     * failures and next attempt, and nothing of the change it did not make.
+     * A refresh that lost reports one conflict with the winner's failure count
+     * and next attempt.
      *
      * @return void
      */
@@ -259,8 +252,8 @@ final class OidcRefreshEventSequenceTest extends TestCase
     }
 
     /**
-     * A refetch adding a key reports it refreshed, with its version and what it
-     * added, no trust change and no acting identity.
+     * A refetch adding a key reports it refreshed, with its version and
+     * additions.
      *
      * @return void
      */
@@ -319,8 +312,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
     }
 
     /**
-     * A refetch that lost reports one failure, a conflict, with the next start
-     * as the winner left it.
+     * A refetch that lost reports one conflict with the winner's next start.
      *
      * @return void
      */
@@ -399,8 +391,8 @@ final class OidcRefreshEventSequenceTest extends TestCase
     }
 
     /**
-     * A refresh written inside an outer transaction that rolls back writes and
-     * reports nothing, and reports only once an outer transaction commits.
+     * A refresh inside an outer transaction reports only once that transaction
+     * commits.
      *
      * @return void
      *
@@ -432,8 +424,7 @@ final class OidcRefreshEventSequenceTest extends TestCase
     }
 
     /**
-     * A refetch that fails in its write, once it has reported, rolls back:
-     * nothing is written and no event escapes.
+     * A refetch that fails in its write rolls back, and no event escapes.
      *
      * @return void
      *
@@ -478,9 +469,8 @@ final class OidcRefreshEventSequenceTest extends TestCase
     }
 
     /**
-     * No event, log or result of a refresh, a refetch or their failures and
-     * conflicts holds a key, a URL, a body or a token, the tokens of their
-     * claims included.
+     * No event, log or result holds a key, URL, body or token, claim tokens
+     * included.
      *
      * @return void
      */
@@ -538,8 +528,8 @@ final class OidcRefreshEventSequenceTest extends TestCase
     }
 
     /**
-     * The full context every event of the connection names, with the acting
-     * identity given; never a request reference or other flow identifier.
+     * The context every event of the connection names, with the given actor and
+     * no flow identifier.
      *
      * @param  ?string  $actingIdentityId
      * @return array<string, ?string>

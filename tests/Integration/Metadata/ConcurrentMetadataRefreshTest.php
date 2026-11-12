@@ -59,36 +59,12 @@ use Tests\Fixtures\Links\ExampleLinks;
 use Tests\TestCase;
 
 /**
- * Races a metadata refresh across processes, each with its own database
- * connection, on PostgreSQL and MySQL (SSO-2.8, SSO-2.13, SSO-11.12):
+ * Races a metadata refresh across processes on PostgreSQL and MySQL, ordered by
+ * signal files.
  *
- * - two refreshers of one connection: the claim lets exactly one fetch, and the
- *   other is `in_progress` (an administrator's) or finds nothing due (the
- *   schedule's);
- * - a refresh paused between its fetch and its write while an administrator
- *   distrusts a certificate, adds an identity provider signing certificate
- *   (additive, which raises no trust version) or adds a metadata signing
- *   anchor: the refresh is refused `metadata_conflict` and the administrator's
- *   change stands, so a refresh never removes a certificate added while it
- *   fetched;
- * - a refresh whose claim expired while it fetched and was taken over by
- *   another server's refresh: the one that lost its claim writes nothing,
- *   whether it then applies or records a failure, and the new owner's
- *   refresh stands;
- * - a refresh removing a certificate while a completion through the connection
- *   is between its validation and its lock: the completion is refused
- *   `connection_unavailable` under its lock.
- *
- * The order is forced with signal files, never with timing. A refresh and a
- * completion refuse to run inside a transaction, so they always run plainly;
- * the administrator runs plainly, and again inside a `REPEATABLE READ`
- * transaction of its own that read the connection and its keys before the
- * refresh claimed it. On PostgreSQL that transaction then fails to serialise
- * (SQLSTATE 40001) when it locks the connection the claim wrote, which leaves
- * the refresh to apply: an accepted safe outcome, on PostgreSQL only.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * On PostgreSQL an administrator's `REPEATABLE READ` transaction that read
+ * before the claim fails to serialise (40001), leaving the refresh to apply: an
+ * accepted safe outcome.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -127,12 +103,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock, a
-     * fresh caller, a fake fetcher, a limiter that allows every attempt and a
-     * linker that links every result to one identity; switch SAML and the
-     * refresh on; register the application and the endpoints; create the
-     * tables, a refreshing connection trusting the provider's certificate and
-     * another, and the directory the processes use.
+     * Skip without a shared database or pcntl; bind the fakes, enable SAML and
+     * refresh, register the application and create the connections.
      *
      * @return void
      *
@@ -229,7 +201,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Rows of `[second, outcome]`: how the second refresher runs, and what it
+     * Rows of `[second, outcome]`: how the second refresher runs and what it
      * reports.
      *
      * @return iterable<string, array{0: string, 1: string}>
@@ -243,8 +215,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Two refreshers of one connection: the first claims it and fetches, and
-     * the second, running while the first fetches, fetches nothing.
+     * Of two refreshers of one connection, only the first fetches.
      *
      * @param  string  $second
      * @param  string  $outcome
@@ -286,8 +257,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Rows of `[change, in transaction]`: what the administrator changes while
-     * the refresh is paused, plainly or inside a transaction of its own.
+     * Rows of `[change, in transaction]` for the administrator's change during
+     * the paused refresh.
      *
      * @return iterable<string, array{0: string, 1: bool}>
      */
@@ -304,11 +275,9 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * A refresh paused between its fetch and its write while an administrator
-     * changes the connection's trust is refused `metadata_conflict` and writes
-     * nothing, and the administrator's change stands; on PostgreSQL, an
-     * administrator inside a transaction older than the refresh's claim fails
-     * to serialise instead, changes nothing, and the refresh applies.
+     * A paused refresh loses to an administrator's trust change with
+     * `metadata_conflict`; on PostgreSQL an older transaction may fail to
+     * serialise instead.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -354,8 +323,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Rows of `[served]`: what the refresh whose claim is taken over is served,
-     * the metadata to apply or a failed fetch to record.
+     * Rows of `[served]`: metadata to apply or a failed fetch to record.
      *
      * @return iterable<string, array{0: bool}>
      */
@@ -368,10 +336,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * A refresh whose claim expired while it fetched, and was taken over by
-     * another server's refresh once it had, writes nothing when it then applies
-     * or records a failure: it is `conflict`, and the other refresh's write,
-     * which published a further certificate, stands.
+     * A refresh whose expired claim was taken over writes nothing, and the new
+     * owner's refresh stands.
      *
      * @param  bool  $served
      * @return void
@@ -428,11 +394,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * A refresh removing a certificate while a completion through the
-     * connection is between its validation and its lock voids the completion's
-     * request under the connection's lock, and the completion is refused
-     * `connection_unavailable` under its own, with no code issued and no
-     * assertion recorded.
+     * A completion validated before a refresh removed a certificate is refused
+     * `connection_unavailable` under its lock.
      *
      * @return void
      */
@@ -480,10 +443,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Wait until the other process has signalled, and fail loudly once the
-     * deadline passes without it: the process then reports an error, so a race
-     * whose processes ran one after the other never passes as one that
-     * overlapped.
+     * Wait for the other process's signal, failing after the deadline so a
+     * serial run never passes as a race.
      *
      * @param  string  $signal
      * @return void
@@ -506,8 +467,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * The second refresh, as it reports itself: an administrator's outcome, or
-     * whether the schedule found anything due.
+     * The second refresh's report: an administrator's outcome or whether the
+     * schedule found anything due.
      *
      * @param  string  $second
      * @return string
@@ -524,10 +485,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * In a forked process: inside a `REPEATABLE READ` transaction that read the
-     * connection and its keys first, or plainly, signal it has read, wait for
-     * the refresh to fetch, then distrust the second certificate, add a signing
-     * certificate or add an anchor, and signal once that is done or failed.
+     * In a fork, read the connection (optionally in `REPEATABLE READ`), wait
+     * for the refresh to fetch, then make the change.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -587,9 +546,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Have the completion's validation stage, once it has validated, signal and
-     * wait for the refresh, so the completion takes its lock after the refresh
-     * committed.
+     * Have the validation stage signal and wait for the refresh, so the
+     * completion locks after the refresh commits.
      *
      * @param  string  $validated
      * @param  string  $refreshed
@@ -642,8 +600,7 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Start a `sign_in` through the connection and answer what the provider's
-     * signed response to it posts to the assertion consumer service.
+     * Start a `sign_in` and answer the provider's signed response to it.
      *
      * @return \SineMacula\Laravel\Sso\Protocols\CompletionRequest
      */
@@ -716,9 +673,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * The keys the connection holds once the race ends: the administrator's
-     * change made and the refresh's refused, or, when the administrator failed
-     * to serialise, the refresh's applied.
+     * The keys held after the race: the administrator's change, or the
+     * refresh's when the administrator failed to serialise.
      *
      * @param  string  $change
      * @param  bool  $failed
@@ -799,8 +755,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Fork a process per body, have each run its body on a connection of its
-     * own, and collect what each reported, in order.
+     * Fork a process per body, each on its own connection, and collect their
+     * reports in order.
      *
      * @param  list<\Closure(): array<string, mixed>>  $bodies
      * @return list<array<string, mixed>>
@@ -839,9 +795,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, run the body, report
-     * what it answered, a PostgreSQL serialisation failure, or the error it
-     * threw, and end without running the parent's shutdown.
+     * In a fork, run the body on a fresh connection, report its outcome and
+     * exit without the parent's shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): array<string, mixed>  $body
@@ -867,10 +822,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure: SQLSTATE 40001 on PostgreSQL. Inside a caller's
-     * transaction, Laravel rethrows it as a `DeadlockException` whose previous
-     * error is the query's.
+     * Whether the error or its cause is PostgreSQL's SQLSTATE 40001; inside a
+     * transaction Laravel wraps it in a `DeadlockException`.
      *
      * @param  \Throwable  $exception
      * @return bool
@@ -887,8 +840,8 @@ final class ConcurrentMetadataRefreshTest extends TestCase
     }
 
     /**
-     * The statement that makes every later transaction of the session
-     * `REPEATABLE READ`.
+     * The statement that makes the session's later transactions `REPEATABLE
+     * READ`.
      *
      * @param  string  $driver
      * @return string

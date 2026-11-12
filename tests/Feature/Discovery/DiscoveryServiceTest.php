@@ -49,14 +49,7 @@ use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for starting a flow by email domain (SSO-3.4, SSO-3.5,
- * SSO-11.8, SSO-12.3): a match and a miss answer in the same shape and status,
- * only the navigation's URL differing; every kind of miss leads to the
- * application's fallback with nothing stored; each refusal with its exact
- * reason, in the fixed order; the attempt counted against the IP address and
- * the email's normalised domain; a match's own refusals; no read of anything
- * but the domains, the connections, the counters and, on a match, the requests;
- * and every answer held for at least the least time a discovery start takes.
+ * Feature tests for starting a flow by email domain.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -101,10 +94,9 @@ final class DiscoveryServiceTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, a freshness contract that answers `fresh` and a
-     * request from the IP address, turn discovery on, register the applications
-     * and the driver, create the tables, a usable connection and its verified
-     * domain.
+     * Bind a fixed clock, fresh freshness and a request from the IP address,
+     * enable discovery, register the applications and driver, and create a
+     * usable connection with its verified domain.
      *
      * @return void
      */
@@ -145,10 +137,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * A match and a miss on the same inputs answer the same status, the same
-     * body keys with a verifier, a reference of the same form, a redirect, and
-     * the same headers; only the URL differs. The match stores its request and
-     * the miss stores nothing.
+     * A match and a miss answer in the same shape, only the URL differing; only
+     * the match stores a request.
      *
      * @return void
      */
@@ -183,8 +173,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * With the client's challenge, a match and a miss both answer the reference
-     * and the navigation alone, and the match keeps the challenge.
+     * With the client's challenge, neither answer carries a verifier and the
+     * match keeps the challenge.
      *
      * @return void
      *
@@ -222,9 +212,7 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * Each kind of miss: an unknown, pending, lapsed or past-grace domain, a
-     * disabled or incomplete connection, and an email with no domain that
-     * normalises.
+     * Each kind of miss leads to the application's fallback and stores nothing.
      *
      * @return void
      */
@@ -255,9 +243,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * A discovery start called inside the caller's transaction on the storage
-     * connection is refused before anything else, for a match and a miss alike:
-     * no attempt counted, no driver asked and no request stored.
+     * A start inside the caller's storage transaction is refused before
+     * anything is counted, asked or stored.
      *
      * @return void
      *
@@ -314,9 +301,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * Starts are counted per email domain, in its normalised form, whatever IP
-     * address they come from: the domain's counter is the one keyed by
-     * `example.com`, and another domain is counted apart.
+     * Starts are counted per normalised email domain, whatever IP address they
+     * come from.
      *
      * @return void
      */
@@ -344,8 +330,7 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * Each email and what its start is counted against, with a request from the
-     * IP address.
+     * Each email and the subjects its start is counted against.
      *
      * @return iterable<string, array{0: string, 1: array<string, string>}>
      */
@@ -359,8 +344,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * The attempt is counted against the IP address and the email's normalised
-     * domain, never the email, and not the domain when it does not normalise.
+     * The attempt is counted against the IP address and normalised domain,
+     * never the email.
      *
      * @param  string  $email
      * @param  array<string, string>  $counted
@@ -383,8 +368,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * Rows of `[email, application, limited, reason]`: each way a discovery
-     * start reports, `null` reason for a match that stores its request.
+     * Rows of `[email, application, limited, reason]`; a `null` reason is a
+     * match that stores its request.
      *
      * @return iterable<string, array{0: string, 1: string, 2: bool, 3: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -397,10 +382,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * What a discovery start reports carries the IP address and user agent of
-     * the client it was given, never the request's being served:
-     * `AuthorizationRequestStarted` for a match, and exactly one `FlowFailed`
-     * for a miss or a refusal.
+     * Each report carries the client the start was given, not the request being
+     * served.
      *
      * @param  string  $email
      * @param  string  $application
@@ -434,8 +417,7 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * A start made for no client counts no IP address, so only the domain is
-     * counted.
+     * A start for no client counts only the domain.
      *
      * @return void
      */
@@ -455,8 +437,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * An unknown application and one that does not allow external sign-in are
-     * refused alike, before discovery or the challenge is judged.
+     * An unknown application and one without external sign-in are refused
+     * before discovery or the challenge is judged.
      *
      * @return void
      */
@@ -554,8 +536,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * A caller that does not fit the purpose is application code's mistake,
-     * refused before anything is counted or read.
+     * A caller that does not fit the purpose is refused before anything is
+     * counted or read.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -582,8 +564,7 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * A session id of 1 and of 255 bytes fits a `reauthenticate`: it is
-     * started, and refused only by the default session contract.
+     * A session id of 1 and of 255 bytes is accepted for `reauthenticate`.
      *
      * @return void
      */
@@ -595,8 +576,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * A match whose `link` comes from a stale caller is refused with
-     * `freshness_required`, the freshness contract asked once.
+     * A matching `link` from a stale caller is refused with
+     * `freshness_required`.
      *
      * @return void
      */
@@ -611,9 +592,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * A match whose `link` comes from a fresh caller is started for its
-     * identity alone, the session the caller gave asked about by freshness and
-     * not stored; a miss for a `link` asks nothing and leads to the fallback.
+     * A matching `link` from a fresh caller starts for its identity without
+     * storing the session; a `link` miss leads to the fallback.
      *
      * @return void
      */
@@ -670,9 +650,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * Discovery never looks up a user: a miss reads the counters and the
-     * domains, a miss on an unusable connection the connections too, and a
-     * match also writes the authorisation request, and nothing else.
+     * Discovery never looks up a user; it touches only counters, domains,
+     * connections and requests.
      *
      * @return void
      */
@@ -702,10 +681,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * An application that offers discovery while the feature is on needs its
-     * fallback (SSO-12.3): `[applications]` refuses its absence at boot, as
-     * `ApplicationsCheckTest` shows, and a start fails closed with the same
-     * message.
+     * An application offering discovery without a fallback fails closed with
+     * the boot check's message.
      *
      * @return void
      */
@@ -740,9 +717,8 @@ final class DiscoveryServiceTest extends TestCase
     }
 
     /**
-     * Start a flow by email, a `sign_in` for `discovering` unless told
-     * otherwise, and assert the answer took at least the least time a discovery
-     * start takes.
+     * Start a flow by email, a `sign_in` for `discovering` by default, and
+     * assert it took at least the minimum discovery time.
      *
      * @param  string  $email
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose

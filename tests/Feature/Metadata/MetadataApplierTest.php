@@ -38,20 +38,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for writing what a metadata refresh found (SSO-2.8, SSO-2.13):
- * certificates replaced exactly, never as a union; an additive certificate
- * voiding nothing and leaving the trust version alone; a removal, a replacement
- * or an endpoint change voiding the flows in flight and raising the trust
- * version once; the entity id, subject settings and mapping never written; the
- * refresh's version, the moment the document was validated as its fetch, its
- * expiry and next refresh written, the failures reset and the claim and its
- * token released; another entity, an endpoint that is not a valid setting,
- * metadata expired at commit (by its `validUntil` or by the stale limit
- * counted from its validation) and too many certificates refused as failures;
- * a change of the versions, the anchors or the trusted certificates (an
- * addition included) made while the refresh fetched, or the claim taken over,
- * refused as a conflict that writes nothing, success or failure; and the
- * backoff of failures in a row.
+ * Feature tests for writing what a SAML metadata refresh found.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -84,8 +71,8 @@ final class MetadataApplierTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, switch SAML and the refresh on, create the tables and
-     * a refreshing SAML connection trusting one certificate, and record events.
+     * Bind a fixed clock, enable SAML and refresh, create a refreshing
+     * connection trusting one certificate, and record events.
      *
      * @return void
      */
@@ -161,9 +148,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * A certificate no longer published is distrusted: exactly what the
-     * metadata publishes is trusted, the flows in flight are voided and the
-     * trust version is raised once.
+     * A certificate no longer published is distrusted, voiding the flows in
+     * flight and raising the trust version once.
      *
      * @param  list<int>  $trusted
      * @param  list<int>  $published
@@ -188,9 +174,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * Rows of `[changes, published, changed]`: the endpoint the metadata names,
-     * the certificates it publishes, and the settings the refresh reports
-     * changed.
+     * Rows of `[changes, published, changed]`: the endpoint, the published
+     * certificates and the settings reported changed.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: list<int>, 2: list<string>}>
      */
@@ -209,9 +194,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * A changed single sign-on endpoint is written and is a trust change: the
-     * flows in flight are voided and the trust version raised once, with any
-     * certificate removed.
+     * A changed single sign-on endpoint is written, voids the flows in flight
+     * and raises the trust version once.
      *
      * @param  array<string, mixed>  $changes
      * @param  list<int>  $published
@@ -234,9 +218,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * A changed endpoint reports the connection updated, naming it, then the
-     * refresh, each carrying the client the refresh was made for and the acting
-     * identity, never the request's being served.
+     * An endpoint change reports the update then the refresh, with the
+     * refresh's client and acting identity.
      *
      * @return void
      */
@@ -285,8 +268,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * Rows of `[valid until, next refresh]`: the metadata's expiry, and when
-     * the next refresh is due: after the interval, never after the expiry.
+     * Rows of `[valid until, next refresh]`: the next refresh is never after
+     * the expiry.
      *
      * @return iterable<string, array{0: ?string, 1: string}>
      */
@@ -302,9 +285,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * A refresh raises the metadata version, records the fetch and the expiry,
-     * resets the failures, releases the claim and its token, and is next due
-     * after the interval or at the expiry, whichever comes first.
+     * A refresh records the fetch, expiry and new version, resets failures,
+     * releases the claim and schedules the next.
      *
      * @param  ?string  $validUntil
      * @param  string  $next
@@ -356,8 +338,7 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * Rows of `[changes, published, reason]`: metadata a refresh may not apply,
-     * and the reason its failure is recorded with.
+     * Rows of `[changes, published, reason]`: metadata a refresh may not apply.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: list<int>, 2: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -379,9 +360,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * Metadata that may not be applied records a failure: nothing it holds is
-     * written, the failure is counted, the next refresh backs off and the claim
-     * is released.
+     * Metadata that may not be applied records a failure, backs off and
+     * releases the claim, writing nothing it holds.
      *
      * @param  array<string, mixed>  $changes
      * @param  list<int>  $published
@@ -444,8 +424,7 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * Rows of `[validated, stale limit, outcome]`: when the document was
-     * validated, the stale limit, and how the commit ends.
+     * Rows of `[validated, stale limit, outcome]`.
      *
      * @return iterable<string, array{0: string, 1: int, 2: \SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome}>
      */
@@ -460,9 +439,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * At commit, metadata validated the stale limit or longer ago has expired
-     * and records a failure, `metadata_expired`, even with no `validUntil`;
-     * within the limit, or with no limit, it is applied.
+     * At commit, metadata validated the stale limit or longer ago is
+     * `metadata_expired`, even with no `validUntil`.
      *
      * @param  string  $validated
      * @param  int  $limit
@@ -481,10 +459,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * The earlier of an enclosing `validUntil` and the stale limit decides the
-     * expiry at commit: a `validUntil` a second after the commit is applied
-     * though the stale limit is far off, and the stale limit passing first
-     * refuses metadata whose `validUntil` is far off.
+     * The earlier of the `validUntil` and the stale limit decides expiry at
+     * commit.
      *
      * @return void
      */
@@ -527,11 +503,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * A change of the metadata version, the trust version, the anchors or the
-     * trusted certificates (an administrator's addition included) made while
-     * the refresh fetched, or its claim taken over or released, refuses it as a
-     * conflict that writes nothing, success or failure alike, reported with the
-     * connection as the change left it.
+     * A trust or version change, or a lost claim, while the refresh fetched is
+     * a conflict that writes nothing.
      *
      * @param  string  $change
      * @return void
@@ -576,8 +549,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * An administrator's certificate added while the refresh fetched survives
-     * the refresh, which would have replaced it: the refresh writes nothing.
+     * A certificate an administrator added while the refresh fetched survives
+     * the refresh.
      *
      * @return void
      */
@@ -658,9 +631,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * A refresh whose claim expired and was taken over by another writes
-     * nothing, success or failure, and leaves the new owner's claim; the new
-     * owner's write goes through.
+     * A refresh whose claim was taken over writes nothing, and the new owner's
+     * write goes through.
      *
      * @return void
      */
@@ -745,8 +717,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * The snapshot under the lock holds each use's fingerprints, in order,
-     * whichever order they were added in; each use has a list even when empty.
+     * The locked snapshot lists each use's fingerprints in order, with an empty
+     * list for an unused one.
      *
      * @return void
      */
@@ -777,9 +749,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * Claim the connection as it is now, as the refresher does: a fresh token
-     * written, and the connection, its trusted certificates and its anchors as
-     * they are, the snapshot.
+     * Claim the connection as the refresher does, snapshotting it, its
+     * certificates and its anchors.
      *
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshClaim
      */
@@ -796,7 +767,7 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * Make the change, as another server or an administrator would while the
+     * Make the change another server or an administrator would make while the
      * refresh fetched.
      *
      * @param  string  $change
@@ -872,8 +843,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * The fingerprints of the signing certificates the connection trusts,
-     * sorted.
+     * The sorted fingerprints of the signing certificates the connection
+     * trusts.
      *
      * @return list<string>
      */
@@ -889,8 +860,8 @@ final class MetadataApplierTest extends TestCase
     }
 
     /**
-     * The metadata of the provider's entity publishing the certificates of the
-     * indices, with the changes given.
+     * The provider's metadata publishing the certificates at the indices given,
+     * with the changes.
      *
      * @param  list<int>  $published
      * @param  array<string, mixed>  $changes

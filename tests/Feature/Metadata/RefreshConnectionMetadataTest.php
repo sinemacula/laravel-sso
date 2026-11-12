@@ -27,11 +27,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the queued refresh of one connection's metadata: the job
- * hands its connection's id to the refresher, which refreshes it for no client,
- * so what the refresh reports carries no IP address and no user agent, even
- * while a request is bound; and a job whose connection is gone refreshes
- * nothing.
+ * Feature tests for the queued refresh of one connection's metadata.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,9 +49,8 @@ final class RefreshConnectionMetadataTest extends TestCase
     private FakeFetcher $fetcher;
 
     /**
-     * Bind a fixed clock and a fake fetcher serving the provider's metadata,
-     * switch SAML and the refresh on, create the tables, and bind a request the
-     * refresh must never read.
+     * Bind a fixed clock and a fetcher serving the metadata, enable SAML and
+     * refresh, create the tables, and bind a request the refresh must not read.
      *
      * @return void
      */
@@ -79,8 +74,7 @@ final class RefreshConnectionMetadataTest extends TestCase
     }
 
     /**
-     * The job refreshes its connection, and every event the refresh reports
-     * carries no client.
+     * The job refreshes its connection, and every event carries no client.
      *
      * @return void
      */

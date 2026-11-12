@@ -32,12 +32,7 @@ use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
 
 /**
- * The events a discovery start reports (SSO-3.5, SSO-10.1, SSO-10.2, SSO-10.4,
- * SSO-9.8): exactly `AuthorizationRequestStarted` for a match, with its whole
- * context; exactly one `FlowFailed(discovery_no_match)` for every kind of miss,
- * naming the application and the purpose alone; exactly one `FlowFailed` for
- * each refusal, with its reason; nothing for a misbound start; and never the
- * email, its domain, the protocol state, the nonce, a verifier or a challenge.
+ * Feature tests for the events a discovery start reports.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,10 +66,9 @@ final class DiscoveryEventSequenceTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, a freshness contract that answers `fresh` and a
-     * request from the client, turn discovery on, register the applications and
-     * the driver, create the tables, a usable connection and its verified
-     * domain, and record events.
+     * Bind a fixed clock, fresh freshness and a client request, enable
+     * discovery, register the applications and driver, and create a usable
+     * connection with its verified domain.
      *
      * @return void
      */
@@ -115,10 +109,8 @@ final class DiscoveryEventSequenceTest extends TestCase
     }
 
     /**
-     * A match reports exactly `AuthorizationRequestStarted`, with the
-     * connection, its tenant and protocol, the application, the purpose and the
-     * public reference, and no failure; no event holds the email, its domain or
-     * anything secret.
+     * A match reports exactly `AuthorizationRequestStarted` with its whole
+     * context and nothing secret.
      *
      * @return void
      */
@@ -143,9 +135,8 @@ final class DiscoveryEventSequenceTest extends TestCase
     }
 
     /**
-     * Every kind of miss reports exactly one `discovery_no_match`, naming the
-     * application and the purpose alone: no email, no domain, no connection and
-     * no reference.
+     * Every kind of miss reports exactly one `discovery_no_match` naming only
+     * the application and purpose.
      *
      * @return void
      */
@@ -338,9 +329,8 @@ final class DiscoveryEventSequenceTest extends TestCase
     }
 
     /**
-     * Assert nothing secret the start made is in any event recorded: not the
-     * protocol state, the nonce, the PKCE verifier, the client's verifier, the
-     * challenge or a digest.
+     * Assert no event holds the protocol state, nonce, verifiers, challenge or
+     * a digest.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $result
      * @return void
@@ -378,8 +368,8 @@ final class DiscoveryEventSequenceTest extends TestCase
     }
 
     /**
-     * The whole context an event carries: the time and the client, the fields
-     * given, and `null` for every other.
+     * The context an event carries: time, client, the given fields and `null`
+     * for the rest.
      *
      * @param  array<string, ?string>  $fields
      * @return array<string, ?string>
@@ -409,8 +399,7 @@ final class DiscoveryEventSequenceTest extends TestCase
     }
 
     /**
-     * Start a flow by the email at the domain, a `sign_in` for `discovering`
-     * unless told otherwise.
+     * Start a flow by email, a `sign_in` for `discovering` by default.
      *
      * @param  string  $domain
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -458,8 +447,7 @@ final class DiscoveryEventSequenceTest extends TestCase
     }
 
     /**
-     * The client every action of the test is taken for: the browser's IP
-     * address and user agent, which its events carry.
+     * The browser client every action is taken for.
      *
      * @return \SineMacula\Laravel\Sso\Http\ClientContext
      */

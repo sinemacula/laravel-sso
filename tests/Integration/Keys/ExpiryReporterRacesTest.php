@@ -32,32 +32,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Races the expiry report against what takes a key away from it, across
- * processes, each with its own database connection, on PostgreSQL and MySQL
- * (SSO-2.6, SSO-11.12): a key's retirement, another key made current, a
- * certificate no longer trusted, and the connection's deletion. The notifier
- * locks the connection and then the key, in the order each of those takes them.
- *
- * Each runs in both orders, with the reporter's claim forced before and after
- * the change. With the claim taken first, the reporter holds no lock while it
- * dispatches, the change goes through during the dispatch, and the marker's
- * statements then touch no row of a key that went: one warning, and no marker.
- * With the change holding the connection's lock, the reporters read the key,
- * wait on that lock, and find under it that the key went or stopped being
- * reportable: no warning, no claim. A change runs plainly and inside its own
- * `REPEATABLE READ` transaction that read first, in which it may fail to
- * serialise on PostgreSQL alone, on the key's row the claim wrote; a report
- * refuses a caller's transaction, and that refusal has its test in
- * `ExpiryReportTest`.
- *
- * What runs at once, with no order forced, is a smoke test and not proof of the
- * lock order, which `ExpiryNotifierTest::testLocksTheConnectionThenTheKey`
- * pins: any error a racer reports fails it, and keys no change touches are
- * warned of. A reporter stopped between the dispatch and the marker, by a
- * statement failing in its own process, is followed by another once the claim
- * has run out, which sends again: a duplicate, never a loss.
- *
- * Skipped on SQLite and without `pcntl`.
+ * Races the expiry report against changes that take a key away, across
+ * processes on PostgreSQL and MySQL.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -118,10 +94,8 @@ final class ExpiryReporterRacesTest extends TestCase
     private int $keys = 0;
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock and a
-     * fresh caller; retire a key at once when another is made current; read the
-     * public half before any process forks; and create the tables and the
-     * connection.
+     * Skip without a shared database or pcntl; bind a fixed clock and fresh
+     * caller, and create the connection before forking.
      *
      * @return void
      *
@@ -163,7 +137,7 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * Rows of `[the change, whether it runs in its own transaction that read
+     * Rows of `[change, whether it runs in its own transaction that read
      * first]`.
      *
      * @return iterable<string, array{0: string, 1: bool}>
@@ -177,10 +151,8 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * The claim taken before the change: the reporter dispatches once, and
-     * holds no lock while it does, so the change goes through; the marker then
-     * touches no row of a key that went, and is written on one that stands. A
-     * reporter coming after the change sends nothing, and neither throws.
+     * With the claim taken first, the change goes through during the dispatch
+     * and the marker touches no row of a key that went.
      *
      * @param  string  $change
      * @param  bool  $reads
@@ -245,10 +217,8 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * The change holding the connection's lock: the reporters read the key,
-     * wait on that lock, and find under it that the key went or stopped being
-     * reportable. Nothing is sent, listed, claimed or marked, and neither
-     * throws.
+     * With the change holding the connection's lock, the reporters find under
+     * it the key gone or unreportable, and send nothing.
      *
      * @param  string  $change
      * @param  bool  $reads
@@ -297,9 +267,8 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * Rows of `[the seconds of the overlap, the seconds on the reporter's clock
-     * past the change's, whether the key is warned of]`: reportable to the last
-     * second of its overlap, and not from the second it ends.
+     * Rows of `[overlap seconds, reporter clock offset, warned]`: reportable to
+     * the last second of the overlap.
      *
      * @return iterable<string, array{0: int, 1: int, 2: bool}>
      */
@@ -311,9 +280,8 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * A key made retiring while the reporter waits on the connection's lock is
-     * judged under that lock by what it is then: past its overlap it is not
-     * warned of, though the reporter read it current; within it, it is.
+     * A key made retiring while the reporter waits on the lock is judged by
+     * what it is under the lock.
      *
      * @param  int  $overlap
      * @param  int  $reporterAhead
@@ -351,13 +319,10 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * Reporters and changes at once, with no order forced, end with no error
-     * from any racer. No key is warned of twice, the connection deleted holds
-     * nothing, and each key on the connection no change touches is warned of
-     * once and marked, with no claim left. How many of the others were warned
-     * of depends on who won. This is a smoke test: a claim retries a deadlock,
-     * so it does not prove the order the locks are taken in, which
-     * `ExpiryNotifierTest::testLocksTheConnectionThenTheKey` pins.
+     * Reporters and changes run at once end with no error and no duplicate
+     * warning. A smoke test only;
+     * `ExpiryNotifierTest::testLocksTheConnectionThenTheKey` pins the lock
+     * order.
      *
      * @return void
      */
@@ -426,10 +391,8 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * A reporter stopped between its dispatch and its marker, by that statement
-     * failing, has sent a warning it never recorded. Another inside the claim
-     * sends nothing, to the last second of it; one from the second the claim
-     * ends sends the warning again and records it. A duplicate, never a loss.
+     * A reporter stopped between its dispatch and its marker is followed, once
+     * its claim ends, by one that sends again: a duplicate, never a loss.
      *
      * @return void
      */
@@ -510,8 +473,8 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * Run a report, with what runs at each dispatch, and answer what it sent
-     * and how it ended.
+     * Run a report with what runs at each dispatch, and answer what it sent and
+     * how it ended.
      *
      * @param  ?\Closure(): void  $dispatching
      * @return array{sent: int, keys: list<string>, listed: int, notices: array<string, int>}
@@ -569,8 +532,8 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * A current key, and another made current in its place, which retires it.
-     * The other's validity ends far beyond what is reported.
+     * A current key and another made current in its place, valid far beyond the
+     * report window.
      *
      * @return array{0: string, 1: \Closure(): string}
      */
@@ -624,8 +587,7 @@ final class ExpiryReporterRacesTest extends TestCase
     }
 
     /**
-     * A key of the service provider's own, in the state, whose validity ends
-     * the seconds given from now.
+     * An own key in the state, whose validity ends the given seconds from now.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyState  $state
      * @param  int  $endsIn

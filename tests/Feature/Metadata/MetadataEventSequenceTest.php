@@ -36,15 +36,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Pins the events of a metadata refresh (SSO-2.8, SSO-10.3 to SSO-10.5): a
- * refresh that adds a certificate reports `[KeyAdded, MetadataRefreshed]`;
- * one that replaces a certificate and moves the endpoint
- * `[KeyRetired, KeyAdded, ConnectionUpdated, MetadataRefreshed]`; one that
- * changes nothing `[MetadataRefreshed]` naming none; a failure or a conflict
- * `[MetadataRefreshFailed]`; a refresh that did not run nothing. Each names the
- * connection, its tenant and protocol, and the acting identity of the
- * administrator who asked, or none for a scheduled run; none carries a
- * certificate, a URL or the metadata.
+ * Pins the events of a metadata refresh, their order and their context.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -79,9 +71,8 @@ final class MetadataEventSequenceTest extends TestCase
     private Caller $actor;
 
     /**
-     * Bind a fixed clock and a fake fetcher, switch SAML and the refresh on,
-     * create the tables (the rate limit counters' among them) and a refreshing
-     * connection trusting the provider's certificate, and record events.
+     * Bind a fixed clock and a fake fetcher, enable SAML and refresh, create a
+     * refreshing connection and record events.
      *
      * @return void
      */
@@ -138,9 +129,8 @@ final class MetadataEventSequenceTest extends TestCase
     }
 
     /**
-     * A refresh an administrator asked for that replaces a certificate and
-     * moves the endpoint reports the retirement, the addition, the update and
-     * the refresh, in that order, each with the administrator.
+     * An administrator's refresh replacing a certificate and moving the
+     * endpoint reports each change in order.
      *
      * @return void
      */

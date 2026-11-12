@@ -25,17 +25,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Races runs of the expiry report across processes, each with its own database
- * connection, on PostgreSQL and MySQL (SSO-2.6, SSO-11.12): with nothing
- * failing the claim lets one reporter send each warning, each key's marker is
- * written and no claim is left; and a second reporter that finds a key claimed
- * while the holder dispatches, on a signal from the holder and not by timing,
- * is `claimed` and sends nothing, and every key is still listed by both.
- *
- * A report refuses a caller's transaction, so each racer runs plainly; the
- * refusal has its test in `ExpiryReportTest`. Skipped on SQLite, whose
- * in-memory database each process would have to itself, and where `pcntl` is
- * not available.
+ * Races expiry report runs across processes on PostgreSQL and MySQL, ordered by
+ * signal files.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,9 +55,8 @@ final class ConcurrentExpiryReportersTest extends TestCase
     private Connection $connection;
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock, make
-     * the certificate before any process forks, and create the tables and the
-     * connection.
+     * Skip without a shared database or pcntl; bind a fixed clock, make the
+     * certificate before forking and create the connection.
      *
      * @return void
      *
@@ -102,8 +92,8 @@ final class ConcurrentExpiryReportersTest extends TestCase
     }
 
     /**
-     * Reporters racing over the same keys send each warning once between them,
-     * and leave every marker written and no claim behind.
+     * Racing reporters send each warning once, write every marker and leave no
+     * claim.
      *
      * @return void
      */
@@ -142,8 +132,8 @@ final class ConcurrentExpiryReportersTest extends TestCase
     }
 
     /**
-     * A reporter that finds a key claimed while its holder is dispatching sends
-     * nothing and says so, listing the key all the same; the holder records it.
+     * A reporter finding a key claimed mid-dispatch sends nothing but still
+     * lists it; the holder records it.
      *
      * @return void
      */

@@ -30,12 +30,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for importing an OpenID provider's discovery document and JWKS
- * (SSO-2.8, SSO-2.9, SSO-2.11, SSO-7.3), through the public import with the
- * fake provider and hostile documents: the settings proposed exactly, the URL
- * found by appending to the issuer, path included; each refusal in its order; a
- * named connection's own allow-list and rate limit; the caps at, under and
- * over; and nothing written, trusted, reported or logged.
+ * Feature tests for importing an OpenID provider's discovery document and JWKS.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,8 +70,8 @@ final class DiscoveryImporterTest extends TestCase
     private FakeOpenIdProvider $provider;
 
     /**
-     * Bind a fixed clock and a fake fetcher serving the provider, switch OIDC
-     * on, create the tables, and record events and logs.
+     * Bind a fixed clock and a fake provider fetcher, enable OIDC, create the
+     * tables and record events and logs.
      *
      * @return void
      */
@@ -101,9 +96,8 @@ final class DiscoveryImporterTest extends TestCase
     }
 
     /**
-     * An import proposes exactly what the document gives and each admitted
-     * key's `kid`, `kty` and `alg`, having fetched the document and the JWKS
-     * once each, under their caps, and writes, reports and logs nothing.
+     * An import proposes exactly what the document gives, fetching each
+     * document once and writing nothing.
      *
      * @return void
      */
@@ -289,9 +283,8 @@ final class DiscoveryImporterTest extends TestCase
     }
 
     /**
-     * A connection that is another tenant's or not OIDC is
-     * `connection_not_found` exactly as an unknown one, with nothing counted or
-     * fetched.
+     * A connection of another tenant or protocol is `connection_not_found`,
+     * with nothing counted or fetched.
      *
      * @param  array<string, mixed>  $attributes
      * @param  string  $tenant
@@ -334,9 +327,8 @@ final class DiscoveryImporterTest extends TestCase
     }
 
     /**
-     * An import naming a connection counts against its metadata limit before it
-     * fetches: past it, it is rate limited until the window ends, with nothing
-     * fetched; one naming no connection is not counted.
+     * An import naming a connection is rate limited before it fetches; one
+     * naming none is not counted.
      *
      * @return void
      */
@@ -361,9 +353,7 @@ final class DiscoveryImporterTest extends TestCase
     }
 
     /**
-     * Rows of `[response, reason]`: how a fetch of the document or the JWKS may
-     * end without a response of `2xx`. A redirect to a private address is
-     * refused by the fetcher, which answers it so.
+     * Rows of `[response, reason]`: fetches that end without a `2xx` response.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Fetching\FetchResult, 1: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -531,8 +521,7 @@ final class DiscoveryImporterTest extends TestCase
     }
 
     /**
-     * Rows of `[hostile JWK]`: a key the package never admits, built as it is
-     * needed, since most need a key of their own.
+     * Rows of `[hostile JWK]`, built lazily since most need a key of their own.
      *
      * @return iterable<string, array{0: \Closure(): array<string, mixed>}>
      */
@@ -664,8 +653,7 @@ final class DiscoveryImporterTest extends TestCase
     }
 
     /**
-     * Rows of `[tenant, thrown]`: a tenant id's length against what the table
-     * holds.
+     * Rows of `[tenant, thrown]`: a tenant id's length against the column.
      *
      * @return iterable<string, array{0: string, 1: bool}>
      */
@@ -839,8 +827,8 @@ final class DiscoveryImporterTest extends TestCase
     }
 
     /**
-     * The members as JSON with a member the reader ignores padding it to
-     * exactly the bytes given.
+     * The members as JSON, padded with an ignored member to exactly the bytes
+     * given.
      *
      * @param  int  $bytes
      * @param  array<string, mixed>  $members

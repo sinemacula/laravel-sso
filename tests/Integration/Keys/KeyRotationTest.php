@@ -23,14 +23,8 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Integration test of a service provider encryption key's whole rotation
- * (SSO-2.7, SSO-5.9), through the helpers and the key ring, on whichever engine
- * the suite runs against: the first key added and made current, a next key
- * added and published alongside it, the next key made current, decryption
- * accepting both until the overlap ends and then the current key alone, and the
- * old key retired; with the rows persisted at each step checked as stored.
- *
- * It generates two RSA 3072 keys, as encryption keys are RSA only.
+ * Integration test of an encryption key's whole rotation through the helpers
+ * and the key ring.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,8 +50,8 @@ final class KeyRotationTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock and a freshness contract that answers `fresh`,
-     * configure the overlap, and create the tables and a SAML connection.
+     * Bind a fixed clock and fresh freshness, set the overlap, and create a
+     * SAML connection.
      *
      * @return void
      */
@@ -79,9 +73,8 @@ final class KeyRotationTest extends TestCase
     }
 
     /**
-     * An encryption key rotates without downtime: add, publish next alongside
-     * current, make it current, decrypt with both through the overlap, then
-     * retire the old key.
+     * An encryption key rotates without downtime through add, publish, promote,
+     * overlap and retire.
      *
      * @return void
      */
@@ -130,8 +123,7 @@ final class KeyRotationTest extends TestCase
 
         self::assertSame([$new->id], self::ids($this->ring()->decryption($id)));
 
-        // The old key is retired and removed; the new one decrypts with its own
-        // private key
+        // The old key is retired; the new one decrypts with its private key
         $retired = $this->keys()->retire(self::TENANT, $id, $old->id, Clients::browser());
 
         self::assertTrue($retired->isSucceeded());
@@ -150,8 +142,8 @@ final class KeyRotationTest extends TestCase
     }
 
     /**
-     * The connection's rows as stored: id, state, when made current and until
-     * when retiring.
+     * The connection's rows as stored: id, state, current-since and
+     * retiring-until.
      *
      * @return list<array{0: mixed, 1: mixed, 2: mixed, 3: mixed}>
      */

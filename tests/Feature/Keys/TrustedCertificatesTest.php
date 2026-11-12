@@ -39,13 +39,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for the identity provider certificates a SAML connection trusts
- * (SSO-2.6, SSO-2.11, SSO-2.12): each certificate refused, and why; RSA 2048,
- * P-256 and P-384 certificates trusted as a set, up to the cap, with a
- * duplicate refused; an OIDC connection refused; an expired certificate
- * trusted, since its dates are reported and never enforced; a certificate
- * distrusted, the last one included; and what is in flight through the
- * connection voided by each trust change, and by no refused one (SSO-2.13).
+ * Feature tests for the identity provider certificates a SAML connection
+ * trusts.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,8 +66,8 @@ final class TrustedCertificatesTest extends TestCase
     private FixedClock $clock;
 
     /**
-     * Bind a fixed clock and a recording freshness contract, create the tables
-     * and a SAML connection, and record events.
+     * Bind a fixed clock and recording freshness, create the tables and a SAML
+     * connection, and record events.
      *
      * @return void
      */
@@ -114,8 +109,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * Each refused certificate is invalid, at `certificate`, before freshness
-     * is asked, with nothing written or reported.
+     * Each refused certificate is invalid at `certificate`, before freshness is
+     * asked.
      *
      * @param  \Closure(): string  $certificate
      * @param  string  $code
@@ -135,8 +130,7 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * Rows of `[certificate, type, bits]`: each certificate trusted, with its
-     * key's type and size.
+     * Rows of `[certificate, type, bits]` for each trusted certificate.
      *
      * @return iterable<string, array{0: \Closure(): string, 1: \SineMacula\Laravel\Sso\Keys\Enums\KeyType, 2: int}>
      */
@@ -149,9 +143,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * An accepted certificate is trusted: stored with no state and no private
-     * key, summarised, and reported as added, once `sso.connection.trust` is
-     * fresh.
+     * An accepted certificate is stored with no state or private key,
+     * summarised and reported as added.
      *
      * @param  \Closure(): string  $certificate
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
@@ -193,8 +186,7 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * The connection trusts a set: each certificate is kept alongside the
-     * others, oldest first.
+     * The connection trusts a set, oldest first.
      *
      * @return void
      */
@@ -207,8 +199,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * A certificate the connection already trusts is a duplicate, however its
-     * PEM is laid out.
+     * A certificate already trusted is a duplicate, however its PEM is laid
+     * out.
      *
      * @return void
      */
@@ -242,8 +234,7 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * A connection trusts at most ten certificates at once; one more is too
-     * many, until one is removed.
+     * A connection trusts at most ten certificates until one is removed.
      *
      * @return void
      */
@@ -301,8 +292,7 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * An expired certificate is trusted: its expiry is reported, never
-     * enforced, and the key ring still offers it.
+     * An expired certificate is trusted and still offered by the key ring.
      *
      * @return void
      */
@@ -325,9 +315,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * A trusted certificate is distrusted and removed, the last one included,
-     * and reported as retired with the certificate as it was, once
-     * `sso.connection.trust` is fresh.
+     * A trusted certificate, the last included, is distrusted, removed and
+     * reported as retired.
      *
      * @return void
      */
@@ -368,9 +357,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * Only a certificate the connection trusts is distrusted: one of its own
-     * keys, another connection's certificate or an unknown id is not found,
-     * before freshness is asked, with nothing written or reported.
+     * Only the connection's trusted certificates can be distrusted; anything
+     * else is not found.
      *
      * @return void
      */
@@ -394,7 +382,7 @@ final class TrustedCertificatesTest extends TestCase
 
     /**
      * A certificate trusted between the first read and the transaction makes
-     * the second a duplicate, and nothing more is written.
+     * the second a duplicate.
      *
      * @return void
      */
@@ -411,9 +399,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * Trusting a signing certificate is additive: it voids nothing in flight
-     * and leaves the trust version as it was, so a provider rotating its key
-     * never voids its own flows.
+     * Trusting a signing certificate is additive: it voids nothing and keeps
+     * the trust version.
      *
      * @return void
      */
@@ -432,10 +419,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * Trusting a metadata signing anchor is a trust change: it voids the
-     * connection's unfinished requests and unredeemed codes, stamped with the
-     * clock's now, raises its trust version, and touches nothing of another
-     * connection; a finished request and a redeemed code are kept.
+     * Trusting a metadata signing anchor voids the connection's unfinished
+     * requests and codes and raises its trust version.
      *
      * @return void
      */
@@ -462,9 +447,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * A metadata signing anchor is a set of its own: the same certificate may
-     * be a signing certificate and an anchor, each capped apart, and the key
-     * ring answers each set alone.
+     * Metadata signing anchors are a separately capped set, and the key ring
+     * answers each set alone.
      *
      * @return void
      */
@@ -484,10 +468,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * SAML is RSA only, for every use: an elliptic curve certificate is refused
-     * as an identity provider signing certificate and as a metadata signing
-     * anchor alike, as `unsupported`, before freshness is asked, with nothing
-     * written.
+     * SAML is RSA only: an EC certificate is refused as `unsupported` for every
+     * use.
      *
      * @return void
      */
@@ -531,8 +513,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * Distrusting a certificate voids what is in flight through the connection
-     * and raises its trust version.
+     * Distrusting a certificate voids what is in flight and raises the trust
+     * version.
      *
      * @return void
      */
@@ -552,8 +534,8 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * A refused certificate change voids nothing: a duplicate, a stale caller,
-     * and a certificate to distrust that is not found.
+     * A refused change voids nothing: a duplicate, a stale caller or a missing
+     * certificate.
      *
      * @return void
      */

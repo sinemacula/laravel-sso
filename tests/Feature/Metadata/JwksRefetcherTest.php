@@ -40,11 +40,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the refetch of a JWKS on an unknown `kid` (SSO-7.3),
- * through the public selection and the refetcher itself with the fake provider:
- * the cooldown claimed before the fetch, at most one fetch per cooldown, to the
- * second; a failed fetch consuming it; the compare and set; an exact
- * replacement of the keys; and when it voids and raises the trust version.
+ * Feature tests for refetching a JWKS on an unknown `kid`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -86,8 +82,7 @@ final class JwksRefetcherTest extends TestCase
     private FakeOpenIdProvider $provider;
 
     /**
-     * Bind a fixed clock and a fake fetcher serving the provider, and create
-     * the tables.
+     * Bind a fixed clock and a fake provider fetcher, and create the tables.
      *
      * @return void
      */
@@ -107,9 +102,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * A refetch claims the cooldown before it fetches, fetches the URL it read
-     * under its cap, replaces the keys exactly and clears its token, keeping
-     * the cooldown; the fetch is stamped with the moment it validated.
+     * A refetch claims the cooldown, fetches, replaces the keys exactly and
+     * clears its token.
      *
      * @return void
      */
@@ -188,8 +182,7 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds after the first refetch, fetches in all]`: the cooldown
-     * boundary, to the second.
+     * Rows of `[seconds after the first refetch, fetches in all]`.
      *
      * @return iterable<string, array{0: int, 1: int}>
      */
@@ -203,9 +196,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * One more refetch is possible once the cooldown's boundary passes, exactly
-     * at it included; and a success keeps it for just as long as a failure
-     * does.
+     * One more refetch is possible from the cooldown's boundary, whether the
+     * last one succeeded or failed.
      *
      * @param  int  $seconds
      * @param  int  $fetches
@@ -263,7 +255,7 @@ final class JwksRefetcherTest extends TestCase
 
     /**
      * A failure consumes the cooldown, keeps the last good keys and clears the
-     * token alone.
+     * token.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $response
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -362,8 +354,7 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * Keys added alone void nothing and leave the trust version as it was, so a
-     * refetch never voids its own callback, though the first JWKS was stored.
+     * Keys added alone void nothing and leave the trust version as it was.
      *
      * @return void
      */
@@ -425,8 +416,7 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * Rows of `[columns, settings]`: what changes while a refetch fetches, each
-     * a lost compare and set.
+     * Rows of `[columns, settings]`: changes made while a refetch fetches.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: array<string, mixed>}>
      */
@@ -443,9 +433,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * A refetch that lost to a change made while it fetched writes nothing, on
-     * what it read or on a failure, and answers the winner's keys from the
-     * locked row with no other fetch.
+     * A refetch that lost to a concurrent change writes nothing and answers the
+     * winner's keys without fetching.
      *
      * @param  array<string, mixed>  $columns
      * @param  array<string, mixed>  $settings
@@ -533,9 +522,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * A refetch of a connection as it was read, when the cooldown holds or the
-     * JWKS was written since, claims nothing and fetches nothing, and answers
-     * the keys stored now.
+     * A refetch that the cooldown or a newer JWKS stops claims and fetches
+     * nothing, and answers the stored keys.
      *
      * @param  \Closure(self): array<string, mixed>  $attributes
      * @return void
@@ -558,8 +546,7 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds the fetch took, stale limit, outcome]`: around the
-     * stale limit counted from the moment the JWKS was validated.
+     * Rows of `[seconds the fetch took, stale limit, outcome]`.
      *
      * @return iterable<string, array{0: int, 1: int, 2: string}>
      */
@@ -574,9 +561,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * What was validated is checked against the stale limit at commit, as a
-     * scheduled refresh checks it: past it, nothing is replaced, nothing is
-     * reported as a success, and the cooldown stays spent.
+     * The stale limit is checked at commit: past it nothing is replaced and the
+     * cooldown stays spent.
      *
      * @param  int  $seconds
      * @param  int  $limit
@@ -621,8 +607,7 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * Rows of `[removes a key]`: a stale fetch, whether it only adds a key or
-     * would remove one.
+     * Rows of `[removes a key]`.
      *
      * @return iterable<string, array{0: bool}>
      */
@@ -633,9 +618,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * A stale fetch replaces nothing, so one that would remove a key voids
-     * nothing and raises no trust version either: exactly one failure is
-     * reported, and no receipt is answered for the request that asked.
+     * A stale fetch replaces, voids and raises nothing, reports one failure and
+     * answers no receipt.
      *
      * @param  bool  $removes
      * @return void
@@ -696,9 +680,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * Each token the cooldown turns away is counted up to the cap, after which
-     * the row is not written at all; the next claim answers the count and
-     * clears it.
+     * The cooldown counts what it turns away up to the cap; the next claim
+     * answers and clears the count.
      *
      * @return void
      */
@@ -725,8 +708,7 @@ final class JwksRefetcherTest extends TestCase
 
         self::assertSame(JwksRefetcher::MAX_COUNTED_SUPPRESSED, $this->row($connection)->jwks_refetch_suppressed);
 
-        // The failed claim names the column in its SET, once; the count does
-        // not
+        // Only the failed claim writes the column; the capped count does not.
         self::assertSame(1, $writes);
 
         $this->clock->advance(300);
@@ -736,9 +718,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * A key removed, asked for by a consumed request, spares that request alone
-     * and answers its receipt: the transition it made, exactly. Nothing else is
-     * spared.
+     * A removed key spares only the consumed request that asked, and answers
+     * its receipt.
      *
      * @return void
      */
@@ -768,8 +749,7 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * Rows of `[attributes, reference known, voided at after the rotation]`: a
-     * request no rotation spares, and what becomes of it.
+     * Rows of `[attributes, reference known, voided at after the rotation]`.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: bool, 2: ?string}>
      */
@@ -787,10 +767,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * A request that is not exactly the consumed, unfinished, unvoided request
-     * of the locked trust version is never spared, so what voided it stands,
-     * its first moment kept; it gets no receipt, and the rotation voids what it
-     * would, leaving a finished request and another connection's untouched.
+     * A request that is not the consumed, open request of the locked trust
+     * version is never spared.
      *
      * @param  array<string, mixed>  $attributes
      * @param  bool  $own
@@ -996,9 +974,8 @@ final class JwksRefetcherTest extends TestCase
     }
 
     /**
-     * Bind a clock that moves on by the seconds given once the claim and the
-     * validated moment have each read it, so only the commit sees the time
-     * passed.
+     * Bind a clock that advances by the seconds given so only the commit sees
+     * the time pass.
      *
      * @param  int  $seconds
      * @return void
@@ -1027,8 +1004,8 @@ final class JwksRefetcherTest extends TestCase
             ) {}
 
             /**
-             * The clock's now, moved on once the claim and the validated moment
-             * have each read it, so only the commit sees the time passed.
+             * Advance the clock after its second read, so only the commit sees
+             * the time pass.
              *
              * @return \Carbon\CarbonImmutable
              */

@@ -32,15 +32,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for importing a SAML identity provider's metadata (SSO-2.8,
- * SSO-2.9, SSO-2.11): from XML or a URL fetched through the fetcher as a
- * metadata request, the settings proposed exactly, the connection's binding
- * preferred and its anchors applied; an unknown, another tenant's or a non-SAML
- * connection refused; a refused or failed fetch refused with its reason; the
- * reader's refusal passed on with its rule; a proposal that would not be valid
- * settings refused; a URL import of a connection rate limited before it
- * fetches; every import refused while SAML is off; and nothing written, trusted
- * or reported.
+ * Feature tests for importing a SAML identity provider's metadata.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -93,9 +85,8 @@ final class MetadataImporterTest extends TestCase
     }
 
     /**
-     * Metadata given as XML proposes the entity's settings, certificates,
-     * NameID formats and expiry, and nothing is fetched, written, trusted or
-     * reported.
+     * Metadata given as XML proposes the entity's settings, and nothing is
+     * fetched, written, trusted or reported.
      *
      * @return void
      */
@@ -144,9 +135,8 @@ final class MetadataImporterTest extends TestCase
     }
 
     /**
-     * A connection with a metadata signing anchor refuses unsigned metadata and
-     * metadata the anchor did not sign, and reads metadata it signed; an import
-     * naming no connection applies no anchor.
+     * A connection's signing anchor is applied to its import; an import naming
+     * no connection applies none.
      *
      * @return void
      */
@@ -211,9 +201,8 @@ final class MetadataImporterTest extends TestCase
     }
 
     /**
-     * While the SAML protocol is off, every import, naming a connection or not,
-     * is refused as `protocol_unavailable`, with nothing fetched, counted or
-     * reported.
+     * While SAML is off every import is `protocol_unavailable`, with nothing
+     * fetched, counted or reported.
      *
      * @return void
      */
@@ -292,8 +281,7 @@ final class MetadataImporterTest extends TestCase
     }
 
     /**
-     * Rows of `[cap, imported]`: the metadata cap one over, at and one under
-     * the document's length, and whether the import proposes settings.
+     * Rows of `[cap, imported]`: the metadata cap around the document's length.
      *
      * @return iterable<string, array{0: int, 1: bool}>
      */
@@ -307,9 +295,7 @@ final class MetadataImporterTest extends TestCase
     }
 
     /**
-     * A URL is fetched held to the metadata cap, never the fetcher's, and a
-     * fetched document over it fails the fetch; one at or under it is imported,
-     * however small the fetcher's own cap.
+     * A URL is fetched held to the metadata cap, never the fetcher's.
      *
      * @param  int  $cap
      * @param  bool  $imported
@@ -386,10 +372,8 @@ final class MetadataImporterTest extends TestCase
     }
 
     /**
-     * Each URL import naming a connection counts against its metadata limit
-     * before it fetches: past the limit it is rate limited until the window
-     * ends, with nothing fetched; an import naming no connection, or given as
-     * XML, is not counted.
+     * A URL import naming a connection is rate limited before it fetches;
+     * others are not counted.
      *
      * @return void
      */
@@ -419,8 +403,7 @@ final class MetadataImporterTest extends TestCase
     }
 
     /**
-     * The reader's refusal is passed on with the rule that refused the
-     * metadata.
+     * The reader's refusal is passed on with its rule.
      *
      * @return void
      */
