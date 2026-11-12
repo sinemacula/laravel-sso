@@ -23,38 +23,8 @@ use Jose\Component\Signature\Serializer\CompactSerializer;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * The package's JOSE adapter (SSO-7.3, RFC 7523,
- * `docs/design/jose-adapter.md`): the one class that calls
- * `web-token/jwt-library`, to check an ID token's signature with one stored key
- * and to sign a `private_key_jwt` client assertion. Everything the library
- * leaves out, or does in a way the package does not accept, is the adapter's
- * own, in this namespace: the token is read by `CompactToken` (compact only,
- * capped, no JWE, `crit` and `b64` refused, repeated JSON members refused), the
- * key admitted by `ProviderKey` and chosen by `ProviderKeySet::select()` (exact
- * `kid`, never the library's key set), and every time and claim checked by the
- * package against its clock (`TimeClaims` and the ID token rules), never by the
- * library.
- *
- * `verify()` builds a `JWSVerifier` for the call, with an `AlgorithmManager`
- * holding only the connection's allow-list: `none` and HMAC are never
- * registered, so the library cannot run them whatever a token's header says. It
- * checks first that the key fits the token's algorithm (`ProviderKey::fits()`)
- * and that the library reads the same protected header; anything the library
- * throws is a signature that does not verify, so it fails closed.
- *
- * `signClientAssertion()` signs RFC 7523 §3's claims with the connection's
- * current key: `iss` and `sub` the client id, `aud` the token endpoint exactly,
- * a fresh 256-bit `jti`, `iat` now and `exp` `ASSERTION_LIFETIME_SECONDS`
- * later, under the header `alg` (the algorithm the connection pinned, or the
- * key's default: `PS256` or `RS256` for an RSA key, `ES256` for a P-256 key,
- * `ClientKey`), `kid` (its thumbprint) and `typ` `JWT`. The algorithm is never
- * negotiated and an assertion is never retried under another. Anything the
- * library throws while it signs is answered with a package exception that
- * carries nothing of the library's: no previous exception and no frame holding
- * the private JWK.
- *
- * Nothing it builds outlives the call: it keeps no verifier, key, clock or
- * token in a property (SSO-11.2), and the library declares no static state.
+ * The only class that calls `web-token/jwt-library`: verifies an ID token
+ * signature with one key and signs `private_key_jwt` client assertions.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -69,7 +39,7 @@ final readonly class JoseAdapter
     /** @var int The bytes of randomness in a client assertion's `jti`. */
     public const int JTI_BYTES = 32;
 
-    /** @var array<string, class-string<\Jose\Component\Signature\Algorithm\SignatureAlgorithm>> The library's class of each algorithm the package can register: asymmetric only. */
+    /** @var array<string, class-string<\Jose\Component\Signature\Algorithm\SignatureAlgorithm>> The library class of each registrable algorithm, asymmetric only. */
     private const array ALGORITHMS = [
         'RS256' => RS256::class,
         'RS384' => RS384::class,
@@ -83,8 +53,8 @@ final readonly class JoseAdapter
     ];
 
     /**
-     * Whether the token's signature verifies with the key, for an algorithm on
-     * the allow-list that the key fits.
+     * Whether the signature verifies with the key, under only the allow-listed
+     * algorithms; anything the library throws fails closed.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKey  $key
@@ -102,8 +72,7 @@ final readonly class JoseAdapter
 
             return $jws->getSignature(0)->getProtectedHeader() === $token->header()
                 && (new JWSVerifier(self::manager($allowed->names)))->verifyWithKey($jws, new JWK($key->toArray()), 0);
-            // The library declares no @throws, though a value it cannot read
-            // throws.
+            // The library declares no @throws, though unreadable input throws
             // @phpstan-ignore catch.neverThrown
         } catch (\Throwable) {
             return false;
@@ -111,9 +80,8 @@ final readonly class JoseAdapter
     }
 
     /**
-     * A client assertion for the client at the token endpoint, signed now with
-     * the PEM private key given, under the algorithm the connection pinned or,
-     * with none, the key's default.
+     * Sign an RFC 7523 client assertion under the pinned algorithm, or the
+     * key's default when none is pinned.
      *
      * @param  string  $clientId
      * @param  string  $tokenEndpoint
@@ -144,8 +112,8 @@ final readonly class JoseAdapter
     }
 
     /**
-     * The payload signed with the key, compact. What the library throws is
-     * replaced, since its frames hold the private JWK.
+     * Sign the payload, replacing anything the library throws since its frames
+     * hold the private JWK.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ClientKey  $key
      * @param  string  $payload
@@ -163,8 +131,8 @@ final readonly class JoseAdapter
     }
 
     /**
-     * The payload signed by the library with the key, compact. The library
-     * declares no @throws, though a key it cannot use throws.
+     * Sign the payload with the library, which throws undeclared on a key it
+     * cannot use.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ClientKey  $key
      * @param  string  $payload
@@ -184,8 +152,7 @@ final readonly class JoseAdapter
     }
 
     /**
-     * Refuse a client assertion with no client or no token endpoint: the
-     * caller's mistake.
+     * Refuse a client assertion with no client or token endpoint.
      *
      * @param  string  $clientId
      * @param  string  $tokenEndpoint
@@ -201,7 +168,7 @@ final readonly class JoseAdapter
     }
 
     /**
-     * An algorithm manager holding the algorithms named and nothing else.
+     * An algorithm manager holding only the named algorithms.
      *
      * @param  list<string>  $names
      * @return \Jose\Component\Core\AlgorithmManager

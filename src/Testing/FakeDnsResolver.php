@@ -10,26 +10,8 @@ use SineMacula\Laravel\Sso\Domains\DnsLookup;
 use SineMacula\Laravel\Sso\Domains\DomainSummary;
 
 /**
- * A DNS resolver for tests that answers each name with what the test gave it
- * and records every lookup, so a test of a domain's verification or recheck
- * makes no DNS query (SSO-3.2, SSO-12.4).
- *
- * Bind it in place of the package's resolver with
- * `$app->instance(DnsResolver::class, $dns = new FakeDnsResolver())`, give each
- * name its answer, then assert what was looked up:
- *
- * - `publishes($result->domain)` answers a claimed domain's record name with
- *   its token, as if the tenant had published the record;
- * - `found($name, ...$records)`, `absent($name)` and `failing($name)` answer a
- *   name with those records, with none, or with `lookup_failed`;
- * - `answer($name, $lookup)` answers with a `DnsLookup`, or with a closure that
- *   builds one from the name, for an answer that changes between lookups.
- *
- * Names are matched as DNS matches them, without regard to case or a trailing
- * dot; a later answer for a name replaces an earlier one. A lookup of a name
- * with no answer throws a `LogicException` naming it, so a stray lookup fails
- * the test rather than passing unnoticed. It holds its answers per instance and
- * never belongs in production.
+ * A test DNS resolver that answers each name as told and records every lookup;
+ * an unexpected name throws, so a stray lookup fails the test.
  *
  * @api
  *
@@ -45,7 +27,7 @@ final class FakeDnsResolver implements DnsResolver
     private array $lookups = [];
 
     /**
-     * Answer the claimed domain's record name with its token.
+     * Answer the claimed domain's record name with its token, as if published.
      *
      * @param  \SineMacula\Laravel\Sso\Domains\DomainSummary  $domain
      * @return self
@@ -92,8 +74,8 @@ final class FakeDnsResolver implements DnsResolver
     }
 
     /**
-     * Answer every lookup of the name with the lookup, or with what the closure
-     * builds from the name.
+     * Answer every lookup of the name, replacing any earlier answer; a closure
+     * can change the answer between lookups.
      *
      * @param  string  $name
      * @param  \Closure(string): \SineMacula\Laravel\Sso\Domains\DnsLookup|\SineMacula\Laravel\Sso\Domains\DnsLookup  $answer
@@ -107,7 +89,7 @@ final class FakeDnsResolver implements DnsResolver
     }
 
     /**
-     * Record the lookup and answer it with what was given for its name.
+     * Record and answer the lookup.
      *
      * @param  string  $name
      * @return \SineMacula\Laravel\Sso\Domains\DnsLookup
@@ -139,8 +121,7 @@ final class FakeDnsResolver implements DnsResolver
     }
 
     /**
-     * Assert the name was looked up, exactly as many times as given when a
-     * number is.
+     * Assert the name was looked up, exactly `$times` times if given.
      *
      * @param  string  $name
      * @param  ?int  $times

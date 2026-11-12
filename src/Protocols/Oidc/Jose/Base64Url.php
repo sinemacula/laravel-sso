@@ -5,12 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
 
 /**
- * Unpadded base64url (RFC 7515 §2, RFC 4648 §5), read strictly: only the
- * URL-safe alphabet, no padding, no whitespace, and only the canonical encoding
- * of its bytes, so a value has one spelling and two readers cannot decode it
- * differently.
- *
- * It holds nothing between calls (SSO-11.2).
+ * Unpadded base64url (RFC 7515), decoded strictly so a value has exactly one
+ * accepted spelling.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,7 +21,7 @@ final class Base64Url
     private function __construct() {}
 
     /**
-     * The bytes, encoded without padding.
+     * Encode the bytes without padding.
      *
      * @param  string  $bytes
      * @return string
@@ -36,8 +32,8 @@ final class Base64Url
     }
 
     /**
-     * The bytes the value encodes, or `null` when it is not the canonical
-     * unpadded base64url encoding of any.
+     * Decode the value, or return `null` when it is not canonical unpadded
+     * base64url.
      *
      * @param  string  $value
      * @return ?string

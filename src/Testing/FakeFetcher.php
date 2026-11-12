@@ -11,21 +11,8 @@ use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 
 /**
- * A fetcher for tests that answers each URL with the response the test gave it
- * and records every request, so a test of metadata, discovery, a JWKS, a token
- * or UserInfo request makes no network request (SSO-2.9).
- *
- * Bind it in place of the package's fetcher with
- * `$app->instance(Fetcher::class, $fetcher = new FakeFetcher())`, give each URL
- * its response with `respond()` (a `FetchResult`, or a closure that builds one
- * from the request), then assert what was fetched. A URL is matched exactly, as
- * the request carries it. A request to a URL with no response throws a
- * `LogicException` naming the URL, so a stray request fails the test rather
- * than passing unnoticed. It applies none of the default fetcher's checks
- * (those are the default fetcher's tests' to cover) but one: a request that
- * carries its own size cap (a metadata request's) fails, as `fetch_failed`,
- * when the body it would be answered with is longer than that cap, as the
- * default fetcher stops such a transfer.
+ * A test fetcher that answers each exact URL as told and records every request;
+ * an unexpected URL throws, so a stray request fails the test.
  *
  * @api
  *
@@ -41,9 +28,8 @@ final class FakeFetcher implements Fetcher
     private array $requests = [];
 
     /**
-     * Answer every request to the URL with the response, or with what the
-     * closure builds from the request; a later response to the same URL
-     * replaces an earlier one.
+     * Answer every request to the URL with the response, or the closure's;
+     * a later response replaces an earlier one.
      *
      * @param  string  $url
      * @param  \Closure(\SineMacula\Laravel\Sso\Fetching\FetchRequest): \SineMacula\Laravel\Sso\Fetching\FetchResult|\SineMacula\Laravel\Sso\Fetching\FetchResult  $response
@@ -57,8 +43,8 @@ final class FakeFetcher implements Fetcher
     }
 
     /**
-     * Record the request and answer it with the response given for its URL, or
-     * fail it when that body is longer than the request's own cap.
+     * Record and answer the request. Like the default fetcher, it fails a body
+     * over the request's own size cap; no other check is applied.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return \SineMacula\Laravel\Sso\Fetching\FetchResult

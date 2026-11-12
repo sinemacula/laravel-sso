@@ -7,29 +7,8 @@ namespace SineMacula\Laravel\Sso\Fetching;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
 
 /**
- * One outbound request (SSO-2.9): its purpose, the URL an administrator entered
- * or metadata or discovery supplied, and, for a token request, its form fields
- * and client authentication, or, for UserInfo, its access token.
- *
- * A request may carry a size cap of its own (`maxBytes`), which the fetcher
- * holds its response to in place of `sso.fetcher.max_response_bytes`, so a SAML
- * metadata aggregate can be allowed far more than any other response without
- * raising the cap of the rest, and an OIDC discovery document, JWKS, token or
- * UserInfo response far less (`Protocols\Oidc\OidcLimits`). A token or UserInfo
- * request may also carry a timeout of its own (`timeoutSeconds`), in place of
- * `sso.fetcher.timeout_seconds`.
- *
- * Built only through the named constructor of its purpose, which pairs it with
- * the only credential that purpose may carry: none for metadata, discovery and
- * a JWKS, a client authentication for a token request, and an access token for
- * UserInfo. A token request's form may not carry a client authentication of its
- * own (`RESERVED_FORM_FIELDS`), so it is authenticated by exactly one method,
- * the connection's (SSO-7.2). The URL is not checked here: whether it may be
- * fetched is the fetcher's answer, a refusal, never an exception.
- *
- * The form (a token request's code and PKCE verifier) is held in a
- * `\SensitiveParameterValue`, so no dump, export or array cast shows a value of
- * it, and the request refuses to be serialised.
+ * One outbound request, built through its purpose's named constructor so it
+ * carries only the credential that purpose allows. The fetcher checks the URL.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,18 +41,17 @@ final readonly class FetchRequest
         /** The absolute URL to fetch, as entered or supplied. */
         public string $url,
 
-        // Not promoted: held wrapped, so no dump, export or array cast shows a
-        // value of it
+        // Not promoted: held wrapped, so no dump, export or array cast shows it
         #[\SensitiveParameter]
         array $form = [],
 
         /** The one credential the request carries, if its purpose takes one. */
         public ?FetchCredentials $credentials = null,
 
-        /** The most bytes the response may hold, in place of the fetcher's cap, or `null` for the fetcher's. */
+        /** The response size cap in bytes, or `null` for the fetcher's. */
         public ?int $maxBytes = null,
 
-        /** The whole time the request may take, in place of the fetcher's timeout, or `null` for the fetcher's. */
+        /** The whole request timeout, or `null` for the fetcher's. */
         public ?int $timeoutSeconds = null,
     ) {
         if ($maxBytes !== null && $maxBytes < 1) {
@@ -88,9 +66,7 @@ final readonly class FetchRequest
     }
 
     /**
-     * What a dump shows: the purpose, the URL, the names of the form fields,
-     * the credential's kind, the size cap and the timeout, never a value of the
-     * form or the credential.
+     * Show everything but the form values and the credential's secret.
      *
      * @return array<string, mixed>
      */
@@ -107,7 +83,7 @@ final readonly class FetchRequest
     }
 
     /**
-     * Refuse to be serialised: a request lives only while it is sent.
+     * Refuse to be serialised; a request lives only while it is sent.
      *
      * @return array<string, mixed>
      *
@@ -137,8 +113,7 @@ final readonly class FetchRequest
     }
 
     /**
-     * Fetch a SAML identity provider's metadata, with no credential, held to
-     * the size cap given, or to the fetcher's when none is.
+     * Fetch a SAML identity provider's metadata, with no credential.
      *
      * @param  string  $url
      * @param  ?int  $maxBytes
@@ -152,8 +127,7 @@ final readonly class FetchRequest
     }
 
     /**
-     * Fetch an OpenID provider's discovery document, with no credential, held
-     * to the size cap given, or to the fetcher's when none is.
+     * Fetch an OpenID provider's discovery document, with no credential.
      *
      * @param  string  $url
      * @param  ?int  $maxBytes
@@ -167,8 +141,7 @@ final readonly class FetchRequest
     }
 
     /**
-     * Fetch an OpenID provider's JSON Web Key Set, with no credential, held to
-     * the size cap given, or to the fetcher's when none is.
+     * Fetch an OpenID provider's JSON Web Key Set, with no credential.
      *
      * @param  string  $url
      * @param  ?int  $maxBytes
@@ -182,9 +155,8 @@ final readonly class FetchRequest
     }
 
     /**
-     * Post a form-encoded token request, authenticated by the connection's
-     * client authentication alone, held to the timeout and size cap given, or
-     * to the fetcher's when none is.
+     * Post a token request authenticated by the client authentication alone;
+     * the form may not set a reserved field.
      *
      * @param  string  $url
      * @param  array<string, string>  $form
@@ -211,8 +183,7 @@ final readonly class FetchRequest
     }
 
     /**
-     * Fetch the UserInfo response with the access token alone, held to the
-     * timeout and size cap given, or to the fetcher's when none is.
+     * Fetch the UserInfo response with the access token alone.
      *
      * @param  string  $url
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchCredentials  $accessToken
@@ -232,7 +203,7 @@ final readonly class FetchRequest
     }
 
     /**
-     * The HTTP method: `POST` for a token request, `GET` for every other.
+     * The HTTP method: `POST` for a token request, otherwise `GET`.
      *
      * @return string
      */
@@ -242,8 +213,7 @@ final readonly class FetchRequest
     }
 
     /**
-     * The form fields of a token request, for the fetcher to send and for
-     * nothing else; `[]` for every other purpose.
+     * The token request's form fields, for the fetcher only; `[]` otherwise.
      *
      * @return array<string, string>
      */

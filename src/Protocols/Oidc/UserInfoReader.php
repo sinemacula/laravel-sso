@@ -15,37 +15,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken;
 
 /**
- * Sends the UserInfo request of an OpenID Connect completion and reads what the
- * endpoint answers (SSO-2.9, SSO-7.5, SSO-7.6). A connection fetches UserInfo
- * only when it says so; then it is mandatory, so every refusal here refuses the
- * completion, and the assembly never goes on without it.
- *
- * `fetch()` makes one attempt with the access token alone, through the fetcher,
- * in the timeout and size cap of `OidcLimits`, with no retry by code or
- * middleware. It refuses to run inside a transaction on the storage connection,
- * so a provider call never holds a lock.
- *
- * `refusal()` says why the answer is refused, or `null` when its claims may be
- * read:
- *
- * - a request refused or failed is `fetch_refused` or `fetch_failed`, a timeout
- *   and a body over the request's cap among them;
- * - `401` and `403` are `provider_error`, whose code alone `providerError()`
- *   answers, from `WWW-Authenticate`, for the assembly's log;
- * - any other status outside `2xx` is `fetch_failed`;
- * - a `2xx` with the content type `application/jwt` is `userinfo_invalid`,
- *   since a signed or encrypted UserInfo response is not supported;
- * - so is a `2xx` whose body `Jose\StrictJson` does not read as an object, so a
- *   repeated member is refused; whose `sub` is not a string exactly equal, byte
- *   for byte, to the ID token's; or with a claim the package reads of another
- *   type: `email` by `EmailPairing::fits()`, and `name`, `given_name` and
- *   `family_name` strings. A number too large for an integer is never one of
- *   these strings (`StrictJson::decodeMembers()`). An `email_verified` that is
- *   not a JSON boolean refuses nothing: it is no evidence (`EmailPairing`).
- *
- * `claims()` answers the members of an answer not refused. The body is never
- * logged, and nothing here logs. It holds its collaborators, none of which
- * keeps anything of one request for the next (SSO-11.2).
+ * Sends the UserInfo request of an OpenID Connect completion and reads the
+ * response. Once enabled UserInfo is mandatory, so any refusal fails the flow.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,28 +25,28 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken;
  */
 final readonly class UserInfoReader
 {
-    /** @var list<int> The statuses of a UserInfo error response (RFC 6750 §3.1). */
+    /** @var list<int> The statuses of a UserInfo error response (RFC 6750 section 3.1). */
     private const array PROVIDER_ERROR_STATUSES = [401, 403];
 
-    /** @var list<string> The only codes of a bearer token error (RFC 6750 §3.1); anything else is not logged. */
+    /** @var list<string> The only bearer error codes logged (RFC 6750 section 3.1). */
     private const array ERROR_CODES = ['invalid_request', 'invalid_token', 'insufficient_scope'];
 
     /** @var list<string> The string claims read beside the email. */
     private const array TEXT_CLAIMS = ['name', 'given_name', 'family_name'];
 
-    /** @var string The content type of a signed or encrypted UserInfo response. */
+    /** @var string The content type of an unsupported signed or encrypted response. */
     private const string JWT_CONTENT_TYPE = 'application/jwt';
 
-    /** @var string One `WWW-Authenticate` parameter (RFC 9110 §11.2): its name, and its token or quoted string. */
+    /** @var string One `WWW-Authenticate` parameter: its name and token or quoted string. */
     private const string CHALLENGE_PARAMETER = '/([!#$%&\'*+.^_`|~0-9A-Za-z-]++)\s*+=\s*+("(?:[^"\\\]++|\\\.)*+"|[^\s,"]*+)/';
 
     /** @var string The challenge parameter that holds the error code. */
     private const string ERROR_PARAMETER = 'error';
 
-    /** @var string Why a UserInfo request inside a transaction on the storage connection is refused. */
+    /** @var string The message for a UserInfo request inside a storage transaction. */
     private const string INSIDE_TRANSACTION = 'A UserInfo request is sent outside any transaction on the package\'s storage connection: a provider call never holds a lock.';
 
-    /** @var string Why a connection that names no UserInfo endpoint is the caller's mistake. */
+    /** @var string The message for a connection with no UserInfo endpoint. */
     private const string NO_ENDPOINT = 'A connection that fetches UserInfo names its endpoint; only a complete connection is used.';
 
     /**
@@ -94,7 +65,7 @@ final readonly class UserInfoReader
     ) {}
 
     /**
-     * Send the UserInfo request, once, with the access token alone.
+     * Send the UserInfo request once, with the access token alone.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse  $tokens
@@ -134,9 +105,8 @@ final readonly class UserInfoReader
     }
 
     /**
-     * The bearer token error code of the answer's `WWW-Authenticate`, for the
-     * log alone, or `null` when it names none of RFC 6750's. Nothing else of
-     * the header is read, `error_description` above all.
+     * The RFC 6750 error code from `WWW-Authenticate`, for the log only, or
+     * `null`; `error_description` is never read.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $result
      * @return ?string
@@ -160,8 +130,7 @@ final readonly class UserInfoReader
     }
 
     /**
-     * The claims of an answer `refusal()` does not refuse; any other is the
-     * caller's mistake.
+     * The claims of an answer `refusal()` accepts.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $result
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken  $idToken
@@ -180,8 +149,7 @@ final readonly class UserInfoReader
     }
 
     /**
-     * The connection's UserInfo endpoint; a connection without one is the
-     * caller's mistake.
+     * The connection's UserInfo endpoint, which a complete connection has.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
      * @return string
@@ -194,8 +162,8 @@ final readonly class UserInfoReader
     }
 
     /**
-     * Whether the answer's content type is `application/jwt`, whatever its case
-     * or parameters.
+     * Whether the content type is `application/jwt`, ignoring case and
+     * parameters.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $result
      * @return bool
@@ -210,9 +178,6 @@ final readonly class UserInfoReader
     /**
      * Why a `2xx` body is refused, or `null` when its claims may be read.
      *
-     * `StrictJson` reads the object, refusing repeated members, with every
-     * number a number, so one is never taken for a string of its digits.
-     *
      * @param  string  $body
      * @param  string  $subject
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
@@ -225,8 +190,7 @@ final readonly class UserInfoReader
     }
 
     /**
-     * Whether `sub` is exactly the subject and the claims read have their
-     * types.
+     * Whether `sub` is exactly the subject and the read claims are typed.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  string  $subject

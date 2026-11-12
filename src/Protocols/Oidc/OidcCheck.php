@@ -10,9 +10,8 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[oidc]`: the caps, windows and timeouts every OpenID Connect connection is
- * held to, while the `oidc` feature is on (SSO-7, SSO-12.3), each read as
- * `OidcLimits` reads it, so the check and the flows judge it the same way.
+ * Checks the `[oidc]` limits through `OidcLimits`, so the check and the flows
+ * read them the same way.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +30,7 @@ final readonly class OidcCheck implements ConfigurationCheck
     ) {}
 
     /**
-     * The limits are checked while the `oidc` feature is on, or its switch is
-     * malformed.
+     * Apply while the `oidc` feature is on or its switch is malformed.
      *
      * @return bool
      */
@@ -43,7 +41,7 @@ final readonly class OidcCheck implements ConfigurationCheck
     }
 
     /**
-     * Each cap, the windows, then the timeouts.
+     * Read each cap, window and timeout.
      *
      * @return list<\Closure(): mixed>
      */

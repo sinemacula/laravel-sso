@@ -22,38 +22,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\JoseAdapter;
 
 /**
- * Sends the token request of an OpenID Connect completion (SSO-5.4, SSO-7.2,
- * RFC 6749 §4.1.3): one form-encoded `POST` through the fetcher (SSO-2.9) to
- * the connection's token endpoint, with `grant_type=authorization_code`, the
- * code, the connection's callback as `redirect_uri`, exactly as the start sent
- * it (SSO-5.5), and the PKCE `code_verifier`.
- *
- * It is authenticated by exactly one method, the connection's, as
- * `credentials()` builds it for the one attempt, and `Fetching\FetchRequest`
- * refuses a form that would add a second:
- *
- * - `client_secret_basic` and `client_secret_post` carry the connection's
- *   client secret (`ConnectionSecrets::revealFor()`);
- * - `private_key_jwt` carries a client assertion (RFC 7523) the connection's
- *   current `client_assertion` key signs afresh, by the adapter
- *   (`JoseAdapter::signClientAssertion()`), with the token endpoint exactly as
- *   its `aud`, under the algorithm the connection pinned or the key's default.
- *
- * A connection holding no such secret or key has no credential (`null`), which
- * the completion refuses with `connection_unavailable`. A request that keeps no
- * PKCE verifier is a `LogicException`, since every OIDC start stores one; it is
- * decrypted here alone, only to build the request (`ConsumedRequest`), and a
- * ciphertext no key decrypts propagates (SSO-11.4).
- *
- * `send()` makes one attempt, with no retry by code or middleware, in the
- * timeout and size cap of `OidcLimits`. It refuses to run inside a transaction
- * on the storage connection, as the completion does, so a provider call never
- * holds a lock. A timeout or a server error leaves the request consumed, since
- * the code may have been spent. A refused or failed request is the fetcher's
- * result, read by `TokenResponseReader`.
- *
- * It holds its collaborators, none of which keeps anything of one request for
- * the next (SSO-11.2).
+ * Sends the token request of an OpenID Connect completion, once and with no
+ * retry, outside any storage transaction so a provider call never holds a lock.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,13 +35,13 @@ final readonly class TokenExchange
     /** @var string The grant the token request makes. */
     private const string GRANT_TYPE = 'authorization_code';
 
-    /** @var string Why a token request inside a transaction on the storage connection is refused. */
+    /** @var string The message for a token request inside a storage transaction. */
     private const string INSIDE_TRANSACTION = 'A token request is sent outside any transaction on the package\'s storage connection: a provider call never holds a lock.';
 
-    /** @var string Why a request that keeps no PKCE verifier is the caller's mistake. */
+    /** @var string The message for a request with no PKCE verifier. */
     private const string NO_VERIFIER = 'An OpenID Connect authorisation request keeps its PKCE verifier.';
 
-    /** @var string Why a client assertion could not be given its `jti`. */
+    /** @var string The message for a client assertion with no randomness for its `jti`. */
     private const string NO_RANDOMNESS = 'The system could not supply the randomness a client assertion needs.';
 
     /**
@@ -112,8 +82,8 @@ final readonly class TokenExchange
     ) {}
 
     /**
-     * The one client authentication the connection's settings name, made for
-     * one attempt, or `null` when the connection holds no secret or key for it.
+     * The connection's client authentication for one attempt, or `null` when it
+     * holds no secret or key for it.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -135,7 +105,8 @@ final readonly class TokenExchange
     }
 
     /**
-     * Send the token request, once.
+     * Send the token request once; a timeout leaves the request consumed, since
+     * the code may have been spent.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -173,16 +144,6 @@ final readonly class TokenExchange
     }
 
     /**
-     * The failure of a client assertion the system had no randomness for.
-     *
-     * @return \RuntimeException
-     */
-    private static function noRandomness(): \RuntimeException
-    {
-        return new \RuntimeException(self::NO_RANDOMNESS);
-    }
-
-    /**
      * The client secret, as the kind carries it.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
@@ -209,7 +170,7 @@ final readonly class TokenExchange
     }
 
     /**
-     * A client assertion the connection's current key signs for this attempt.
+     * A fresh client assertion signed by the connection's current key.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -232,7 +193,7 @@ final readonly class TokenExchange
         try {
             $assertion = $this->jose->signClientAssertion($clientId, $options->tokenEndpoint(), $pem, $this->clock->now(), $options->clientAssertionAlgorithm());
         } catch (RandomException) {
-            throw self::noRandomness();
+            throw new \RuntimeException(self::NO_RANDOMNESS);
         }
 
         return FetchCredentials::privateKeyJwt($clientId, $assertion->reveal());

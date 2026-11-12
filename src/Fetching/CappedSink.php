@@ -9,17 +9,8 @@ use GuzzleHttp\Psr7\Utils;
 use Psr\Http\Message\StreamInterface;
 
 /**
- * Where one hop's response body is written as it arrives, never past the size
- * cap (SSO-2.9), and how a body is read back within it.
- *
- * Its stream refuses a write that would take the body past the cap: it writes
- * nothing and answers `0`, so cURL aborts the transfer with a write error there
- * and then, on every supported Guzzle, whatever Guzzle makes of the progress
- * callback's answer. A body sent without a length, or with a false one, is
- * never held past the cap.
- *
- * It is made for one hop, and holds the body in a `php://temp` stream, which
- * Guzzle hands back as the response's body.
+ * The size-capped sink for one hop's response body. A write past the cap
+ * returns `0`, so cURL aborts the transfer whatever the Guzzle version.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,8 +48,7 @@ final class CappedSink
     }
 
     /**
-     * The body read from its start, no further than a byte past the cap, so a
-     * body that is too large is never read into memory whole.
+     * Read the body from its start, at most one byte past the cap.
      *
      * @param  \Psr\Http\Message\StreamInterface  $body
      * @param  int  $cap
@@ -86,7 +76,7 @@ final class CappedSink
     }
 
     /**
-     * Whether a write was refused for passing the cap: the body is too large.
+     * Whether the body passed the cap.
      *
      * @return bool
      */
@@ -96,9 +86,8 @@ final class CappedSink
     }
 
     /**
-     * Write the bytes when the body stays within the cap; otherwise write
-     * nothing, answer `0` and remember the body is too large, as every later
-     * write then is.
+     * Write the bytes within the cap; past it, write nothing from then on and
+     * return `0`.
      *
      * @param  string  $bytes
      * @return int

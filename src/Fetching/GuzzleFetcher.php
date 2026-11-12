@@ -21,57 +21,8 @@ use SineMacula\Laravel\Sso\Fetching\Enums\CredentialKind;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchPurpose;
 
 /**
- * The default fetcher (SSO-2.9): Guzzle on its cURL handler, pinned to the
- * address it checked.
- *
- * For the request's URL, and again for each redirect it may follow, it:
- *
- * - refuses a URL that is not `https`, carries userinfo or a fragment, has no
- *   host, or holds a control character, a space or a backslash, so nothing in
- *   it can be read two ways;
- * - normalises the host (lower case, IDNA to ASCII under UTS 46, one trailing
- *   dot stripped) and refuses an IP literal that is not canonical, so
- *   `2130706433`, `0177.0.0.1`, `0x7f.1`, `127.1` and `[0:0::1]` never reach a
- *   parser that reads them as an address;
- * - resolves a host name once and refuses it when any address it resolves to is
- *   refused by `AddressPolicy`, so a split answer cannot slip a private address
- *   through, then pins the connection to the first address with
- *   `CURLOPT_RESOLVE`, so a second resolution (DNS rebinding) cannot change it,
- *   while the certificate and host name are still verified against the name;
- * - sends with redirects, cookies, proxies (the environment's included) and
- *   content decoding off, certificate verification always on, `https` the only
- *   protocol, the time left of the fetch's one deadline, and the response size
- *   cap (the request's own, a metadata or OIDC request's say, or else
- *   `max_response_bytes`) enforced on the declared length, during the transfer
- *   by a sink that refuses the write past it (on every supported Guzzle), so
- *   nothing past the cap is read, and on the body received;
- * - sends the request's one credential as its kind says, and nothing else;
- * - follows a redirect only for a request without a credential, at most
- *   `max_redirects` times, rechecking and repinning each hop, with `GET` and no
- *   body.
- *
- * The timeout (the request's own, a token or UserInfo request's say, or else
- * `timeout_seconds`) is one deadline for the whole fetch, measured on a
- * monotonic clock from the moment `fetch()` is called: every resolution and
- * every hop, redirects included, spends the same budget, and each transfer is
- * given only what is left of it, its connect timeout capped to the same. A
- * lookup cannot be cut short, so the deadline is checked before each one and
- * straight after it, and the time left is read once more as the transfer's caps
- * the moment before it is sent; a hop that finds less than a millisecond left
- * at any of these fails as `timeout` rather than send, so a transfer is never
- * given a cap of `0` (none, to cURL) and no response is ever answered past the
- * cap. Nothing is ever retried.
- *
- * A refusal (before anything is sent) and a failure (once sent: no address, a
- * transport or TLS error, the deadline passed, too large, too many redirects)
- * are results carrying their reason code only. Each is logged once as a
- * warning, with the purpose, the reason code, a short cause, the host and the
- * exception's class, never the URL's path or query, the form, a credential, a
- * header or the body.
- *
- * The handler is cURL's and nothing else: without `ext-curl` the constructor
- * throws rather than fall back to PHP streams, which cannot pin the address
- * with `CURLOPT_RESOLVE`. A test injects a `MockHandler` instead.
+ * The default fetcher: Guzzle on cURL, pinned with `CURLOPT_RESOLVE` to the
+ * address it checked so DNS rebinding cannot move it. Nothing is retried.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -87,10 +38,10 @@ final readonly class GuzzleFetcher implements Fetcher
     /** @var string The type of a token request's body. */
     private const string FORM_TYPE = 'application/x-www-form-urlencoded';
 
-    /** @var string The `client_assertion_type` of a signed client assertion (RFC 7523 §2.2). */
+    /** @var string The `client_assertion_type` of a signed client assertion (RFC 7523). */
     private const string ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
 
-    /** @var string A character no URL the fetcher sends may hold: a control character, a space, DEL or a backslash. */
+    /** @var string A control character, space, DEL or backslash, which could be read two ways. */
     private const string UNSAFE_CHARACTER = '/[\x00-\x20\x7F\\\]/';
 
     /** @var string The authority of a URL, as written. */
@@ -105,25 +56,25 @@ final readonly class GuzzleFetcher implements Fetcher
     /** @var string An authority of a host without `@` or `[`, and an optional decimal port. */
     private const string HOST_AND_PORT = '/^([^@\[\]:]+)(:[0-9]*)?$/D';
 
-    /** @var string A host name once normalised: dot-separated labels of letters, digits, hyphens and underscores. */
+    /** @var string A normalised host name of letters, digits, hyphens and underscores. */
     private const string HOST_NAME = '/^[a-z0-9_-]+(?:\.[a-z0-9_-]+)*$/D';
 
-    /** @var string A host made only of digits, dots and `x`, which a parser may read as an IPv4 address. */
+    /** @var string A host of digits, dots and `x`, which a parser may read as IPv4. */
     private const string NUMERIC_HOST = '/^[0-9.x]+$/iD';
 
-    /** @var string A host whose last label is a decimal, octal or hex number, which a parser may read as an IPv4 address. */
+    /** @var string A host ending in a numeric label, which a parser may read as IPv4. */
     private const string NUMERIC_LAST_LABEL = '/(?:^|\.)(?:0x[0-9a-f]*|[0-9]+)$/iD';
 
-    /** @var string The message of a constructor that cannot have the cURL handler. */
+    /** @var string The message when the cURL handler is unavailable. */
     private const string NO_CURL = 'The outbound fetcher needs the PHP extension `curl`: it pins the address it checked with CURLOPT_RESOLVE and never falls back to PHP streams.';
 
-    /** @var callable(\Psr\Http\Message\RequestInterface, array<string, mixed>): \GuzzleHttp\Promise\PromiseInterface The Guzzle handler requests are sent through. */
+    /** @var callable(\Psr\Http\Message\RequestInterface, array<string, mixed>): \GuzzleHttp\Promise\PromiseInterface The Guzzle handler. */
     private mixed $handler;
 
-    /** @var bool Whether the cURL options Guzzle 8 manages itself are set here: protocols, redirects and the proxy bypass. */
+    /** @var bool Whether to set the cURL options Guzzle 8 manages itself. */
     private bool $setsManagedCurlOptions;
 
-    /** @var \Closure(): int The monotonic clock the fetch's deadline is measured on, in nanoseconds: `hrtime(true)` unless a test gave its own. */
+    /** @var \Closure(): int The monotonic clock in nanoseconds. */
     private \Closure $monotonicClock;
 
     /**
@@ -153,16 +104,13 @@ final readonly class GuzzleFetcher implements Fetcher
         /** What resolves a host name: the container's `HostResolver`. */
         private HostResolver $resolver,
 
-        // Not promoted: cURL's handler stands in when none is given; a test
-        // gives a mock
+        // Not promoted: defaults to cURL's handler; a test gives a mock
         ?callable $handler = null,
 
-        // Not promoted: only read here, for a test to simulate a missing
-        // ext-curl
+        // Not promoted: only read here, to simulate a missing ext-curl
         ?\Closure $curlLoaded = null,
 
-        // Not promoted: `hrtime(true)` stands in when none is given; a test
-        // gives its own, so time passes only when it says
+        // Not promoted: defaults to `hrtime(true)`
         ?\Closure $monotonicClock = null,
     ) {
         $curlLoaded ??= static fn (): bool => extension_loaded('curl') && function_exists('curl_init');
@@ -179,8 +127,7 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * Send the request, or refuse it, within one deadline of the request's own
-     * timeout, or the configured one, from now.
+     * Send the request, or refuse it, within one deadline for every hop.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return \SineMacula\Laravel\Sso\Fetching\FetchResult
@@ -196,13 +143,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * Check, resolve, pin and send one URL, the request's own or a redirect it
-     * followed, within what is left of the fetch's deadline.
-     *
-     * The deadline is checked before the lookup, so a hop the last one left no
-     * time for resolves nothing, and straight after it, since PHP cannot cut a
-     * lookup short: one that ran past the deadline fails the fetch as
-     * `timeout`, never sends.
+     * Check, resolve, pin and send one URL. The deadline is checked either side
+     * of the lookup, since PHP cannot cut a lookup short.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  string  $url
@@ -238,10 +180,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The failure of a hop the deadline passed before or during its lookup, or
-     * of a host that resolved to no address, the refusal of one that resolved
-     * to any refused address, or `null` when there is time left and every
-     * address may be connected to.
+     * Stop a hop out of time or addresses, or with any refused address, so a
+     * split answer cannot slip a private one through; otherwise `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  string  $host
@@ -264,9 +204,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The hop's result, unless it is a redirect: then refused for a request
-     * that carries a credential, failed past the redirect limit, and otherwise
-     * the result of the next hop, to the `Location` resolved against this one.
+     * Follow a redirect for an uncredentialed request within the limit, or
+     * return the hop's result.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  array{uri: \Psr\Http\Message\UriInterface, host: string, port: int, literal: ?string}  $target
@@ -300,24 +239,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * Send one checked URL, pinned to the address given, the request's method,
-     * credential and body on the first hop only, and read its response within
-     * the size cap and what is left of the deadline, with each header's first
-     * value.
-     *
-     * The cap is the request's own when it carries one, and the configured
-     * `max_response_bytes` otherwise. The body is written into a `CappedSink`,
-     * which refuses the write that would pass the cap, so cURL aborts the
-     * transfer there on every supported Guzzle, and is read back no further
-     * than a byte past the cap. A request Guzzle or PSR-7 cannot build (a
-     * header value it refuses, say) fails like a transport error, logged with
-     * the exception's class only, never its message, which can quote the value.
-     * The time left is read once, the last thing before the request goes, so
-     * the transfer is always given a cap of a millisecond or more; with less
-     * than that left, nothing is sent and the hop fails as `timeout`, however
-     * little time passed since the deadline was last checked. A transfer that
-     * fails once the deadline has passed, as cURL's own timeout does, fails as
-     * `timeout`.
+     * Send one checked URL pinned to the address, with the method, credential
+     * and body on the first hop only; never log the exception's message.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  array{uri: \Psr\Http\Message\UriInterface, host: string, port: int, literal: ?string}  $target
@@ -363,11 +286,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The Guzzle options of one hop, but for the time caps and the sink. The
-     * size cap aborts the transfer when the declared length exceeds it, or, on
-     * a Guzzle that acts on the progress callback's answer, once the bytes
-     * received do, and marks the hop as too large; the sink enforces the cap on
-     * every Guzzle.
+     * The Guzzle options of one hop, but for the time caps and the sink, which
+     * enforces the size cap on every Guzzle.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  array{uri: \Psr\Http\Message\UriInterface, host: string, port: int, literal: ?string}  $target
@@ -403,8 +323,7 @@ final readonly class GuzzleFetcher implements Fetcher
                     throw new \OverflowException('The response declares a length over the cap.');
                 }
             },
-            // Guzzle passes the bytes expected and then received of the
-            // download, followed by those of the upload
+            // Guzzle passes download expected and received, then upload ones
             'progress' => static function (float|int ...$transfer) use ($cap, &$tooLarge): bool {
                 if (($transfer[1] ?? 0) > $cap) {
                     $tooLarge = true;
@@ -427,12 +346,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The options with the request's one credential where its kind says, and a
-     * token request's form-encoded body: a client id and secret in the
-     * `Authorization: Basic` header, each form-encoded first (RFC 6749 §2.3.1),
-     * or in the form; a client id and signed client assertion in the form (RFC
-     * 7523 §2.2); or an access token in the `Authorization: Bearer` header (RFC
-     * 6750 §2.1).
+     * Add the request's one credential where its kind says, and a token
+     * request's form-encoded body.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  array<string, mixed>  $options
@@ -470,12 +385,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The cURL options of one hop: a host name pinned with `CURLOPT_RESOLVE` to
-     * the address it was checked against, written canonically and an IPv6
-     * address in brackets, and, on a Guzzle that leaves them to the caller,
-     * `https` as the only protocol, no redirect followed and no proxy. Guzzle 8
-     * sets the last three itself from the `protocols`, `allow_redirects` and
-     * `proxy` options and refuses them here.
+     * The cURL options of one hop; Guzzle 8 sets the protocol, redirect and
+     * proxy options itself and refuses them here.
      *
      * @param  array{uri: \Psr\Http\Message\UriInterface, host: string, port: int, literal: ?string}  $target
      * @param  string  $address
@@ -501,8 +412,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The URL checked and normalised for sending, or why it is refused: the
-     * cause, with the normalised host when there is one.
+     * The URL checked and normalised for sending, or the refusal cause with any
+     * normalised host.
      *
      * @param  string  $url
      * @return array{cause: string, host: ?string}|array{uri: \Psr\Http\Message\UriInterface, host: string, port: int, literal: ?string}
@@ -528,9 +439,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The URL in ASCII, its parts and its normalised host, in that order, or
-     * `null` when it holds an unsafe character, cannot be parsed or has no host
-     * that can be normalised.
+     * The ASCII URL, its parts and its normalised host, or `null` when any of
+     * them cannot be had.
      *
      * @param  string  $url
      * @return ?array{string, array{scheme?: string, host?: string, port?: int, user?: string, pass?: string, query?: string, path?: string, fragment?: string}, string}
@@ -545,8 +455,7 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The URI to send for the normalised host and the URL's port, path and
-     * query, or `null` when Guzzle refuses one of them.
+     * The URI to send, or `null` when Guzzle refuses a part.
      *
      * @param  string  $host
      * @param  array{scheme?: string, host?: string, port?: int, user?: string, pass?: string, query?: string, path?: string, fragment?: string}  $parts
@@ -564,10 +473,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The URL in ASCII, so `parse_url()`, which rewrites some bytes over 0x7F,
-     * reads it as written: its host name IDNA-converted, and every byte over
-     * 0x7F after the authority percent-encoded; `null` when it holds such a
-     * byte and has no authority that can be converted.
+     * The URL in ASCII, since `parse_url()` rewrites some bytes over 0x7F, or
+     * `null` when its authority cannot be converted.
      *
      * @param  string  $url
      * @return ?string
@@ -588,11 +495,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The authority in ASCII: as it is when it holds no byte over 0x7F, and
-     * otherwise its host name IDNA-converted and its port kept; `null` when
-     * such an authority is not a host name, with an optional port, that
-     * converts to a plain host name, so a character that converts to `:`, `@`,
-     * `/` or the like is refused rather than read as one.
+     * The authority in ASCII, or `null` unless it converts to a plain host
+     * name, so a character that converts to `:` or `@` is refused.
      *
      * @param  string  $authority
      * @return ?string
@@ -609,8 +513,7 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * Why the URL's scheme, userinfo, fragment or port is refused, or `null`
-     * when none is.
+     * Why the URL's scheme, userinfo, fragment or port is refused, or `null`.
      *
      * @param  string  $url
      * @param  array{scheme?: string, host?: string, port?: int, user?: string, pass?: string, query?: string, path?: string, fragment?: string}  $parts
@@ -629,10 +532,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The host in lower case, IDNA-converted to ASCII (UTS 46, nontransitional)
-     * with one trailing dot stripped, or a bracketed IPv6 literal in lower
-     * case; `null` when it cannot be converted or is not a plain host name once
-     * it is.
+     * The host lower-cased and IDNA-converted with one trailing dot stripped,
+     * or `null` when it is not a plain host name.
      *
      * @param  string  $host
      * @return ?string
@@ -653,10 +554,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * `ip_form` when the host is, or may be read as, an IP literal that is not
-     * canonical: a bracketed IPv6 address other than `inet_ntop()` writes it,
-     * or a host of digits, dots and `x`, or ending in a numeric label, other
-     * than a canonical dotted quad; `null` otherwise.
+     * `ip_form` when the host may be read as a non-canonical IP literal, such
+     * as `0x7f.1` or `127.1`; `null` otherwise.
      *
      * @param  string  $host
      * @return ?string
@@ -675,9 +574,7 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The address a host names when it is a canonical IP literal (a dotted
-     * quad, or a bracketed IPv6 address as `inet_ntop()` writes it), `null` for
-     * a host name or a literal written any other way.
+     * The address of a canonical IP literal host, or `null`.
      *
      * @param  string  $host
      * @return ?string
@@ -698,8 +595,7 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The URL a redirect's `Location` names, resolved against the URL that
-     * answered it; a `Location` that cannot be parsed resolves to itself, for
+     * Resolve a redirect's `Location`; an unparsable one is returned as is for
      * the next hop to refuse.
      *
      * @param  \Psr\Http\Message\UriInterface  $base
@@ -716,8 +612,8 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * Report a refusal or failure once, as a warning with its purpose, reason
-     * code, cause, host and exception class only, and answer it.
+     * Log a refusal or failure once, never the URL path, query, form,
+     * credential, headers or body, and return it.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $result

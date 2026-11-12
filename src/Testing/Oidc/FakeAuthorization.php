@@ -5,15 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Testing\Oidc;
 
 /**
- * One authorisation the fake OpenID provider granted (SSO-12.4): what the
- * package's authorisation request asked for (`parameters()`, as the URL carried
- * them), the code it issued, and the ID token and access token its token
- * endpoint answers that code with.
- *
- * `query()` is the callback's raw query string, `code`, `state` and the RFC
- * 9207 `iss` by default, each overridable or removed (`null`); `errorQuery()` is
- * an error response's. `repeated()` builds a raw query from pairs, so a test
- * can repeat a parameter, give it as an array (`state[]`) or make it long.
+ * One authorisation the fake OpenID provider granted: the request parameters,
+ * the issued code and the tokens its token endpoint returns for it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -40,11 +33,11 @@ final readonly class FakeAuthorization
         /** The provider's issuer, the callback's `iss`. */
         public string $issuer,
 
-        /** The ID token the token endpoint answers the code with, or its raw text. */
+        /** The ID token returned for the code, or its raw text. */
         #[\SensitiveParameter]
         public FakeIdToken|string $idToken,
 
-        /** The access token the token endpoint answers the code with. */
+        /** The access token returned for the code. */
         #[\SensitiveParameter]
         public string $accessToken,
     ) {}
@@ -71,8 +64,8 @@ final readonly class FakeAuthorization
     }
 
     /**
-     * The callback's raw query string: `code`, `state` and `iss`, with the
-     * overrides laid over them (a `null` removes one).
+     * The callback's raw query string of `code`, `state` and `iss`, with the
+     * overrides applied; a `null` removes a parameter.
      *
      * @param  array<string, ?string>  $overrides
      * @return string
@@ -85,8 +78,7 @@ final readonly class FakeAuthorization
     }
 
     /**
-     * An error response's raw query string: `error`, its description when
-     * given, `state` and `iss`, with the overrides laid over them.
+     * An error response's raw query string, with the overrides applied.
      *
      * @param  string  $error
      * @param  ?string  $description
@@ -101,8 +93,7 @@ final readonly class FakeAuthorization
     }
 
     /**
-     * A raw query string of the pairs, in order, each name and value
-     * percent-encoded as given, so a name may repeat.
+     * Build a raw query string from ordered pairs, so a name may repeat.
      *
      * @param  list<array{0: string, 1: string}>  $pairs
      * @return string
@@ -113,7 +104,7 @@ final readonly class FakeAuthorization
     }
 
     /**
-     * The parameters given a value, encoded as a query string.
+     * Encode the non-null parameters as a query string.
      *
      * @param  array<string, ?string>  $parameters
      * @return string

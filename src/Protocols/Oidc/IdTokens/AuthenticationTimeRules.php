@@ -9,22 +9,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\TimeClaims;
 
 /**
- * When the person authenticated at the provider (SSO-7.4, SSO-5.10), read from
- * an `auth_time` `ClaimTypes` has typed and never inferred from `iat`, at full
- * precision against the package's clock and the skew given per call:
- *
- * - after now plus the skew is `assertion_expired`;
- * - absent, when a `max_age` was asked for or the authentication must follow a
- *   moment, is `id_token_invalid`, and absent otherwise stays unknown;
- * - a positive `max_age` is the configured authentication age: more than it
- *   plus the skew before now is `authentication_expired`. A `max_age` of 0 sets
- *   no age: it asks the provider to authenticate afresh, which the moment given
- *   judges, never how long the callback took to arrive;
- * - more than the skew before the moment given (for a `reauthenticate` or a
- *   `max_age` of 0, when the request started) is `authentication_expired`. A
- *   request's start is kept to the whole second, so it is compared as stored.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The ID token `auth_time` checks; never inferred from `iat`. A `max_age` of 0
+ * is judged against the request start, not the callback's age.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -39,9 +25,8 @@ final class AuthenticationTimeRules
     private function __construct() {}
 
     /**
-     * Why the token's `auth_time` refuses it at now with the skew, under the
-     * `max_age` asked for (`null` for none) and the moment the authentication
-     * must follow (`null` for none); `null` when it passes.
+     * Why the token's `auth_time` refuses it, or `null`; `$notBefore` is the
+     * moment authentication must follow, if any.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  \Carbon\CarbonImmutable  $now

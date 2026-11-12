@@ -5,26 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
 
 /**
- * The public keys of an identity provider's JWKS the package admits (SSO-7.3),
- * as read from the provider (`read()`) or from what the connection stores
- * (`fromStored()`), each admitted by `ProviderKey::admit()` for the
- * connection's allow-list.
- *
- * A JWKS is read only when it is a JSON object within the size cap, read as
- * JSON wrote it by `StrictJson` (a repeated member refused, nested ones too, a
- * JSON object never read as a list and a number never as its digits), whose
- * `keys` is a list of at most the cap's number of objects; a key the package
- * does not admit (an `oct` key, a private key, an encryption key, a weak or
- * unknown one) is left out, and the JWKS is refused when two admitted keys
- * share a `kid` or none is admitted. A stored JWKS is admitted again as it is
- * read, so a key whose algorithm has left the allow-list since is never used.
- *
- * `select()` picks the key for a token, never by position and never through the
- * library's key set: the one whose own `kid` is exactly the header's, a string
- * compared byte for byte (an unknown `kid` never falls back to another key); or,
- * for a token with no `kid`, the only key admissible for its algorithm.
- *
- * It holds public keys only.
+ * The admitted public keys of a provider's JWKS. Stored keys are admitted again
+ * on read, so a key whose algorithm left the allow-list is never used.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,10 +27,8 @@ final readonly class ProviderKeySet
     ) {}
 
     /**
-     * The keys a JWKS fetched from the provider gives, or `null` when the JWKS
-     * is refused: larger than `maxBytes`, not a JSON object read strictly,
-     * without a `keys` list of objects, with more than `maxKeys` keys, with two
-     * admitted keys under one `kid`, or with none admitted.
+     * Read a fetched JWKS, or `null` when it is oversized, malformed, has too
+     * many keys, repeats a `kid` or admits none.
      *
      * @param  string  $json
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -71,8 +51,7 @@ final readonly class ProviderKeySet
     }
 
     /**
-     * The keys the connection stores, admitted again for the allow-list; none
-     * when it stores none or what it stores cannot be read.
+     * Read the stored keys, admitting each again; empty when unreadable.
      *
      * @param  ?string  $stored
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -96,7 +75,8 @@ final readonly class ProviderKeySet
     }
 
     /**
-     * The key that verifies the token, or why there is none.
+     * The key for the token: by exact `kid`, or with no `kid` the only key that
+     * fits the algorithm. An unknown `kid` never falls back.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -119,10 +99,8 @@ final readonly class ProviderKeySet
     }
 
     /**
-     * How many of this set's keys the set given lacks, and how many of the
-     * given set's keys this set lacks or holds in another form: what a
-     * replacement of the given set by this one adds and removes. A key that
-     * keeps its `kid` with other members counts as both.
+     * Count the keys added and removed since the given set; a key whose members
+     * changed counts as both.
      *
      * @param  self  $before
      * @return array{added: int, removed: int}
@@ -133,8 +111,7 @@ final readonly class ProviderKeySet
     }
 
     /**
-     * The key among the candidates: the one candidate when it fits the
-     * algorithm; none found when there are none; refused otherwise.
+     * Select the sole candidate if it fits; refuse an ambiguous or unfit one.
      *
      * @param  list<\SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKey>  $candidates
      * @param  string  $algorithm
@@ -151,8 +128,7 @@ final readonly class ProviderKeySet
     }
 
     /**
-     * The keys each entry gives that the package admits, or `null` when an
-     * entry is not a JSON object.
+     * The admitted keys, or `null` when an entry is not a JSON object.
      *
      * @param  array<array-key, mixed>  $entries
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -188,7 +164,7 @@ final readonly class ProviderKeySet
     }
 
     /**
-     * How many of the keys the other keys do not hold in exactly the same form.
+     * How many of the keys are not among the others in exactly the same form.
      *
      * @param  list<\SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKey>  $keys
      * @param  list<\SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKey>  $others

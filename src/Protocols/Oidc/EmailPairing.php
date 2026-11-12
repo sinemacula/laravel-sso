@@ -9,30 +9,8 @@ use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
 use SineMacula\Laravel\Sso\Results\LinkingEmail;
 
 /**
- * Pairs the email a provider asserted with its `email_verified`, from one
- * source and never one from each (SSO-7.7, SSO-8.8).
- *
- * The validated ID token is the source when it carries `email`, even when
- * UserInfo has its own; otherwise a validated UserInfo response is, when it was
- * fetched and carries `email`; otherwise there is no pair. `email_verified` is
- * read from that source alone, so another source's flag never vouches for an
- * email: JSON `true` and JSON `false` are carried as asserted, and anything
- * else (absent, `null`, a string such as `"true"`, a number, an object or an
- * array) is `null`, no evidence either way. Nothing is coerced, and such a
- * value does not refuse the sign-in.
- *
- * `fits()` is the rule on the `email` claim's type, which the UserInfo reader
- * and the claims' assembly apply before anything is paired: a string of 1 to
- * 320 bytes, when it is present. A member present as `null` is not missing, so
- * it does not fit.
- *
- * `linkingEmail()` is the only way an asserted email becomes a linking email:
- * `email_verified` exactly `true`, and one `@` between a local part and a
- * domain, by `Results\LinkingEmail`'s own rule. `organization()` reads the
- * organisation claim the connection names, from the source the email came from
- * and never another, only when it is a string a result can hold: never from the
- * email's domain or the mapped attributes. Nothing is logged here, and nothing
- * is kept between calls (SSO-11.2).
+ * Pairs a provider's `email` with `email_verified` from the same source, the ID
+ * token first, so one source's flag never vouches for another's email.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,21 +31,26 @@ final class EmailPairing
     private function __construct() {}
 
     /**
-     * Whether the claims' `email`, when present, has the type and size the
-     * package reads it with. Their `email_verified` never refuses them.
+     * Whether `email` is absent or a string of 1 to 320 bytes; a `null` member
+     * does not fit.
      *
      * @param  array<array-key, mixed>  $claims
      * @return bool
      */
     public static function fits(#[\SensitiveParameter] array $claims): bool
     {
-        return self::isEmail($claims);
+        if (!array_key_exists(self::EMAIL, $claims)) {
+            return true;
+        }
+
+        $email = $claims[self::EMAIL];
+
+        return is_string($email) && $email !== '' && strlen($email) <= AssertedEmail::MAX_EMAIL_LENGTH;
     }
 
     /**
-     * The pair the sources assert, or `null` when neither carries an email; a
-     * `null` UserInfo was not fetched. Claims `fits()` refuses are the caller's
-     * mistake.
+     * The asserted pair, or `null` when neither source carries an email; a
+     * `null` UserInfo was not fetched.
      *
      * @param  array<array-key, mixed>  $idToken
      * @param  ?array<array-key, mixed>  $userInfo
@@ -85,9 +68,8 @@ final class EmailPairing
     }
 
     /**
-     * The value of the named claim in the claims of the one source the email
-     * came from, or `null` when no claim is named or it is not a string of 1 to
-     * 255 bytes.
+     * The named organisation claim from the email's source, or `null` unless it
+     * is a string of 1 to 255 bytes.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  mixed  $claim
@@ -101,9 +83,8 @@ final class EmailPairing
     }
 
     /**
-     * The linking email the pair gives, with the organisation the same source
-     * named, or `null` unless its `email_verified` is exactly `true` and its
-     * email has one `@` between two non-empty parts.
+     * The linking email, or `null` unless `email_verified` is exactly `true`
+     * and the email is well formed.
      *
      * @param  ?\SineMacula\Laravel\Sso\Results\AssertedEmail  $asserted
      * @param  ?string  $organization
@@ -123,7 +104,8 @@ final class EmailPairing
     }
 
     /**
-     * The source's email with the source's own `email_verified`.
+     * The source's email with its own `email_verified`; a non-boolean flag is
+     * `null`, never coerced.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  \SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource  $source
@@ -141,22 +123,5 @@ final class EmailPairing
 
         /** @var array{email: string} $claims */
         return new AssertedEmail($claims[self::EMAIL], is_bool($verified) ? $verified : null, $source);
-    }
-
-    /**
-     * Whether `email` is absent, or a string of 1 to 320 bytes.
-     *
-     * @param  array<array-key, mixed>  $claims
-     * @return bool
-     */
-    private static function isEmail(#[\SensitiveParameter] array $claims): bool
-    {
-        if (!array_key_exists(self::EMAIL, $claims)) {
-            return true;
-        }
-
-        $email = $claims[self::EMAIL];
-
-        return is_string($email) && $email !== '' && strlen($email) <= AssertedEmail::MAX_EMAIL_LENGTH;
     }
 }

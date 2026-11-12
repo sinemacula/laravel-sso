@@ -5,16 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Fetching;
 
 /**
- * The one deadline of a fetch (SSO-2.9): the configured timeout from the moment
- * the fetch began, shared by every lookup and every hop, redirects included.
- *
- * It is measured on a monotonic clock in nanoseconds (`hrtime(true)` in the
- * fetcher), never on `Contracts\Clock`: it measures elapsed time rather than
- * checking an instant, which a wall-clock change or Laravel's test clock would
- * move. Time is counted in whole milliseconds, and a part of one counts as
- * none, since cURL reads a timeout of `0` as no timeout at all.
- *
- * It is made for one fetch and holds nothing past it.
+ * The single deadline shared by every lookup and hop of one fetch, on a
+ * monotonic clock so wall-clock changes and test clocks cannot move it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,7 +37,7 @@ final readonly class FetchDeadline
     ) {}
 
     /**
-     * The deadline the seconds given from now on the clock.
+     * Create the deadline the given seconds from now.
      *
      * @param  int  $seconds
      * @param  \Closure(): int  $clock
@@ -57,7 +49,7 @@ final readonly class FetchDeadline
     }
 
     /**
-     * The whole milliseconds left, `0` or less once the deadline has passed.
+     * The whole milliseconds left, `0` or less once passed.
      *
      * @return int
      */
@@ -77,13 +69,8 @@ final readonly class FetchDeadline
     }
 
     /**
-     * The Guzzle time caps of a transfer started now: what is left as its
-     * `timeout`, and the connect timeout given capped to the same as its
-     * `connect_timeout`, each in seconds and each at least a millisecond; or
-     * `null` when less than a millisecond is left, so the transfer is not
-     * started rather than started with a cap of `0`, which cURL would read as
-     * none. The clock is read once, so the answer cannot pass the check and
-     * then give `0`.
+     * The Guzzle time caps of a transfer started now, or `null` when under a
+     * millisecond is left, since cURL reads a timeout of `0` as none.
      *
      * @param  int  $connectTimeoutSeconds
      * @return ?array{timeout: float, connect_timeout: float}

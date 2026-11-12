@@ -7,12 +7,8 @@ namespace SineMacula\Laravel\Sso\Testing\Oidc;
 use Random\RandomException;
 
 /**
- * RSASSA-PSS (RFC 8017 §8.1, §9.1) built by hand on OpenSSL's raw RSA, for the
- * fake OpenID provider (SSO-12.4): PHP's `openssl_sign()` signs PKCS #1 v1.5
- * only, and the provider must make PS256, PS384 and PS512 tokens without the
- * package's JOSE library, so a token the package accepts was not made by the
- * code that checks it. MGF1 uses the message's hash, and the salt is as long as
- * the hash, as RFC 7518 §3.5 requires.
+ * Hand-built RSASSA-PSS for the fake provider: `openssl_sign()` has no PSS, and
+ * the fake must not sign with the JOSE library the package verifies with.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,8 +21,7 @@ final class PssSignature
     private function __construct() {}
 
     /**
-     * The PSS signature of the message with the PEM private key of the modulus
-     * size given, in bits.
+     * Sign the message, with a salt as long as the hash (RFC 7518 section 3.5).
      *
      * @param  string  $message
      * @param  string  $privateKeyPem
@@ -51,8 +46,7 @@ final class PssSignature
     }
 
     /**
-     * Whether the PSS signature of the message verifies with the PEM public
-     * key.
+     * Whether the signature verifies with the PEM public key.
      *
      * @param  string  $message
      * @param  string  $signature
@@ -76,7 +70,7 @@ final class PssSignature
     }
 
     /**
-     * A random salt of the length given.
+     * A random salt.
      *
      * @param  int<1, max>  $length
      * @return string
@@ -134,7 +128,7 @@ final class PssSignature
     }
 
     /**
-     * The masked block with the bits above the encoding's size cleared.
+     * Clear the block's bits above the encoding's size.
      *
      * @param  string  $block
      * @param  int  $emLength
@@ -149,7 +143,7 @@ final class PssSignature
     }
 
     /**
-     * MGF1 of the seed to the length, with the hash.
+     * MGF1 of the seed to the length.
      *
      * @param  string  $seed
      * @param  int  $length

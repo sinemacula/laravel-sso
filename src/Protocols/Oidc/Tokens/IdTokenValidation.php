@@ -8,9 +8,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 
 /**
- * How an ID token was judged (SSO-7.3, SSO-7.4): validated, with the token and
- * the receipt of the trust change its own refetch made, if any, or refused with
- * a reason.
+ * The outcome of validating an ID token: the token, or the refusal reason.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,15 +29,15 @@ final readonly class IdTokenValidation
         /** The token, once validated. */
         public ?ValidatedIdToken $token,
 
-        /** Why it was refused, for a refused one. */
+        /** Why it was refused. */
         public ?FailureReason $reason,
 
-        /** The receipt of the trust change the token's own refetch made, for a validated token. */
+        /** The receipt of any trust change made by this token's JWKS refetch. */
         public ?TransitionReceipt $receipt = null,
     ) {}
 
     /**
-     * The token passed every check.
+     * Create a validated outcome.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken  $token
      * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
@@ -51,7 +49,7 @@ final readonly class IdTokenValidation
     }
 
     /**
-     * The token was refused, for the reason given.
+     * Create a refused outcome.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @return self

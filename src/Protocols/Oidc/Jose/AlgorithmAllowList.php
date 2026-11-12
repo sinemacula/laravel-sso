@@ -5,15 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
 
 /**
- * A connection's allow-list of ID token signature algorithms (SSO-7.3): only
- * the asymmetric RSA PKCS #1, RSA-PSS and ECDSA algorithms at 256 bits and
- * above. `none` and every HMAC algorithm can never be on it, whatever a
- * connection's settings say: `of()` refuses them, and nothing in the package
- * can register them with the library.
- *
- * Each algorithm fixes the key it needs: an RSA key for `RS*` and `PS*`, and an
- * elliptic curve key on its own curve for `ES*` (P-256 for ES256, P-384 for
- * ES384, P-521 for ES512), so a key on another curve never verifies it.
+ * A connection's ID token signature algorithm allow-list: asymmetric RS, PS and
+ * ES only, so `none` and HMAC can never be allowed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,7 +15,7 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
  */
 final readonly class AlgorithmAllowList
 {
-    /** @var array<string, ?string> Every algorithm a list may hold, with the curve its key must be on, `null` for an RSA key. */
+    /** @var array<string, ?string> Each permitted algorithm and its key's curve, `null` for RSA. */
     public const array ALGORITHMS = [
         'RS256' => null,
         'RS384' => null,
@@ -47,8 +40,7 @@ final readonly class AlgorithmAllowList
     ) {}
 
     /**
-     * The allow-list of the algorithms named, each of which must be one of
-     * `ALGORITHMS`, given exactly.
+     * Build the list, refusing any name not exactly in `ALGORITHMS`.
      *
      * @param  array<array-key, mixed>  $names
      * @return self
@@ -76,7 +68,7 @@ final readonly class AlgorithmAllowList
     }
 
     /**
-     * Whether the algorithm, compared exactly, is on the list.
+     * Whether the algorithm is on the list, compared exactly.
      *
      * @param  string  $algorithm
      * @return bool
@@ -87,8 +79,8 @@ final readonly class AlgorithmAllowList
     }
 
     /**
-     * The key type an algorithm needs: `RSA` or `EC`; `null` for one the
-     * package never verifies.
+     * The key type an algorithm needs, `RSA` or `EC`, or `null` for one never
+     * verified.
      *
      * @param  string  $algorithm
      * @return ?string

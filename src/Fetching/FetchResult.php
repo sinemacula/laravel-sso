@@ -8,15 +8,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus;
 
 /**
- * How an outbound request ended (SSO-2.9): fetched, with the response's HTTP
- * status, headers and body; refused before it was sent (`fetch_refused`); or
- * failed once sent (`fetch_failed`). A refusal or failure carries its reason
- * code only: what went wrong in detail goes to the logs, never here.
- *
- * The body may hold provider tokens (a token response), so it is held in a
- * `\SensitiveParameterValue`: no dump (PHP's own, or the one behind Laravel's
- * `dump()`, which also lists private properties), export or array cast shows
- * it, and the result refuses to be serialised (SSO-7.6).
+ * How an outbound request ended. The body may hold provider tokens, so no dump,
+ * export or array cast shows it and the result cannot be serialised.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,15 +43,14 @@ final readonly class FetchResult
         #[\SensitiveParameter]
         ?string $body = null,
 
-        /** Why the request was refused or failed: `fetch_refused` or `fetch_failed`. */
+        /** Why the request was refused or failed. */
         public ?FailureReason $reason = null,
     ) {
         $this->body = $body === null ? null : new \SensitiveParameterValue($body);
     }
 
     /**
-     * What a dump shows: the status, the HTTP status code, the header names and
-     * the reason, never the body.
+     * Show everything but the body and header values.
      *
      * @return array<string, mixed>
      */
@@ -74,8 +66,7 @@ final readonly class FetchResult
     }
 
     /**
-     * Refuse to be serialised: a response lives only for the flow that asked
-     * for it.
+     * Refuse to be serialised; a response lives only for its flow.
      *
      * @return array<string, mixed>
      *
@@ -105,7 +96,7 @@ final readonly class FetchResult
     }
 
     /**
-     * A response was received within the caps, of whatever HTTP status.
+     * A response of any HTTP status received within the caps.
      *
      * @param  int  $statusCode
      * @param  array<string, string>  $headers
@@ -118,8 +109,7 @@ final readonly class FetchResult
     }
 
     /**
-     * The request, or a redirect it was answered with, was refused before it
-     * was sent.
+     * The request or a redirect was refused before it was sent.
      *
      * @return self
      */
@@ -159,8 +149,7 @@ final readonly class FetchResult
     }
 
     /**
-     * The response header of the name, whatever its case, or `null` when the
-     * response has none.
+     * The named response header, case-insensitively, or `null`.
      *
      * @param  string  $name
      * @return ?string

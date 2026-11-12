@@ -5,18 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Testing\Oidc;
 
 /**
- * Builds and checks compact JWS by hand for the fake OpenID provider
- * (SSO-12.4), with OpenSSL alone and never the package's JOSE library, so what
- * the package verifies is made independently of how it verifies it: `RS*` with
- * PKCS #1 v1.5, `PS*` with RSASSA-PSS (RFC 8017 §8.1, MGF1 with the same hash,
- * a salt as long as the hash) built on raw RSA, and `ES*` with the `R || S`
- * form of RFC 7518 §3.4. `hmac()` and `unsigned()` build the tokens a provider
- * must never get accepted: HMAC with any secret (a public key's PEM, say) and
- * `none`.
- *
- * `sign()` takes the header and payload as arrays, which it encodes, or as JSON
- * text, which it encodes as given, so a test can repeat a member or nest a
- * duplicate. `verify()` checks a client assertion the package signed.
+ * Builds and checks compact JWS with OpenSSL alone for the fake provider, so
+ * tokens are made independently of the JOSE library that verifies them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,7 +16,7 @@ final class JwsSigner
     /** @var array<int, string> The hash of each size. */
     private const array HASHES = [256 => 'sha256', 384 => 'sha384', 512 => 'sha512'];
 
-    /** @var array<int, int> The bytes of each of `R` and `S`, by the size of the `ES*` algorithm. */
+    /** @var array<int, int> The bytes of each of `R` and `S`, by `ES*` size. */
     private const array ECDSA_BYTES = [256 => 32, 384 => 48, 512 => 66];
 
     /** @var array<string, int> OpenSSL's digest of each hash. */
@@ -38,8 +28,8 @@ final class JwsSigner
     private function __construct() {}
 
     /**
-     * A compact JWS of the header and payload signed with the key by the
-     * algorithm the header's `alg` names (`RS*`, `PS*` or `ES*`).
+     * Sign a compact JWS; a string header or payload is encoded as given, so a
+     * test can repeat a member.
      *
      * @param  array<string, mixed>|string  $header
      * @param  array<array-key, mixed>|string  $payload
@@ -57,8 +47,7 @@ final class JwsSigner
     }
 
     /**
-     * A compact JWS of the header and payload with an HMAC signature under the
-     * secret, as a confused verifier would accept it.
+     * A JWS with an HMAC signature, as a confused verifier would accept it.
      *
      * @param  array<string, mixed>|string  $header
      * @param  array<array-key, mixed>|string  $payload
@@ -74,8 +63,7 @@ final class JwsSigner
     }
 
     /**
-     * A compact JWS of the header and payload with an empty signature, as `alg`
-     * `none` has it.
+     * A JWS with an empty signature, as `alg` `none` has it.
      *
      * @param  array<string, mixed>|string  $header
      * @param  array<array-key, mixed>|string  $payload
@@ -87,8 +75,7 @@ final class JwsSigner
     }
 
     /**
-     * Whether the compact JWS verifies with the PEM public key by the algorithm
-     * its header names.
+     * Whether a JWS the package signed verifies with the PEM public key.
      *
      * @param  string  $token
      * @param  string  $publicKeyPem
@@ -117,7 +104,7 @@ final class JwsSigner
     }
 
     /**
-     * Unpadded base64url of the bytes.
+     * Encode the bytes as unpadded base64url.
      *
      * @param  string  $bytes
      * @return string
@@ -128,7 +115,7 @@ final class JwsSigner
     }
 
     /**
-     * The bytes of unpadded base64url, or an empty string.
+     * Decode unpadded base64url, or return an empty string.
      *
      * @param  string  $value
      * @return string
@@ -139,7 +126,7 @@ final class JwsSigner
     }
 
     /**
-     * The signature of the input with the key by the algorithm.
+     * Sign the input with the key by the algorithm.
      *
      * @param  string  $input
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey  $key
@@ -175,7 +162,7 @@ final class JwsSigner
     }
 
     /**
-     * The `alg` a header given as an array names, or none.
+     * The `alg` of an array header, or an empty string.
      *
      * @param  array<string, mixed>|string  $header
      * @return string
@@ -188,8 +175,7 @@ final class JwsSigner
     }
 
     /**
-     * The signing input of the header and payload, each encoded from an array
-     * or taken as the JSON text given.
+     * The signing input; a string part is taken as the JSON text given.
      *
      * @param  array<string, mixed>|string  $header
      * @param  array<array-key, mixed>|string  $payload
@@ -237,9 +223,8 @@ final class JwsSigner
     }
 
     /**
-     * An ECDSA signature as `R || S`, each the length the algorithm names,
-     * whatever curve the key is on (so a P-256 key can sign an `ES512` header,
-     * as an attacker would).
+     * An ECDSA signature as `R || S` padded to the algorithm's length whatever
+     * the key's curve, so a P-256 key can sign an `ES512` header.
      *
      * @param  string  $input
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey  $key
@@ -268,7 +253,7 @@ final class JwsSigner
     }
 
     /**
-     * The DER `SEQUENCE` of two `INTEGER`s from an `R || S` signature.
+     * Convert an `R || S` signature to DER.
      *
      * @param  string  $raw
      * @return string

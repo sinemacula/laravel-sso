@@ -9,42 +9,8 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * The URL an OpenID Connect authorisation code request sends the browser to
- * (SSO-5.4, SSO-5.10, SSO-2.4, `docs/design/oidc-requests.md`): the
- * connection's authorisation endpoint with the request's parameters appended,
- * in this order:
- *
- * - `response_type=code`, the only response type;
- * - `client_id`, the connection's;
- * - `redirect_uri`, the connection's callback exactly as the endpoint resolver
- *   built it (SSO-5.5);
- * - `scope`, the connection's scopes joined by single spaces, in stored order;
- * - `state`, the flow's protocol state, never the public reference (SSO-5.2);
- * - `nonce`;
- * - `code_challenge`, the S256 challenge of the PKCE verifier (RFC 7636 §4.2,
- *   as `Flows\ProtocolState` computes it), and `code_challenge_method=S256`;
- * - `max_age`: `0` for a `reauthenticate`, else the connection's when set;
- * - `prompt=login` for a `reauthenticate` (SSO-5.10);
- * - the connection's extra parameters, in stored order.
- *
- * No `response_mode` is sent, so the provider answers in the code flow's
- * default query mode, the only one the callback accepts, and neither `request`
- * nor `request_uri` is ever sent. The settings allow only listed extra
- * parameters and refuse any the flow controls; this checks again, and leaves
- * out an extra parameter whose name, in any case, the flow controls
- * (`OidcSettings::RESERVED_PARAMETERS`) or the request already sets (`prompt`
- * for a `reauthenticate`, `max_age` when it is sent), or whose value is not a
- * string, so an extra parameter never sets or overrides one the flow controls.
- *
- * The query is encoded per RFC 3986 (`PHP_QUERY_RFC3986`). An endpoint that has
- * a query keeps it, and the request's is appended after `&`. When that query
- * names, in any case, a parameter the request sets or the flow controls, or the
- * endpoint has a fragment, there is no URL: the start is refused rather than a
- * parameter overridden or sent twice.
- *
- * A `StartRequest` without a nonce or a PKCE verifier is the start pipeline's
- * bug, a `LogicException`. Nothing here keeps, logs or reports a value, and no
- * exception names one.
+ * Builds the authorisation code request URL. No `response_mode` is sent, so the
+ * provider answers in query mode, the only one the callback accepts.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,9 +38,8 @@ final readonly class AuthorizationUrl
     private const string PROMPT = 'prompt';
 
     /**
-     * The URL of the request, or `null` when the endpoint's own query names a
-     * parameter the request sets or the flow controls, or the endpoint has a
-     * fragment.
+     * The URL, or `null` when the endpoint has a fragment or its query names a
+     * parameter the request sets or the flow controls.
      *
      * @param  string  $endpoint
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -123,8 +88,7 @@ final readonly class AuthorizationUrl
     }
 
     /**
-     * The `max_age` and `prompt` the purpose sends: `0` and `login` for a
-     * `reauthenticate`, else the connection's `max_age` when it has one.
+     * The `max_age` and `prompt` for the purpose.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -142,9 +106,8 @@ final readonly class AuthorizationUrl
     }
 
     /**
-     * The extra parameters sent, in their stored order: each a string value
-     * under a name that, in any case, neither the flow controls nor the request
-     * already sets.
+     * The extra parameters, skipping non-strings and any name the flow controls
+     * or the request sets, in any case.
      *
      * @param  array<array-key, mixed>  $extra
      * @param  array<string, string>  $parameters
@@ -167,9 +130,8 @@ final readonly class AuthorizationUrl
     }
 
     /**
-     * Whether the endpoint cannot carry the request: it has a fragment, or its
-     * own query names, in any case, a parameter the request sets or the flow
-     * controls.
+     * Whether the endpoint has a fragment or its query names a taken parameter,
+     * so the start is refused rather than a parameter overridden.
      *
      * @param  string  $endpoint
      * @param  array<string, string>  $parameters
@@ -193,7 +155,7 @@ final readonly class AuthorizationUrl
     }
 
     /**
-     * The names, in lower case, the parameters set and the flow controls.
+     * The lower-case names the parameters set and the flow controls.
      *
      * @param  array<string, string>  $parameters
      * @return array<string, true>
@@ -206,8 +168,7 @@ final readonly class AuthorizationUrl
     }
 
     /**
-     * The name of each parameter of the endpoint's own query, decoded and in
-     * lower case.
+     * The decoded, lower-case parameter names of the endpoint's own query.
      *
      * @param  string  $endpoint
      * @return list<string>
@@ -223,8 +184,8 @@ final readonly class AuthorizationUrl
     }
 
     /**
-     * What joins the endpoint and the request's query: `?`, or `&` when the
-     * endpoint has a query already, or nothing when it ends with either.
+     * The separator before the request's query: `?`, `&`, or nothing when the
+     * endpoint already ends with one.
      *
      * @param  string  $endpoint
      * @return string
@@ -239,8 +200,7 @@ final readonly class AuthorizationUrl
     }
 
     /**
-     * The S256 challenge of the PKCE verifier: `BASE64URL(SHA-256(verifier))`
-     * without padding.
+     * The S256 challenge of the PKCE verifier.
      *
      * @param  \SineMacula\Laravel\Sso\Secrets\Secret  $verifier
      * @return string
@@ -251,7 +211,7 @@ final readonly class AuthorizationUrl
     }
 
     /**
-     * The value the start pipeline makes for every OIDC start.
+     * Require a value the start pipeline makes for every OIDC start.
      *
      * @param  ?\SineMacula\Laravel\Sso\Secrets\Secret  $value
      * @param  string  $what

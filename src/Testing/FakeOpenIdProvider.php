@@ -17,34 +17,8 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\FakeTokenEndpoint;
 
 /**
- * An OpenID provider for tests (SSO-12.4), so an application tests its OIDC
- * flows without a network: its discovery document, its JWKS, signed ID tokens
- * with every knob a test needs (`Oidc\FakeIdToken`), and a token endpoint
- * (`Oidc\FakeTokenEndpoint`) and a UserInfo endpoint answering on the fake
- * fetcher. Every token is signed by hand with OpenSSL (`Oidc\JwsSigner`), never
- * by the package's JOSE library, and the hostile cases of the JOSE library
- * spike are `Oidc\HostileIdTokens`.
- *
- * `serve()` answers its discovery document, JWKS, token and UserInfo endpoints
- * on a `FakeFetcher`, each read when it is fetched, so a key published,
- * unpublished or replaced after a fetch is what the next fetch sees: rotation,
- * an addition and a removal under the same `kid`. `respond()` replaces what an
- * endpoint answers (an error, a timeout as `FetchResult::failed()`, a malformed
- * body). `authorize()` reads the request the package's start sent the browser
- * with (its `StartResult`, `Navigation` or URL), as the provider's
- * authorisation endpoint would, and grants it a code whose ID token carries the
- * request's nonce, an `at_hash` of its access token and any change a test
- * makes; the callback's query is the grant's `query()`, with the RFC 9207
- * `iss`.
- *
- * Give a connection its `issuer()`, its `endpoint()`s (or import them from
- * `discoveryUrl()`), its `CLIENT_ID` and the client authentication `register()`
- * names. A second provider is an attacker: its keys are never in the
- * connection's JWKS. Give it the clock the package reads, so its tokens are
- * issued at the package's now, whatever Laravel's time travel says.
- *
- * It keeps what a test configures and what its endpoints have answered, so it
- * is a test's own object, never bound as a singleton.
+ * An OpenID provider for tests, serving its endpoints on a `FakeFetcher`. It is
+ * stateful, so keep it per test and never bind it as a singleton.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,13 +46,13 @@ final class FakeOpenIdProvider
     /** @var string The algorithm ID tokens are signed by. */
     private string $algorithm = 'RS256';
 
-    /** @var array<string, mixed> What a test laid over the discovery document; `null` removes a member. */
+    /** @var array<string, mixed> The test's changes to the discovery document; `null` removes a member. */
     private array $discoveryChanges = [];
 
-    /** @var array<string, \Closure(\SineMacula\Laravel\Sso\Fetching\FetchRequest): \SineMacula\Laravel\Sso\Fetching\FetchResult|\SineMacula\Laravel\Sso\Fetching\FetchResult> What an endpoint answers in place of its own behaviour, by its name. */
+    /** @var array<string, \Closure(\SineMacula\Laravel\Sso\Fetching\FetchRequest): \SineMacula\Laravel\Sso\Fetching\FetchResult|\SineMacula\Laravel\Sso\Fetching\FetchResult> Endpoint overrides, by name. */
     private array $responses = [];
 
-    /** @var array<string, mixed> The UserInfo claims, beside the subject of the access token's ID token. */
+    /** @var array<string, mixed> The UserInfo claims, beside the ID token's subject. */
     private array $userInfo = ['email' => 'person@example.test', 'email_verified' => true, 'name' => 'Fake Person'];
 
     /** @var string The client id ID tokens are issued to. */
@@ -104,11 +78,10 @@ final class FakeOpenIdProvider
         /** The provider's issuer, exactly as its tokens and discovery document carry it. */
         public readonly string $issuer = self::ISSUER,
 
-        // The key ID tokens are signed with, generated (RSA, `kid` `rsa-1`) and
-        // published when not given
+        // Not promoted: generated (RSA, `kid` `rsa-1`) when not given
         ?FakeSigningKey $signingKey = null,
 
-        /** The clock tokens are issued by; the current time when none is given. */
+        /** The package's clock, so tokens ignore Laravel's time travel; the current time by default. */
         private readonly ?Clock $clock = null,
     ) {
         $this->signingKey = $signingKey ?? FakeSigningKey::rsa();
@@ -128,8 +101,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * The discovery document's URL: the issuer, with any trailing `/` removed,
-     * and `/.well-known/openid-configuration` (OpenID Connect Discovery §4).
+     * The discovery document's URL under the issuer.
      *
      * @return string
      */
@@ -152,7 +124,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * The discovery document, with what a test laid over it.
+     * The discovery document, with the test's changes.
      *
      * @return array<string, mixed>
      */
@@ -194,8 +166,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Publish the key in the JWKS, with `alg` and `use` as given and any extra
-     * members laid over its JWK.
+     * Publish the key in the JWKS.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey  $key
      * @param  ?string  $alg
@@ -209,8 +180,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Publish the entry in the JWKS as it is: an `oct` key, a private key,
-     * anything a hostile JWKS holds.
+     * Publish the entry in the JWKS as is, however hostile.
      *
      * @param  array<string, mixed>  $jwk
      * @return $this
@@ -223,8 +193,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Remove every entry published under the `kid`, or every entry without one
-     * when it is `null`.
+     * Remove every entry under the `kid`; `null` removes those without one.
      *
      * @param  ?string  $kid
      * @return $this
@@ -247,8 +216,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Sign ID tokens from now on with the key by the algorithm; the key is not
-     * published by this, so a test publishes it or keeps it secret.
+     * Sign ID tokens from now on with the key; this does not publish it.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey  $key
      * @param  string  $algorithm
@@ -263,9 +231,8 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * A valid ID token for the client, issued now: `iss`, `sub`, `aud`, `iat`,
-     * `exp` five minutes on and `auth_time` now, with the claims given laid
-     * over them, signed with the provider's key under its `kid`.
+     * A valid ID token issued now, expiring in five minutes, with the claims
+     * laid over it.
      *
      * @param  array<string, mixed>  $claims
      * @return \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken
@@ -287,12 +254,8 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Grant the authorisation request the start sent the browser with, as the
-     * authorisation endpoint would: a code whose ID token carries the request's
-     * nonce and the `at_hash` of its access token, changed by the tailor when
-     * one is given (which answers a token, or a token's raw text). The request
-     * is the `StartResult`, its `Navigation`, or the URL the browser went to; a
-     * start that sent it nowhere is a `LogicException`.
+     * Grant the start's authorisation request a code whose ID token carries its
+     * nonce and `at_hash`, changed by the tailor when given.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult|\SineMacula\Laravel\Sso\Protocols\Navigation|string  $url
      * @param  ?\Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): (\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken|string)  $tailor
@@ -319,9 +282,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Register the client the token endpoint authenticates and ID tokens are
-     * issued to: its id, its client authentication, and its secret or the PEM
-     * public key its client assertions verify with.
+     * Register the client, with its secret or its assertions' PEM public key.
      *
      * @param  string  $clientId
      * @param  string  $method
@@ -339,8 +300,8 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Answer UserInfo with the claims given, beside the subject of the access
-     * token's ID token unless they name their own `sub`.
+     * Answer UserInfo with the claims, beside the ID token's subject unless
+     * they name their own `sub`.
      *
      * @param  array<string, mixed>  $claims
      * @return $this
@@ -353,9 +314,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Answer the endpoint (`discovery`, `jwks`, `token` or `userinfo`) with the
-     * response, or with what the closure builds from the request; `null`
-     * restores its own behaviour.
+     * Override an endpoint's answer; `null` restores its own behaviour.
      *
      * @param  string  $endpoint
      * @param  \Closure(\SineMacula\Laravel\Sso\Fetching\FetchRequest): \SineMacula\Laravel\Sso\Fetching\FetchResult|\SineMacula\Laravel\Sso\Fetching\FetchResult|null  $response
@@ -373,8 +332,8 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * Answer the provider's discovery document, JWKS, token and UserInfo
-     * endpoints on the fake fetcher, each read when it is fetched.
+     * Serve the endpoints on the fake fetcher, each read when fetched so key
+     * changes show on the next fetch.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeFetcher  $fetcher
      * @return $this
@@ -390,8 +349,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * What answers an endpoint: the response a test gave it, read when it is
-     * fetched, or its own behaviour.
+     * An endpoint's override, read when fetched, or its own behaviour.
      *
      * @param  string  $endpoint
      * @param  \Closure(\SineMacula\Laravel\Sso\Fetching\FetchRequest): \SineMacula\Laravel\Sso\Fetching\FetchResult  $own
@@ -408,9 +366,7 @@ final class FakeOpenIdProvider
     }
 
     /**
-     * The UserInfo response to a request carrying an access token the token
-     * endpoint issued: the UserInfo claims with the subject of its ID token;
-     * `401` `invalid_token` otherwise.
+     * The UserInfo claims for an issued access token, or `401` `invalid_token`.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return \SineMacula\Laravel\Sso\Fetching\FetchResult
