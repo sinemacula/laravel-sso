@@ -2569,7 +2569,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
             $this->complete();
             self::fail('The completion went on.');
         } catch (\LogicException $exception) {
-            self::assertSame('A handoff issuer must store a reservation\'s binding, and never a later expiry than it was given (SSO-8.8).', $exception->getMessage());
+            self::assertSame('A handoff issuer must store a reservation\'s binding, and never a later expiry than it was given.', $exception->getMessage());
         }
 
         self::assertSame(0, Link::query()->count());

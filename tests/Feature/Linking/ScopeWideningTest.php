@@ -114,7 +114,7 @@ final class ScopeWideningTest extends LinkingTestCase
             self::fail('It widened with no transaction open.');
         } catch (\LogicException $exception) {
             self::assertSame(
-                'A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection (decision D5).',
+                'A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection.',
                 $exception->getMessage(),
             );
         }

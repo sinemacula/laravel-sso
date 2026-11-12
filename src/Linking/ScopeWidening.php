@@ -66,7 +66,7 @@ final readonly class ScopeWidening
         }
 
         if (DB::connection(StorageConnection::name())->transactionLevel() === 0) {
-            throw new \LogicException('A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection (decision D5).');
+            throw new \LogicException('A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection.');
         }
 
         $guarded = self::byDigest($identities);

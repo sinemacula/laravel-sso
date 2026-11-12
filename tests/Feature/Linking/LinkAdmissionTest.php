@@ -162,7 +162,7 @@ final class LinkAdmissionTest extends LinkingTestCase
             app(HandoffRedemption::class)->admit(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), new Caller($this->person));
             self::fail('A link was admitted with no transaction open.');
         } catch (\LogicException $exception) {
-            self::assertSame('A session is admitted inside the caller\'s transaction on the package\'s storage connection (decision D5).', $exception->getMessage());
+            self::assertSame('A session is admitted inside the caller\'s transaction on the package\'s storage connection.', $exception->getMessage());
         }
 
         self::assertNull($this->stored($start)->redeemed_at);
@@ -602,7 +602,7 @@ final class LinkAdmissionTest extends LinkingTestCase
     public function testTheRecheckNeedsTheRedeemersTransaction(): void
     {
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('A handoff is rechecked inside the redeemer\'s transaction on the package\'s storage connection (decision D5).');
+        $this->expectExceptionMessage('A handoff is rechecked inside the redeemer\'s transaction on the package\'s storage connection.');
 
         app(HandoffRecheck::class)->lock('tenant-1', $this->connection->id, 'web');
     }

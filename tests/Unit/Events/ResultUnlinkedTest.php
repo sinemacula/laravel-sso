@@ -140,7 +140,7 @@ final class ResultUnlinkedTest extends TestCase
         [$event] = self::event();
 
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('The unlinked-result event cannot be serialised: a queued listener is too late (SSO-8.6).');
+        $this->expectExceptionMessage('The unlinked-result event cannot be serialised: a queued listener is too late.');
 
         serialize($event);
     }

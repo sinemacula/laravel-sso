@@ -99,7 +99,7 @@ final readonly class ResultUnlinked implements \JsonSerializable, SsoEvent
      */
     public function __serialize(): array
     {
-        throw new \LogicException('The unlinked-result event cannot be serialised: a queued listener is too late (SSO-8.6).');
+        throw new \LogicException('The unlinked-result event cannot be serialised: a queued listener is too late.');
     }
 
     /**

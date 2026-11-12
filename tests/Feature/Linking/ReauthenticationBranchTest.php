@@ -96,10 +96,10 @@ final class ReauthenticationBranchTest extends LinkingTestCase
     private const string INSTANT = 'Y-m-d\TH:i:s.u\Z';
 
     /** @var string What an unbound `admit()` throws. */
-    private const string NO_TRANSACTION = 'A session is admitted inside the caller\'s transaction on the package\'s storage connection (decision D5).';
+    private const string NO_TRANSACTION = 'A session is admitted inside the caller\'s transaction on the package\'s storage connection.';
 
     /** @var string What the standalone path throws. */
-    private const string STANDALONE = 'A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).';
+    private const string STANDALONE = 'A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction.';
 
     /** @var object{calls: list<array<int, mixed>>, failing: ?string, failure: ?\Throwable}&\SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions The contract over the table, once a test binds it. */
     private ReauthenticationSessions $table; // @phpstan-ignore property.uninitialized

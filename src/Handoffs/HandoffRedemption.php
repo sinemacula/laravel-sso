@@ -47,7 +47,7 @@ final readonly class HandoffRedemption
     private const int ATTEMPTS = 3;
 
     /** @var string Thrown when the standalone path is asked for a session. */
-    private const string NOT_STANDALONE = 'A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).';
+    private const string NOT_STANDALONE = 'A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction.';
 
     /** @var string Thrown for a stored result the package did not write. */
     private const string CORRUPT = 'A handoff code\'s stored result is not one the package wrote.';
@@ -108,7 +108,7 @@ final readonly class HandoffRedemption
         ?Caller $caller = null,
     ): RedemptionResult {
         if (DB::connection(StorageConnection::name())->transactionLevel() === 0) {
-            throw new \LogicException('A session is admitted inside the caller\'s transaction on the package\'s storage connection (decision D5).');
+            throw new \LogicException('A session is admitted inside the caller\'s transaction on the package\'s storage connection.');
         }
 
         return $this->redeem($purpose, $application, $connectionId, $code, $verifier, $client, $caller);

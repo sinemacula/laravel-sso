@@ -55,7 +55,7 @@ final class HandoffRecheckTest extends TestCase
     use RecordsLockOrder, UsesConnections, UsesEnforcement;
 
     /** @var string What a call outside the redeemer's transaction is told. */
-    private const string NO_TRANSACTION = 'A handoff is rechecked inside the redeemer\'s transaction on the package\'s storage connection (decision D5).';
+    private const string NO_TRANSACTION = 'A handoff is rechecked inside the redeemer\'s transaction on the package\'s storage connection.';
 
     /** @var string What a call under another result's lock is told. */
     private const string OTHER_LOCK = 'A handoff is rechecked under the lock taken for its result\'s tenant, connection and application.';

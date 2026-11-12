@@ -317,7 +317,7 @@ final readonly class HandoffRecheck
             return;
         }
 
-        self::outOfTurn('A handoff is rechecked inside the redeemer\'s transaction on the package\'s storage connection (decision D5).');
+        self::outOfTurn('A handoff is rechecked inside the redeemer\'s transaction on the package\'s storage connection.');
     }
 
     /**

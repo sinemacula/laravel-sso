@@ -73,7 +73,7 @@ final readonly class ProvisioningOffer
         }
 
         if ($left) {
-            throw new \LogicException('A provisioning listener must commit or roll back its transaction before it returns (SSO-8.6).');
+            throw new \LogicException('A provisioning listener must commit or roll back its transaction before it returns.');
         }
     }
 

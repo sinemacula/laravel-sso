@@ -309,7 +309,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
         });
 
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('A provisioning listener must commit or roll back its transaction before it returns (SSO-8.6).');
+        $this->expectExceptionMessage('A provisioning listener must commit or roll back its transaction before it returns.');
 
         try {
             $this->complete();
@@ -801,7 +801,7 @@ final class StateMachineCompletionPipelineTest extends LinkingTestCase
             app(HandoffRedemption::class)->admit(Purpose::SIGN_IN, 'web', $this->connection->id, $code, $verifier, Clients::browser());
             self::fail('A session was admitted with no transaction open.');
         } catch (\LogicException $exception) {
-            self::assertSame('A session is admitted inside the caller\'s transaction on the package\'s storage connection (decision D5).', $exception->getMessage());
+            self::assertSame('A session is admitted inside the caller\'s transaction on the package\'s storage connection.', $exception->getMessage());
         }
 
         try {

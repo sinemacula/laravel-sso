@@ -1082,7 +1082,7 @@ final class HandoffRedemptionTest extends TestCase
             app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser());
             self::fail('A sign-in was redeemed with no transaction open.');
         } catch (\LogicException $exception) {
-            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).', $exception->getMessage());
+            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction.', $exception->getMessage());
         }
 
         self::assertNull($this->stored($code)->redeemed_at);
@@ -1159,7 +1159,7 @@ final class HandoffRedemptionTest extends TestCase
             app(HandoffRedemption::class)->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser());
             self::fail('A session purpose was redeemed with no transaction open.');
         } catch (\LogicException $exception) {
-            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).', $exception->getMessage());
+            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction.', $exception->getMessage());
         }
 
         self::assertSame([], $store->keys());

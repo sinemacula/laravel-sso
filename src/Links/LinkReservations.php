@@ -120,7 +120,7 @@ final readonly class LinkReservations
     public function bindHandoff(ReservedCandidate $candidate, IssuedHandoff $issued): ReservedCandidate
     {
         if ($issued->reference === null || $issued->expiresAt->greaterThan($candidate->expiresAt)) {
-            throw new \LogicException('A handoff issuer must store a reservation\'s binding, and never a later expiry than it was given (SSO-8.8).');
+            throw new \LogicException('A handoff issuer must store a reservation\'s binding, and never a later expiry than it was given.');
         }
 
         $query = Link::query()->useWritePdo();

@@ -546,7 +546,7 @@ final class ProvisioningTest extends LinkingTestCase
             self::assertSame('A provisioning grant cannot be serialised.', self::refusalOf(static fn (): string => serialize($grant)));
             self::assertSame('A provisioning grant cannot be unserialised.', self::refusalOf(static fn (): mixed => unserialize(self::emptyPayload($class))));
             self::assertSame(
-                'The unlinked-result event cannot be serialised: a queued listener is too late (SSO-8.6).',
+                'The unlinked-result event cannot be serialised: a queued listener is too late.',
                 self::refusalOf(static fn (): string => serialize($event)),
             );
             self::assertSame('The unlinked-result event cannot be unserialised.', self::refusalOf(static fn (): mixed => unserialize(self::emptyPayload($event::class))));
@@ -605,7 +605,7 @@ final class ProvisioningTest extends LinkingTestCase
 
             self::fail('The event reached the queue.');
         } catch (\Throwable $exception) {
-            self::assertSame('The unlinked-result event cannot be serialised: a queued listener is too late (SSO-8.6).', self::rootCause($exception)->getMessage());
+            self::assertSame('The unlinked-result event cannot be serialised: a queued listener is too late.', self::rootCause($exception)->getMessage());
             self::assertInstanceOf(\LogicException::class, self::rootCause($exception));
         }
 
@@ -700,7 +700,7 @@ final class ProvisioningTest extends LinkingTestCase
 
             self::fail('The completion went on.');
         } catch (\LogicException $exception) {
-            self::assertSame('A provisioning listener must commit or roll back its transaction before it returns (SSO-8.6).', $exception->getMessage());
+            self::assertSame('A provisioning listener must commit or roll back its transaction before it returns.', $exception->getMessage());
         }
 
         self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
